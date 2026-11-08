@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, mkdirSync, realpathSync, unlinkSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import { readBounded, writeAtomic } from '../../daemon/files'
 import { protectSecret, revealSecret } from '../integrations/credentials'
@@ -8,6 +8,7 @@ import { DesktopTeamError, type ConnectionRecord } from '../team-platform/types'
 import { teamCommandIdSchema, teamSessionSchema } from '../../../shared/team-platform'
 import { taskInputReadSchema, taskInputBundleDigestText } from '../../../shared/team-task-inputs'
 import { createHash } from 'node:crypto'
+import { canonicalWorkflowJson } from '../../../shared/workflow'
 import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapshotSchema } from '../../../shared/crux-remote'
 import { taskProgressPinSchema, type TaskProgressPin } from '../../../shared/crux-task-progress-native'
 import { teamTaskProgressDtoSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, type TeamTaskProgressCommand } from '../../../shared/team-task-progress'
@@ -22,6 +23,36 @@ import { jiraBusinessEffectSchema, jiraBusinessEventCommandSchema, jiraBusinessM
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.enum(['task-progress', 'business-hook']), token: z.string().min(1).max(16384) }).strict()
 const businessCredentialSchema = credentialSchema.extend({ instanceId: z.string().uuid(), epoch: z.string().uuid() }).strict()
 const fileSchema = z.object({ version: z.literal(1), connectionId: z.string().uuid(), protected: z.string().min(1).max(64 * 1024).nullable() }).strict()
+const businessCommandSchema = z.object({ version: z.literal(1), commandId: teamCommandIdSchema, operation: z.string().min(1).max(128), requestDigest: z.string().regex(/^[a-f0-9]{64}$/), expectedEpoch: z.string().uuid(), expectedRevision: z.number().int().nonnegative().safe() }).strict()
+function businessCommandDigest(operation: string, input: unknown): string {
+  const record = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : input
+  const stableInput = record && typeof record === 'object' && !Array.isArray(record)
+    ? Object.fromEntries(Object.entries(record).filter(([key]) => !['expectedEpoch', 'expectedRevision', 'expectedMappingRevision'].includes(key)))
+    : record
+  return createHash('sha256').update(canonicalWorkflowJson({ operation, input: stableInput }), 'utf8').digest('hex')
+}
+function businessCommandFile(dataDir: string, connectionId: string, commandId: string): string {
+  teamCommandIdSchema.parse(commandId)
+  return join(dirname(file(dataDir, connectionId, 'business-hook')), `${connectionId}.${commandId}.business-command.json`)
+}
+function readPendingBusinessCommand(dataDir: string, connectionId: string, commandId: string): z.infer<typeof businessCommandSchema> | null {
+  const path = businessCommandFile(dataDir, connectionId, commandId)
+  if (!existsSync(path)) return null
+  try { return businessCommandSchema.parse(JSON.parse(readBounded(path, 16 * 1024))) }
+  catch { throw new DesktopTeamError('ACKNOWLEDGEMENT_UNKNOWN', '原业务命令身份记录无法核对，请保留原命令并重试', true) }
+}
+function pendingBusinessCommand(dataDir: string, connectionId: string, commandId: string, operation: string, input: unknown): { requestDigest: string; pending: z.infer<typeof businessCommandSchema> | null } {
+  const requestDigest = businessCommandDigest(operation, input)
+  const pending = readPendingBusinessCommand(dataDir, connectionId, commandId)
+  if (pending && (pending.operation !== operation || pending.requestDigest !== requestDigest)) throw new DesktopTeamError('COMMAND_CONFLICT', '原业务命令身份已绑定到不同请求', true)
+  return { requestDigest, pending }
+}
+function retainBusinessCommand(dataDir: string, connectionId: string, command: z.infer<typeof businessCommandSchema>): void {
+  writeAtomic(businessCommandFile(dataDir, connectionId, command.commandId), JSON.stringify(command))
+}
+function clearBusinessCommand(dataDir: string, connectionId: string, commandId: string): void {
+  try { unlinkSync(businessCommandFile(dataDir, connectionId, commandId)) } catch { /* A verified command reply remains safe to replay by identity. */ }
+}
 function file(dataDir: string, connectionId: string, purpose: 'task-progress' | 'business-hook' = 'task-progress'): string {
   z.string().uuid().parse(connectionId)
   const root = realpathSync.native(dataDir), directory = join(root, 'task-progress-credentials')
@@ -236,13 +267,20 @@ export class NativeTeamBusinessSender {
     const { credential } = await this.authorized()
     return this.remoteSnapshot(credential)
   }
-  async command(operation: string, input: unknown, commandId: string): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
+  async command(operation: string, input: unknown, commandId: string, options: { retainUntilEffect?: boolean } = {}): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
     const { credential } = await this.authorized(), current = await this.remoteSnapshot(credential)
-    const command = cruxRemoteCommandSchema.parse({ commandId, expectedEpoch: current.epoch, expectedRevision: current.revision, operation, input })
+    const { requestDigest, pending } = pendingBusinessCommand(this.dataDir, this.connectionId, commandId, operation, input)
+    const command = cruxRemoteCommandSchema.parse({ commandId, expectedEpoch: pending?.expectedEpoch ?? current.epoch, expectedRevision: pending?.expectedRevision ?? current.revision, operation, input })
+    if (!pending) retainBusinessCommand(this.dataDir, this.connectionId, { version: 1, commandId, operation, requestDigest, expectedEpoch: command.expectedEpoch, expectedRevision: command.expectedRevision })
     const result = await this.http.request(credential.value.origin, `/api/projects/${credential.value.projectId}/crux/commands`, cruxRemoteCommandReplySchema, credential.value.token, command)
     this.current(credential.fingerprint, true)
     if (result.commandId !== commandId || result.result.projectId !== credential.value.projectId || result.result.instanceId !== credential.value.instanceId || result.result.epoch !== current.epoch || result.result.actor.id !== credential.value.ownerId) throw new DesktopTeamError('RECEIPT_MISMATCH', '业务 Hook 回执不属于原命令、账号或服务世代', true)
+    if (!options.retainUntilEffect) clearBusinessCommand(this.dataDir, this.connectionId, commandId)
     return result
+  }
+  /** Release child command identities only after their owning business effect is confirmed. */
+  confirmBusinessCommands(commandIds: string[]): void {
+    for (const commandId of commandIds) clearBusinessCommand(this.dataDir, this.connectionId, commandId)
   }
   async businessMapping(input: { projectId: string; instanceId: string; issueId: string }): Promise<JiraBusinessTaskMapping | null> {
     const { credential } = await this.authorized()
@@ -251,30 +289,52 @@ export class NativeTeamBusinessSender {
     await this.remoteSnapshot(credential)
     const value = await this.http.request(credential.value.origin, `/api/projects/${query.projectId}/crux/jira/mappings?${new URLSearchParams({ instanceId: query.instanceId, issueId: query.issueId })}`, jiraBusinessTaskMappingSchema.nullable(), credential.value.token)
     this.current(credential.fingerprint)
-    if (value && (value.projectId !== credential.value.projectId || value.task.instanceId !== credential.value.instanceId)) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 平台任务映射不属于原项目或服务世代')
+    if (value && (value.projectId !== credential.value.projectId || value.task.projectId !== query.projectId || value.task.instanceId !== credential.value.instanceId
+      || value.issue.instanceId !== query.instanceId || value.issue.issueId !== query.issueId)) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 平台任务映射不属于原问题、项目或服务世代')
     return value
   }
   async linkBusinessTask(input: z.input<typeof jiraBusinessMappingCommandSchema>): Promise<JiraBusinessTaskMapping> {
     const { credential } = await this.authorized()
     const current = await this.remoteSnapshot(credential)
-    const command = jiraBusinessMappingCommandSchema.parse(input)
+    const parsed = jiraBusinessMappingCommandSchema.parse(input)
+    const { requestDigest, pending } = pendingBusinessCommand(this.dataDir, this.connectionId, parsed.commandId, 'jiraBusinessMappingCommand', parsed)
+    const command = jiraBusinessMappingCommandSchema.parse({
+      ...parsed,
+      expectedEpoch: pending?.expectedEpoch ?? parsed.expectedEpoch,
+      expectedRevision: pending?.expectedRevision ?? parsed.expectedRevision
+    })
     this.assertProject(command.projectId, credential)
     if (command.expectedEpoch !== current.epoch) throw new DesktopTeamError('WORKSPACE_EPOCH_CHANGED', 'Jira 平台任务映射命令属于旧服务世代', true)
+    if (!pending) retainBusinessCommand(this.dataDir, this.connectionId, { version: 1, commandId: command.commandId, operation: 'jiraBusinessMappingCommand', requestDigest, expectedEpoch: command.expectedEpoch, expectedRevision: command.expectedRevision })
     const value = await this.http.request(credential.value.origin, `/api/projects/${command.projectId}/crux/jira/mappings/commands`, z.object({ status: z.enum(['committed', 'duplicate']), commandId: teamCommandIdSchema, result: jiraBusinessTaskMappingSchema }).strict(), credential.value.token, command)
     this.current(credential.fingerprint, true)
-    if (value.commandId !== command.commandId || value.result.projectId !== command.projectId || value.result.task.instanceId !== credential.value.instanceId) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 平台任务映射回执不属于原命令、项目或服务世代', true)
+    if (value.commandId !== command.commandId || value.result.projectId !== command.projectId || value.result.task.instanceId !== credential.value.instanceId
+      || teamTaskIdentity(value.result.task) !== teamTaskIdentity(command.task) || value.result.issue.instanceId !== command.issue.instanceId
+      || value.result.issue.issueId !== command.issue.issueId || value.result.issue.remoteProjectId !== command.issue.remoteProjectId) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 平台任务映射回执不属于原命令、问题或任务身份', true)
+    clearBusinessCommand(this.dataDir, this.connectionId, command.commandId)
     await this.remoteSnapshot(credential, true)
     return value.result
   }
   async recordBusinessEffect(input: z.input<typeof jiraBusinessEventCommandSchema>): Promise<JiraBusinessEffect> {
     const { credential } = await this.authorized()
     const current = await this.remoteSnapshot(credential)
-    const command = jiraBusinessEventCommandSchema.parse(input)
+    const parsed = jiraBusinessEventCommandSchema.parse(input)
+    const { requestDigest, pending } = pendingBusinessCommand(this.dataDir, this.connectionId, parsed.commandId, 'jiraBusinessEventCommand', parsed)
+    const command = jiraBusinessEventCommandSchema.parse({
+      ...parsed,
+      expectedEpoch: pending?.expectedEpoch ?? parsed.expectedEpoch,
+      expectedMappingRevision: pending?.expectedRevision ?? parsed.expectedMappingRevision
+    })
     this.assertProject(command.projectId, credential)
     if (command.expectedEpoch !== current.epoch) throw new DesktopTeamError('WORKSPACE_EPOCH_CHANGED', 'Jira 业务事件命令属于旧服务世代', true)
+    if (!pending) retainBusinessCommand(this.dataDir, this.connectionId, { version: 1, commandId: command.commandId, operation: 'jiraBusinessEventCommand', requestDigest, expectedEpoch: command.expectedEpoch, expectedRevision: command.expectedMappingRevision })
     const value = await this.http.request(credential.value.origin, `/api/projects/${command.projectId}/crux/jira/business-effects/commands`, z.object({ status: z.enum(['committed', 'duplicate']), commandId: teamCommandIdSchema, result: jiraBusinessEffectSchema }).strict(), credential.value.token, command)
     this.current(credential.fingerprint, true)
-    if (value.commandId !== command.commandId || value.result.projectId !== command.projectId || value.result.effectId !== command.effectId || value.result.task.instanceId !== credential.value.instanceId) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 业务事件回执不属于原命令、项目或服务世代', true)
+    if (value.commandId !== command.commandId || value.result.projectId !== command.projectId || value.result.effectId !== command.effectId || value.result.task.instanceId !== credential.value.instanceId
+      || value.result.eventKind !== command.eventKind || teamTaskIdentity(value.result.task) !== teamTaskIdentity(command.task)
+      || canonicalWorkflowJson(value.result.issue) !== canonicalWorkflowJson(command.issue) || value.result.providerJobId !== command.providerJobId
+      || value.result.providerCommandId !== command.providerCommandId || value.result.payloadDigest !== command.payloadDigest) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 业务事件回执不属于原命令、来源或任务身份', true)
+    clearBusinessCommand(this.dataDir, this.connectionId, command.commandId)
     await this.remoteSnapshot(credential, true)
     return value.result
   }

@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
-import { z } from 'zod'
 import { teamTaskRefSchema, type TeamTaskRef } from '../../../../shared/team-task-execution'
 import type { CruxStatusCategory, CruxTask, CruxTaskAction } from '../../../../shared/crux'
 import { getCruxTaskActions, getCruxTaskStageMetadata } from '../../../../shared/crux-domain/workflow'
@@ -11,8 +10,8 @@ import type { TeamFetch } from '../../team-platform/http'
 import { JiraWorkspaceError } from './types'
 
 export interface JiraBusinessHookPort {
-  create(input: { spaceId: string; title: string; description: string | null; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string }): Promise<TeamTaskRef>
-  update(input: { task: TeamTaskRef; patch: { statusId?: string; title?: string; description?: string }; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string }): Promise<TeamTaskRef>
+  create(input: { spaceId: string; title: string; description: string | null; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string; effectId?: string }): Promise<TeamTaskRef>
+  update(input: { task: TeamTaskRef; patch: { statusId?: string; title?: string; description?: string }; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string; effectId?: string }): Promise<TeamTaskRef>
   lookup(issue: { instanceId: string; issueId: string }): Promise<JiraBusinessTaskMapping | null>
   readTask(task: TeamTaskRef): Promise<CruxTask | null>
 }
@@ -23,8 +22,11 @@ function taskRef(snapshot: { projectId: string; instanceId: string }, task: Crux
 
 /** Stable UUIDs make retries replay the original platform command and effect. */
 function stableUuid(seed: string): string {
-  const hex = createHash('sha256').update(seed, 'utf8').digest('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+  const bytes = createHash('sha256').update(seed, 'utf8').digest()
+  bytes[6] = (bytes[6] & 0x0f) | 0x50
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
 }
 
 function issueIdentity(issue: { instanceId: string; issueId: string }): string {
@@ -33,6 +35,11 @@ function issueIdentity(issue: { instanceId: string; issueId: string }): string {
 
 function businessEffectId(providerCommandId: string, issue: { instanceId: string; issueId: string }, eventKind: 'intake' | 'status-sync'): string {
   return stableUuid(`${providerCommandId}:jira-business-effect:${eventKind}:${issueIdentity(issue)}`)
+}
+
+function sameTask(left: TeamTaskRef, right: TeamTaskRef): boolean {
+  return left.instanceId === right.instanceId && left.projectId === right.projectId && left.spaceId === right.spaceId
+    && left.taskId === right.taskId && left.taskCreatedAt === right.taskCreatedAt
 }
 
 function actionCategory(task: CruxTask, action: CruxTaskAction): CruxStatusCategory | null {
@@ -60,7 +67,11 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
   const connectionIds = (): string[] => {
     try {
       return readdirSync(directory).filter(name => name.endsWith('.business.json')).map(name => name.slice(0, -'.business.json'.length)).filter(name => {
-        try { const file = join(directory, name + '.business.json'); return lstatSync(file).isFile() && !lstatSync(file).isSymbolicLink() } catch { return false }
+        try {
+          const file = join(directory, name + '.business.json')
+          const stat = lstatSync(file)
+          return stat.isFile() && !stat.isSymbolicLink()
+        } catch { return false }
       })
     } catch { return [] }
   }
@@ -80,32 +91,43 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
       return snapshot.snapshot.tasks.find(item => item.id === ref.taskId && item.spaceId === ref.spaceId && item.createdAt === ref.taskCreatedAt) ?? null
     },
     async create(input) {
-      const native = sender(), snapshot = await native.snapshot()
+      const native = sender()
+      const snapshot = await native.snapshot()
+      const rootEffectId = input.effectId ?? businessEffectId(input.providerCommandId, input.issue, 'intake')
       const space = snapshot.snapshot.spaces.find(item => item.id === input.spaceId && item.memberIds.includes(snapshot.actor.id) && !item.archived)
       if (!space) throw new JiraWorkspaceError('E_DENIED', 'Jira 目标 Space 不属于当前桌面账号或已停用。')
+
+      // Mapping is authoritative. A retry after a lost create acknowledgement must not infer
+      // from a task search or create a second task when the canonical link already exists.
       const existing = await native.businessMapping({ projectId: snapshot.projectId, instanceId: input.issue.instanceId, issueId: input.issue.issueId })
       if (existing) {
         if (existing.issue.remoteProjectId !== input.issue.remoteProjectId || existing.issue.issueKey !== input.issue.issueKey) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue already maps to a different canonical project identity.')
+        if (existing.task.spaceId !== input.spaceId) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue is canonically mapped to a different platform Space.')
         const mappedTask = snapshot.snapshot.tasks.find(item => item.id === existing.task.taskId && item.spaceId === existing.task.spaceId && item.createdAt === existing.task.taskCreatedAt)
         if (!mappedTask) throw new JiraWorkspaceError('E_CONFLICT', 'Existing Jira mapping points to a missing platform task.')
-        await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${input.providerCommandId}:jira-business-command:effect:intake:${issueIdentity(input.issue)}`), effectId: businessEffectId(input.providerCommandId, input.issue, 'intake'), eventKind: 'intake', projectId: existing.projectId, issue: input.issue, task: existing.task, expectedMappingRevision: existing.revision, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+        await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:intake`), effectId: rootEffectId, eventKind: 'intake', projectId: existing.projectId, issue: input.issue, task: existing.task, expectedMappingRevision: existing.revision, expectedEpoch: snapshot.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+        native.confirmBusinessCommands([stableUuid(`${rootEffectId}:platform-create`), stableUuid(`${rootEffectId}:business-mapping`)])
         return existing.task
       }
-      const result = await native.command('createTask', { spaceId: input.spaceId, title: input.title, ...(input.description ? { description: input.description } : {}), workKind: 'code', assigneeIds: [snapshot.actor.id], triagePending: false }, stableUuid(`${input.providerCommandId}:platform-create:${issueIdentity(input.issue)}`))
+
+      const result = await native.command('createTask', { spaceId: input.spaceId, title: input.title, ...(input.description ? { description: input.description } : {}), workKind: 'code', assigneeIds: [snapshot.actor.id], triagePending: false }, stableUuid(`${rootEffectId}:platform-create`), { retainUntilEffect: true })
       const task = result.result.snapshot.tasks.find(item => item.id === result.result.taskId)
-      if (!task) throw new JiraWorkspaceError('E_UNKNOWN', '平台任务创建回执没有返回可核对的任务身份。')
+      if (!task || task.spaceId !== input.spaceId) throw new JiraWorkspaceError('E_UNKNOWN', '平台任务创建回执没有返回可核对的任务身份。')
       const ref = taskRef(result.result, task)
-      await native.linkBusinessTask({ contractVersion: 1, commandId: stableUuid(`${input.providerCommandId}:jira-business-command:mapping:${issueIdentity(input.issue)}`), projectId: ref.projectId, issue: input.issue, task: ref, expectedRevision: 0 })
-      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${input.providerCommandId}:jira-business-command:effect:intake:${issueIdentity(input.issue)}`), effectId: businessEffectId(input.providerCommandId, input.issue, 'intake'), eventKind: 'intake', projectId: ref.projectId, issue: input.issue, task: ref, expectedMappingRevision: 1, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
-      return ref
+      const linked = await native.linkBusinessTask({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-mapping`), projectId: ref.projectId, issue: input.issue, task: ref, expectedRevision: 0, expectedEpoch: result.result.epoch })
+      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:intake`), effectId: rootEffectId, eventKind: 'intake', projectId: linked.projectId, issue: input.issue, task: linked.task, expectedMappingRevision: linked.revision, expectedEpoch: result.result.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+      native.confirmBusinessCommands([stableUuid(`${rootEffectId}:platform-create`), stableUuid(`${rootEffectId}:business-mapping`)])
+      return linked.task
     },
     async update(input) {
-      const native = sender(), snapshot = await native.snapshot()
+      const native = sender()
+      const snapshot = await native.snapshot()
       if (input.task.instanceId !== snapshot.instanceId || input.task.projectId !== snapshot.projectId) throw new JiraWorkspaceError('E_CONFLICT', '平台任务不属于当前团队服务实例或项目。')
       const task = snapshot.snapshot.tasks.find(item => item.id === input.task.taskId && item.spaceId === input.task.spaceId && item.createdAt === input.task.taskCreatedAt)
       if (!task) throw new JiraWorkspaceError('E_CONFLICT', '原 Jira 映射的平台任务已不存在或已更换。')
       const mapping = await native.businessMapping({ projectId: input.task.projectId, instanceId: input.issue.instanceId, issueId: input.issue.issueId })
-      if (!mapping || JSON.stringify(mapping.task) !== JSON.stringify(input.task)) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue has no matching canonical platform task mapping.')
+      if (!mapping || !sameTask(mapping.task, input.task)) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue has no matching canonical platform task mapping.')
+      const rootEffectId = input.effectId ?? businessEffectId(input.providerCommandId, input.issue, 'status-sync')
 
       let current = task
       if (input.patch.statusId !== undefined) {
@@ -115,19 +137,19 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
         if (targetStatus.category !== currentStatus.category) {
           const action = transitionAction(task, targetStatus.category)
           if (!action) throw new JiraWorkspaceError('E_CONFLICT', `Jira status ${input.patch.statusId} cannot be reached by one authorized workflow action from the current platform stage.`)
-          const transition = await native.command('transitionTask', { taskId: task.id, action, body: 'Jira status synchronization', expectedStage: task.workflow?.stage, expectedUpdatedAt: task.updatedAt }, stableUuid(`${input.providerCommandId}:platform-transition:${issueIdentity(input.issue)}`))
+          const transition = await native.command('transitionTask', { taskId: task.id, action, body: 'Jira status synchronization', expectedStage: task.workflow?.stage, expectedUpdatedAt: task.updatedAt }, stableUuid(`${rootEffectId}:platform-transition`), { retainUntilEffect: true })
           current = transition.result.snapshot.tasks.find(item => item.id === task.id) ?? current
         }
       }
 
       const patch: { statusId?: string; title?: string; description?: string } = { ...input.patch }
-      if (patch.statusId !== undefined && patch.statusId === current.statusId) delete patch.statusId
       if (Object.keys(patch).length) {
-        const result = await native.command('updateTask', { id: current.id, patch }, stableUuid(`${input.providerCommandId}:platform-update:${issueIdentity(input.issue)}`))
+        const result = await native.command('updateTask', { id: current.id, patch }, stableUuid(`${rootEffectId}:platform-update`), { retainUntilEffect: true })
         current = result.result.snapshot.tasks.find(item => item.id === current.id) ?? current
       }
       const ref = taskRef(snapshot, current)
-      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${input.providerCommandId}:jira-business-command:effect:status-sync:${issueIdentity(input.issue)}`), effectId: businessEffectId(input.providerCommandId, input.issue, 'status-sync'), eventKind: 'status-sync', projectId: ref.projectId, issue: input.issue, task: ref, expectedMappingRevision: mapping.revision, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:status-sync`), effectId: rootEffectId, eventKind: 'status-sync', projectId: ref.projectId, issue: input.issue, task: ref, expectedMappingRevision: mapping.revision, expectedEpoch: snapshot.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+      native.confirmBusinessCommands([stableUuid(`${rootEffectId}:platform-transition`), stableUuid(`${rootEffectId}:platform-update`)])
       return ref
     }
   }
