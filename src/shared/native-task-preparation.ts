@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { databaseDeliveryCaptureRequestSchema } from './database-delivery'
 import { processOwnerSchema, workspaceGrantSchema } from './daemon/identity'
 import { teamContentPinSchema } from './team-content-transport'
 import { teamDigestSchema, teamIdSchema } from './team-platform'
@@ -22,7 +23,7 @@ export const nativeTaskPrepareSchema = z.object({
   /** Explicit receiver paths for a predecessor's selected fixed files. */
   targetPaths: z.record(z.string().uuid(), z.string().min(1).max(4096)).optional()
 }).strict()
-export const nativeTaskPreparationRequestSchema = z.discriminatedUnion('operation', [nativeTaskPrepareSchema,
+export const nativeTaskPreparationRequestSchema = z.discriminatedUnion('operation', [nativeTaskPrepareSchema, databaseDeliveryCaptureRequestSchema,
   z.object({ operation: z.literal('verify'), preparationId: z.string().uuid() }).strict(),
   z.object({ operation: z.literal('inspect'), preparationId: z.string().uuid() }).strict()
 ])

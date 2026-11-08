@@ -24,6 +24,7 @@ export interface CruxWorkspaceHost {
   invalidateProgress(projectId: string, before: CruxSnapshot, after: CruxSnapshot): void
   validateExecutionChanges(principal: StorePrincipal | null, projectId: string, before: CruxSnapshot, after: CruxSnapshot, explicitTaskId?: string): void
   validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: CruxTask, afterTask: CruxTask, transition: CruxTransitionTaskInput): void
+  committedTaskTransition(principal: StorePrincipal, projectId: string, commandId: string, transition: CruxTransitionTaskInput, beforeTask: CruxTask, afterTask: CruxTask, workspaceRevision: number): void
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
   all(sql: string, ...params: SQLInputValue[]): Row[]
   run(sql: string, ...params: SQLInputValue[]): unknown
@@ -304,9 +305,9 @@ export class TeamCruxWorkspace {
   }
 
   /** Called only inside execution admission's existing writer transaction. */
-  executionTransition(principal: StorePrincipal, projectId: string, expectedRevision: number, transition: CruxTransitionTaskInput): void {
+  executionTransition(principal: StorePrincipal, projectId: string, expectedRevision: number, transition: CruxTransitionTaskInput, commandId: string): void {
     this.authorize(principal, projectId, 'transitionTask')
-    this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'transitionTask', input: transition })
+    this.applyBusinessCommand(principal, projectId, { commandId, expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'transitionTask', input: transition })
   }
 
   /** Staged source mapping uses the existing task domain, never imported status or executor. */
@@ -341,11 +342,13 @@ export class TeamCruxWorkspace {
       if (error instanceof CoreError || error instanceof PlanningError || error instanceof AgentError) throw new TeamServiceError('INVALID_INPUT', error.message)
       throw error
     }
+    let committedTransition: { transition: CruxTransitionTaskInput; before: CruxTask; after: CruxTask } | undefined
     if (input.operation === 'transitionTask') {
       const transition = cruxMutationInputSchemas.transitionTask.parse(input.input)
       const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
       if (!beforeTask || !afterTask) throw new TeamServiceError('TASK_INPUT_SCOPE_CONFLICT', 'Original transition task is unavailable', 409)
       this.host.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
+      committedTransition = { transition, before: beforeTask, after: afterTask }
     }
     if (privateInbox.has(input.operation)) {
       for (const item of executed.snapshot.inbox) {
@@ -360,6 +363,7 @@ export class TeamCruxWorkspace {
     workspace.revision++
     const result = this.view(principal, projectId, workspace, executed.taskId)
     this.host.run('INSERT INTO crux_workspaces(projectId,revision,snapshotJson,updatedAt) VALUES(?,?,?,?) ON CONFLICT(projectId) DO UPDATE SET revision=excluded.revision,snapshotJson=excluded.snapshotJson,updatedAt=excluded.updatedAt', projectId, workspace.revision, JSON.stringify(workspace.snapshot), Date.now())
+    if (committedTransition) this.host.committedTaskTransition(principal, projectId, input.commandId, committedTransition.transition, committedTransition.before, committedTransition.after, workspace.revision)
     return result
   }
 

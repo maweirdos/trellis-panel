@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
   jiraBusinessEffectQuerySchema,
+  jiraBusinessRouteCommandSchema,
+  jiraBusinessDispatchReceiptSchema,
   jiraBusinessEventCommandSchema,
   jiraBusinessMappingCommandSchema,
   jiraBusinessMappingQuerySchema
@@ -32,11 +34,28 @@ export async function registerJiraBusinessHookRoutes(api: FastifyInstance, store
     return { ok: true, value: await store.call('jiraBusinessMappingCommand', { actor: auth.principal(request).actor, body }) }
   })
 
+  const dispatchPath = '/api/projects/:projectId/crux/jira/business-dispatches'
+  api.post('/api/projects/:projectId/crux/jira/business-routes/commands', async request => {
+    const body = jiraBusinessRouteCommandSchema.parse(request.body)
+    assertProject(project(request), body.route.projectId)
+    return { ok: true, value: await store.call('jiraBusinessRouteCommand', { actor: auth.principal(request).actor, body }) }
+  })
+  api.get(dispatchPath, async request => {
+    const routeId = z.object({ routeId: teamIdSchema }).strict().parse(request.query).routeId
+    return { ok: true, value: await store.call('jiraBusinessDispatchPending', { actor: auth.principal(request).actor, projectId: project(request), routeId }) }
+  })
+  api.get(dispatchPath + '/:effectId', async request => {
+    const query = jiraBusinessEffectQuerySchema.parse(request.params)
+    return { ok: true, value: await store.call('jiraBusinessDispatchRead', { actor: auth.principal(request).actor, ...query }) }
+  })
+  api.post(dispatchPath + '/receipts', async request => {
+    const body = jiraBusinessDispatchReceiptSchema.parse(request.body)
+    assertProject(project(request), body.projectId)
+    return { ok: true, value: await store.call('jiraBusinessDispatchReceipt', { actor: auth.principal(request).actor, body }) }
+  })
   const effectPath = '/api/projects/:projectId/crux/jira/business-effects'
   api.get(effectPath + '/:effectId', async request => {
-    const projectId = project(request)
-    const effectId = z.object({ effectId: teamIdSchema }).strict().parse(request.params).effectId
-    const query = jiraBusinessEffectQuerySchema.parse({ projectId, effectId })
+    const query = jiraBusinessEffectQuerySchema.parse(request.params)
     return { ok: true, value: await store.call('jiraBusinessEffectRead', { actor: auth.principal(request).actor, ...query }) }
   })
   api.post(effectPath + '/commands', async request => {

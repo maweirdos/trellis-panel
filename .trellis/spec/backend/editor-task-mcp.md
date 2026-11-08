@@ -20,16 +20,29 @@ authority is no longer valid.
 The endpoint exposes bounded tools for:
 
 - task discovery and fixed T03 development context;
-- execution read and history;
+- execution read, history, immutable input capture and fixed selection reads;
 - editor-owned claim, progress, confirmed artifact, delivery manifest and
-  checkpoint commands;
+  checkpoint and execution finalization commands;
 - cooperative editor release and exact command reconciliation;
 - business transition through the existing task execution command handler.
 
-Each mutating command receives a new UUID before the existing DesktopTeamService
-command is sent. A retry must reuse the original command body and UUID. The
-service response must match the original task, account, device, epoch, command
-kind and generation before it is returned to the editor.
+The editor retains the original command UUID and complete input body before
+sending a mutation. Capture, completion and business transition expose that UUID
+in their tool inputs. A transition also retains the execution ID, generation and
+workspace revision read before its first submission; retries cannot reconstruct
+them from a newer execution head. The service response must match the original
+task, account, device, epoch, command kind and generation before it is returned.
+
+After claim, `team_task_capture_input` uses the existing input-command transport
+to fix adopted portable workflow, Agent summaries, roles and resource selections.
+`team_task_execution_input` reads that capture and its immutable resource bodies.
+Both bind task/account/device/epoch to the current MCP session. Input capture
+does not grant native directory access.
+
+`team_task_complete` submits the existing execution finalization contract after
+confirmed artifacts, delivery manifest and checkpoint. Progress cannot substitute
+for completion. The following business transition still runs the shared service
+gate, including any adopted database-delivery rule.
 
 ## Ownership and recovery
 

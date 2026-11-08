@@ -20,7 +20,7 @@ export class JiraWorkspaceRepository {
     this.assertOwner()
     if (this.state) return this.state
     try {
-      this.state = existsSync(this.file) ? repositoryStateSchema.parse(JSON.parse(readBounded(this.file, JIRA_LIMITS.evidenceBytes))) : { version: 1, sources: [], accounts: [], plans: [], previews: [], baselines: [], receipts: [], conflicts: [], diagnostics: [] }
+      this.state = existsSync(this.file) ? repositoryStateSchema.parse(JSON.parse(readBounded(this.file, JIRA_LIMITS.evidenceBytes))) : { version: 1, businessDispatches: [], sources: [], accounts: [], plans: [], previews: [], baselines: [], receipts: [], conflicts: [], diagnostics: [] }
     } catch { throw new JiraWorkspaceError('E_IO', 'Jira policy/evidence is corrupt, oversized or from a future version. The original file is preserved.') }
     return this.state
   }

@@ -21,7 +21,7 @@ function taskRef(snapshot: { projectId: string; instanceId: string }, task: Crux
 }
 
 /** Stable UUIDs make retries replay the original platform command and effect. */
-function stableUuid(seed: string): string {
+export function stableUuid(seed: string): string {
   const bytes = createHash('sha256').update(seed, 'utf8').digest()
   bytes[6] = (bytes[6] & 0x0f) | 0x50
   bytes[8] = (bytes[8] & 0x3f) | 0x80
@@ -62,7 +62,7 @@ function transitionAction(task: CruxTask, target: CruxStatusCategory): CruxTaskA
 }
 
 /** Resolve exactly one GUI-issued current-device business credential; guessing a connection is forbidden. */
-export function createCurrentJiraBusinessHook(dataDir: string, options: { fetcher?: TeamFetch; unseal?: (body: string) => string } = {}): JiraBusinessHookPort {
+export function currentJiraBusinessSender(dataDir: string, options: { fetcher?: TeamFetch; unseal?: (body: string) => string } = {}): NativeTeamBusinessSender {
   const directory = join(dataDir, 'task-progress-credentials')
   const connectionIds = (): string[] => {
     try {
@@ -80,6 +80,11 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
     if (ids.length !== 1) throw new JiraWorkspaceError('E_UNAVAILABLE', ids.length === 0 ? '当前桌面团队连接尚未授权后台业务 Hook。' : '存在多个团队连接，后台业务 Hook 不会猜测写入身份。')
     return new NativeTeamBusinessSender(dataDir, ids[0], options.fetcher, options.unseal)
   }
+  return sender()
+}
+
+export function createCurrentJiraBusinessHook(dataDir: string, options: { fetcher?: TeamFetch; unseal?: (body: string) => string } = {}): JiraBusinessHookPort {
+  const sender = (): NativeTeamBusinessSender => currentJiraBusinessSender(dataDir, options)
   return {
     async lookup(issue) {
       const native = sender(), snapshot = await native.snapshot()

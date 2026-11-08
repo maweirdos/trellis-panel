@@ -18,6 +18,8 @@ import { TaskExecutionTransport } from '../../services/team-platform/task-execut
 import { ExecutionInputTransport } from '../../services/team-platform/execution-input-transport'
 import type { NativeContentPin } from '../../services/team-platform/content-transport'
 import { inspectCruxWorkExecutionProject, cruxWorkProjectIdentity } from '../../services/crux/work-project'
+import { type DatabaseDeliveryCaptureRequest } from '../../../shared/database-delivery'
+import { confirmDatabaseDelivery, readDatabaseDeliveryCommand } from './database-delivery'
 import { verifyHandoffSource } from '../../services/crux/task-outputs/handoff-source'
 import { resolveWorkcopy, assertWorkcopyObservation } from '../../services/workcopy-use/identity'
 import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
@@ -94,7 +96,9 @@ export class NativeTaskPreparation {
   }
   /** Generic command inspection must retain a preparation's original process boundary. */
   assertReceiptAuthority(root: string, preparationId: string, authority?: NativeTaskPreparationAuthority): void {
-    const request = nativeTaskPreparationRequestSchema.parse({ operation: 'inspect', preparationId })
+    this.ports.assertOwner(); this.assertStorage(root)
+    const capture = readDatabaseDeliveryCommand(this.directory, preparationId)
+    const request = nativeTaskPreparationRequestSchema.parse({ operation: 'inspect', preparationId: capture?.request.preparationId ?? preparationId })
     if (!authority) throw new DaemonError('E_DENIED', 'Original preparation receipts require their authenticated native process and workspace grant.')
     this.assertAuthority(root, request, authority)
   }
@@ -216,12 +220,36 @@ export class NativeTaskPreparation {
       finally { if (!handedOff) admission.release() }
     }
   }
+  async captureDatabaseDelivery(root: string, raw: DatabaseDeliveryCaptureRequest, authority: NativeTaskPreparationAuthority): Promise<Awaited<ReturnType<typeof confirmDatabaseDelivery>>> {
+    const original = { actor: structuredClone(authority.actor), grant: structuredClone(authority.grant), assertProduct: authority.assertProduct.bind(authority) }
+    const request = structuredClone(raw)
+    this.assertAuthority(root, request, original)
+    let release: (() => void) | undefined, admission: WorkspaceAdmission | undefined
+    try {
+      const binding = await this.execute(root, { operation: 'verify', preparationId: request.preparationId }, original,
+        (_binding, held, done) => { admission = held; release = done })
+      const guard = (): void => {
+        this.assertAuthority(root, request, original)
+        if (!admission?.isCurrent()) conflict('Original database capture workspace admission changed')
+      }
+      return await this.withPreparedExecution(binding, guard, async (transport, source) => {
+        const result = await confirmDatabaseDelivery({ directory: this.directory, binding, request, transport, assertPrepared: guard })
+        const view = await source.read(); guard()
+        this.fixedInput(binding.request, binding.execution, view)
+        return result
+      }, true)
+    } finally { try { release?.() } finally { admission?.release() } }
+  }
   /** Admitted Daemon work reuses its retained grant and current protected device;
    * the initiating GUI connection is no longer its execution authority. */
   async withExecution<T>(binding: NativeTaskBinding, assertOwned: () => void,
     action: (transport: TaskExecutionTransport, source: ExecutionInputSource, resource: TeamTaskCodeResourceDto) => Promise<T>): Promise<T> {
+    return this.withPreparedExecution(binding, assertOwned, action, false)
+  }
+  private async withPreparedExecution<T>(binding: NativeTaskBinding, assertOwned: () => void,
+    action: (transport: TaskExecutionTransport, source: ExecutionInputSource, resource: TeamTaskCodeResourceDto) => Promise<T>, allowEditor: boolean): Promise<T> {
     const original = this.read(binding.preparationId), input = original.request
-    if (!equal(original, binding) || input.origin !== 'product' || input.ownership !== 'product-managed') conflict('Original product preparation changed.')
+    if (!equal(original, binding) || !allowEditor && (input.origin !== 'product' || input.ownership !== 'product-managed')) conflict('Original product preparation changed.')
     const guard = (): void => {
       this.ports.assertOwner(); this.ports.assertCurrent(original.grant); assertOwned()
       if (cruxWorkProjectIdentity(original.root) !== original.directoryIdentity) conflict('Original engineering directory was replaced.')

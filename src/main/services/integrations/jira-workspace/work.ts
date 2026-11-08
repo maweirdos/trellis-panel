@@ -205,7 +205,7 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
       }, (observed) => this.settle(receipt.receipt.id, 'applied', 'Jira field update re-read and confirmed.', { issue: observed }))
       issue = await context.remote.issue(issue.issueId)
     }
-    if (desired.status && desired.status !== issue.fields.status) {
+    if (!plan.platformSpaceId && desired.status && desired.status !== issue.fields.status) {
       const localStatus = local.fields.status; const transition = plan.mapping.transitions[localStatus]
       if (!transition) throw new JiraWorkspaceError('E_CONFLICT', 'No explicit transition is mapped for this local source status.')
       const name = await prepareTransition(writer, issue.projectId, issue.issueId, transition, desired.status)
@@ -260,7 +260,7 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
     const link = this.intent(context, `task:${local.taskRef}`, 'local-update', created, local, null, {})
     let after = await this.effect(context, link, async () => this.tasks.patch(context.workspace, local, {}, created), (after) => this.settle(link.receipt.id, 'applied', 'New remote issue linked to the existing local task.', { after }))
     const followup: Partial<JiraFields> = {}
-    if (desired.status && desired.status !== created.fields.status) followup.status = desired.status
+    if (!plan.platformSpaceId && desired.status && desired.status !== created.fields.status) followup.status = desired.status
     if (desired.comments?.some((comment) => comment.id.startsWith('local:'))) followup.comments = desired.comments
     if (Object.keys(followup).length) {
       if (!plan.rules.outboundUpdate) throw new JiraWorkspaceError('E_CONFLICT', 'Issue was created and linked with its server initial state. Applying the mapped initial transition/comments additionally requires explicit outbound updates.')

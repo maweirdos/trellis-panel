@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
 import { teamExecutionCommandSchema, teamExecutionCommandReplySchema, teamExecutionRecordSchema, teamExecutionReceiptSchema,
   teamExecutionViewSchema, teamTaskIdentity, type TeamTaskRef, type TeamExecutionCommand, type TeamExecutionReceipt } from '../../../shared/team-task-execution'
+import { ExecutionInputTransport } from './execution-input-transport'
+import type { ExecutionInputCommand } from '../../../shared/team-execution-input'
 import { DesktopTeamError } from './types'
 import { executionArtifactRefSchema, executionArtifactViewSchema, type ExecutionArtifactRef } from '../../../shared/team-execution-artifacts'
 
@@ -38,6 +40,14 @@ export class TaskExecutionTransport {
     }); this.scope(value.task)
     if (value.active) { this.scope(value.active.task); if (value.active.epoch !== value.epoch || value.active.generation !== value.generation || value.active.authority !== 'active') throw new DesktopTeamError('RECEIPT_MISMATCH', '执行投影身份不一致') }
     return value
+  }
+  async captureInput(command: ExecutionInputCommand): ReturnType<ExecutionInputTransport['command']> {
+    const transport = new ExecutionInputTransport(this.task, command.expectedExecutionId, this.actorId, this.deviceId, this.request)
+    const receipt = await transport.reconcile(command)
+    return receipt ? { status: 'duplicate', commandId: command.commandId, result: receipt } : transport.command(command)
+  }
+  inputSource(executionId: string): ReturnType<ExecutionInputTransport['source']> {
+    return new ExecutionInputTransport(this.task, executionId, this.actorId, this.deviceId, this.request).source('use')
   }
   async history(id: string): Promise<z.infer<typeof teamExecutionRecordSchema>> {
     const value = await this.request(`${this.base}/${id}?${this.query}`, teamExecutionRecordSchema); this.scope(value.task)

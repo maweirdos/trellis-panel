@@ -59,6 +59,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [product-task-execution.md](./product-task-execution.md) | Current-node Pi/Codex/Claude product dispatch, actual native receipts, selected output submission and original cleanup | Product-start, report, permission, stop and reconciliation |
 | [editor-task-mcp.md](./editor-task-mcp.md) | Loopback MCP tools for editor task claim, fixed context, progress and delivery | Codex/Claude editor task access |
 | [jira-business-hooks.md](./jira-business-hooks.md) | Protected desktop identity for Jira-to-platform task effects and status events | Jira intake/status business Hook changes |
+| [database-delivery.md](./database-delivery.md) | Imported database gate conversion, fixed SQL evidence and shared development delivery validation | Database delivery Hook changes |
 | [access-protocol-security.md](./access-protocol-security.md) | TPAP 本地控制面安全约束（TPD-007/008） | Touching services/access or exposing new endpoints |
 
 ---

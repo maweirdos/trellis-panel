@@ -35,6 +35,7 @@ import { TeamContent } from './content'
 import { TEAM_CONTENT_SQL } from './content-schema'
 import { TeamGovernance, type GovernanceHost } from './governance'
 import { TeamTaskInputs } from './task-inputs'
+import { TeamDatabaseDelivery } from './database-delivery'
 import { TEAM_GOVERNANCE_SQL } from './governance-schema'
 import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../src/shared/team-task-development'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
@@ -96,7 +97,12 @@ export class TeamStoreCore {
     createTask: (...args) => this.crux.importTask(...args),
     event: (actorId, projectId, namespaceId, importId, commandId) => this.event('import.staged', 'personal', actorId, projectId, { namespaceId, importId, commandId })
   })
-  private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance)
+  private readonly databaseDelivery = new TeamDatabaseDelivery({
+    ...this.governanceHost,
+    history: (...args) => this.executions.historyForPrincipal(...args),
+    resolveOutput: (...args) => this.executions.resolveOutput(...args)
+  })
+  private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance, (...args) => this.databaseDelivery.validate(...args))
   private readonly db: DatabaseSync
   private readonly directory: string
   private readonly lockId = randomUUID()
@@ -188,6 +194,7 @@ export class TeamStoreCore {
     mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
     invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
     validateExecutionChanges: (...args) => this.executions.validateWorkspaceChanges(...args),
+    committedTaskTransition: (...args) => this.jiraBusinessHooks.routing.committed(...args),
     validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) }
   })
   private readonly jiraBusinessHooks = new TeamJiraBusinessHooks({
@@ -199,12 +206,15 @@ export class TeamStoreCore {
       const row = this.get('SELECT snapshotJson FROM crux_workspaces WHERE projectId=?', task.projectId)
       const snapshot = row ? JSON.parse(text(row, 'snapshotJson')) as { tasks?: Array<Record<string, unknown>>; spaces?: Array<Record<string, unknown>> } : null
       const current = snapshot?.tasks?.find(item => item.id === task.taskId)
-      const space = current && snapshot?.spaces?.find(item => item.id === current.spaceId)
+      const space = snapshot?.spaces?.find(item => item.id === task.spaceId)
       const memberIds = Array.isArray(space?.memberIds) ? space.memberIds.filter((value): value is string => typeof value === 'string') : []
-      if (!current || !space || current.createdAt !== task.taskCreatedAt || current.spaceId !== task.spaceId || !memberIds.includes(p.person.userId)) {
+      if (!space || !memberIds.includes(p.person.userId)) {
         throw new TeamServiceError('JIRA_TASK_FORBIDDEN', 'The authenticated actor cannot access the Jira-linked platform task', 403)
       }
       if (space.archived) throw new TeamServiceError('JIRA_TASK_INACTIVE', 'Archived task spaces cannot accept new Jira business effects', 409)
+      if (!current || current.createdAt !== task.taskCreatedAt || current.spaceId !== task.spaceId) {
+        throw new TeamServiceError('JIRA_TASK_STALE', 'The original Jira-linked platform task incarnation is no longer available', 409)
+      }
     },
     mutation: <T>(actor: StoreActor, commandId: string, kind: string, input: unknown, authorize: (p: StorePrincipal) => void, apply: (p: StorePrincipal) => T, authorizeReplay?: (p: StorePrincipal, result: T) => void) => this.mutation(actor, commandId, kind, input, authorize, apply, authorizeReplay),
     event: (...args) => this.event(...args)
@@ -690,6 +700,10 @@ export class TeamStoreCore {
     if (operation === 'codeResourceList') return this.codeResources.list(principal, raw)
     if (operation === 'codeResourceCommand') return this.codeResources.command(actor, raw)
     if (operation === 'taskCodeResourceRead') return this.codeResources.readTask(principal, raw)
+    if (operation === 'jiraBusinessRouteCommand') return this.jiraBusinessHooks.routing.configure(actor, raw.body)
+    if (operation === 'jiraBusinessDispatchPending') return this.jiraBusinessHooks.routing.pending(actor, raw)
+    if (operation === 'jiraBusinessDispatchRead') return this.jiraBusinessHooks.routing.read(actor, raw)
+    if (operation === 'jiraBusinessDispatchReceipt') return this.jiraBusinessHooks.routing.receipt(actor, raw.body)
     if (operation === 'jiraBusinessMappingRead') return this.jiraBusinessHooks.readMapping(actor, raw)
     if (operation === 'jiraBusinessMappingCommand') return this.jiraBusinessHooks.command(actor, raw.body)
     if (operation === 'jiraBusinessEffectRead') return this.jiraBusinessHooks.readEffect(actor, raw)

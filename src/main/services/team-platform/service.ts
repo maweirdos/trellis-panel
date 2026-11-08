@@ -24,6 +24,7 @@ import { nativeContentPinSchema, type NativeContentPin } from './content-transpo
 import type { TeamContentRequest } from '../../../shared/team-content-transport'
 import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } from '../../../shared/team-task-development'
 import { desktopExecutionScopeSchema, desktopExecutionCommandSchema, desktopExecutionHistorySchema, desktopExecutionIntentSchema, desktopExecutionPendingInputSchema, desktopExecutionPendingPageSchema, teamTaskIdentity } from '../../../shared/team-task-execution'
+import { executionInputCommandSchema, executionInputSelectionIdSchema, executionInputResourceViewSchema, type ExecutionInputView } from '../../../shared/team-execution-input'
 import { TaskExecutionTransport } from './task-execution-transport'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -77,6 +78,20 @@ export class DesktopTeamService implements DesktopTeamApi {
   async executionHistory(raw: z.infer<typeof desktopExecutionHistorySchema>): ReturnType<DesktopTeamApi['executionHistory']> {
     const input = desktopExecutionHistorySchema.parse(raw)
     return this.withExecution({ connectionId: input.connectionId, task: input.task }, transport => transport.history(input.executionId))
+  }
+  /** Main-only capture through the original authenticated connection and retained command UUID. */
+  async executionInputCapture(raw: { connectionId: string; task: z.infer<typeof desktopExecutionScopeSchema>['task']; command: z.infer<typeof executionInputCommandSchema> }): ReturnType<TaskExecutionTransport['captureInput']> {
+    const input = desktopExecutionScopeSchema.extend({ command: executionInputCommandSchema }).strict().parse(raw)
+    if (teamTaskIdentity(input.task) !== teamTaskIdentity(input.command.task)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Fixed input capture differs from the original task')
+    return this.serial(`execution-input:${input.command.commandId}`, () => this.withExecution({ connectionId: input.connectionId, task: input.task }, transport => transport.captureInput(input.command)))
+  }
+  /** Main-only read of an already captured input, under the original execution connection. */
+  async executionInputRead(raw: z.infer<typeof desktopExecutionHistorySchema> & { selectionId?: string }): Promise<ExecutionInputView | z.infer<typeof executionInputResourceViewSchema>> {
+    const input = desktopExecutionHistorySchema.extend({ selectionId: executionInputSelectionIdSchema.optional() }).strict().parse(raw)
+    return this.withExecution({ connectionId: input.connectionId, task: input.task }, async transport => {
+      const source = transport.inputSource(input.executionId), view = await source.read()
+      return input.selectionId === undefined ? view : source.readResource(input.selectionId)
+    })
   }
   async executionPending(raw: z.input<typeof desktopExecutionPendingInputSchema>): ReturnType<DesktopTeamApi['executionPending']> {
     const input = desktopExecutionPendingInputSchema.parse(raw)

@@ -7,7 +7,7 @@ import { nativeTaskExecutionRequestSchema, nativeTaskExecutionResultSchema, nati
 import { processOwnerSchema, workspaceGrantSchema } from '../../../shared/daemon/identity'
 import { workcopyLeaseSchema, type WorkcopyLease } from '../../../shared/workcopy-use'
 import { teamExecutionCommandSchema, teamExecutionReceiptSchema, teamTaskIdentity, type TeamExecutionCommand } from '../../../shared/team-task-execution'
-import { executionArtifactKindSchema, executionCodeSourceSchema, type ExecutionArtifactRef, type ExecutionCodeSource } from '../../../shared/team-execution-artifacts'
+import { executionArtifactKindSchema, executionCodeSourceSchema, type ExecutionArtifactRef, type ExecutionCodeSource, type ExecutionDeliveryManifest } from '../../../shared/team-execution-artifacts'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
 import { executionContextManifestSchema } from '../../../shared/team-execution-input'
 import { replayConversationTextEvents } from '../../../shared/acp-text-blocks'
@@ -18,6 +18,7 @@ import { DaemonError } from '../errors'
 import { readBounded, writeAtomic, writeExclusiveAtomic } from '../files'
 import { processIdentity, sameOwner } from '../native'
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
+import { confirmDatabaseDelivery } from './database-delivery'
 import * as acp from '../../services/acp'
 import { BUILTINS } from '../../services/acp/setup'
 import { PI_VERSION } from '../../services/pi/protocol'
@@ -286,7 +287,16 @@ export class NativeTaskExecutions {
         const declared = node.outputs.find(item => item.id === output.outputId)
         if (!declared || !executionArtifactKindSchema.safeParse(declared.kind).success || output.source.kind === 'assistant' && ['source-patch', 'selected-file'].includes(declared.kind)) throw new DaemonError('E_UNAVAILABLE', 'Selected output requires a supported declared native artifact kind')
       }
-      if (node.outputs.some(output => output.required && !request.outputs.some(selected => selected.outputId === output.id))) throw new DaemonError('E_INVALID_ARG', 'Select every required declared output before starting')
+      const database = request.databaseDelivery
+      if (database) {
+        const implementation = node.outputs.find(output => output.id === database.implementationOutputId)
+        const report = node.outputs.find(output => output.id === database.reportOutputId)
+        if (implementation?.kind !== 'implement' || report?.kind !== 'check-report'
+          || database.implementationOutputId === database.reportOutputId
+          || request.outputs.some(output => [database.implementationOutputId, database.reportOutputId].includes(output.outputId))) throw new DaemonError('E_INVALID_ARG', 'Database delivery requires separate declared document/check-report outputs')
+      }
+      if (node.outputs.some(output => output.required && !request.outputs.some(selected => selected.outputId === output.id)
+        && ![database?.implementationOutputId, database?.reportOutputId].includes(output.id))) throw new DaemonError('E_INVALID_ARG', 'Select every required declared output before starting')
       releasePreparation()
       const generation = record.result.native.connectionGeneration
       if (!generation) throw new DaemonError('E_CONFLICT', 'Original native generation is unavailable')
@@ -455,7 +465,7 @@ export class NativeTaskExecutions {
     await this.assertUse(record)
     await this.ports.preparation.withExecution(binding, () => this.assertOwned(record), async (transport, _source, resource) => {
       if ((request.code.kind === 'git-commit' || request.code.kind === 'git-patch') && request.code.repositoryId !== resource.resource?.source.repositoryId) throw new DaemonError('E_CONFLICT', 'Selected code does not belong to the currently authorized repository resource')
-      const entries: Array<{ outputId: string; ref: ExecutionArtifactRef }> = []
+      const entries: ExecutionDeliveryManifest['entries'] = []
       for (const id of request.outputIds) {
         const candidate = record.candidates.find(item => item.outputId === id)
         if (!candidate) throw new DaemonError('E_CONFLICT', 'Selected native output is unavailable')
@@ -467,16 +477,34 @@ export class NativeTaskExecutions {
         if (!receipt.version || receipt.disposition !== 'confirmed' || mutation?.kind !== 'save-artifact') throw new DaemonError('E_CONFLICT', 'Native output was not confirmed by the service')
         entries.push({ outputId: id, ref: { kind: 'confirmed-artifact', executionId: expected.executionId, artifactId: mutation.artifactId, versionId: receipt.version.versionId, bodyDigest: candidate.bodyDigest } })
       }
-      const sealed = await this.mutate(record, 'delivery', transport, () => ({ ...envelope(), kind: 'seal-delivery', previous: binding.execution.deliveries?.at(-1) ? this.version(binding.execution.deliveries.at(-1)) : null, entries }))
-      if (!sealed.version) throw new DaemonError('E_UNKNOWN', 'Original delivery receipt has no fixed version', 'unknown')
-      record.result.manifest = sealed.version; this.save(record)
-      const ref = (id: string): ExecutionArtifactRef => { const entry = entries.find(item => item.outputId === id); if (!entry) throw new DaemonError('E_INVALID_ARG', 'Code selection must use a selected confirmed output'); return entry.ref }
+      const ref = (id: string): ExecutionArtifactRef => { const entry = entries.find(item => item.outputId === id); if (!entry || entry.ref.kind !== 'confirmed-artifact') throw new DaemonError('E_INVALID_ARG', 'Code selection must use a selected confirmed artifact'); return entry.ref }
       const code = request.code
       const source: ExecutionCodeSource = code.kind === 'selected-files' ? { kind: 'selected-files', files: code.outputIds.map(ref) }
         : code.kind === 'git-patch' ? { kind: 'git-patch', repositoryId: code.repositoryId, base: code.base, patch: ref(code.outputId) } : executionCodeSourceSchema.parse(code)
+      const database = record.request.databaseDelivery
+      if (database) {
+        if (source.kind !== 'selected-files' && source.kind !== 'none') throw new DaemonError('E_UNAVAILABLE', 'Database delivery v1 requires selected SQL artifacts')
+        const files = source.kind === 'none' ? [] : source.files.map(selected => {
+          const entry = entries.find(item => item.ref.kind === 'confirmed-artifact' && item.ref.versionId === selected.versionId)
+          const output = record.request.outputs.find(item => item.outputId === entry?.outputId)
+          if (output?.source.kind !== 'file') throw new DaemonError('E_CONFLICT', 'Database SQL needs its original engineering-relative selection')
+          return { path: output.source.relativePath, ref: selected }
+        })
+        const material = binding.resources.find(item => item.resource.selection.id === database.implementationSelectionId)
+        if (!material || material.resource.selection.source.kind !== 'confirmed-document') throw new DaemonError('E_CONFLICT', 'Original implementation document selection is unavailable')
+        const capture = await confirmDatabaseDelivery({ directory: join(realpathSync.native(this.ports.directory), 'native-task-preparations'),
+          binding, transport, request: { operation: 'database-delivery', preparationId: binding.preparationId, commandId: database.commandId,
+            artifactId: database.artifactId, rule: database.rule, implementationSelectionId: database.implementationSelectionId, ticket: database.ticket, files },
+          assertPrepared: () => this.assertOwned(record) })
+        entries.push({ outputId: database.implementationOutputId, ref: { kind: 'confirmed-document', documentId: material.resource.selection.source.documentId,
+          versionId: material.resource.selection.source.versionId, bodyDigest: material.resource.bodyDigest } }, { outputId: database.reportOutputId, ref: capture.ref })
+      }
+      const sealed = await this.mutate(record, 'delivery', transport, () => ({ ...envelope(), kind: 'seal-delivery', previous: binding.execution.deliveries?.at(-1) ? this.version(binding.execution.deliveries.at(-1)) : null, entries }))
+      if (!sealed.version) throw new DaemonError('E_UNKNOWN', 'Original delivery receipt has no fixed version', 'unknown')
+      record.result.manifest = sealed.version; this.save(record)
       const requiredCode = Boolean(binding.resourceRevision) || binding.outputs.some(item => item.nodeId === expected.nodeId && item.output.required && ['source-patch', 'selected-file'].includes(item.output.kind))
       const targets: { [versionId: string]: string } = Object.create(null)
-      for (const entry of entries) { const selected = record.request.outputs.find(item => item.outputId === entry.outputId); if (selected?.source.kind === 'file') targets[entry.ref.versionId] = selected.source.relativePath }
+      for (const entry of entries) { const selected = record.request.outputs.find(item => item.outputId === entry.outputId); if (entry.ref.kind === 'confirmed-artifact' && selected?.source.kind === 'file') targets[entry.ref.versionId] = selected.source.relativePath }
       const observed = await verifyHandoffSource({ root: record.root, source, role: 'source', requiredCode, expectedWorkcopy: { id: binding.workcopy.id, revision: binding.workcopy.revision }, targetPaths: targets,
         assertOwned: () => this.assertOwned(record), readArtifact: async ref => { const value = await transport.artifact(ref); return { text: value.text, bodyDigest: value.artifact.bodyDigest } } })
       if (!observed.ready) throw new DaemonError('E_CONFLICT', 'Selected actual code is not ready for handoff')

@@ -1,3 +1,4 @@
+import { TeamJiraBusinessRouting } from './jira-business-routing'
 import { createHash, randomUUID } from 'node:crypto'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { z } from 'zod'
@@ -69,7 +70,8 @@ function sameTask(left: TeamTaskRef, right: TeamTaskRef): boolean {
 }
 
 export class TeamJiraBusinessHooks {
-  constructor(private readonly host: JiraBusinessHooksHost) {}
+  readonly routing: TeamJiraBusinessRouting
+  constructor(private readonly host: JiraBusinessHooksHost) { this.routing = new TeamJiraBusinessRouting(host) }
 
   private assertEpoch(expectedEpoch: string): void {
     if (expectedEpoch !== this.host.identity().epoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'Jira business command belongs to an old service generation', 409)
@@ -81,7 +83,7 @@ export class TeamJiraBusinessHooks {
   }
 
   private mappingRows(projectId: string, instanceId: string, issueId: string): Row[] {
-    return this.host.all('SELECT recordJson FROM jira_business_task_mappings WHERE projectId=? AND instanceId=? AND issueId=? ORDER BY rowid', projectId, instanceId, issueId)
+    return this.host.all('SELECT recordJson FROM jira_business_task_mappings WHERE instanceId=? AND issueId=? ORDER BY rowid', instanceId, issueId)
   }
 
   private mapping(row: Row): JiraBusinessTaskMapping {
@@ -95,7 +97,9 @@ export class TeamJiraBusinessHooks {
   private uniqueMapping(projectId: string, instanceId: string, issueId: string): JiraBusinessTaskMapping | null {
     const rows = this.mappingRows(projectId, instanceId, issueId)
     if (rows.length > 1) throw new TeamServiceError('JIRA_TASK_MAPPING_AMBIGUOUS', 'More than one platform task is mapped to this Jira issue', 409)
-    return rows.length === 1 ? this.mapping(rows[0]) : null
+    const mapping = rows.length === 1 ? this.mapping(rows[0]) : null
+    if (mapping && mapping.projectId !== projectId) throw new TeamServiceError('JIRA_TASK_MAPPING_AMBIGUOUS', 'This Jira issue already has a canonical task in another platform project', 409)
+    return mapping
   }
 
   readMapping(actor: StoreActor, raw: unknown): JiraBusinessTaskMapping | null {

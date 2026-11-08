@@ -195,6 +195,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         const input = runtimeBodies[method].parse(raw)
         if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Task preparation requires the authenticated native process and original workspace grant.')
         if (input.operation === 'prepare' && input.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
+        if (input.operation === 'database-delivery') return taskPreparation.captureDatabaseDelivery(root, input, { ...context.native, grant: context.workspace })
         return taskPreparation.execute(root, input, { ...context.native, grant: context.workspace })
       }
       case 'runtime.privateRead': {
@@ -444,10 +445,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             } : undefined
             if (preparation) {
               if (!preparationAuthority) throw new DaemonError('E_DENIED', 'Native preparation requires the authenticated process and workspace grant.')
+              if (preparation.operation === 'database-delivery' && preparation.commandId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Database capture must retain its original runtime command UUID.')
               if (preparation.operation === 'prepare' && preparation.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
               taskPreparation.assertAuthority(root, preparation, preparationAuthority)
             }
-            const mutation = method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input).operation === 'prepare' : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
+            const mutation = method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? ['prepare', 'database-delivery'].includes(runtimeBodies['runtime.taskPreparation'].parse(input).operation) : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
             if (closed && mutation && !taskControl && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root, context)) }

@@ -23,7 +23,7 @@ type Host = Pick<CruxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authen
   persistBody(bytes: Buffer, digest: string): void
   recipient(userId: string, projectId: string): StorePrincipal
   fixedInput(principal: StorePrincipal, execution: TeamExecutionRecord): void
-  transition(principal: StorePrincipal, projectId: string, revision: number, input: CruxTransitionTaskInput): void
+  transition(principal: StorePrincipal, projectId: string, revision: number, input: CruxTransitionTaskInput, commandId: string): void
   event(actorId: string, task: TeamTaskRef, executionId: string, commandId: string | null, kind: string): void
 }
 const hash = (s: string): string => createHash('sha256').update(s).digest('hex')
@@ -324,7 +324,7 @@ export class TeamTaskExecutions {
           } else {
             if (command.transition.taskId !== ctx.ref.taskId) fail('EXECUTION_SCOPE_CONFLICT', 'Transition cannot retarget the execution')
             this.validateTransition(principal, ctx.ref.projectId, ctx.task, command.transition)
-            this.host.transition(principal, ctx.ref.projectId, command.expectedRevision, command.transition)
+            this.host.transition(principal, ctx.ref.projectId, command.expectedRevision, command.transition, command.commandId)
             record = this.row(record.executionId).record
           }
           record = { ...record, updatedAt: Date.now() }; this.save(record)

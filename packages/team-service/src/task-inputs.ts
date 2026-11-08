@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { readDatabaseDeliveryDescriptor } from '../../../src/shared/database-delivery'
+import type { TaskDatabaseDeliveryValidator } from './database-delivery'
 import { z } from 'zod'
 import type { CruxTask, CruxTransitionTaskInput } from '../../../src/shared/crux'
 import { cruxSnapshotSchema, cruxTransitionTaskInputSchema } from '../../../src/shared/crux-schema'
@@ -27,7 +29,7 @@ function conflicts(rule: GovernanceVersion, other: GovernanceVersion): boolean {
 }
 
 export class TeamTaskInputs {
-  constructor(private readonly host: GovernanceHost, private readonly governance: TeamGovernance) {}
+  constructor(private readonly host: GovernanceHost, private readonly governance: TeamGovernance, private readonly validateDatabaseDelivery?: TaskDatabaseDeliveryValidator) {}
 
   /** Initial execution dependency port uses the same fixed approval, ACL and byte validators. */
   validateExecutionDependency(principal: StorePrincipal, scope: { projectId: string; taskId: string; spaceId: string; taskCreatedAt: string }, ref: { documentId: string; versionId: string; bodyDigest: string }): void {
@@ -246,6 +248,17 @@ export class TeamTaskInputs {
     const read = this.read(principal, { projectId, taskId: beforeTask.id, query: scope })
     if (read.admission.status !== 'ready') governanceFail('TASK_INPUT_TRANSITION_BLOCKED', read.admission.blockers.join(' ') || 'Required fixed inputs have not been adopted')
     const bundle = read.current, settings = bundle?.template?.settings
+    if (bundle && input.action === 'submit_test') {
+      if (this.validateDatabaseDelivery) this.validateDatabaseDelivery(principal, { instanceId: this.host.identity().instanceId, projectId,
+        spaceId: beforeTask.spaceId, taskId: beforeTask.id, taskCreatedAt: beforeTask.createdAt }, bundle, input, beforeTask, afterTask)
+      else for (const rule of bundle.rules) {
+        if (rule.settings.kind !== 'rule' || rule.settings.obligation !== 'required') continue
+        let configured: boolean
+        try { configured = readDatabaseDeliveryDescriptor(this.governance.text(rule)) !== null }
+        catch { governanceFail('DATABASE_DELIVERY_BLOCKED', 'submit_test: unsupported database delivery descriptor') }
+        if (configured) governanceFail('DATABASE_DELIVERY_BLOCKED', 'submit_test: database delivery authority is unavailable')
+      }
+    }
     if (!bundle || !settings || settings.kind !== 'workflow-template') return
     const from = beforeTask.workflow?.stage ?? 'accepted', to = afterTask.workflow?.stage
     if (!to || from === to) return

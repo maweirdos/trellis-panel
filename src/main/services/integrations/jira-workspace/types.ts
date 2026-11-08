@@ -4,6 +4,7 @@ import { integrationAccountSchema, integrationSourceSchema } from '../../../../s
 import { jiraConflictSchema, jiraDiagnosticSchema, jiraFieldsSchema, jiraIssueSchema, jiraItemReceiptSchema, jiraPlanSchema, jiraPreviewSchema } from '../../../../shared/jira-integration'
 import type { IntegrationSource } from '../../../../shared/integration-work'
 import type { ResolvedConnection } from '../types'
+import { jiraBusinessDispatchSchema } from '../../../../shared/jira-business-hooks'
 import { teamTaskRefSchema } from '../../../../shared/team-task-execution'
 import { resolve } from 'node:path'
 
@@ -28,6 +29,7 @@ export const executionReceiptSchema = z.object({
 export const previewMaterialSchema = z.object({ preview: jiraPreviewSchema, workspace: workspaceGrantSchema, items: z.array(jiraIssueSchema).max(500) }).strict()
 export const repositoryStateSchema = z.object({
   version: z.literal(1),
+  businessDispatches: z.array(z.object({ dispatch: jiraBusinessDispatchSchema, workspace: workspaceGrantSchema, jobId: z.string().uuid().nullable(), state: z.enum(['ready', 'intent', 'unknown', 'applied', 'blocked']), evidenceRef: z.string().max(512).nullable() }).strict()).max(5000).default([]),
   sources: z.array(z.object({ workspace: workspaceGrantSchema, source: integrationSourceSchema, name: z.string().max(256) }).strict()).max(100),
   accounts: z.array(z.object({ workspace: workspaceGrantSchema, account: integrationAccountSchema, instanceId: z.string().max(128), connectionRevision: z.number().int().positive(), personalConnectionId: z.string().max(128), personalConnectionRevision: z.number().int().positive(), username: z.string().max(200) }).strict()).max(100),
   plans: z.array(z.object({ workspace: workspaceGrantSchema, value: jiraPlanSchema }).strict()).max(100),
@@ -36,7 +38,7 @@ export const repositoryStateSchema = z.object({
   conflicts: z.array(z.object({ workspaceId: z.string().max(128), value: jiraConflictSchema }).strict()).max(1000),
   diagnostics: z.array(z.object({ workspaceId: z.string().max(128), value: jiraDiagnosticSchema }).strict()).max(1000)
 }).strict().superRefine((state, context) => {
-  for (const values of [state.plans.map((item) => item.value.plan.id), state.receipts.map((item) => item.receipt.id), state.previews.map((item) => item.id), state.baselines.map((item) => `${item.planId}:${item.issueId}:${item.taskRef}`)]) {
+  for (const values of [state.businessDispatches.map(item => item.dispatch.effectId), state.businessDispatches.flatMap(item => item.jobId ? [item.jobId] : []), state.plans.map((item) => item.value.plan.id), state.receipts.map((item) => item.receipt.id), state.previews.map((item) => item.id), state.baselines.map((item) => `${item.planId}:${item.issueId}:${item.taskRef}`)]) {
     if (new Set(values).size !== values.length) context.addIssue({ code: 'custom', message: 'Duplicate Jira repository identity' })
   }
 })

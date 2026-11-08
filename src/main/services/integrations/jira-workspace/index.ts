@@ -12,6 +12,8 @@ import { createJiraIntegrationBridge } from './bridge'
 import { JiraRemote } from './lib/remote'
 import { JiraWorkspaceError, sameGrant, type JiraCallbackPort, type JiraLocalSnapshot, type JiraWorkspaceAuthority } from './types'
 import type { JiraBusinessHookPort } from './business-hooks'
+import { JiraBusinessWorker } from './business-worker'
+import type { NativeTeamBusinessSender } from '../../crux/task-progress-sender'
 
 export interface JiraWorkspaceComposition {
   stateDirectory: string
@@ -24,21 +26,23 @@ export interface JiraWorkspaceComposition {
   /** Must reject any later source links, workflow/session ownership or task activation. */
   assertTaskRemovable?: (grant: WorkspaceGrant, task: JiraLocalSnapshot) => void
   businessHooks?: JiraBusinessHookPort
+  businessSender?: () => NativeTeamBusinessSender
 }
 export function createJiraWorkspace(input: JiraWorkspaceComposition) {
   const repository = new JiraWorkspaceRepository(join(input.stateDirectory, 'jira-workspace'), input.assertOwner)
   const worker = new JiraWorkspaceWorker(repository, input.authority, createJiraTaskPort(input.authority, input.assertTaskRemovable), input.businessHooks)
+  const businessWorker = input.businessSender ? new JiraBusinessWorker(repository, input.authority, input.ledger, input.scheduler, input.businessSender, input.profileId) : null
   let installedRegistry: IntegrationRegistry | null = null
   const assertInstalled = (): void => { input.assertOwner(); if (!installedRegistry || installedRegistry.get('jira').work !== work) throw new JiraWorkspaceError('E_UNAVAILABLE', 'Jira native work/account/sync ports are not installed in the daemon registry.') }
   const service = new JiraWorkspaceService(repository, worker, input.authority, input.ledger, input.scheduler, input.profileId, assertInstalled, input.callbacks)
   const work: IntegrationWorkPort = {
-    supports: (kind) => worker.supports(kind),
+    supports: (kind) => worker.supports(kind) || businessWorker?.supports(kind) === true,
     dispatch: async (dispatch) => {
       // The common scheduler admitted/dispatched the job. Enter running in that same ledger.
       const job = input.ledger.transition(dispatch.job.id, dispatch.job.revision, dispatch.job.ownerEpoch, 'running', null)
-      return worker.dispatch({ ...dispatch, job })
+      return job.input.kind === 'notification' && businessWorker ? businessWorker.dispatch({ ...dispatch, job }) : worker.dispatch({ ...dispatch, job })
     },
-    reconcile: (request) => worker.reconcile(request)
+    reconcile: (request) => request.job.input.kind === 'notification' && businessWorker ? businessWorker.reconcile(request) : worker.reconcile(request)
   }
   const accounts: IntegrationAccountPort = {
     async list(connection) {
@@ -54,7 +58,7 @@ export function createJiraWorkspace(input: JiraWorkspaceComposition) {
       return { supported: permissions.BROWSE_PROJECTS === true, reason: permissions.BROWSE_PROJECTS ? 'Jira REST v2 project access verified; individual write screens remain issue-scoped.' : 'Jira project browsing permission is denied.' }
     }
   }
-  return { api: createJiraIntegrationBridge(service), createClientApi: (clientSignal: AbortSignal) => createJiraIntegrationBridge(service, clientSignal), installedIn: (registry: IntegrationRegistry) => { installedRegistry = registry }, service, work, accounts, sync, pollDue: (run: Parameters<JiraWorkspaceService['pollDue']>[0]) => service.pollDue(run), admitCallback: (event: Parameters<JiraWorkspaceService['admitCallback']>[0]) => service.admitCallback(event) }
+  return { api: createJiraIntegrationBridge(service), createClientApi: (clientSignal: AbortSignal) => createJiraIntegrationBridge(service, clientSignal), installedIn: (registry: IntegrationRegistry) => { installedRegistry = registry }, service, work, accounts, sync, pollDue: async (run: Parameters<JiraWorkspaceService['pollDue']>[0]) => { await businessWorker?.pollDue(run); await service.pollDue(run) }, admitCallback: (event: Parameters<JiraWorkspaceService['admitCallback']>[0]) => service.admitCallback(event) }
 }
 export type JiraWorkspaceRuntime = ReturnType<typeof createJiraWorkspace>
 /** Extend the already registered connector without replacing its legacy task-source port. */

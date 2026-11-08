@@ -18,7 +18,7 @@ import { TaskMaterialsTransport, taskMaterialTransportPinSchema } from '../team-
 import type { TeamTaskMaterialCommand } from '../../../shared/team-task-materials'
 import { teamTaskRefSchema, teamTaskIdentity, teamExecutionCommandSchema, type TeamTaskRef } from '../../../shared/team-task-execution'
 import type { TeamContentRequest } from '../../../shared/team-content-transport'
-import { jiraBusinessEffectSchema, jiraBusinessEventCommandSchema, jiraBusinessMappingCommandSchema, jiraBusinessMappingQuerySchema, jiraBusinessTaskMappingSchema, type JiraBusinessEffect, type JiraBusinessTaskMapping } from '../../../shared/jira-business-hooks'
+import { jiraBusinessRouteCommandSchema, jiraBusinessRouteSchema, jiraBusinessDispatchSchema, jiraBusinessDispatchReadSchema, jiraBusinessDispatchReceiptSchema, type JiraBusinessRoute, type JiraBusinessDispatch, jiraBusinessEffectSchema, jiraBusinessEventCommandSchema, jiraBusinessMappingCommandSchema, jiraBusinessMappingQuerySchema, jiraBusinessTaskMappingSchema, type JiraBusinessEffect, type JiraBusinessTaskMapping } from '../../../shared/jira-business-hooks'
 
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.enum(['task-progress', 'business-hook']), token: z.string().min(1).max(16384) }).strict()
 const businessCredentialSchema = credentialSchema.extend({ instanceId: z.string().uuid(), epoch: z.string().uuid() }).strict()
@@ -338,4 +338,35 @@ export class NativeTeamBusinessSender {
     await this.remoteSnapshot(credential, true)
     return value.result
   }
+  private async jiraBusinessRequest<T>(projectId: string, endpoint: string, schema: z.ZodType<T>, body?: unknown): Promise<T> {
+    const { credential } = await this.authorized()
+    this.assertProject(projectId, credential)
+    await this.remoteSnapshot(credential)
+    const result = await this.http.request(credential.value.origin, '/api/projects/' + projectId + '/crux/jira/' + endpoint, schema, credential.value.token, body)
+    this.current(credential.fingerprint, body !== undefined)
+    return result
+  }
+  async configureJiraRoute(input: z.input<typeof jiraBusinessRouteCommandSchema>): Promise<JiraBusinessRoute> {
+    const command = jiraBusinessRouteCommandSchema.parse(input)
+    const reply = await this.jiraBusinessRequest(command.route.projectId, 'business-routes/commands', z.object({ status: z.enum(['committed', 'duplicate']), commandId: teamCommandIdSchema, result: jiraBusinessRouteSchema }).strict(), command)
+    if (reply.commandId !== command.commandId || canonicalWorkflowJson(reply.result.route) !== canonicalWorkflowJson(command.route) || reply.result.expectedEpoch !== command.expectedEpoch) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira worker registration changed its original identity', true)
+    return reply.result
+  }
+  async pendingJiraDispatches(projectId: string, routeId: string) {
+    teamCommandIdSchema.parse(routeId)
+    return this.jiraBusinessRequest(projectId, 'business-dispatches?' + new URLSearchParams({ routeId }), z.array(jiraBusinessDispatchReadSchema).max(50))
+  }
+  async readJiraDispatch(projectId: string, effectId: string) {
+    teamCommandIdSchema.parse(effectId)
+    const result = await this.jiraBusinessRequest(projectId, 'business-dispatches/' + effectId, jiraBusinessDispatchReadSchema)
+    if (result.dispatch.projectId !== projectId || result.dispatch.effectId !== effectId) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira dispatch changed its original identity')
+    return result
+  }
+  async reportJiraDispatch(input: z.input<typeof jiraBusinessDispatchReceiptSchema>): Promise<JiraBusinessDispatch> {
+    const command = jiraBusinessDispatchReceiptSchema.parse(input)
+    const result = await this.jiraBusinessRequest(command.projectId, 'business-dispatches/receipts', z.object({ status: z.enum(['committed', 'duplicate']), commandId: teamCommandIdSchema, result: jiraBusinessDispatchSchema }).strict(), command)
+    if (result.commandId !== command.commandId || result.result.effectId !== command.effectId || result.result.payloadDigest !== command.payloadDigest || result.result.providerJobId !== command.providerJobId || result.result.providerCommandId !== command.providerCommandId) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira receipt changed its original effect/job/command identity', true)
+    return result.result
+  }
+
 }

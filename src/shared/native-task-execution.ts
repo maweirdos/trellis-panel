@@ -1,10 +1,14 @@
 import { z } from 'zod'
 import { executionCodeSourceSchema } from './team-execution-artifacts'
 import { teamDigestSchema } from './team-platform'
+import { databaseDeliveryCaptureRequestSchema } from './database-delivery'
 import { workflowIdSchema } from './workflow/identity'
 import { executionContextManifestSchema } from './team-execution-input'
 
 const uuid = z.string().uuid()
+const databaseDelivery = databaseDeliveryCaptureRequestSchema.omit({ operation: true, preparationId: true, files: true }).extend({
+  implementationOutputId: workflowIdSchema, reportOutputId: workflowIdSchema
+}).strict()
 const relativeFile = z.string().min(1).max(4096).refine(path => !path.includes('\\') && !path.includes(':')
   && !path.includes('\0') && path.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.startsWith('.')), 'Select a regular engineering-relative output')
 export const nativeTaskOutputSelectionSchema = z.object({ outputId: workflowIdSchema,
@@ -12,7 +16,7 @@ export const nativeTaskOutputSelectionSchema = z.object({ outputId: workflowIdSc
     z.object({ kind: z.literal('assistant') }).strict()]) }).strict()
 export const nativeTaskStartSchema = z.object({ operation: z.literal('start'), dispatchId: uuid, preparationId: uuid,
   engine: z.object({ agentId: z.enum(['pi', 'codex', 'claude']), profileId: z.string().min(1).max(200).regex(/^[\w.-]+$/).optional() }).strict(),
-  instruction: z.string().min(1).max(32000), outputs: z.array(nativeTaskOutputSelectionSchema).max(16)
+  instruction: z.string().min(1).max(32000), databaseDelivery: databaseDelivery.optional(), outputs: z.array(nativeTaskOutputSelectionSchema).max(16)
 }).strict().refine(value => new Set(value.outputs.map(item => item.outputId)).size === value.outputs.length, 'Duplicate output selection')
 const selectedCode = z.discriminatedUnion('kind', [z.object({ kind: z.literal('none') }).strict(),
   z.object({ kind: z.literal('selected-files'), outputIds: z.array(workflowIdSchema).min(1).max(16) }).strict(),

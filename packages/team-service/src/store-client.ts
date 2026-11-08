@@ -10,7 +10,7 @@ readOnlyOperations.add('taskDevelopmentContext')
 for (const operation of ['taskExecutionRead', 'taskExecutionHistory', 'taskExecutionReconcile', 'taskExecutionArtifact'] as const) readOnlyOperations.add(operation)
 for (const operation of ['executionInputRead', 'executionInputResource', 'executionInputReconcile'] as const) readOnlyOperations.add(operation)
 for (const operation of ['importReconcile', 'importNamespaces', 'importItems', 'importRead', 'importBatch'] as const) readOnlyOperations.add(operation)
-for (const operation of ['jiraBusinessMappingRead', 'jiraBusinessEffectRead'] as const) readOnlyOperations.add(operation)
+for (const operation of ['jiraBusinessMappingRead', 'jiraBusinessEffectRead', 'jiraBusinessDispatchPending', 'jiraBusinessDispatchRead'] as const) readOnlyOperations.add(operation)
 export class TeamStore {
   private readonly worker: Worker
   private readonly pending = new Map<number, Pending>()
