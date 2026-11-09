@@ -1328,3 +1328,41 @@ Implemented same-build daemon attachment, guarded development replacement, stopp
 ### Next Steps
 
 - T08–T10 保持规划状态。
+
+
+## Session 39: Jira PAT 与浏览器授权集成
+<!-- trellis-session: v=2 fp=5489233455c2c087 -->
+
+**Date**: 2026-11-09
+**Task**: Jira PAT 与浏览器授权集成
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+接入 PAT 与 OAuth 2.0 浏览器授权，保留账号密码认证；统一桌面与后台凭据刷新和团队服务回调。
+
+### Main Changes
+
+- Jira 支持 basic、token、oauth2；旧连接默认认证与来源身份保持稳定。
+- 授权码与 S256 PKCE、受保护凭据、单次回调领取、刷新 CAS 和异常刷新重授权。
+- 授权界面支持取消、重试和迟到回调隔离，复用全局设计组件。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e055a155c57bb67ceb8d3705480859028f21fb7f` | feat(integrations): 支持 Jira PAT 与浏览器授权 |
+
+### Testing
+
+- [OK] 根项目 check:acpx、check:ui、typecheck、build 及 team-service typecheck、build 通过。
+- [OK] UI 39 项交互、18 个主题密度视图与 7 项恢复回归通过；Native 18 项受控验证、4 个无 BrowserWindow Windows 进程通过。
+- [OK] Relay 56 项 listener/SQLite、16 项边界、9 项本地受信 HTTPS 验证通过；真实 Jira 11.3.11 授权与刷新尚未联调。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 配置实际 Jira 管理员应用与部署 HTTPS 回调，验收真实授权和刷新；实际工单写入需指定验收工单。
