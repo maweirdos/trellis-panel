@@ -5,6 +5,12 @@ import type { AcpAgentStatus } from '../../../shared/types'
 
 const INVENTORY_INTERVAL_MS = 30_000
 const FOCUS_BURST_MS = 1_000
+let inventorySnapshot: AcpAgentStatus[] = []
+
+/** Last displayed local inventory; the visible panel still revalidates it on entry. */
+export function getRuntimeInventorySnapshot(): AcpAgentStatus[] {
+  return inventorySnapshot
+}
 
 /** Read installation discovery only; connection tests and registry refreshes stay explicit. */
 export function useRuntimeInventoryRefresh(options: {
@@ -22,7 +28,10 @@ export function useRuntimeInventoryRefresh(options: {
   const wake = useRef<(() => void) | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(options.enabled && hasIpc && active)
-  useEffect(() => { setError(null) }, [options.agents])
+  useEffect(() => {
+    if (options.enabled) inventorySnapshot = options.agents
+    setError(null)
+  }, [options.agents, options.enabled])
   const invalidate = useCallback(() => { request.current.revision++ }, [])
 
   useEffect(invalidate, [options.paused, invalidate])
@@ -54,7 +63,7 @@ export function useRuntimeInventoryRefresh(options: {
       try {
         const response = await api.acpAgents()
         if (!current()) return
-        if (response.ok && response.agents) { latest.current.onChange(response.agents); setError(null) }
+        if (response.ok && response.agents) { inventorySnapshot = response.agents; latest.current.onChange(response.agents); setError(null) }
         else setError(response.error ?? '引擎状态读取失败，请重新探测。')
       } catch (cause) {
         if (current()) setError(cause instanceof Error ? cause.message : '引擎状态读取失败，请重新探测。')

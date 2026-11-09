@@ -5,6 +5,7 @@ import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
 import { Button, EmptyState, Switch } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
+import { getRuntimeInventorySnapshot } from '../acp/useRuntimeInventoryRefresh'
 import { DaemonSettings } from '../daemon/DaemonSettings'
 import { AppearancePreferences, ThemePreferences } from '../my/AppearancePreferences'
 import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
@@ -254,7 +255,7 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
 /* ---------------- ACP runtime setup ---------------- */
 
 function AcpAgentsSection(): JSX.Element {
-  const [agents, setAgents] = useState<AcpAgentStatus[]>([])
+  const [agents, setAgents] = useState<AcpAgentStatus[]>(getRuntimeInventorySnapshot)
   const live = useRef(true)
   useEffect(() => {
     live.current = true

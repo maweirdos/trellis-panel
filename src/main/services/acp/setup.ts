@@ -8,7 +8,7 @@ import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { getSettings, setSettings } from '../store'
 import { acpDataPath, writeJson } from './metadata'
 import { errorMessage, objectValue } from './types'
-import { resolveNodeRuntime, validateNodeExecutable, type NodeRuntime } from './managed-node'
+import { resolveNodeRuntime, validateNodeExecutable, type NodeExecutable, type NodeRuntime } from './managed-node'
 import { resolveZcodeInstallation, resolveZcodeOverride } from './zcode-installation'
 import { prepareBundledZcodeStartup } from './zcode-startup'
 import { piEngineAvailable, piEngineEntry, piRuntimeDefinition } from '../pi/catalog'
@@ -31,8 +31,12 @@ let probeInFlight: Promise<AcpAgentStatus[]> | undefined
 let probeQueriesRegistry = false
 let inventoryFinishedAt = 0
 const LOCAL_INVENTORY_TTL_MS = 1000
+const DISCOVERY_METADATA_TTL_MS = 30_000
 const LATEST_VERSION_TTL_MS = 5 * 60_000
 const latestVersions = new Map<string, { checkedAt: number; version?: string }>()
+type DiscoveryRead<T> = { finishedAt: number; pending: boolean; value: Promise<T> }
+const runtimeVersions = new Map<string, DiscoveryRead<string | undefined>>()
+const inventoryNodeChecks = new Map<string, DiscoveryRead<NodeExecutable>>()
 const CMD_META = /([()\][%!^"`<>&|;, *?])/g
 
 function batchArgument(value: string, doubleEscape: boolean): string {
@@ -79,12 +83,19 @@ async function externalNode({ sqlite = false, npm = false }: { sqlite?: boolean;
   return externalNodeFor(getSettings().acp, { sqlite, npm })
 }
 
-async function externalNodeFor(settings: Settings['acp'], { sqlite = false, npm = false }: { sqlite?: boolean; npm?: boolean } = {}): Promise<NodeRuntime> {
+async function externalNodeFor(settings: Settings['acp'], { sqlite = false, npm = false, discoveryRefresh }: { sqlite?: boolean; npm?: boolean; discoveryRefresh?: boolean } = {}): Promise<NodeRuntime> {
   return resolveNodeRuntime({
     explicitPath: settings?.nodePath,
     resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
     pathNode: findExecutable(process.platform === 'win32' ? 'node.exe' : 'node'),
     sqlite,
+    validate: discoveryRefresh === undefined ? undefined : (path, options = {}) => {
+      const file = statSync(path, { bigint: true })
+      const key = JSON.stringify([path, realpathSync.native(path), options.sqlite === true,
+        ...[file.dev, file.ino, file.size, file.mtimeNs, file.ctimeNs, file.birthtimeNs].map(String),
+        process.env.PATH ?? process.env.Path, process.env.SystemRoot])
+      return cachedDiscoveryRead(inventoryNodeChecks, key, discoveryRefresh, () => validateNodeExecutable(path, options))
+    },
     accepts: npm ? path => !!npmCliFor(path) : undefined
   })
 }
@@ -145,6 +156,28 @@ function versionToken(output: string): string | undefined {
   const line = output.split(/\r?\n/).find((entry) => entry.trim().length > 0)
   const token = line?.trim().split(/\s+/).at(-1)?.replace(/^v(?=\d)/, '')
   return token && /^\d[\w.\-+]*$/.test(token) ? token : undefined
+}
+
+/** Only inventory metadata is cached. Launch admission always validates its current source. */
+async function cachedDiscoveryRead<T>(cache: Map<string, DiscoveryRead<T>>, key: string, refresh: boolean, read: () => Promise<T>): Promise<T> {
+  const cached = cache.get(key)
+  if (cached && (cached.pending || !refresh && Date.now() - cached.finishedAt < DISCOVERY_METADATA_TTL_MS)) return cached.value
+  const entry = { finishedAt: 0, pending: true, value: read() }
+  cache.delete(key)
+  cache.set(key, entry)
+  while (cache.size > 64) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+  try { return await entry.value }
+  catch (error) { if (cache.get(key) === entry) cache.delete(key); throw error }
+  finally { entry.finishedAt = Date.now(); entry.pending = false }
+}
+
+async function runtimeVersion(source: string, executable: string, args: string[], refresh: boolean): Promise<string | undefined> {
+  return cachedDiscoveryRead(runtimeVersions, JSON.stringify([source, executable, args]), refresh,
+    () => run(executable, args).then(versionToken, () => undefined))
 }
 
 /** R8 检测优先级：nativePaths 手动指定（须为存在的文件）> PATH 自动检测；无效手动路径回退自动检测。 */
@@ -225,7 +258,7 @@ function bundledAutomationAllowed(): boolean {
 async function probe(queryRegistry: boolean, settings: Settings['acp'], definitions: AcpAgentConfig[]): Promise<AcpAgentStatus[]> {
   let node: NodeRuntime | undefined
   let nodeError = ''
-  try { node = await externalNodeFor(settings) } catch (error) { nodeError = errorMessage(error) }
+  try { node = await externalNodeFor(settings, { discoveryRefresh: queryRegistry }) } catch (error) { nodeError = errorMessage(error) }
   return Promise.all(definitions.map(async (config): Promise<AcpAgentStatus> => {
     const base = { ...config, runtimeId: config.id, checkedAt: Date.now(), nodePath: node?.path }
     if (!isSupportedRuntimeSnapshot(config)) return { ...base, available: false, health: 'executable_missing', setupRequired: false,
@@ -250,8 +283,7 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
         setupBlockedReason: manual ? '指定路径不可用，请先配置有效路径或清除路径设置' : undefined,
         diagnostics: [...(manual ? [`手动指定的路径不可用（${manual}），且 PATH 自动检测未命中`] : []), spec.missingHint, NATIVE_TOOLS_DIAGNOSTIC] }
       const source = nativeSourceIdentity(config, settings, detected, node)
-      let version: string | undefined
-      try { version = versionToken(await run(detected.path, ['--version'])) } catch { /* 版本读取失败不改变可用性，连接时按原样暴露 */ }
+      const version = await runtimeVersion(source, detected.path, ['--version'], queryRegistry)
       const release = config.id === 'opencode' ? openCodeRelease(version) : undefined
       const packageName = config.id === 'opencode' ? release?.packageName : spec.npmPackage
       const [candidate, migrationVersion] = await Promise.all([
@@ -283,13 +315,15 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
       const detected = resolveZcodeExecutableFor(settings)
       let zcodeNode: NodeRuntime | undefined
       let zcodeNodeError = ''
-      try { zcodeNode = await externalNodeFor(settings, { sqlite: true }) } catch (error) { zcodeNodeError = errorMessage(error) }
+      try { zcodeNode = await externalNodeFor(settings, { sqlite: true, discoveryRefresh: queryRegistry }) } catch (error) { zcodeNodeError = errorMessage(error) }
       let version: string | undefined
       if (detected && zcodeNode) {
         // zcode.cjs 需要 node 加载；PATH 命中的 shim 走既有批处理包装。版本失败不改变可用性。
         try {
           const cjs = /\.(?:cjs|mjs|js)$/i.test(detected.path)
-          version = versionToken(await run(cjs ? zcodeNode.path : detected.path, cjs ? [detected.path, '--version'] : ['--version']))
+          const source = nativeSourceIdentity(config, settings, detected, zcodeNode)
+          version = await runtimeVersion(source, cjs ? zcodeNode.path : detected.path, cjs ? [detected.path, '--version'] : ['--version'], queryRegistry)
+          if (source !== nativeSourceIdentity(config, settings, resolveZcodeExecutableFor(settings), zcodeNode)) version = undefined
         } catch { /* 版本留空即"未知" */ }
       }
       const entryLine = entry ? `内置适配器就绪：${entry}` : '内置适配器文件缺失，请重新安装应用'

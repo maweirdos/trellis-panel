@@ -55,6 +55,15 @@ may query version registries; local reads reuse matching registry evidence for
 at most five minutes. Installation/removal outside the application must appear
 on the next local read after the burst cache expires.
 
+Returning to Engine Settings immediately restores its last displayed local list
+and revalidates it in the background. Inventory-only Node validation and CLI
+version metadata are coalesced and cached in memory for at most 30 seconds,
+keyed by the resolved executable/entry identity, selected arguments and relevant
+environment. File/path replacement invalidates matching metadata; explicit full
+refresh bypasses completed metadata caches. Discovery still checks installation
+presence on each inventory read. Execution admission and explicit connection
+tests always validate current launch sources independently of these caches.
+
 `Settings.acp.runtimeDefaults[runtimeId]` stores each engine's `modelId`, `env`
 and extra `args`. A settings patch replaces only supplied engine entries;
 `{[runtimeId]:{}}` resets one engine without changing other engines or paths.
