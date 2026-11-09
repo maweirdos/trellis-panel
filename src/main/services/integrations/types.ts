@@ -35,7 +35,7 @@ export interface RepositoryPort {
 }
 /** Authorization credentials are main-only and may never be returned through IPC. */
 export interface AuthorizationPort {
-  authorize(connection: ResolvedConnection, signal: AbortSignal): Promise<{ secrets: Record<string, string>; detail: string }>
+  authorize(connection: ResolvedConnection, signal: AbortSignal): Promise<{ secrets: Record<string, string>; detail: string; jiraAccount?: { id: string; name: string } }>
 }
 export interface NotificationPort {
   send(connection: ResolvedConnection, title: string, body: string): Promise<void>

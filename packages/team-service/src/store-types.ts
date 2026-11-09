@@ -11,6 +11,7 @@ export type StoreOperation = 'health' | 'createLogin' | 'consumeLogin' | 'comple
   | 'publish' | 'materials' | 'versions' | 'document' | 'recordFeedback' | 'feedback' | 'events' | 'command'
   | 'enrollDevice' | 'pairing' | 'approveDevice' | 'pairingStatus' | 'devices' | 'revokeDevice' | 'heartbeat'
   | 'backup' | 'close'
+  | 'jiraOAuthRelayCreate' | 'jiraOAuthRelayPoll' | 'jiraOAuthRelayCancel' | 'jiraOAuthRelayCallback'
   | 'createInvitation' | 'invitations' | 'inspectInvitation' | 'acceptInvitation' | 'revokeInvitation' | 'identity'
   | 'cruxSnapshot' | 'cruxCommand' | 'cruxHead' | 'taskDevelopmentContext'
   | 'taskProgressRead' | 'taskProgressCommand' | 'taskProgressReceipt'

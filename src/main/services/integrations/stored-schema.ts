@@ -3,7 +3,7 @@ import { providerIdSchema, integrationBindingSchema, deliveryReceiptSchema } fro
 import { teamGitlabBindingSchema } from './types'
 
 /** Persistence validators shared with the dormant daemon migration; no repository/GUI imports. */
-export const storedConnectionSchema = z.object({ id: z.string(), providerId: providerIdSchema, name: z.string(), enabled: z.boolean(), revision: z.number().int().positive(), config: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), checkedAt: z.number().nullable(), check: z.enum(['unverified', 'authenticated', 'configured', 'failed']), detail: z.string(), deleted: z.boolean().default(false), teamGitlab: teamGitlabBindingSchema.optional() })
+export const storedConnectionSchema = z.object({ id: z.string(), providerId: providerIdSchema, name: z.string(), enabled: z.boolean(), revision: z.number().int().positive(), config: z.record(z.string(), z.string()), secrets: z.record(z.string(), z.string()), checkedAt: z.number().nullable(), check: z.enum(['unverified', 'authenticated', 'configured', 'failed']), detail: z.string(), deleted: z.boolean().default(false), teamGitlab: teamGitlabBindingSchema.optional(), jiraSourceUser: z.string().max(512).optional(), jiraAccount: z.object({ id: z.string().min(1).max(512), name: z.string().min(1).max(512) }).optional() })
 export type StoredConnection = z.infer<typeof storedConnectionSchema>
 const records = { connections: z.array(storedConnectionSchema).max(100), bindings: z.array(integrationBindingSchema).max(500), receipts: z.array(deliveryReceiptSchema).max(100) }
 export const integrationStateV1Schema = z.object({ version: z.literal(1), ...records })

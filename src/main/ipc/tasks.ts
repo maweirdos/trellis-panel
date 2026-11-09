@@ -98,6 +98,7 @@ export function registerTasksIpc(): void {
     const root = getProjectRoot()
     if (!root) return noProject()
     let jira = getSettings().jira
+    let jiraInstanceId = jiraInstanceIdFor(jira.baseUrl, jira.user)
     const raw = (input ?? {}) as Record<string, unknown>
     if (raw.integration !== undefined) {
       const parsed = bindingRequestSchema.safeParse(raw.integration)
@@ -106,6 +107,7 @@ export function registerTasksIpc(): void {
         const resolved = resolveBinding(parsed.data)
         if (resolved.connection.public.providerId !== 'jira') return ipcFail(IpcErrorCode.InvalidArg, '此绑定不是 Jira 来源')
         jira = jiraConfig(resolved.connection)
+        jiraInstanceId = resolved.connection.instanceId
         requireProject(parsed.data.expectedRoot)
       } catch { return ipcFail(IpcErrorCode.Conflict, 'Jira 绑定或当前项目已变化，请刷新后重试') }
     }
@@ -122,7 +124,7 @@ export function registerTasksIpc(): void {
     const fullDescription = typeof raw.fullDescription === 'string' ? raw.fullDescription : null
     const res = await createOrOpenTaskFromJira({
       root,
-      instanceId: jiraInstanceIdFor(jira.baseUrl, jira.user),
+      instanceId: jiraInstanceId,
       issueKey,
       issueId,
       title: String(raw.title ?? `[${issueKey}]`),

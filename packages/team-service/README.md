@@ -100,6 +100,23 @@ the actual local storage worker. Neither claims company OIDC availability. Exist
 developer computer or a fresh issuer discovery request. Issuer discovery is lazy;
 failure requires a visible new login attempt and never creates a demo principal.
 
+## Jira browser callback deployment
+
+Jira OAuth relay requires `TEAM_PUBLIC_ORIGIN` to be the deployed public HTTPS
+origin. Register its exact `/auth/jira/callback` URL in the Jira incoming OAuth
+application. Keep the existing HTTP listener behind HTTPS ingress, preserve the
+configured Host, and route this callback to the same single service instance as
+the paired desktop API. Disable access-log query strings for the callback at the
+ingress and redact Authorization headers. The application disables request
+logging and never reflects callback parameters.
+
+The desktop must already be paired to this service with an active account and
+project membership. Callback codes exist only in the service worker's bounded
+memory; restart requires a new browser authorization. Run native polling during
+the browser roundtrip and exchange the first returned code immediately. The
+service does not exchange Jira tokens or hold Jira application secrets. See the
+[Jira relay API contract](API.md#jira-oauth-https-relay) for claim and expiry rules.
+
 ## API and client behavior
 
 Shared schemas/types are in `src/shared/team-platform.ts` at the repository root.

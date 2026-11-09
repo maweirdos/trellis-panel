@@ -11,6 +11,12 @@ import { legacyIntegrationCall } from '../services/daemon-client/integration-leg
 import { broadcastToWindows } from '../services/bridge'
 import { getMainWindow, getProjectRoot, getProjectGeneration } from '../state'
 import { DaemonError } from '../daemon/errors'
+import { authorizationRequestSchema } from '../../shared/integrations'
+import type { JiraOAuthRelay } from '../../shared/jira-auth'
+import { withDesktopTeamService } from '../services/team-desktop'
+import { DesktopTeamError } from '../services/team-platform/types'
+import { jiraRelayRequest } from '../services/integrations/providers/jira-authorization'
+import { legacyIntegrationResults } from '../../shared/integration-native'
 
 const canonical = (root: string): string => process.platform === 'win32' ? resolve(root).toLowerCase() : resolve(root)
 
@@ -39,7 +45,10 @@ export function registerIntegrationsIpc(): void {
       const trustedSender = (): boolean => !event.sender.isDestroyed()
         && getMainWindow()?.webContents.id === event.sender.id && event.senderFrame === event.sender.mainFrame
       if (!trustedSender()) return ipcFail(IpcErrorCode.Denied, '集成操作仅允许从原生主窗口发起')
-      const parsed = legacyIntegrationRequests[operation].safeParse(operation === 'list' ? {} : raw)
+      // Strip native-only relay claims before validating renderer input.
+      const publicAuthorization = operation === 'authorize' ? authorizationRequestSchema.safeParse(raw) : undefined
+      if (publicAuthorization && !publicAuthorization.success) return ipcFail(IpcErrorCode.InvalidArg, '授权参数无效')
+      const parsed = legacyIntegrationRequests[operation].safeParse(operation === 'list' ? {} : publicAuthorization?.success ? publicAuthorization.data : raw)
       if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, parsed.error.issues[0]?.message || '集成参数无效')
       const ownerId = ownerFor(event.sender)
       const sourceRoot = getProjectRoot(), generation = getProjectGeneration()
@@ -50,7 +59,7 @@ export function registerIntegrationsIpc(): void {
       // additionally uses the actual current project to preserve binding visibility.
       const root = projectSensitive ? sourceRoot ?? '' : ''
       const commandId = randomUUID()
-      const input = parsed.data as LegacyIntegrationInput<M>
+      let input = parsed.data as LegacyIntegrationInput<M>
       const requestId = 'requestId' in parsed.data ? parsed.data.requestId : undefined
       const key = requestId ? `${ownerId}:${requestId}` : ''
       if (operation === 'cancelRead') reads.get(key)?.abort()
@@ -68,7 +77,22 @@ export function registerIntegrationsIpc(): void {
       const isCurrent = (): boolean => trustedSender() && !controller?.signal.aborted
         && (!projectSensitive || getProjectRoot() === sourceRoot && getProjectGeneration() === generation)
       const mutating = LEGACY_INTEGRATION_MUTATIONS.includes(operation)
+      let jiraRelay: JiraOAuthRelay | undefined
       try {
+        if (operation === 'authorize') {
+          const request = authorizationRequestSchema.parse(input)
+          const snapshotReply = await legacyIntegrationCall('', 'list', {}, ownerId)
+          if (!snapshotReply.ok) return snapshotReply
+          const snapshot = legacyIntegrationResults.list.parse(snapshotReply.data)
+          const connection = snapshot.connections.find(item => item.id === request.connectionId)
+          if (!connection?.enabled || connection.revision !== request.connectionRevision) return ipcFail(IpcErrorCode.Conflict, '连接已变更，请刷新后重新授权')
+          if (connection.providerId === 'jira') {
+            if (connection.config.authMethod !== 'oauth2' || connection.legacy) return ipcFail(IpcErrorCode.Denied, '请选择 Jira 浏览器授权连接')
+            jiraRelay = await withDesktopTeamService(service => service.createJiraOAuthRelay({ connectionId: connection.id, revision: connection.revision, baseUrl: connection.config.baseUrl, clientId: connection.config.clientId, redirectUri: connection.config.redirectUri }, isCurrent))
+            input = { ...request, jiraRelay } as LegacyIntegrationInput<M>
+          }
+          if (!isCurrent()) return ipcFail(IpcErrorCode.Denied, '授权请求已取消或来源已变化')
+        }
         const result = await legacyIntegrationCall(root, operation, input, ownerId, commandId, isCurrent)
         if (operation === 'inspect' || result.ok && mutating) broadcastToWindows(ipcEvent.integrationsChanged, {})
         if (!isCurrent()) return ipcFail(IpcErrorCode.Conflict, mutating ? '来源项目或请求已改变；后台操作可能已提交，请刷新并检查原结果' : '来源项目或请求已改变，请重新读取当前项目', { commandId, ...(mutating ? { outcome: 'unknown' } : {}) })
@@ -76,10 +100,11 @@ export function registerIntegrationsIpc(): void {
       } catch (error) {
         if (operation === 'inspect') broadcastToWindows(ipcEvent.integrationsChanged, {})
         const code = error instanceof DaemonError ? Object.values(IpcErrorCode).find(value => value === error.code) ?? IpcErrorCode.Upstream : IpcErrorCode.Upstream
-        return ipcFail(code, error instanceof DaemonError ? error.message : '集成操作失败，请检查后台连接、网络或本地存储后重试', {
+        return ipcFail(error instanceof DesktopTeamError ? IpcErrorCode.Denied : code, error instanceof DaemonError || error instanceof DesktopTeamError ? error.message : '集成操作失败，请检查后台连接、网络或本地存储后重试', {
           commandId, ...(error instanceof DaemonError ? { outcome: error.outcome } : {})
         })
       } finally {
+        if (jiraRelay) { try { await jiraRelayRequest(jiraRelay, 'cancel', AbortSignal.timeout(3000)) } catch { /* Native relay is ephemeral and expires even after lost cancellation. */ } }
         if (active && active.get(key) === controller) active.delete(key)
         if (active && !event.sender.isDestroyed()) event.sender.removeListener('destroyed', onDestroyed)
       }

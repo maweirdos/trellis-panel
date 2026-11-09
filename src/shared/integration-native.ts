@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { jiraOAuthRelaySchema } from './jira-auth'
 import { runtimeWireSchema } from './daemon-runtime'
 import { IpcErrorCode } from './ipc-errors'
 import {
@@ -39,7 +40,7 @@ export const legacyIntegrationRequests = {
   saveConnection: saveConnectionSchema,
   removeConnection: connectionRequestSchema,
   inspect: connectionRequestSchema,
-  authorize: authorizationRequestSchema,
+  authorize: authorizationRequestSchema.extend({ jiraRelay: jiraOAuthRelaySchema.optional() }),
   cancelAuthorization: cancellation,
   cancelRead: cancellation,
   teamGitlabConnect: teamGitlabConnectSchema,
@@ -84,7 +85,7 @@ export const LEGACY_INTEGRATION_MUTATIONS: readonly LegacyIntegrationOperation[]
   'attach', 'unlink', 'sendNotification', 'jiraTransition', 'jiraComment'
 ]
 const field = z.object({ key: z.string(), label: z.string(), secret: z.boolean().optional(), required: z.boolean().optional(), placeholder: z.string().optional(), defaultValue: z.string().optional(), multiline: z.boolean().optional() })
-const authentication = z.object({ id: z.enum(['token', 'oauth2']), name: z.string(), fields: z.array(field), oauth: z.object({ registrationPath: z.string(), redirectUri: z.string(), scopes: z.array(z.string()) }).optional() })
+const authentication = z.object({ id: z.enum(['basic', 'token', 'oauth2']), name: z.string(), fields: z.array(field), oauth: z.object({ registrationPath: z.string(), redirectUri: z.string(), scopes: z.array(z.string()) }).optional() })
 const manifest = z.object({ id: providerIdSchema, name: z.string(), category: z.enum(['tasks', 'repositories', 'messaging', 'knowledge']), description: z.string(), capabilities: z.array(z.enum(['task.search', 'task.import', 'task.comment', 'task.transition', 'repository.read', 'notification.send', 'knowledge.read', 'knowledge.publish'])), fields: z.array(field), instanceUrl: z.string().optional(), authentication: z.array(authentication).optional() })
 const repository = z.object({ id: z.string(), name: z.string(), fullName: z.string(), url: z.string() })
 const links = z.array(z.object({ id: z.number().int().positive(), object: externalObjectSchema, createdAt: z.number() })).max(100)

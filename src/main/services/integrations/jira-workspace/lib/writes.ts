@@ -62,6 +62,7 @@ export async function prepareTransition(remote: JiraRemote, projectId: string, i
 }
 export async function applyTransition(remote: JiraRemote, issueId: string, transitionId: string, targetName: string): Promise<void> {
   const result = await jiraTransitionVerified(remote.cfg, issueId, transitionId, { ...remote.options, expectedToStatus: targetName })
+  if (!result.ok && result.code !== 'uncertain' && result.code !== 'offline') throw new JiraWorkspaceError('E_DENIED', result.error || 'Jira did not dispatch or rejected the transition.')
   if (!result.ok || result.statusMismatch || !['re-read', 'already_applied'].includes(result.verified ?? '')) throw new JiraWorkspaceError('E_UNKNOWN', 'Jira transition has not been confirmed. Reconcile the original issue before another write.')
 }
 export async function applyComment(remote: JiraRemote, issueId: string, body: string, receiptId: string): Promise<string> {

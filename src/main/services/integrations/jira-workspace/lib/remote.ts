@@ -2,8 +2,9 @@ import { z } from 'zod'
 import type { JiraConfig } from '../../../../../shared/types'
 import { JIRA_LIMITS, jiraIssueSchema, jiraMetadataSchema, jiraNumericIdSchema, type JiraIssueRecord, type JiraData } from '../../../../../shared/jira-integration'
 import { jiraV2Assignable, jiraV2Comments, jiraV2Fields, jiraV2Issue, jiraV2Myself, jiraV2Permissions, jiraV2Priorities, jiraV2Projects, jiraV2ProjectStatuses, jiraV2SearchPage, jiraV2ServerInfo, type JiraFetchOptions } from '../../../jira'
+import { jiraOptions } from '../../providers/jira-auth'
 import { jiraConfig } from '../../legacy'
-import { integrationFetch, recordOf, rowsOf, textOf } from '../../transport'
+import { recordOf, rowsOf, textOf } from '../../transport'
 import type { ResolvedConnection } from '../../types'
 import { JiraWorkspaceError } from '../types'
 
@@ -48,12 +49,12 @@ export class JiraRemote {
   readonly cfg: JiraConfig
   readonly options: JiraFetchOptions
   constructor(readonly connection: ResolvedConnection, signal?: AbortSignal) {
-    if (connection.public.providerId !== 'jira' || !connection.public.enabled || !connection.secrets.password) throw new JiraWorkspaceError('E_DENIED', 'An enabled Jira connection with protected credentials is required.')
+    if (connection.public.providerId !== 'jira' || !connection.public.enabled || !(connection.public.config.authMethod === 'oauth2' ? connection.secrets.oauthTokens : connection.public.config.authMethod === 'token' ? connection.secrets.token : connection.secrets.password)) throw new JiraWorkspaceError('E_DENIED', 'An enabled Jira connection with protected credentials is required.')
     this.cfg = jiraConfig(connection)
     let base: URL
     try { base = new URL(this.cfg.baseUrl) } catch { throw new JiraWorkspaceError('E_INVALID_ARG', 'Configured Jira instance URL is invalid.') }
     if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new JiraWorkspaceError('E_DENIED', 'Jira instance URL must not contain embedded credentials or request parameters.')
-    this.options = { transport: integrationFetch, signal }
+    this.options = jiraOptions(connection, signal)
   }
   async issue(issueId: string, includeHistory = false): Promise<JiraIssueRecord> {
     jiraNumericIdSchema.parse(issueId)

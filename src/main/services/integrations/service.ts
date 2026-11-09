@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BindingRequest, ConnectionRequest, DeliveryReceipt, IntegrationBinding, IntegrationConnection, IntegrationSnapshot, JiraContext, NotificationPreview, SaveBindingInput, SaveConnectionInput } from '../../../shared/integrations'
-import { connectionFields, externalObjectSchema } from '../../../shared/integrations'
+import { connectionAuthentication, connectionFields, externalObjectSchema } from '../../../shared/integrations'
 import type { ExternalLink, ExternalObject } from '../../../shared/integrations'
 import { integrationWorkspaceRoot, integrationWorkspaceSnapshot } from './workspace-host'
 import { getSettings, setSettings } from '../store'
@@ -17,6 +17,8 @@ import { jiraConfig, legacyConnections, resolveLegacy } from './legacy'
 import { readIntegrationState, updateIntegrationState, type StoredConnection } from './repository'
 import { IntegrationError, teamGitlabBindingSchema, type TeamGitlabBinding, type AuthorizationPort, type ResolvedConnection } from './types'
 import { remoteUrl } from './transport'
+import { authorizeJira } from './providers/jira-authorization'
+import type { JiraOAuthRelay } from '../../../shared/jira-auth'
 import { authorizeGitlabForIdentity } from './providers/gitlab-authorization'
 
 export function canonicalRoot(root: string): string { const normalized = resolve(root); return process.platform === 'win32' ? normalized.toLowerCase() : normalized }
@@ -42,14 +44,15 @@ export function resolveConnection(input: ConnectionRequest, allowDisabled = fals
   if (!allowDisabled && !publicConnection.enabled) throw new IntegrationError('连接已停用', 'denied')
   if (legacy) return resolveLegacy(legacy)
   if (!stored) throw new IntegrationError('连接不存在')
-  return { public: publicConnection, secrets: Object.fromEntries(Object.entries(stored.secrets).map(([key, value]) => [key, revealSecret(value)])), instanceId: stored.providerId === 'jira' ? jiraInstanceIdFor(stored.config.baseUrl, stored.config.user) : `${stored.providerId}:${stored.config.baseUrl || integrationRegistry.get(stored.providerId).manifest.instanceUrl || stored.id}` }
+  return { public: publicConnection, secrets: Object.fromEntries(Object.entries(stored.secrets).map(([key, value]) => [key, revealSecret(value)])), instanceId: stored.providerId === 'jira' ? jiraInstanceIdFor(stored.config.baseUrl, stored.jiraSourceUser ?? stored.config.user) : `${stored.providerId}:${stored.config.baseUrl || integrationRegistry.get(stored.providerId).manifest.instanceUrl || stored.id}` }
 }
 function normalizedConfig(input: SaveConnectionInput, legacy: boolean): Record<string, string> {
   const manifest = integrationRegistry.get(input.providerId).manifest
   if (!legacy && manifest.authentication && input.config.authMethod && !manifest.authentication.some((method) => method.id === input.config.authMethod)) throw new IntegrationError('不支持此认证方式')
-  const selectedFields = legacy ? manifest.fields : connectionFields(manifest, input.config)
+  const selectedFields = legacy ? connectionFields(manifest, { ...input.config, ...(input.providerId === 'jira' ? { authMethod: 'basic' } : {}) }) : connectionFields(manifest, input.config)
   const fields = selectedFields.filter((f) => !f.secret).map((f) => f.key)
   if (!legacy && manifest.authentication) fields.push('authMethod')
+  if (legacy && input.providerId === 'jira' && input.config.authMethod && input.config.authMethod !== 'basic') throw new IntegrationError('原有 Jira 配置仅支持用户名和密码，请新建 PAT 或 OAuth 连接')
   if (legacy && input.providerId === 'gitlab') fields.push('user', 'project')
   const config = Object.fromEntries(Object.entries(input.config).filter(([key]) => fields.includes(key)).map(([key, value]) => [key, value.trim()]))
   for (const field of selectedFields) if (!field.secret && !config[field.key] && field.defaultValue) config[field.key] = field.defaultValue
@@ -98,9 +101,9 @@ function saveConnectionWithTeamBinding(input: SaveConnectionInput, trustedBindin
   return updateIntegrationState((state) => {
     const previous = input.id ? state.connections.find((c) => c.id === input.id && !c.deleted) : undefined
     if (input.id && (!previous || previous.revision !== input.revision || previous.providerId !== input.providerId)) throw new IntegrationError('连接已更新或不存在，请刷新', 'conflict')
-    const methodChanged = previous && (previous.config.authMethod || 'token') !== (config.authMethod || 'token')
+    const methodChanged = previous && connectionAuthentication(manifest, previous.config)?.id !== connectionAuthentication(manifest, config)?.id
     const secrets: Record<string, string> = methodChanged ? {} : { ...previous?.secrets }
-    if (previous && (previous.config.baseUrl !== config.baseUrl || previous.config.clientId !== config.clientId)) delete secrets.oauthTokens
+    if (previous && (previous.config.baseUrl !== config.baseUrl || previous.config.clientId !== config.clientId || previous.config.redirectUri !== config.redirectUri || input.secrets.clientSecret?.op === 'replace' || input.secrets.clientSecret?.op === 'clear')) delete secrets.oauthTokens
     for (const field of fields.filter((f) => f.secret)) {
       const patch = input.secrets[field.key]
       if (patch?.op === 'replace') secrets[field.key] = protectSecret(patch.value)
@@ -109,16 +112,17 @@ function saveConnectionWithTeamBinding(input: SaveConnectionInput, trustedBindin
     }
     for (const field of fields.filter((f) => !f.secret && f.required)) if (input.enabled && !config[field.key]) throw new IntegrationError(`请填写${field.label}`)
     const teamGitlab = trustedBinding ?? previous?.teamGitlab
-    const next: StoredConnection = { id: previous?.id ?? randomUUID(), providerId: input.providerId, name: input.name, enabled: input.enabled, revision: (previous?.revision ?? 0) + 1, config, secrets, check: 'unverified', checkedAt: null, detail: '', deleted: false, ...(teamGitlab ? { teamGitlab } : {}) }
+    const next: StoredConnection = { id: previous?.id ?? randomUUID(), providerId: input.providerId, name: input.name, enabled: input.enabled, revision: (previous?.revision ?? 0) + 1, config, secrets, check: 'unverified', checkedAt: null, detail: '', deleted: false, ...(teamGitlab ? { teamGitlab } : {}), ...(input.providerId === 'jira' ? { jiraSourceUser: previous && previous.config.baseUrl === config.baseUrl ? previous.jiraSourceUser ?? previous.config.user ?? '' : config.user ?? '', ...(previous?.config.baseUrl === config.baseUrl && previous.jiraAccount ? { jiraAccount: previous.jiraAccount } : {}) } : {}) }
     if (next.enabled) integrationRegistry.get(input.providerId).validate?.({ public: toPublic(next), secrets: Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, revealSecret(value)])), instanceId: next.id })
     if (previous) state.connections[state.connections.indexOf(previous)] = next
     else state.connections.push(next)
     return toPublic(next)
   })
 }
-export async function authorizeConnection(input: ConnectionRequest, signal: AbortSignal): Promise<IntegrationConnection> {
+export async function authorizeConnection(input: ConnectionRequest & { jiraRelay?: JiraOAuthRelay }, signal: AbortSignal): Promise<IntegrationConnection> {
   if (readIntegrationState().connections.some((c) => c.id === input.connectionId && c.teamGitlab)) throw new IntegrationError('此连接绑定团队登录身份，请从团队登录入口重试授权', 'denied')
-  return completeAuthorization(input, signal)
+  const connection = resolveConnection(input)
+  return completeAuthorization(input, signal, connection.public.providerId === 'jira' ? (c, active) => authorizeJira(c, active, input.jiraRelay) : undefined)
 }
 /** Only main can create the binding; ordinary config/secret patches cannot forge it. */
 export function saveTeamGitlabConnection(raw: TeamGitlabBinding): IntegrationConnection {
@@ -146,6 +150,10 @@ async function completeAuthorization(input: ConnectionRequest, signal: AbortSign
   return updateIntegrationState((state) => {
     const stored = state.connections.find((item) => item.id === input.connectionId && !item.deleted)
     if (!stored || !stored.enabled || stored.revision !== input.connectionRevision) throw new IntegrationError('授权期间连接已变更，请刷新后重新登录', 'conflict')
+    if (result.jiraAccount) {
+      if (stored.jiraAccount && stored.jiraAccount.id !== result.jiraAccount.id) throw new IntegrationError('Jira 账号与原连接不一致', 'denied')
+      stored.jiraAccount = { id: result.jiraAccount.id, name: result.jiraAccount.name }
+    }
     stored.secrets = { ...stored.secrets, ...protectedSecrets }
     stored.revision++
     stored.checkedAt = Date.now(); stored.check = 'authenticated'; stored.detail = result.detail
@@ -242,8 +250,9 @@ export function currentJiraContext(expectedRoot: string): JiraContext | null {
   const connection = snapshot.connections.find((c) => c.id === (binding?.connectionId ?? 'legacy-jira') && c.enabled)
   if (!binding && hasJiraBindings(root)) return null
   if (!connection) return null
-  const cfg = jiraConfig(resolveConnection({ connectionId: connection.id, connectionRevision: connection.revision }))
-  return { expectedRoot: root, bindingId: binding?.id ?? 'legacy-jira-binding', bindingRevision: binding?.revision ?? 1, connectionRevision: connection.revision, name: binding?.label ?? 'Jira · 全局兼容配置', baseUrl: cfg.baseUrl, instanceId: jiraInstanceIdFor(cfg.baseUrl, cfg.user), jql: binding?.scope || cfg.jql, statusMap: cfg.statusMap, legacy: !binding }
+  const resolvedConnection = resolveConnection({ connectionId: connection.id, connectionRevision: connection.revision })
+  const cfg = jiraConfig(resolvedConnection)
+  return { expectedRoot: root, bindingId: binding?.id ?? 'legacy-jira-binding', bindingRevision: binding?.revision ?? 1, connectionRevision: connection.revision, name: binding?.label ?? 'Jira · 全局兼容配置', baseUrl: cfg.baseUrl, instanceId: resolvedConnection.instanceId, jql: binding?.scope || cfg.jql, statusMap: cfg.statusMap, legacy: !binding }
 }
 function hasJiraBindings(root: string): boolean {
   const state = readIntegrationState()

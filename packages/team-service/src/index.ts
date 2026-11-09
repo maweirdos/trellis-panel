@@ -12,6 +12,7 @@ import { parseTeamConfig, type TeamServiceConfigInput, type TeamServiceConfig } 
 import { TeamServiceError } from './errors'
 import { TeamStore } from './store-client'
 import { registerTeamRoutes } from './routes'
+import { registerJiraOAuthRelayRoutes } from './integrations/jira-oauth-relay-routes'
 import { TEAM_MAX_RESPONSE_BYTES } from '../../../src/shared/team-platform'
 
 export type TeamService = { app: FastifyInstance; config: TeamServiceConfig; store: TeamStore; close(): Promise<void> }
@@ -50,6 +51,7 @@ export async function createTeamService(input: TeamServiceConfigInput): Promise<
     await app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
     const auth = new TeamAuthentication(config, store)
     auth.registerRoutes(app)
+    registerJiraOAuthRelayRoutes(app, store, auth, config)
     app.get('/health', async () => ({ ok: true, value: { service: 'trellis-team', contractVersion: 1 } }))
     app.get('/ready', async () => { await store.call('health', {}); return { ok: true, value: { service: 'trellis-team', storage: 'ready', contractVersion: 1 } } })
     await registerTeamRoutes(app, store, auth, config)

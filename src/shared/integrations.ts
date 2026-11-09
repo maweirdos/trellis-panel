@@ -8,14 +8,20 @@ export type ProviderId = z.infer<typeof providerIdSchema>
 export type IntegrationCategory = 'tasks' | 'repositories' | 'messaging' | 'knowledge'
 export type Capability = 'task.search' | 'task.import' | 'task.comment' | 'task.transition' | 'repository.read' | 'notification.send' | 'knowledge.read' | 'knowledge.publish'
 export interface ConfigField { key: string; label: string; secret?: boolean; required?: boolean; placeholder?: string; defaultValue?: string; multiline?: boolean }
-export interface AuthenticationMethod { id: 'token' | 'oauth2'; name: string; fields: ConfigField[]; oauth?: { registrationPath: string; redirectUri: string; scopes: string[] } }
+export interface AuthenticationMethod { id: 'basic' | 'token' | 'oauth2'; name: string; fields: ConfigField[]; oauth?: { registrationPath: string; redirectUri: string; scopes: string[] } }
 export interface ProviderManifest { id: ProviderId; name: string; category: IntegrationCategory; description: string; capabilities: Capability[]; fields: ConfigField[]; instanceUrl?: string; authentication?: AuthenticationMethod[] }
 export const GITLAB_OAUTH_REDIRECT_URI = 'http://127.0.0.1:17654/oauth/callback/gitlab'
+export const JIRA_OAUTH_SCOPES = ['READ', 'WRITE'] as const
+export const JIRA_OAUTH_CALLBACK_PATH = '/auth/jira/callback'
 export const GITLAB_OAUTH_SCOPES = ['read_api', 'read_user'] as const
 const baseFields: ConfigField[] = [{ key: 'baseUrl', label: '实例地址', required: true, placeholder: 'https://…' }]
 export const INTEGRATION_CATALOG: readonly ProviderManifest[] = [
   { id: 'weknora', name: 'WeKnora', category: 'knowledge', description: '项目知识检索与人工确认成果发布；不启用自动归档或规范同步。', capabilities: ['knowledge.read', 'knowledge.publish'], fields: [...baseFields, { key: 'apiKey', label: 'API Key', secret: true, required: true }] },
-  { id: 'jira', name: 'Jira', category: 'tasks', description: '兼容自建 Jira Server 8.1，查询、导入并显式回写工单。', capabilities: ['task.search', 'task.import', 'task.comment', 'task.transition'], fields: [...baseFields, { key: 'user', label: '用户名', required: true }, { key: 'password', label: '密码', secret: true, required: true }, { key: 'jql', label: '默认 JQL', multiline: true }, { key: 'statusMap', label: '状态映射（JSON 对象）', placeholder: '{"处理中":"in_progress"}' }] },
+  { id: 'jira', name: 'Jira', category: 'tasks', description: '连接 Jira Server / Data Center，查询、导入并回写工单。', capabilities: ['task.search', 'task.import', 'task.comment', 'task.transition'], fields: [...baseFields, { key: 'jql', label: '默认 JQL', multiline: true }, { key: 'statusMap', label: '状态映射（JSON 对象）', placeholder: '{"处理中":"in_progress"}' }], authentication: [
+    { id: 'token', name: '个人访问令牌（PAT）', fields: [{ key: 'token', label: '访问令牌（PAT）', secret: true, required: true }] },
+    { id: 'oauth2', name: '浏览器授权登录', fields: [{ key: 'clientId', label: 'OAuth Client ID', required: true }, { key: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true }, { key: 'redirectUri', label: '团队服务 HTTPS 回调地址', required: true, placeholder: 'https://team.example.com/auth/jira/callback' }], oauth: { registrationPath: '/plugins/servlet/applinks/listApplicationLinks', redirectUri: '', scopes: [...JIRA_OAUTH_SCOPES] } },
+    { id: 'basic', name: '用户名和密码', fields: [{ key: 'user', label: '用户名', required: true }, { key: 'password', label: '密码', secret: true, required: true }] }
+  ] },
   { id: 'github', name: 'GitHub', category: 'repositories', description: '查询仓库与 Pull Request，关联到本地工作项。', capabilities: ['repository.read'], fields: [{ key: 'baseUrl', label: 'API 地址', placeholder: 'https://api.github.com', defaultValue: 'https://api.github.com' }, { key: 'token', label: '访问令牌', secret: true, required: true }] },
   { id: 'gitlab', name: 'GitLab', category: 'repositories', description: '通过浏览器授权连接自建实例，查询项目与 Merge Request。', capabilities: ['repository.read'], fields: [...baseFields], authentication: [
     { id: 'oauth2', name: '浏览器授权登录', fields: [{ key: 'clientId', label: 'OAuth Application ID', required: true }], oauth: { registrationPath: '/-/user_settings/applications', redirectUri: GITLAB_OAUTH_REDIRECT_URI, scopes: [...GITLAB_OAUTH_SCOPES] } },
@@ -25,9 +31,9 @@ export const INTEGRATION_CATALOG: readonly ProviderManifest[] = [
   { id: 'dingtalk', name: '钉钉', category: 'messaging', description: '通过群机器人手动发送工作项摘要，支持加签。', capabilities: ['notification.send'], fields: [{ key: 'webhook', label: '群机器人 Webhook', secret: true, required: true }, { key: 'signingSecret', label: '加签密钥（可选）', secret: true }] },
   { id: 'feishu', name: '飞书', category: 'messaging', description: '通过自定义群机器人手动发送工作项摘要，支持签名校验。', capabilities: ['notification.send'], fields: [{ key: 'webhook', label: '群机器人 Webhook', secret: true, required: true }, { key: 'signingSecret', label: '签名密钥（可选）', secret: true }] }
 ]
-/** Missing method identifies pre-OAuth PAT records; new forms select explicitly. */
+/** Missing methods use provider-dependent legacy defaults; new forms select explicitly. */
 export function connectionAuthentication(provider: ProviderManifest, config: Record<string, string>): AuthenticationMethod | undefined {
-  return provider.authentication?.find((method) => method.id === (config.authMethod || 'token'))
+  return provider.authentication?.find((method) => method.id === (config.authMethod || (provider.id === 'jira' ? 'basic' : 'token')))
 }
 export function connectionFields(provider: ProviderManifest, config: Record<string, string>): ConfigField[] {
   return [...provider.fields, ...(connectionAuthentication(provider, config)?.fields ?? [])]

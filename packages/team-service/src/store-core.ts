@@ -51,6 +51,7 @@ import { TeamExecutionInputs } from './execution-inputs'
 import { executionInputSelectionIdSchema } from '../../../src/shared/team-execution-input'
 import { TEAM_JIRA_BUSINESS_HOOKS_SQL } from './jira-business-hooks-schema'
 import { TeamJiraBusinessHooks } from './jira-business-hooks'
+import { TeamJiraOAuthRelay } from './integrations/jira-oauth-relay'
 
 type Row = Record<string, SQLOutputValue>
 const actorSchema = z.object({ kind: z.enum(['session', 'device']), credentialHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
@@ -76,6 +77,10 @@ const MAX_BLOB_BYTES = 1024 * 1024 * 1024
 const MAX_DIRECTORY_ENTRIES = 20_000
 
 export class TeamStoreCore {
+  private readonly jiraOAuthRelay = new TeamJiraOAuthRelay({
+    authenticate: actor => this.authenticate(actor),
+    identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch') })
+  })
   private readonly validateTaskOutputOrigin: TaskMaterialsHost['validateOriginBundle'] = (principal, scope, inputBundle) => {
     const bundle = this.taskInputs.revision(principal, { projectId: scope.projectId, taskId: scope.taskId, revision: inputBundle.revision,
       query: { spaceId: scope.spaceId, taskCreatedAt: scope.taskCreatedAt } })
@@ -541,6 +546,10 @@ export class TeamStoreCore {
   async dispatch(operation: StoreOperation, raw: unknown): Promise<unknown> {
     if (this.isClosed) throw new TeamServiceError('STORE_UNAVAILABLE', 'Team store is closed', 503)
     if (operation === 'health') return { schemaVersion: TEAM_SCHEMA_VERSION, instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }
+    if (operation === 'jiraOAuthRelayCreate') return this.jiraOAuthRelay.create(raw)
+    if (operation === 'jiraOAuthRelayPoll') return this.jiraOAuthRelay.poll(raw)
+    if (operation === 'jiraOAuthRelayCancel') return this.jiraOAuthRelay.cancel(raw)
+    if (operation === 'jiraOAuthRelayCallback') { this.jiraOAuthRelay.callback(raw); return null }
     if (operation === 'cruxTick') return this.crux.tick()
     if (operation === 'contentRecover') { this.content.recover(z.object({ restart: z.boolean() }).strict().parse(raw).restart); return null }
     if (operation === 'contentStart') return this.content.start(raw)
@@ -622,7 +631,7 @@ export class TeamStoreCore {
       return this.device(row)
     }
     if (operation === 'backup') return this.backup(z.object({ destination: z.string().min(1) }).strict().parse(raw).destination)
-    if (operation === 'close') { this.isClosed = true; this.db.close(); this.releaseLock(); return { closed: true } }
+    if (operation === 'close') { this.jiraOAuthRelay.close(); this.isClosed = true; this.db.close(); this.releaseLock(); return { closed: true } }
     const input = actorInputSchema.parse(raw); const actor = input.actor
     if (operation === 'authenticate') return this.authenticate(actor)
     if (operation === 'logout') {

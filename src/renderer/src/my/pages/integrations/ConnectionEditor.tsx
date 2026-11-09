@@ -3,16 +3,12 @@ import { X } from 'lucide-react'
 import { connectionAuthentication, connectionFields, type ConfigField, type IntegrationConnection, type ProviderManifest, type SaveConnectionInput } from '../../../../../shared/integrations'
 import { api, hasIpc } from '../../../api'
 import { useApp } from '../../../store'
-import { Button, Checkbox, Modal, Tooltip } from '../../ui'
+import { Button, Checkbox, Modal } from '../../ui'
 import { useIntegrationAction } from './hooks'
 import { integrationBridgeMessage, integrationBridgeState } from './bridge'
 import { OAuthSetup } from './ConnectionAuthorization'
 import { ConnectionStatusMapping } from './ConnectionStatusMapping'
 import { IntegrationProductIcon } from './IntegrationProductIcon'
-
-function UnavailableChoice({ label, reason }: { label: string; reason: string }): JSX.Element {
-  return <Tooltip label={reason} wrap><span tabIndex={0} role="group" aria-label={`${label}：${reason}`} className="integration-unavailable-choice"><button type="button" className="my-segment" aria-pressed={false} disabled>{label}</button></span></Tooltip>
-}
 
 export function ConnectionEditor({ provider, connection, authorizationAvailable = false, onClose, onSaved }: { provider: ProviderManifest; connection?: IntegrationConnection; authorizationAvailable?: boolean; onClose: () => void; onSaved: () => Promise<void> }): JSX.Element {
   const oauthAvailable = authorizationAvailable && hasIpc && typeof api.integrations?.authorize === 'function' && typeof api.integrations?.cancelAuthorization === 'function'
@@ -36,7 +32,8 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
   const requiredFieldsComplete = fields.every((field) => !field.required || (field.secret
     ? Boolean(secrets[field.key]?.trim() || (connection && (connection.hasSecrets.includes(field.key) || clear.includes(field.key))))
     : Boolean(config[field.key]?.trim())))
-  const advancedKeys = new Set(['jql', 'statusMap', 'project', 'signingSecret', 'clientId'])
+  const advancedKeys = new Set(['jql', 'statusMap', 'project', 'signingSecret'])
+  if (provider.id !== 'jira') advancedKeys.add('clientId')
   if (provider.id === 'github' && fields.some((field) => field.key === 'baseUrl' && !field.required && field.defaultValue !== undefined)) advancedKeys.add('baseUrl')
   const primaryFields = fields.filter((field) => !advancedKeys.has(field.key))
   if (provider.id === 'gitlab' && !connection?.legacy && method?.id === 'token') primaryFields.sort((left, right) => Number(right.key === 'token') - Number(left.key === 'token'))
@@ -72,18 +69,21 @@ export function ConnectionEditor({ provider, connection, authorizationAvailable 
     <div className="my-scrollbar max-h-[60vh] space-y-5 overflow-y-auto px-5 py-5">
       {bridge !== 'ready' && <p role="status" className="rounded-my-md border border-my-line p-3 text-my-sm text-my-secondary">{integrationBridgeMessage(bridge)}</p>}
       <fieldset disabled={action.busy} className="space-y-5">
-        {provider.id === 'jira' && <>
-          <div className="space-y-2"><p id={`${fieldId}-deployment`} className="my-item-title">Jira 版本</p><div className="my-segmented integration-auth-methods" role="group" aria-labelledby={`${fieldId}-deployment`}><UnavailableChoice label="Cloud" reason="当前仅支持自托管 Jira Server，暂不支持 Jira Cloud。" /><button type="button" className="my-segment" aria-pressed={true} disabled={action.busy}>自托管</button></div></div>
-          <div className="space-y-2"><p id={`${fieldId}-jira-authentication`} className="my-item-title">认证方式</p><div className="my-segmented integration-auth-methods" role="group" aria-labelledby={`${fieldId}-jira-authentication`}><UnavailableChoice label="个人访问令牌" reason="当前 Jira Server 连接仅支持用户名与密码，暂不支持 PAT。" /><button type="button" className="my-segment" aria-pressed={true} disabled={action.busy}>用户名与密码</button></div></div>
-        </>}
-        {!connection?.legacy && method?.oauth && <p className="text-my-sm text-my-secondary">OAuth 浏览器授权</p>}
+        {provider.id === 'jira' && !connection?.legacy && provider.authentication && <div className="space-y-2">
+          <p id={`${fieldId}-jira-authentication`} className="my-item-title">认证方式</p>
+          <div className="my-segmented integration-auth-methods" role="group" aria-labelledby={`${fieldId}-jira-authentication`}>
+            {[...provider.authentication].sort((left, right) => Number(left.id === 'basic') - Number(right.id === 'basic')).map((item) => <button key={item.id} type="button" className="my-segment" aria-pressed={method?.id === item.id} disabled={action.busy || Boolean(item.oauth && !oauthAvailable)} onClick={() => { setConfig((previous) => ({ ...previous, authMethod: item.id })); action.setError('') }}>{item.id === 'token' ? '访问令牌' : item.oauth ? '浏览器授权' : item.id === 'basic' ? '用户名密码' : item.name}</button>)}
+          </div>
+          {!oauthAvailable && provider.authentication.some((item) => item.oauth) && <p role="status" className="my-item-description">浏览器授权暂不可用，可使用访问令牌或用户名与密码。</p>}
+        </div>}
         {primaryFields.map(renderField)}
-        {!connection?.legacy && method?.oauth && !oauthAvailable && <p role="status" className="text-my-xs text-my-secondary">浏览器授权暂不可用，请在高级设置中改用访问令牌，或完整退出并重新打开应用。</p>}
+        {provider.id === 'jira' && !connection?.legacy && method?.oauth && <OAuthSetup provider={provider} method={method} baseUrl={config.baseUrl || ''} redirectUri={config.redirectUri} />}
+        {provider.id !== 'jira' && !connection?.legacy && method?.oauth && !oauthAvailable && <p role="status" className="text-my-xs text-my-secondary">浏览器授权暂不可用，请在高级设置中改用访问令牌，或完整退出并重新打开应用。</p>}
         <details className="integration-disclosure" open={advanced || !mappingValid} onToggle={(event) => setAdvanced(event.currentTarget.open)}><summary>高级设置</summary><div className="mt-4 space-y-4">
-          {!connection?.legacy && provider.authentication && <div className="space-y-2"><p id={`${fieldId}-authentication`} className="my-item-title">登录方式</p><div className="my-segmented integration-auth-methods" role="group" aria-labelledby={`${fieldId}-authentication`}>{[...provider.authentication].sort((left, right) => Number(Boolean(left.oauth)) - Number(Boolean(right.oauth))).map((item) => <button key={item.id} type="button" className="my-segment flex-1" aria-pressed={method?.id === item.id} disabled={action.busy || Boolean(item.oauth && !oauthAvailable)} onClick={() => { setConfig((previous) => ({ ...previous, authMethod: item.id })); action.setError('') }}>{item.oauth ? 'OAuth 授权' : '访问令牌（PAT）'}</button>)}</div>{!oauthAvailable && provider.authentication.some((item) => item.oauth) && <p className="text-my-xs text-my-secondary">浏览器授权暂不可用，可使用访问令牌。</p>}</div>}
+          {provider.id !== 'jira' && !connection?.legacy && provider.authentication && <div className="space-y-2"><p id={`${fieldId}-authentication`} className="my-item-title">登录方式</p><div className="my-segmented integration-auth-methods" role="group" aria-labelledby={`${fieldId}-authentication`}>{[...provider.authentication].sort((left, right) => Number(Boolean(left.oauth)) - Number(Boolean(right.oauth))).map((item) => <button key={item.id} type="button" className="my-segment flex-1" aria-pressed={method?.id === item.id} disabled={action.busy || Boolean(item.oauth && !oauthAvailable)} onClick={() => { setConfig((previous) => ({ ...previous, authMethod: item.id })); action.setError('') }}>{item.oauth ? 'OAuth 授权' : '访问令牌（PAT）'}</button>)}</div>{!oauthAvailable && provider.authentication.some((item) => item.oauth) && <p className="text-my-xs text-my-secondary">浏览器授权暂不可用，可使用访问令牌。</p>}</div>}
           <label className="block space-y-2"><span className="my-item-title">连接名称</span><input className="my-input w-full" value={name} disabled={connection?.legacy || action.busy} onChange={(event) => setName(event.target.value)} maxLength={100} /></label>
           {fields.filter((field) => advancedKeys.has(field.key)).map(renderField)}
-          {!connection?.legacy && method?.oauth && <OAuthSetup provider={provider} method={method} baseUrl={config.baseUrl || ''} />}
+          {provider.id !== 'jira' && !connection?.legacy && method?.oauth && <OAuthSetup provider={provider} method={method} baseUrl={config.baseUrl || ''} />}
           <label className="flex items-center gap-2"><Checkbox checked={enabled} onChange={setEnabled} /><span className="my-item-title">启用此连接</span></label>
           {connection?.legacy && <p className="my-item-description">原有设置兼容连接，名称不可修改。</p>}
         </div></details>

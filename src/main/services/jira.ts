@@ -25,6 +25,8 @@ export interface JiraFetchOptions {
   transport?: JiraTransport
   signal?: AbortSignal
   timeoutMs?: number
+  /** Native-only resolver, re-evaluated before every page/read/write; never stored in JiraConfig. */
+  authorization?: () => Promise<string>
 }
 
 /** Jira 返回的时间（ISO 8601，可能带 +0800 无冒号偏移）→ Unix 毫秒；非法/缺失返回 null（显式校验，不猜）。 */
@@ -76,7 +78,7 @@ async function jiraFetch(
   apiPath: string,
   init?: RequestInit,
   opts?: JiraFetchOptions
-): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; timedOut?: boolean; aborted?: boolean }> {
+): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; timedOut?: boolean; aborted?: boolean; dispatched?: boolean }> {
   const base = cfg.baseUrl.replace(/\/+$/, '')
   const url = base + apiPath
   const timeoutMs = opts?.timeoutMs ?? 15000
@@ -87,31 +89,41 @@ async function jiraFetch(
   } catch {
     signal = AbortSignal.timeout(timeoutMs)
   }
+  let authorization: string
+  try { authorization = opts?.authorization ? await opts.authorization() : authHeader(cfg) }
+  catch (error) { return { ok: false, dispatched: false, error: errorMessage(error) ?? 'Jira 认证无法取得，未发送请求' } }
+  if (signal.aborted) return { ok: false, dispatched: false, aborted: opts?.signal?.aborted === true, error: 'Jira 请求已取消或超时，未发送请求' }
   let res: Response
   const doFetch = opts?.transport ?? fetch
   try {
     res = await doFetch(url, {
       ...init,
       headers: {
-        Authorization: authHeader(cfg),
+        Authorization: authorization,
         'Content-Type': 'application/json',
         ...(init?.headers ?? {})
       },
-      signal
+      signal,
+      redirect: 'error'
     })
   } catch (e) {
     const abortedByCaller = opts?.signal?.aborted === true
     const timedOut = !abortedByCaller && (e instanceof Error ? e.name === 'TimeoutError' || e.name === 'AbortError' : false)
     return {
       ok: false,
+      dispatched: true,
       aborted: abortedByCaller,
       timedOut,
       error: '网络请求失败: ' + (errorMessage(e) ?? String(e))
     }
   }
-  if (res.status === 401) return { ok: false, status: 401, error: '认证失败：用户名或密码错误' }
+  if (res.status === 401) return { ok: false, status: 401, error: '认证失败：凭据无效、过期或需要重新授权' }
   let data: unknown = null
-  const text = await res.text()
+  let text: string
+  try { text = await res.text() } catch {
+    // Headers may arrive after a mutation applied. A lost body is not a rejection.
+    return { ok: false, dispatched: true, error: '远端响应读取失败，原请求结果需要核实' }
+  }
   try {
     data = text ? JSON.parse(text) : null
   } catch {
@@ -251,6 +263,7 @@ export interface JiraSearchPagedOptions {
   /** 传输层注入（fixture/冒烟用，不碰网络）。 */
   transport?: JiraTransport
   timeoutMs?: number
+  authorization?: () => Promise<string>
 }
 
 /** 去重键：优先数字稳定 issueId，缺失回退 key（不把 key 与 id 混用）。 */
@@ -515,12 +528,12 @@ export async function jiraTransition(
   key: string,
   transitionId: string,
   opts?: JiraFetchOptions
-): Promise<{ ok: boolean; error?: string; status?: number; timedOut?: boolean }> {
+): Promise<{ ok: boolean; error?: string; status?: number; timedOut?: boolean; dispatched?: boolean }> {
   const res = await jiraFetch(cfg, `/rest/api/2/issue/${encodeURIComponent(key)}/transitions`, {
     method: 'POST',
     body: JSON.stringify({ transition: { id: transitionId } })
   }, opts)
-  return res.ok ? { ok: true } : { ok: false, error: res.error, status: res.status, timedOut: res.timedOut }
+  return res.ok ? { ok: true } : { ok: false, error: res.error, status: res.status, timedOut: res.timedOut, dispatched: res.dispatched }
 }
 
 /**
@@ -546,9 +559,9 @@ export async function jiraTransitionVerified(
   cfg: JiraConfig,
   key: string,
   transitionId: string,
-  opts?: { transport?: JiraTransport; signal?: AbortSignal; timeoutMs?: number; expectedToStatus?: string }
+  opts?: JiraFetchOptions & { expectedToStatus?: string }
 ): Promise<JiraTransitionApplyResult> {
-  const fetchOpts: JiraFetchOptions = { transport: opts?.transport, signal: opts?.signal, timeoutMs: opts?.timeoutMs }
+  const fetchOpts: JiraFetchOptions = { transport: opts?.transport, signal: opts?.signal, timeoutMs: opts?.timeoutMs, authorization: opts?.authorization }
   const res = await jiraTransition(cfg, key, transitionId, fetchOpts)
   if (res.ok) {
     // 成功也要重读核实（design §7.3：成功以服务响应并重新读取核实）
@@ -559,6 +572,7 @@ export async function jiraTransitionVerified(
     const mismatch = opts?.expectedToStatus !== undefined && read.status !== opts.expectedToStatus
     return { ok: true, verified: 're-read', status: read.status, statusMismatch: mismatch }
   }
+  if (res.dispatched === false) return { ok: false, verified: null, code: 'permission', error: res.error }
   if (res.status === 401 || res.status === 403) {
     return { ok: false, verified: null, code: 'permission', error: res.error }
   }
@@ -566,7 +580,7 @@ export async function jiraTransitionVerified(
     return { ok: false, verified: null, code: 'invalid_transition', error: res.error }
   }
   // timeout / 网络不确定 → 先查询再决定（不盲目重试）
-  const uncertain = res.timedOut === true || res.status === undefined
+  const uncertain = res.timedOut === true || res.status === undefined || res.status >= 500
   if (!uncertain) return { ok: false, verified: null, code: 'error', error: res.error }
   // 无 HTTP 状态的网络层失败更可能是离线（timeout 则可能只是慢）
   const offlineLikely = res.status === undefined && res.timedOut !== true
@@ -596,12 +610,12 @@ export async function jiraComment(
   key: string,
   body: string,
   opts?: JiraFetchOptions
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; uncertain?: boolean }> {
   const res = await jiraFetch(cfg, `/rest/api/2/issue/${encodeURIComponent(key)}/comment`, {
     method: 'POST',
     body: JSON.stringify({ body })
   }, opts)
-  return res.ok ? { ok: true } : { ok: false, error: res.error }
+  return res.ok ? { ok: true } : { ok: false, error: res.error, uncertain: res.dispatched !== false && (res.status === undefined || res.status >= 500) }
 }
 
 /** Additive Server 8.1 workspace operations. All use the existing auth/transport. */
@@ -614,7 +628,7 @@ async function workspaceV2(cfg: JiraConfig, path: string, opts: JiraFetchOptions
   // Workspace consumers supply integrationFetch (proxy, 2 MiB cap, no redirects).
   if (!opts.transport) throw new Error('Jira workspace requires an explicit bounded transport')
   const result = await jiraFetch(cfg, `/rest/api/2/${path}`, init, opts)
-  if (!result.ok) throw new JiraV2Error(result.status, Boolean(init?.method && init.method !== 'GET' && (result.status === undefined || result.status >= 500)))
+  if (!result.ok) throw new JiraV2Error(result.status, Boolean(result.dispatched !== false && init?.method && init.method !== 'GET' && (result.status === undefined || result.status >= 500)))
   return result.data
 }
 export function jiraV2Myself(cfg: JiraConfig, opts: JiraFetchOptions): Promise<unknown> { return workspaceV2(cfg, 'myself', opts) }

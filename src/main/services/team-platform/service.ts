@@ -6,6 +6,8 @@ import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapsh
 import { desktopAuthoredPublicationSchema, desktopConnectionIdSchema, desktopDocumentInputSchema, desktopFeedbackInputSchema, desktopFeedbackListSchema, desktopListInputSchema, desktopPairingInputSchema, desktopPublicationBaseSchema, desktopVersionsInputSchema, type DesktopAuthoredPublicationInput, type DesktopFeedbackInput, type DesktopMaterialPublicationInput, type DesktopTeamApi, type DesktopTeamConnection, type DesktopTeamConnectionContext, type DesktopTeamDocument, type DesktopTeamEventSync, type DesktopTeamOutbox, type DesktopTeamOutboxPage, type DesktopTeamPairing, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
 import { desktopTeamAccountIdSchema, desktopTeamAuthOptionsSchema, desktopTeamConnectWorkspaceSchema, desktopTeamCreateInvitationSchema, desktopTeamCreatedInvitationSchema, desktopTeamCreatedOrganizationSchema, desktopTeamCreatedWorkspaceSchema, desktopTeamCreateOrganizationSchema, desktopTeamCreateWorkspaceSchema, desktopTeamInvitationAcceptSchema, desktopTeamInvitationSchema, desktopTeamLoginSchema, desktopTeamPageOptionsSchema, desktopTeamRegisterSchema, type DesktopTeamAccount, type DesktopTeamAuthOptions, type DesktopTeamConnectWorkspaceInput, type DesktopTeamCreateInvitationInput, type DesktopTeamCreatedInvitation, type DesktopTeamCreatedOrganization, type DesktopTeamCreatedWorkspace, type DesktopTeamCreateOrganizationInput, type DesktopTeamCreateWorkspaceInput, type DesktopTeamInvitationAcceptInput, type DesktopTeamInvitationInput, type DesktopTeamLoginInput, type DesktopTeamPageOptions, type DesktopTeamRegisterInput } from '../../../shared/team-desktop-account'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, createTeamProjectSchema, createTeamSchema, deviceApproveInputSchema, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceApprovalSchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, teamTeamSchema, type TeamCommandReply, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamProject, type TeamSession, type TeamTeam } from '../../../shared/team-platform'
+import { JIRA_OAUTH_CALLBACK_PATH } from '../../../shared/integrations'
+import { jiraOAuthRelaySchema, jiraOAuthRelayCreateSchema, type JiraOAuthRelay, type JiraOAuthRelayCreate } from '../../../shared/jira-auth'
 import { teamAuthOptionsSchema, teamLocalAuthReplySchema, teamLocalLoginSchema, teamLocalRegisterSchema } from '../../../shared/team-auth'
 import { teamInvitationAcceptSchema, teamInvitationCreateSchema, teamInvitationInspectSchema, teamInvitationSchema, teamInvitationTokenSchema, type TeamInvitation } from '../../../shared/team-invitations'
 import { protectSecret, revealSecret } from '../integrations/credentials'
@@ -532,6 +534,23 @@ export class DesktopTeamService implements DesktopTeamApi {
       throw new DesktopTeamError('BINDING_CHANGED', '当前服务身份不属于原设备和账号')
     }
     return session
+  }
+  /** Native-only Jira callback claim; paired device credentials never leave this service. */
+  async createJiraOAuthRelay(raw: JiraOAuthRelayCreate, isCurrent: () => boolean): Promise<JiraOAuthRelay> {
+    return this.tracked(async () => {
+      const input = jiraOAuthRelayCreateSchema.parse(raw), redirectUri = input.redirectUri
+      let redirect: URL
+      try { redirect = new URL(redirectUri) } catch { throw new DesktopTeamError('INVALID_ORIGIN', 'Jira 回调必须是已配对团队服务的 HTTPS 地址') }
+      if (redirect.protocol !== 'https:' || redirect.username || redirect.password || redirect.search || redirect.hash || redirect.pathname !== JIRA_OAUTH_CALLBACK_PATH) throw new DesktopTeamError('INVALID_ORIGIN', 'Jira 回调必须是已配对团队服务的 /auth/jira/callback HTTPS 地址')
+      const candidates = (await this.store.call<ConnectionRecord[]>({ op: 'connections' })).filter(item => item.origin === redirect.origin && item.state === 'active' && !item.accessLocked)
+      if (candidates.length !== 1) throw new DesktopTeamError('BINDING_CHANGED', candidates.length ? '此团队服务存在多个设备绑定，请保留一个明确的活动设备后授权' : '请先在此 HTTPS 团队服务完成设备配对，再发起 Jira 授权')
+      const c = await this.connection(candidates[0].connectionId, true)
+      await this.verifyActive(c)
+      if (!isCurrent()) throw new DesktopTeamError('BINDING_CHANGED', 'Jira 授权请求已取消或来源已变化')
+      const relay = await this.request(c, '/api/integrations/jira/oauth/relay', jiraOAuthRelaySchema, input)
+      if (relay.redirectUri !== redirectUri || relay.expiresAt <= Date.now() || relay.expiresAt > Date.now() + 5 * 60_000 + 10000) throw new DesktopTeamError('INVALID_RESPONSE', 'Jira 回调声明不属于原团队服务或已失效')
+      return relay
+    })
   }
   async connections(): Promise<DesktopTeamConnection[]> { return this.tracked(async () => (await this.store.call<ConnectionRecord[]>({ op: 'connections' })).map(publicConnection)) }
   /** Main-only fixed material routes, retaining the captured device and native selection fence. */

@@ -15,6 +15,8 @@ Read before modifying external provider adapters, credentials, project bindings,
 - Manual notifications: `previewNotification({...BindingRequest,taskDir})`, `sendNotification({...BindingRequest,taskDir,requestId,preview})`.
 - Configuration events: `ipcEvent.integrationsChanged` / `api.integrations.onChanged(callback)`; payload is empty, with no secrets. Refetch owner-scoped local data on changes.
 - Jira read cancellation: `cancelRead(requestId)`; requests are keyed by sender ID plus UUID, with at most four active Jira reads per sender.
+- Jira native credentials: `jiraAuthorizationHeader(connection, signal?)`, `authorizeJira(connection, signal, relay)` and `inspectJiraConnection(connection)` in `providers/jira-authorization.ts`; consumers use `jiraOptions` for a fresh header per HTTP request.
+- Jira HTTPS relay: authenticated device `POST /api/integrations/jira/oauth/relay`; per-attempt capability `POST /api/integrations/jira/oauth/relay/:relayId/poll` and `/cancel`; browser `GET /auth/jira/callback`.
 
 ## 3. Contracts
 
@@ -38,7 +40,8 @@ Legacy Jira/GitLab entries read from their existing settings as a single compati
 
 Provider manifests declare `authentication` methods and method-specific fields;
 `connectionFields` is shared by form rendering and main validation. Missing
-`authMethod` retains pre-OAuth PAT semantics. New GitLab forms default to PAT;
+`authMethod` retains Basic for legacy Jira records and PAT for other providers.
+New Jira and GitLab forms default to PAT;
 OAuth is an explicit optional choice and requires the real native authorization
 capability plus the provider's registered client configuration. The renderer
 interaction contract is [integration-interactions.md](../frontend/integration-interactions.md).
@@ -74,11 +77,23 @@ cannot overwrite a newer login. Internal refresh does not advance configuration
 revision. Refresh failure requires a visible login/retry action. PAT and legacy
 password-grant credentials keep their existing transport-header semantics.
 
+### Jira PAT and OAuth lifecycle
+
+Jira accepts `basic`, `token` and `oauth2`. PAT uses secret `token` with a Bearer header and requires no username. OAuth config contains HTTPS `baseUrl`, `clientId` and HTTPS `redirectUri` with exact path `/auth/jira/callback`; secret `clientSecret` is required. The native owner opens `/rest/oauth2/latest/authorize` with one-use state, PKCE S256 and `READ WRITE`; it exchanges and refreshes at `/rest/oauth2/latest/token` with `redirect_uri` and client authentication. Token parameters use an `application/x-www-form-urlencoded` POST body, and credential-bearing redirects remain forbidden.
+
+Create the relay with `{connectionId,revision,baseUrl,clientId,redirectUri}` through the existing paired team device. The response is `{relayId,state,claimSecret,redirectUri,expiresAt}` and stays inside native transport. The relay binds the original person, active device, project permission, service instance/epoch and authorization metadata, and rechecks authority on callback and claim. Poll returns `pending` immediately; `complete` or `denied` is delivered at most once, after which the claim returns `410 JIRA_OAUTH_RELAY_GONE`. A lost claim response requires a new authorization attempt. Attempts expire within five minutes; a returned authorization code is retained for at most ten seconds and must be exchanged immediately. All relay state stays in the service worker's memory and is removed on claim, cancel, expiry or close.
+
+The HTTPS callback relay stores only the short-lived authorization code/error and original owner binding; client secrets, PKCE verifiers and access/refresh tokens never enter the team service or renderer. Production requires the configured `TEAM_PUBLIC_ORIGIN` HTTPS origin, a reachable ingress that preserves the exact Host, and routing to the same service instance. Disable callback query logging and redact Authorization at the ingress as well as the application. A configured URL alone does not establish reachability.
+
+Before any PAT/Basic business access, resolve `/rest/api/2/myself`, require an active account and pin `jiraAccount.id`. OAuth pins the authenticated account before saving the grant. Keep `jiraSourceUser` separate and stable so changing authentication does not rename existing task source namespaces. A different authenticated account cannot silently take over an existing connection. Preserve configured connection and binding revisions through provider writes and reconciliation.
+
+OAuth refreshes run at the protected daemon credential owner. A single in-flight promise per connection revision serializes consumers. Persist a protected `refreshAttempt` marker before token dispatch, replace the entire bundle with a compare-and-swap against the marked ciphertext, and keep configuration revision unchanged. A lost response, malformed response or failed save leaves an unknown refresh outcome and requires browser authorization; never automatically reuse that refresh token. Disabling, deleting or editing the connection fences both authorization publication and refresh publication. Authentication never retries an already-dispatched Jira mutation; existing effect receipts determine recovery.
+
 ### Identity and scope
 
 Provider ID, configured connection ID, remote instance namespace, project binding ID, and stable taskRef are separate. Main compares `expectedRoot` against the current canonical root before project actions. An accepted operation captures its root and connection revision instead of resolving a different project after an await.
 
-Jira Server 8.1 uses the existing REST v2 adapter, not a newer Cloud/DC SDK. Keep `jiraInstanceIdFor` stable. Resolve numeric issue IDs within their source namespace before relying on display keys, including after a key changes. Key-only historical references do not identify an instance: match explicit instance metadata first, then an unambiguous source URL; otherwise return ambiguity. Different-source identical-key imports gain a source-derived slug suffix to avoid directory collisions. Never overwrite edited local PRDs during source refresh.
+Jira Server/Data Center uses the existing REST v2 adapter. Keep `jiraInstanceIdFor` stable across authentication changes. Resolve numeric issue IDs within their source namespace before relying on display keys, including after a key changes. Key-only historical references do not identify an instance: match explicit instance metadata first, then an unambiguous source URL; otherwise return ambiguity. Different-source identical-key imports gain a source-derived slug suffix to avoid directory collisions. Never overwrite edited local PRDs during source refresh.
 
 A project with no explicit Jira bindings can use the visibly labeled global legacy path. Once Jira bindings exist, disabling/deleting them stops that project source; do not silently fall back to the global connection. Legacy callers without integration context retain their existing API path.
 
@@ -100,6 +115,9 @@ DingTalk and Feishu accept only their documented HTTPS group-bot hosts/paths. Op
 | Corrupt/future-version config, encryption/persistence failure | Visible failure; preserve prior data |
 | Unexpected remote list/PR shape | Upstream error, not a fabricated empty success |
 | Anonymous/public Jira version response | Version metadata only, not authenticated business acceptance |
+| Jira PAT account differs from pinned actor | Denied; use the original account or create a separate connection |
+| Jira OAuth uses HTTP, wrong callback origin/path, missing client secret or no paired device | Reject authorization before opening a browser |
+| Jira refresh response/save lost or persisted `refreshAttempt` remains | Unknown; require reauthorization and retain original mutation receipts |
 | Notification network interruption or unreadable response | `uncertain` receipt; no automatic resend |
 | Vendor business result code is nonzero | Failed receipt; show sanitized code, not raw response/secret URL |
 | Work item or destination changed since preview | Conflict before creating a send receipt or invoking transport |
@@ -117,7 +135,9 @@ DingTalk and Feishu accept only their documented HTTPS group-bot hosts/paths. Op
 
 ## 6. Required Verification Points
 
-For the 2026-10-18 implementation, the user explicitly prohibited tests, lint/typecheck, builds, packaging, and synthetic live-provider actions. Only static source/diff review was performed. Do not record executable gates as passed. If executable validation is authorized later, cover the cases above, CJS/ESM SDK loading, actual proxy/cancellation behavior, strict persistence failures, source namespace ambiguity, reference upsert/unlink identity, credential patch semantics, and real vendor result envelopes.
+Run the applicable production checks (`check:acpx`, `check:ui`, `typecheck`, `build`, plus team-service typecheck/build when changed). Keep validation scripts, fixtures, mocks, screenshots and reports only in OS TEMP; do not stage or commit them. Cover CJS/ESM SDK loading, proxy/cancellation behavior, strict persistence failures, source namespace ambiguity, reference upsert/unlink identity, credential patch semantics and vendor result envelopes. Controlled-provider verification and authenticated live-provider acceptance are separate; neither a public metadata response nor a simulated token response proves a real Jira login or mutation.
+
+Verify Jira Basic/PAT headers, `/myself` identity fencing, one-use callback state, cancellation, duplicate callbacks, stale connection revisions, concurrent refresh, durable unknown refresh markers and GUI-independent access. Assert that no Jira secret crosses renderer/relay boundaries and that authentication does not replay a comment or transition. Real Jira acceptance must separately confirm code/refresh form-body interoperability, HTTPS callback routing and the designated live user/issue.
 
 ## 7. Wrong vs Correct
 

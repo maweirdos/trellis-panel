@@ -6,6 +6,46 @@ identify server resources. People, teams, projects, materials and devices use
 server UUIDs. Local repository/workspace/task source references are separate
 publisher metadata and never permission grants.
 
+## Jira OAuth HTTPS relay
+
+POST `/api/integrations/jira/oauth/relay` requires an active paired desktop
+`td_` credential, no browser Origin or cookies, and
+`{connectionId,revision,baseUrl,clientId,redirectUri}` as validated by
+`src/shared/jira-auth.ts`. The Jira base must use HTTPS without credentials,
+query or fragment. The redirect must exactly equal the configured public HTTPS
+origin plus `/auth/jira/callback`. Local HTTP configuration does not enable this
+relay. Replies contain `{relayId,state,claimSecret,redirectUri,expiresAt}` inside
+the normal success envelope. No new deployment configuration is required.
+
+POST `/api/integrations/jira/oauth/relay/:relayId/poll` and `/cancel` accept
+`{}` and `Authorization: Bearer <claimSecret>`, without browser cookies or Origin.
+They recheck the original device, person, project membership and service
+instance/epoch. The claim is specific to this attempt and is not a team device
+credential or account login. Poll returns immediately with
+`{status:'pending'}`, `{status:'complete',code}` or `{status:'denied'}`.
+Cancellation returns null. Complete and denied results are delivered at most
+once; subsequent claims, cancellation after consumption and expired attempts
+return `JIRA_OAUTH_RELAY_GONE` (410). A lost complete response requires a new
+browser authorization. Native code exchange must never be retried after an
+uncertain result.
+
+GET `/auth/jira/callback` is outside device authentication. It validates the
+exact configured host, path and GET method, single-use state, one code or error,
+and unambiguous query fields. HEAD does not consume state. Browser output is
+fixed HTML with no reflected parameters, no-store, no-referrer and restrictive
+CSP. A browser cookie does not change the bound relay owner.
+
+Attempts last at most five minutes, with at most 256 per service, four per device
+and sixteen per person. Starting the same device/connection again invalidates its
+previous attempt. Returned codes remain in memory for at most ten seconds after
+callback, capped by attempt expiry; this does not extend Jira's code lifetime.
+Polling is limited to 1,200 requests per IP per minute to support 350 ms desktop
+polling. Creation is limited to twenty per IP per minute. Idle cleanup runs each
+second. Claim, cancellation, expiry and shutdown remove state; service restart
+invalidates all attempts. Codes and claim digests are never stored in SQLite,
+backups or command receipts. The relay accepts no Jira client secret, PKCE
+verifier or access/refresh token. Jira token exchange stays on the native owner.
+
 ## Transport and authentication
 
 The base URL is configured `TEAM_PUBLIC_ORIGIN`. Replies are
