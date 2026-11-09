@@ -16,7 +16,7 @@ import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 
 const RECEIPTS_PER_TASK = 32
-type Host = Pick<CruxWorkspaceHost, 'identity' | 'transaction' | 'get' | 'all' | 'run' | 'authenticate' | 'project'> & { assertNoExecutionWriter(projectId: string, taskId: string): void }
+type Host = Pick<CruxWorkspaceHost, 'identity' | 'transaction' | 'get' | 'all' | 'run' | 'authenticate' | 'project'> & { assertNoExecutionWriter(projectId: string, taskId: string): void; assertCutoverBind(projectId: string, taskId: string): void }
 type Current = { generation: number; binding: TeamTaskProgressBinding | null; progress: TeamTaskProgressRecord | null; ownerKey: string | null }
 type ResourceFence = { fence: string; resourceAvailable: boolean }
 type Authority = ResourceFence & { principal: StorePrincipal; projectId: string; taskId: string; spaceId: string }
@@ -152,6 +152,7 @@ export class TeamTaskProgress {
         return { status: 'duplicate', commandId: input.commandId, result: this.view(authority, current) }
       }
       if (input.kind === 'bind') {
+        this.host.assertCutoverBind(authority.projectId, authority.taskId)
         this.host.assertNoExecutionWriter(authority.projectId, authority.taskId)
         if (!authority.resourceAvailable) conflict('TASK_PROGRESS_INACTIVE', 'Selected code resource must be enabled and linked to the current space')
         if (input.expectedGeneration !== current.generation || input.expectedBindingId !== (current.binding?.bindingId ?? null)) conflict('TASK_PROGRESS_BINDING_CONFLICT', 'Reporting binding changed; reload before an explicit takeover')

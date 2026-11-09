@@ -1,3 +1,4 @@
+import { verifiedCutoverAdmission, originalExecutionCommand } from '../workflow-cutover/admission'
 import { shell } from 'electron'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -109,27 +110,60 @@ export class DesktopTeamService implements DesktopTeamApi {
       const binding = { origin: c.origin, pairingId: c.pairingId, deviceId: c.deviceId, projectId: c.projectId, ownerId: c.ownerId }
       const previous = desktopExecutionIntentSchema.nullable().parse(await this.store.call({ op: 'execution-intent', input: { connectionId: input.connectionId, commandId: input.command.commandId } }))
       // Persist the exact original intent before transmission; retries are explicit calls only.
-      const record = desktopExecutionIntentSchema.parse({ connectionId: input.connectionId, command: input.command, state: previous?.receipt ? 'committed' : 'dispatching', receipt: previous?.receipt ?? null, updatedAt: Date.now() })
+      const command = previous ? originalExecutionCommand(input.command, previous.command) : input.command
+      if (!previous && command.kind === 'claim') {
+        const proof = await verifiedCutoverAdmission(this.options.dataDir, input.task, c.ownerId ?? '', c.deviceId ?? '', transport.cutover(), { productClaim: command.ownership === 'product-managed' })
+        if (command.cutoverAdmission && (!proof || canonicalTeamJson(command.cutoverAdmission) !== canonicalTeamJson(proof))) throw new DesktopTeamError('CUTOVER_CHANGED', 'Supplied claim proof differs from the verified original installation')
+        if (proof) command.cutoverAdmission = proof
+      }
+      const record = desktopExecutionIntentSchema.parse({ connectionId: input.connectionId, command, state: previous?.receipt ? 'committed' : 'dispatching', receipt: previous?.receipt ?? null, updatedAt: Date.now() })
       await this.store.call({ op: 'save-execution-intent', input: { record, binding } })
+      let dispatched = false
       try {
-        const reply = await transport.command(input.command)
+        if (previous) {
+          const receipt = await transport.reconcile(command)
+          if (receipt) {
+            await this.store.call({ op: 'save-execution-intent', input: { record: { ...record, state: 'committed', receipt, updatedAt: Date.now() }, binding } })
+            return { status: 'duplicate', commandId: command.commandId, result: receipt }
+          }
+          // An explicit retry may resend the exact retained UUID/body to the idempotent server.
+          // Fresh claim admission must still match its saved proof; never rebuild the command.
+          if (command.kind === 'claim') {
+            const proof = await verifiedCutoverAdmission(this.options.dataDir, input.task, c.ownerId ?? '', c.deviceId ?? '', transport.cutover(), { productClaim: command.ownership === 'product-managed' })
+            if (canonicalTeamJson(command.cutoverAdmission ?? null) !== canonicalTeamJson(proof)) throw new DesktopTeamError('CUTOVER_CHANGED', 'Original claim proof no longer matches the current verified activation')
+          }
+        }
+        dispatched = true
+        const reply = await transport.command(command)
         try { await this.store.call({ op: 'save-execution-intent', input: { record: { ...record, state: 'committed', receipt: reply.result, updatedAt: Date.now() }, binding } }) }
         catch { throw new DesktopTeamError('ACKNOWLEDGEMENT_UNKNOWN', '服务端已提交，但本地回执保存失败，请核对原命令', true) }
         return reply
       } catch (error) {
         const unknown = error instanceof DesktopTeamError && error.outcomeUnknown
+          || !dispatched && !!previous && ['dispatching', 'acknowledgement-unknown'].includes(previous.state)
         await this.store.call({ op: 'save-execution-intent', input: { record: { ...record, state: record.receipt ? 'committed' : unknown ? 'acknowledgement-unknown' : 'rejected', updatedAt: Date.now() }, binding } }).catch(() => {})
         throw error
       }
     }))
   }
+  /** Read-only editor probe; independent MCP has no directory path grant. */
+  async cutoverCheck(raw: z.infer<typeof desktopExecutionScopeSchema>): Promise<{ admitted: boolean; operationId: string | null; task: z.infer<typeof desktopExecutionScopeSchema>['task'] }> {
+    const input = desktopExecutionScopeSchema.parse(raw)
+    return this.withExecution(input, async (transport, c) => {
+      if (!c.deviceId) throw new DesktopTeamError('BINDING_CHANGED', 'Cutover check requires the original authorized device')
+      const proof = await verifiedCutoverAdmission(this.options.dataDir, input.task, c.ownerId ?? '', c.deviceId, transport.cutover())
+      return { admitted: true, operationId: proof?.operationId ?? null, task: input.task }
+    })
+  }
   async executionReconcile(raw: z.infer<typeof desktopExecutionCommandSchema>): ReturnType<DesktopTeamApi['executionReconcile']> {
     const input = desktopExecutionCommandSchema.parse(raw)
     if (teamTaskIdentity(input.task) !== teamTaskIdentity(input.command.task)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', '原执行命令与调用目标不一致')
     return this.withExecution({ connectionId: input.connectionId, task: input.task }, async (transport, c) => {
-      const receipt = await transport.reconcile(input.command)
+      const previous = desktopExecutionIntentSchema.nullable().parse(await this.store.call({ op: 'execution-intent', input: { connectionId: input.connectionId, commandId: input.command.commandId } }))
+      const command = previous ? originalExecutionCommand(input.command, previous.command) : input.command
+      const receipt = await transport.reconcile(command)
       if (receipt) await this.store.call({ op: 'save-execution-intent', input: {
-        record: { connectionId: input.connectionId, command: input.command, state: 'committed', receipt, updatedAt: Date.now() },
+        record: { connectionId: input.connectionId, command, state: 'committed', receipt, updatedAt: Date.now() },
         binding: { origin: c.origin, pairingId: c.pairingId, deviceId: c.deviceId, projectId: c.projectId, ownerId: c.ownerId }
       } })
       return receipt

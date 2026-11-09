@@ -43,6 +43,8 @@ unique index admits one active execution per project/task. Command identities
 and results use the existing commands infrastructure. Desktop schema version 5
 retains original intent identities across bounded queries and restarts.
 
+Imported-task claim may carry `cutoverAdmission: {operationId,manifestDigest}`. Its active-operation and local-installation rules are defined by [workcopy cutover](./workflow-cutover.md). Desktop admission injects verified proof before retaining a new claim intent; retries reuse that original command. Later approved T03 input adoption remains governed by the current execution input checks.
+
 ## 3. Contracts
 
 - Every command carries version 2, UUID, task reference, expected epoch,

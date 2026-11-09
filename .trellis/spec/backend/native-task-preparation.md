@@ -15,6 +15,8 @@ Preparation consumes [execution authority](./team-task-executions-v2.md),
 [delivery/checkpoint references](./team-execution-artifacts.md). It neither starts
 an engine nor claims, approves, finalizes or transitions a team task.
 
+Imported tasks additionally follow [workcopy cutover admission](./workflow-cutover.md). Preparation and verification recheck active service evidence and any required original local installation identities before engine admission, including cached native receipt paths.
+
 ## Native interface
 
 `src/shared/native-task-preparation.ts` defines the request and binding schemas.

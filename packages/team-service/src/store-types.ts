@@ -16,6 +16,7 @@ export type StoreOperation = 'health' | 'createLogin' | 'consumeLogin' | 'comple
   | 'taskProgressRead' | 'taskProgressCommand' | 'taskProgressReceipt'
   | 'taskExecutionRead' | 'taskExecutionCommand' | 'taskExecutionReconcile' | 'taskExecutionHistory' | 'taskExecutionArtifact'
   | 'executionInputRead' | 'executionInputResource' | 'executionInputCommand' | 'executionInputReconcile'
+  | 'cutoverCommand' | 'cutoverReconcile' | 'cutoverRead' | 'cutoverTask'
   | 'importCommand' | 'importReconcile' | 'importNamespaces' | 'importItems' | 'importRead' | 'importBatch'
   | 'taskMaterialList' | 'taskMaterialRead' | 'taskMaterialVersions' | 'taskMaterialSubmissions' | 'taskMaterialCommand' | 'taskMaterialReceipt'
   | 'governanceList' | 'governanceRead' | 'governanceCommand' | 'governanceReceipt'

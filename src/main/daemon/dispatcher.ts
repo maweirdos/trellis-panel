@@ -82,7 +82,7 @@ export class DaemonDispatcher {
     return actual
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
-    if (request.method.startsWith('runtime.private') || request.method === 'runtime.taskExecution' || request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
+    if (request.method.startsWith('runtime.private') || request.method === 'runtime.workflowCutover' || request.method === 'runtime.taskExecution' || request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
     const management = ['daemon.status', 'daemon.stop', 'daemon.workcopyRecovery', 'daemon.logs', 'commands.get'].includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)
       || isBoundedNativeTaskControl(request.method, request.payload)

@@ -33,6 +33,8 @@ workspace revision read before its first submission; retries cannot reconstruct
 them from a newer execution head. The service response must match the original
 task, account, device, epoch, command kind and generation before it is returned.
 
+`team_cutover_check` reads current imported-task admission through the captured desktop team connection. Its input contains the fixed task identity; a successful reply returns the current admitted operation UUID or null for an ordinary task. No caller-supplied directory or filesystem-verification flag is accepted. Converted workcopies require the original verified local installation; this read neither installs files nor grants remote native directory authority. See [workcopy cutover](./workflow-cutover.md).
+
 After claim, `team_task_capture_input` uses the existing input-command transport
 to fix adopted portable workflow, Agent summaries, roles and resource selections.
 `team_task_execution_input` reads that capture and its immutable resource bodies.
@@ -43,6 +45,16 @@ does not grant native directory access.
 confirmed artifacts, delivery manifest and checkpoint. Progress cannot substitute
 for completion. The following business transition still runs the shared service
 gate, including any adopted database-delivery rule.
+
+## Native provider context
+
+`team_editor_session_bind` creates a local read selection; it does not claim, capture input or grant an engineering directory. Require explicit `connectionId`, `provider`, `nativeSessionId`, full `task`, `executionId`, `generation`, captured `inputDigest`, `rootNodeId` and `roleNodeIds`. Supported roles are implement/check/research/finish. Use `expectedRevision: 0` for first bind and the current returned revision for a different binding. Exact original retries retain their result; stale or conflicting rebinding returns `SESSION_BINDING_CONFLICT`.
+
+`team_editor_hook_context` takes `{ provider, nativeSessionId, event, role? }`. Claude supports SessionStart/UserPromptSubmit/PreToolUse; Codex supports UserPromptSubmit/PreToolUse/SubagentStart. PreToolUse/SubagentStart require an explicit mapped role; Codex uses the parent native session ID. Root events select the bound root node. Never infer a task from the engineering directory, a current-task file, agent role or the first task.
+
+Every bind/context read rechecks the original desktop account/device/connection, authorization revision, instance/epoch, active execution with `ownership: 'editor-owned'`, current handler/device, execution generation, captured input and cutover admission. The existing T03 composer reads immutable resource bodies and returns an `executionContextManifest` plus at most 8192 characters. Required Agent-instruction bodies must be nonempty and complete within the admitted budget. Missing binding/role, old generation, revoked authority, incomplete required context or connector drift returns `isError: true` with `{ status: 'unavailable', reason, code, message }`. No task/context fallback is permitted.
+
+Selections use a bounded 64-entry in-memory map shared by the bridge and clear on close. Reopen requires a new explicit bind; in-flight requests cannot recreate a closed bridge's binding. A role only chooses a node within the fixed task/execution input. Provider-specific generation, bootstrap and blocking limitations are defined in [workcopy cutover](./workflow-cutover.md).
 
 ## Ownership and recovery
 

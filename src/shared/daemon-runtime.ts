@@ -13,6 +13,7 @@ import { modelSelectionIdSchema } from './model-selection'
 import { privateNativeConfigureSchema, privateNativeRecoverModelSchema } from './private-conversation-controls'
 import { requirementPredecessorSchema } from './conversation-requirements'
 import { runRefSchema } from './workflow'
+import { nativeWorkflowCutoverRequestSchema } from './native-workflow-cutover'
 import { nativeTaskPreparationRequestSchema } from './native-task-preparation'
 import { nativeTaskExecutionRequestSchema } from './native-task-execution'
 
@@ -30,6 +31,7 @@ export type RuntimeCursor = z.infer<typeof runtimeCursorSchema>
 const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const runtimeBodies = {
+  'runtime.workflowCutover': nativeWorkflowCutoverRequestSchema,
   'runtime.taskPreparation': nativeTaskPreparationRequestSchema,
   'runtime.taskExecution': nativeTaskExecutionRequestSchema,
   'runtime.privateRead': privateNativeReadSchema,
@@ -120,6 +122,7 @@ export type RuntimeBody<M extends RuntimeBodyMethod> = z.input<(typeof runtimeBo
 export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeRequests)[M]>
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
+  'runtime.workflowCutover',
   'runtime.taskPreparation',
   'runtime.taskExecution',
   'runtime.privateSend', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond', 'runtime.privateConfigure', 'runtime.privateRecoverModel',

@@ -1,3 +1,4 @@
+import { verifiedCutoverAdmission } from '../../services/workflow-cutover/admission'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
 import { join, relative, isAbsolute } from 'node:path'
@@ -44,6 +45,7 @@ export interface NativeTaskPreparationAuthority {
 }
 export interface NativeTaskPreparationPorts {
   directory: string
+  teamDataDirectory: string
   workcopies: WorkcopyUseRegistry
   assertOwner(): void
   assertCurrent(grant: WorkspaceGrant): void
@@ -102,6 +104,19 @@ export class NativeTaskPreparation {
     if (!authority) throw new DaemonError('E_DENIED', 'Original preparation receipts require their authenticated native process and workspace grant.')
     this.assertAuthority(root, request, authority)
   }
+  /** Cached prepare receipts must pass the same fresh cutover gate as first preparation. */
+  async assertFreshCutover(root: string, preparationId: string, authority: NativeTaskPreparationAuthority): Promise<void> {
+    this.assertReceiptAuthority(root, preparationId, authority)
+    const binding = this.read(preparationId), input = binding.request
+    const guard = (): void => { this.assertReceiptAuthority(root, preparationId, authority); if (!equal(binding, this.read(preparationId))) conflict('Original preparation changed during fresh admission.') }
+    guard()
+    await this.ports.withTransport(input.pin, async () => guard(), async request => {
+      const transport = new TaskExecutionTransport(input.task, input.pin.actorId, input.pin.deviceId, executionRequest(request))
+      await verifiedCutoverAdmission(this.ports.teamDataDirectory, input.task, input.pin.actorId, input.pin.deviceId, transport.cutover(), { root })
+      guard()
+    }, input.task)
+    guard()
+  }
   async execute(root: string, raw: NativeTaskPreparationRequest, authority: NativeTaskPreparationAuthority,
     handoff?: (binding: NativeTaskBinding, admission: WorkspaceAdmission, releasePreparation: () => void) => void): Promise<NativeTaskBinding> {
     const request = nativeTaskPreparationRequestSchema.parse(raw)
@@ -144,6 +159,7 @@ export class NativeTaskPreparation {
         }
         const taskTransport = new TaskExecutionTransport(input.task, input.pin.actorId, input.pin.deviceId, readRequest)
         const source = new ExecutionInputTransport(input.task, input.expected.executionId, input.pin.actorId, input.pin.deviceId, readRequest).source('use')
+        await checked(() => verifiedCutoverAdmission(this.ports.teamDataDirectory, input.task, input.pin.actorId, input.pin.deviceId, taskTransport.cutover(), { root }))
         const active = await checked(() => taskTransport.read())
         const execution = this.execution(input, active.active, active.epoch)
         const firstResource = await checked(() => requestTransport(`/api/projects/${input.task.projectId}/crux/tasks/${encodeURIComponent(input.task.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema))
@@ -185,6 +201,7 @@ export class NativeTaskPreparation {
         const finalProject = await checked(() => inspectCruxWorkExecutionProject(root, secondResource.resource ?? undefined))
         if (!finalProject.resourceMatched || !equal(project, finalProject)) conflict('Actual repository identity changed during preparation.')
         await checked(() => this.ports.assertLegacyAvailable(root))
+        await checked(() => verifiedCutoverAdmission(this.ports.teamDataDirectory, input.task, input.pin.actorId, input.pin.deviceId, taskTransport.cutover(), { root }))
         const binding = nativeTaskBindingSchema.parse({ version: 1, state: 'ready', preparationId: input.preparationId, request: input,
           root, directoryIdentity, directory, grant: original.grant, nativeOwner: original.actor, workcopy, execution, input: firstInput.input, resources,
           outputs: firstInput.input.definition.nodes.flatMap(node => node.kind === 'gate' ? [] : node.outputs.map(output => ({ nodeId: node.id, output,

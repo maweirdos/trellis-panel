@@ -12,7 +12,8 @@ import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './ta
 import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
 import { TEAM_JIRA_BUSINESS_HOOKS_SQL } from './jira-business-hooks-schema'
-export const TEAM_SCHEMA_VERSION = 22
+import { TEAM_CUTOVERS_SQL } from './cutovers-schema'
+export const TEAM_SCHEMA_VERSION = 23
 export const TEAM_INVITATION_SPACES_SQL = `CREATE TABLE IF NOT EXISTS invitation_spaces(invitationId TEXT PRIMARY KEY REFERENCES invitations(invitationId),spaceId TEXT NOT NULL,spaceName TEXT NOT NULL,workspaceRevision INTEGER NOT NULL,workspaceEpoch TEXT NOT NULL);`
 export const TEAM_INVITATION_SPACE_IDENTITY_SQL = `
 ALTER TABLE invitation_spaces ADD COLUMN spaceCreatedAt TEXT;
@@ -99,4 +100,5 @@ ${TEAM_TASK_EXECUTION_BOUNDARY_SQL}
 ${TEAM_IMPORTS_SQL}
 ${TEAM_EXECUTION_INPUTS_SQL}
 ${TEAM_JIRA_BUSINESS_HOOKS_SQL}
+${TEAM_CUTOVERS_SQL}
 `

@@ -1,3 +1,4 @@
+import { cutoverCommandSchema } from '../../../shared/team-cutover'
 import { existsSync, mkdirSync, realpathSync, unlinkSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
@@ -192,13 +193,15 @@ export class NativeTaskProgressSender {
       const url = new URL(path, 'http://native.invalid')
       if (url.origin !== 'http://native.invalid' || url.hash || url.username || url.password) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Only fixed native task routes are allowed')
       const suffix = url.pathname.slice(base.length)
-      const read = body === undefined && url.pathname.startsWith(base) && (suffix === '/code-resource'
+      const cutover = body === undefined && url.pathname === `/api/projects/${task.projectId}/cutovers/tasks/${encodeURIComponent(task.taskId)}`
+      if (cutover && (url.searchParams.get('instanceId') !== task.instanceId || url.searchParams.get('spaceId') !== task.spaceId || url.searchParams.get('taskCreatedAt') !== task.taskCreatedAt || [...url.searchParams.keys()].length !== 3 || [...url.searchParams.keys()].some(key => !['instanceId', 'spaceId', 'taskCreatedAt'].includes(key)))) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Cutover read changed its fixed task incarnation')
+      const read = cutover || body === undefined && url.pathname.startsWith(base) && (suffix === '/code-resource'
         || /^\/executions(?:\/[\w-]+)?$/.test(suffix)
         || /^\/executions\/[\w-]+\/inputs(?:\/resources\/[^/]+)?$/.test(suffix)
         || /^\/executions\/[\w-]+\/artifacts\/[\w-]+$/.test(suffix))
       const write = body !== undefined && url.pathname.startsWith(base) && ['/executions/commands', '/executions/reconcile'].includes(suffix) && url.search === ''
       if (!read && !write) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native sender route is outside its fixed v2 task')
-      if (read && suffix !== '/code-resource') {
+      if (read && !cutover && suffix !== '/code-resource') {
         if (url.searchParams.get('contractVersion') !== '2' || url.searchParams.get('instanceId') !== task.instanceId
           || url.searchParams.get('spaceId') !== task.spaceId || url.searchParams.get('taskCreatedAt') !== task.taskCreatedAt
           || [...url.searchParams.keys()].some(key => !['contractVersion', 'instanceId', 'spaceId', 'taskCreatedAt', 'purpose'].includes(key))) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native read changed its original task incarnation')
@@ -214,6 +217,30 @@ export class NativeTaskProgressSender {
       // for artifact response shapes which carry no epoch field themselves.
       const resource = await this.codeResource()
       if (resource.taskCreatedAt !== task.taskCreatedAt) throw new DesktopTeamError('BINDING_CHANGED', 'Original task incarnation changed')
+      await assertCurrent(); this.current(c.fingerprint)
+      const result = await this.http.request(this.pin.origin, path, schema, c.value.token, body)
+      this.current(c.fingerprint, body !== undefined); await assertCurrent(); validate?.(result)
+      return result
+    }
+  }
+  /** Fixed cutover/import routes through the original protected task device; no generic HTTP proxy. */
+  cutoverRequest(assertCurrent: () => Promise<void>): TeamContentRequest {
+    const project = '/api/projects/' + this.pin.projectId
+    return async (path, schema, body, validate) => {
+      const url = new URL(path, 'http://native.invalid'), suffix = url.pathname.slice(project.length)
+      const read = body === undefined && (/^\/cutovers\/workcopies\/[a-f0-9]{64}$/.test(suffix) || /^\/imports\/batches\/[0-9a-f-]+$/.test(suffix))
+      const write = body !== undefined && ['/cutovers/commands', '/cutovers/reconcile'].includes(suffix) && url.search === ''
+      if (url.origin !== 'http://native.invalid' || !url.pathname.startsWith(project + '/') || url.hash || !read && !write) throw new DesktopTeamError('CUTOVER_SCOPE_CONFLICT', 'Native cutover sender permits only its fixed project routes')
+      if (read) {
+        const allowed = suffix.startsWith('/cutovers/') ? ['instanceId', 'namespaceId', 'operationId'] : ['namespaceId', 'limit', 'cursor']
+        if ([...url.searchParams.keys()].some(key => !allowed.includes(key)) || new Set(url.searchParams.keys()).size !== [...url.searchParams.keys()].length || !url.searchParams.get('namespaceId') || suffix.startsWith('/cutovers/') && url.searchParams.get('instanceId') !== this.pin.instanceId) throw new DesktopTeamError('CUTOVER_SCOPE_CONFLICT', 'Native cutover query changed its original scope')
+      }
+      if (write) {
+        const command = cutoverCommandSchema.parse(body)
+        if (command.instanceId !== this.pin.instanceId || command.projectId !== this.pin.projectId || command.expectedEpoch !== this.pin.epoch || command.expectedActorId !== this.pin.ownerId || command.expectedDeviceId !== this.pin.deviceId) throw new DesktopTeamError('BINDING_CHANGED', 'Cutover changed its original protected account, project or device')
+      }
+      await assertCurrent()
+      const c = await this.authorized()
       await assertCurrent(); this.current(c.fingerprint)
       const result = await this.http.request(this.pin.origin, path, schema, c.value.token, body)
       this.current(c.fingerprint, body !== undefined); await assertCurrent(); validate?.(result)

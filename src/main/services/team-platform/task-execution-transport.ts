@@ -1,3 +1,4 @@
+import { CutoverTransport } from '../workflow-cutover/transport'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
@@ -62,8 +63,15 @@ export class TaskExecutionTransport {
       || selected.disposition !== 'confirmed' || selected.bodyDigest !== ref.bodyDigest || digest !== ref.bodyDigest || Buffer.byteLength(value.text, 'utf8') !== selected.byteLength) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Fixed artifact response differs from its original confirmed reference')
     return value
   }
+  cutover(): CutoverTransport { return new CutoverTransport((path, schema, body) => this.request(path, schema, body)) }
   async command(raw: TeamExecutionCommand): Promise<z.infer<typeof teamExecutionCommandReplySchema>> {
-    const command = this.commandInput(raw), reply = await this.request(`${this.base}/commands`, teamExecutionCommandReplySchema, command)
+    const command = this.commandInput(raw)
+    if (command.kind === 'claim') {
+      const cutover = await this.cutover().task(command.task)
+      if (cutover && (cutover.state !== 'active' || command.cutoverAdmission?.operationId !== cutover.operationId || command.cutoverAdmission.manifestDigest !== cutover.manifestDigest)) throw new DesktopTeamError('CUTOVER_NOT_ACTIVE', 'Original imported task requires verified local activation before claiming')
+      if (!cutover && command.cutoverAdmission) throw new DesktopTeamError('CUTOVER_CHANGED', 'Original activation no longer belongs to this task')
+    }
+    const reply = await this.request(`${this.base}/commands`, teamExecutionCommandReplySchema, command)
     if (reply.commandId !== command.commandId) throw new DesktopTeamError('RECEIPT_MISMATCH', '执行命令身份不一致', true)
     this.receipt(command, reply.result); return reply
   }

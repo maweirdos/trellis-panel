@@ -43,6 +43,8 @@ import { TeamTaskExecutions } from './task-executions'
 import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
 import { teamTaskRefSchema } from '../../../src/shared/team-task-execution'
 import { TeamImports } from './imports'
+import { TeamCutovers } from './cutovers'
+import { TEAM_CUTOVERS_SQL } from './cutovers-schema'
 import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
 import { TeamExecutionInputs } from './execution-inputs'
@@ -102,6 +104,9 @@ export class TeamStoreCore {
     history: (...args) => this.executions.historyForPrincipal(...args),
     resolveOutput: (...args) => this.executions.resolveOutput(...args)
   })
+  private readonly cutovers = new TeamCutovers({ ...this.governanceHost,
+    inputs: (p, task) => this.taskInputs.read(p, { projectId: task.projectId, taskId: task.taskId, query: { spaceId: task.spaceId, taskCreatedAt: task.taskCreatedAt } })
+  })
   private readonly taskInputs = new TeamTaskInputs(this.governanceHost, this.governance, (...args) => this.databaseDelivery.validate(...args))
   private readonly db: DatabaseSync
   private readonly directory: string
@@ -151,9 +156,11 @@ export class TeamStoreCore {
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: (actor) => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
     transaction: (fn) => this.transaction(fn),
+    assertCutoverBind: (...args) => this.cutovers.assertBind(...args),
     assertNoExecutionWriter: (...args) => this.executions.assertNoWriter(...args)
   })
   private readonly executions = new TeamTaskExecutions({
+    assertCutoverClaim: (...args) => this.cutovers.assertClaim(...args),
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch'), authorizationRevision: Number(this.meta('authorizationRevision')) }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
@@ -298,6 +305,7 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 19) this.transaction(() => { this.db.exec(TEAM_IMPORTS_SQL); this.db.exec('PRAGMA user_version=20') })
       if (current >= 1 && current <= 20) this.transaction(() => { this.db.exec(TEAM_EXECUTION_INPUTS_SQL); this.db.exec('PRAGMA user_version=21') })
       if (current >= 1 && current <= 21) this.transaction(() => { this.db.exec(TEAM_JIRA_BUSINESS_HOOKS_SQL); this.db.exec('PRAGMA user_version=22') })
+      if (current >= 1 && current <= 22) this.transaction(() => { this.db.exec(TEAM_CUTOVERS_SQL); this.db.exec('PRAGMA user_version=23') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -385,7 +393,7 @@ export class TeamStoreCore {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
       const principal = this.authenticate(actor); authorize(principal)
-      if (['taskExecutionCommand', 'executionInputCommand'].includes(kind) && this.get('SELECT commandId FROM crux_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
+      if (['taskExecutionCommand', 'executionInputCommand', 'cutoverCommand'].includes(kind) && this.get('SELECT commandId FROM crux_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
       if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
@@ -667,6 +675,10 @@ export class TeamStoreCore {
     if (operation === 'taskExecutionArtifact') return this.executions.readArtifact(actor, teamTaskRefSchema.parse(raw.task), teamIdSchema.parse(raw.executionId), teamIdSchema.parse(raw.versionId))
     if (operation === 'taskExecutionCommand') return this.executions.command(actor, raw.body)
     if (operation === 'taskExecutionReconcile') return this.executions.reconcile(actor, raw.body)
+    if (operation === 'cutoverCommand') return this.cutovers.command(actor, raw.body)
+    if (operation === 'cutoverReconcile') return this.cutovers.reconcile(actor, raw.body)
+    if (operation === 'cutoverRead') return this.cutovers.read(principal, raw)
+    if (operation === 'cutoverTask') return this.cutovers.taskRead(principal, raw)
     if (operation === 'importCommand') return this.imports.command(actor, raw.body)
     if (operation === 'importReconcile') return this.imports.reconcile(actor, raw.body)
     if (operation === 'importNamespaces') return this.imports.namespaces(principal, raw)
@@ -734,6 +746,7 @@ export class TeamStoreCore {
       else if (kind === 'creationCommand') this.creations.authorizeReceipt(principal, result)
       else if (kind === 'codeResourceCommand') this.codeResources.authorizeReceipt(principal, result)
       else if (kind === 'taskMaterialCommand') this.taskMaterials.authorizeReceipt(principal, result)
+      else if (kind === 'cutoverCommand') this.cutovers.authorizeReceipt(principal, result)
       else if (kind === 'importCommand') this.imports.authorizeReceipt(principal, result)
       else if (kind === 'governanceCommand') this.governance.authorizeReceipt(principal, result)
       else if (kind === 'taskInputCommand') this.taskInputs.authorizeReceipt(principal, result)

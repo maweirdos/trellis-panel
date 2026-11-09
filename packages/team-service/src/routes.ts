@@ -14,6 +14,7 @@ import { registerTaskMaterialRoutes } from './task-materials-routes'
 import { registerContentRoutes } from './content-routes'
 import { registerGovernanceRoutes } from './governance-routes'
 import { registerImportRoutes } from './imports-routes'
+import { registerCutoverRoutes } from './cutovers-routes'
 import { registerJiraBusinessHookRoutes } from './jira-business-hooks-routes'
 
 const noBrowser = (request: FastifyRequest): void => { if (request.headers.origin !== undefined || request.cookies.tp_team_session) throw new TeamServiceError('FORBIDDEN', 'Device enrollment must be initiated by the local desktop client', 403) }
@@ -38,6 +39,7 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     await registerContentRoutes(api, store, auth)
     await registerGovernanceRoutes(api, store, auth)
     await registerImportRoutes(api, store, auth)
+    await registerCutoverRoutes(api, store, auth)
     await registerJiraBusinessHookRoutes(api, store, auth)
     api.get('/api/session', async (request) => ({ ok: true, value: auth.session(request) }))
     api.get('/api/identity', async (request) => ({ ok: true, value: await auth.identity(request) }))

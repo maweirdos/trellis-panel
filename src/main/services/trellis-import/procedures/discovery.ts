@@ -125,6 +125,7 @@ export class TrellisImportDiscovery {
     for (const path of ['.trellis/config.yaml', '.trellis/config.yml', '.trellis/.version', '.trellis/.template-hashes.json', '.codex/config.toml']) await add(path, kinds('configuration', 'other', 'root', 'metadata-only'))
     for (const path of ['AGENTS.md', 'AGENTS.override.md', 'CLAUDE.md']) await add(path, kinds('root-instruction', 'root-instruction', 'root'))
     for (const path of ['.codex/hooks.json', '.claude/settings.json']) await add(path, kinds('hook', 'hook', 'root'))
+    await add('.claude/settings.local.json', kinds('hook', 'hook', 'root', 'metadata-only'))
     for (const base of ['.codex', '.claude', '.agents']) {
       await walk(`${base}/agents`, kinds('agent', 'agent', 'root'), /\.(?:md|toml|json|ya?ml)$/i)
       // Only definition directories; never recurse through the platform root/history.

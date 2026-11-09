@@ -5,6 +5,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { JSONRPCNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { withDesktopTeamService } from '../team-desktop'
+import { EditorWorkflowSessionError, EditorWorkflowSessions } from './editor-workflow-session'
+import { editorWorkflowSessionBindSchema, editorWorkflowHookContextSchema, editorWorkflowUnavailableSchema, EDITOR_WORKFLOW_ERROR_CODES } from '../../../shared/editor-workflow-session'
 import { teamTaskProgressStateSchema } from '../../../shared/team-task-progress'
 import { cruxTransitionTaskInputSchema } from '../../../shared/crux-schema'
 import { teamExecutionWorkflowRefSchema, teamExecutionExecutorSchema, teamExecutionSourceRefSchema, teamExecutionNativeStateSchema, teamExecutionFinalizationSchema } from '../../../shared/team-task-execution'
@@ -62,6 +64,7 @@ function failure(error: unknown): { content: [{ type: 'text'; text: string }]; s
 export class EditorTaskMcpBridge {
   private readonly sessions = new Map<string, EditorSession>()
   private withService: typeof withDesktopTeamService = withDesktopTeamService
+  private readonly workflowSessions = new EditorWorkflowSessions(() => this.withService)
 
   configure(withService: typeof withDesktopTeamService): void { this.withService = withService }
 
@@ -76,7 +79,7 @@ export class EditorTaskMcpBridge {
     let server: McpServer | undefined
     let transport: StreamableHTTPServerTransport | undefined
     try {
-      server = this.server(sessionKey)
+      server = this.server(sessionKey, digest(request.headers.authorization ?? ''))
       transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
       await server.connect(transport)
       await transport.handleRequest(request, response, body)
@@ -91,12 +94,15 @@ export class EditorTaskMcpBridge {
   close(): void {
     for (const session of this.sessions.values()) session.abort.abort()
     this.sessions.clear()
+    this.workflowSessions.close()
   }
 
-  private server(sessionKey: string): McpServer {
+  private server(sessionKey: string, credentialKey: string): McpServer {
     const server = new McpServer({ name: 'trellis-editor-tasks', version: '1.0.0' }, { maxToolInputElements: 128 })
     const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     const mutation = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    server.registerTool('team_editor_session_bind', { description: '将显式原生 provider/session 绑定到原团队连接、完整任务身份、已捕获 execution/input 与 root/role 节点。只建立本机只读选择，首次 expectedRevision=0，重绑须当前修订；不领取、不捕获、不授权目录。', inputSchema: editorWorkflowSessionBindSchema, annotations: mutation }, async input => this.workflowCall(() => this.workflowSessions.bind(credentialKey, input)))
+    server.registerTool('team_editor_hook_context', { description: '按显式原生 session 读取 root 或指定 role 的固定正文。Codex 子代理传父 session_id 和明确 role；角色只选上下文。缺绑定/角色、旧代次、权限变化或 required 正文不全均明确失败。', inputSchema: editorWorkflowHookContextSchema, annotations: readOnly }, async input => this.workflowCall(() => this.workflowSessions.context(credentialKey, input)))
     server.registerTool('team_tasks_list', { description: '列出当前账号和设备可见的团队任务。返回的是当前团队服务快照，不代表已领取或拥有写入权。', inputSchema: z.object({ includeClosed: z.boolean().optional().default(false) }).strict(), annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => {
       const snapshot = await service.cruxSnapshot(binding.connectionId, { expectedInstanceId: binding.instanceId })
       this.assertSnapshot(binding, snapshot)
@@ -115,6 +121,7 @@ export class EditorTaskMcpBridge {
       if (view.task.projectId !== binding.projectId || view.epoch !== binding.epoch) throw new Error('执行视图已切换到另一服务世代')
       return { binding: this.publicBinding(binding), view }
     })))
+    server.registerTool('team_cutover_check', { description: '只读核对当前原导入任务的活动迁移、原本机安装日志和实际连接器摘要；调用者不能提供路径或静默授权。', inputSchema: taskInput, annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => ({ binding: this.publicBinding(binding), admission: await service.cutoverCheck({ connectionId: binding.connectionId, task: taskRef(binding, input) }) }))))
     server.registerTool('team_task_execution_history', { description: '读取当前团队服务保存的指定执行历史和回执。', inputSchema: historyInput, annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => ({ binding: this.publicBinding(binding), history: await service.executionHistory({ connectionId: binding.connectionId, task: taskRef(binding, input), executionId: input.executionId }) }))))
     server.registerTool('team_task_execution_input', { description: '读取原 execution 已捕获的固定输入 digest、规则与资料 refs；传 selectionId 读取同一输入的固定资源正文。不会领取、捕获输入或授权本机目录。', inputSchema: historyInput.extend({ selectionId: executionInputSelectionIdSchema.optional() }).strict(), annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => ({ binding: this.publicBinding(binding), input: await service.executionInputRead({ connectionId: binding.connectionId, task: taskRef(binding, input), executionId: input.executionId, selectionId: input.selectionId }) }))))
     server.registerTool('team_task_claim', { description: '以 editor-owned 身份领取一个当前固定任务节点。服务端执行账号、设备、代次和竞争领取校验；重复 commandId 可安全重试。', inputSchema: claimInput, annotations: mutation }, async input => this.call(sessionKey, async binding => this.withService(async service => {
@@ -169,6 +176,16 @@ export class EditorTaskMcpBridge {
     })))
     server.registerTool('team_task_command_reconcile', { description: '核对原命令的团队服务回执。只接受同一任务、同一代次和同一命令正文，不会换 UUID 重发。', inputSchema: z.object({ task: taskInput, command: z.record(z.string(), z.unknown()) }).strict(), annotations: readOnly }, async input => this.call(sessionKey, async binding => this.withService(async service => ({ binding: this.publicBinding(binding), receipt: await service.executionReconcile({ connectionId: binding.connectionId, task: taskRef(binding, input.task), command: input.command as never }) }))))
     return server
+  }
+
+  private async workflowCall<T>(action: () => Promise<T>): Promise<ReturnType<typeof result> | ReturnType<typeof failure>> {
+    try { return result(await action()) }
+    catch (error) {
+      const reason = error instanceof EditorWorkflowSessionError ? error.reason : error instanceof z.ZodError ? 'invalid-request' : 'context-unavailable'
+      const unavailable = editorWorkflowUnavailableSchema.parse({ status: 'unavailable', reason, code: EDITOR_WORKFLOW_ERROR_CODES[reason],
+        message: error instanceof EditorWorkflowSessionError ? error.message : 'The fixed editor context could not be verified; inspect the current binding and required inputs' })
+      return { ...result(unavailable), isError: true }
+    }
   }
 
   private async call<T>(key: string, action: (binding: EditorBinding) => Promise<T>): Promise<ReturnType<typeof result> | ReturnType<typeof failure>> {

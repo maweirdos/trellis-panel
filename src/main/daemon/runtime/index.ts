@@ -30,6 +30,8 @@ import { createHash } from 'node:crypto'
 import { privateNativeRead, privateNativeSend, privateNativeControl, privateNativeSession } from '../../services/private-conversations/native'
 import { withPrivateAcpOwner } from '../../services/acp/private-access'
 import { configurePrivateNativeSession, recoverPrivateNativeModel } from '../../services/private-conversations/configuration'
+import { processIdentity } from '../native'
+import { WorkflowCutoverCoordinator } from '../../services/workflow-cutover/coordinator'
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
 import { NativeTaskExecutions } from './task-execution'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
@@ -73,7 +75,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   })
   const blobs = new RuntimeBlobs(join(ports.directory, 'runtime-blobs'))
   const commands = new RuntimeCommands(join(ports.directory, 'runtime-commands'), ports.epoch, ports.assertOwner)
-  const taskPreparation = new NativeTaskPreparation({ directory: ports.directory, workcopies,
+  const taskPreparation = new NativeTaskPreparation({ directory: ports.directory, teamDataDirectory: join(ports.userData ?? ports.directory, 'team-platform'), workcopies,
     assertOwner() { ports.assertOwner(); ports.assertAuthority(); ports.assertAdmission?.() },
     assertCurrent(grant) {
       if (!ports.assertWorkspaceGrant) throw new DaemonError('E_UNAVAILABLE', 'Native task preparation needs the retained workspace grant owner.')
@@ -88,6 +90,20 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       return action(sender.executionRequest(task, assertCurrent))
     },
     assertLegacyAvailable: assertNativePreparationAvailable
+  })
+  const workflowCutover = new WorkflowCutoverCoordinator({ dataDir: join(ports.userData ?? ports.directory, 'team-platform'), accessDescriptorPath: join(ports.userData ?? ports.directory, 'access-endpoint.json'), workcopies, processIdentity,
+    assertCurrent(authority) {
+      ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceGrant?.(authority.grant); authority.assertProduct()
+      ports.assertWorkspaceAdmission?.(authority.grant.root, 'runtime.workflowCutover')
+      if (released) throw new DaemonError('E_UNAVAILABLE', 'Native cutover authority is released')
+    },
+    assertLegacyAvailable: assertNativePreparationAvailable,
+    withTransport: async (pin, assertCurrent, task, action) => {
+      const sender = new NativeTaskProgressSender(join(ports.userData ?? ports.directory, 'team-platform'), { workspaceKey: pin.workspaceKey,
+        taskId: task.taskId, spaceId: task.spaceId, connectionId: pin.connectionId, origin: pin.origin, pairingId: pin.pairingId,
+        ownerId: pin.actorId, deviceId: pin.deviceId, projectId: pin.projectId, epoch: pin.epoch, instanceId: pin.instanceId, handlerId: pin.actorId })
+      return action(sender.cutoverRequest(assertCurrent))
+    }
   })
   const events = new RuntimeEvents(ports.epoch)
   const taskExecutions = new NativeTaskExecutions({ directory: ports.directory, workcopies, preparation: taskPreparation,
@@ -191,6 +207,10 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
+      case 'runtime.workflowCutover': {
+        if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Workflow cutover requires a protected native process and authenticated directory grant')
+        return workflowCutover.execute(root, runtimeBodies[method].parse(raw), { ...context.native, grant: context.workspace })
+      }
       case 'runtime.taskPreparation': {
         const input = runtimeBodies[method].parse(raw)
         if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Task preparation requires the authenticated native process and original workspace grant.')
@@ -406,13 +426,14 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         const taskControl = isBoundedNativeTaskControl(method, payload)
         const root = context.workspace?.root ?? (global || taskControl ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
-        if (context.workspace && method !== 'runtime.taskPreparation' && method !== 'runtime.taskExecution') observeWorkspace(root, context.workspace.revision)
+        if (context.workspace && method !== 'runtime.workflowCutover' && method !== 'runtime.taskPreparation' && method !== 'runtime.taskExecution') observeWorkspace(root, context.workspace.revision)
         let value: unknown
         switch (method) {
           case 'runtime.command': {
             const commandId = runtimeRequests['runtime.command'].parse(parsed).commandId
             let productReceipt = false
             value = commands.inspect(root, commandId, originalMethod => {
+              if (originalMethod === 'runtime.workflowCutover') workflowCutover.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
               if (originalMethod === 'runtime.taskPreparation') taskPreparation.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
               if (originalMethod === 'runtime.taskExecution') {
                 if (!context.native) throw new DaemonError('E_DENIED', 'Original product command requires native authority')
@@ -439,6 +460,12 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
               const grant = context.workspace ?? taskExecutions.retainedGrant(request.dispatchId)
               await taskExecutions.assertAuthority(root, request, { ...native, grant })
             }
+            const cutover = bodyMethod === 'runtime.workflowCutover' ? runtimeBodies['runtime.workflowCutover'].parse(input) : undefined
+            const cutoverAuthority = cutover && context.native && context.workspace ? { actor: structuredClone(context.native.actor), grant: structuredClone(context.workspace), assertProduct: context.native.assertProduct.bind(context.native) } : undefined
+            if (cutover) {
+              if (!cutoverAuthority || !context.commandId) throw new DaemonError('E_DENIED', 'Native workflow cutover requires protected process, grant and original command UUID')
+              workflowCutover.authorizeCommand(root, context.commandId, cutover, cutoverAuthority)
+            }
             const preparation = bodyMethod === 'runtime.taskPreparation' ? runtimeBodies['runtime.taskPreparation'].parse(input) : undefined
             const preparationAuthority = preparation && context.native && context.workspace ? {
               actor: structuredClone(context.native.actor), grant: structuredClone(context.workspace), assertProduct: context.native.assertProduct.bind(context.native)
@@ -449,7 +476,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
               if (preparation.operation === 'prepare' && preparation.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
               taskPreparation.assertAuthority(root, preparation, preparationAuthority)
             }
-            const mutation = method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? ['prepare', 'database-delivery'].includes(runtimeBodies['runtime.taskPreparation'].parse(input).operation) : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
+            const mutation = method === 'runtime.workflowCutover' ? cutover?.operation !== 'inspect' && cutover?.operation !== 'propose' : method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? ['prepare', 'database-delivery'].includes(runtimeBodies['runtime.taskPreparation'].parse(input).operation) : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
             if (closed && mutation && !taskControl && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root, context)) }
@@ -457,7 +484,8 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
                 if (error instanceof DaemonError) throw error
                 if (error instanceof z.ZodError) throw new DaemonError('E_INVALID_ARG', 'Runtime input violates the original facade contract.')
                 const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
-                const conflict = ['E_CONFLICT', 'SCOPE_CHANGED', 'STALE_PREVIEW', 'REVISION_CONFLICT', 'COMMAND_PAYLOAD_CONFLICT', 'MATERIAL_CHANGED'].includes(code)
+                const uncertain = !!error && typeof error === 'object' && 'outcomeUnknown' in error && error.outcomeUnknown === true
+                const conflict = !uncertain && (code.startsWith('CUTOVER_') || ['E_CONFLICT', 'SCOPE_CHANGED', 'STALE_PREVIEW', 'REVISION_CONFLICT', 'COMMAND_PAYLOAD_CONFLICT', 'MATERIAL_CHANGED'].includes(code))
                 throw new DaemonError(conflict ? 'E_CONFLICT' : code === 'INVALID_INPUT' ? 'E_INVALID_ARG' : code === 'CAPABILITY_UNAVAILABLE' ? 'E_UNAVAILABLE' : 'E_UNKNOWN', error instanceof Error ? error.message.slice(0, 400) : 'Runtime outcome requires inspection.', conflict || ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'].includes(code) ? 'not-admitted' : 'unknown')
               }
             }
@@ -467,9 +495,10 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             } else value = await action()
             // A concurrent duplicate may have joined the first process's pending
             // command before that process published its retained binding.
+            if (cutover && cutoverAuthority && context.commandId) workflowCutover.assertReceiptAuthority(root, context.commandId, cutoverAuthority)
             if (preparation && preparationAuthority) {
               taskPreparation.assertAuthority(root, preparation, preparationAuthority)
-              if (preparation.operation === 'prepare') taskPreparation.assertReceiptAuthority(root, preparation.preparationId, preparationAuthority)
+              if (preparation.operation === 'prepare') await taskPreparation.assertFreshCutover(root, preparation.preparationId, preparationAuthority)
             }
           }
         }

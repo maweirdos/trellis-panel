@@ -20,6 +20,7 @@ import { GITLAB_DAEMON } from '../../../shared/gitlab-integration'
 import { DINGTALK_DAEMON } from '../../../shared/dingtalk-integration'
 import { isBoundedWorkcopyCleanup } from '../../../shared/workcopy-use'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
+import { nativeWorkflowCutoverRequestSchema, type NativeWorkflowCutoverRequest } from '../../../shared/native-workflow-cutover'
 import { nativeTaskPreparationRequestSchema } from '../../../shared/native-task-preparation'
 import { withDesktopTeamService } from '../team-desktop'
 
@@ -208,11 +209,15 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
   let abort: (() => void) | undefined
   try {
     if (admissionClosed && !cleanup) throw new DaemonError('E_UNAVAILABLE', '桌面正在退出，尚未接纳新操作。')
+    if (method === 'runtime.workflowCutover') {
+      const cutover = nativeWorkflowCutoverRequestSchema.parse(body)
+      if (cutover.operation === 'preview' || cutover.operation === 'propose') await withDesktopTeamService(service => service.authorizeTaskProgress(cutover.pin.connectionId))
+    }
     if (method === 'runtime.taskPreparation') {
       const preparation = nativeTaskPreparationRequestSchema.parse(body)
       if (preparation.operation === 'prepare') await withDesktopTeamService(service => service.authorizeTaskProgress(preparation.pin.connectionId))
     }
-    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.taskExecution' || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.command' || method === 'runtime.workflowCutover' || method === 'runtime.taskExecution' || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = workcopyCleanup || taskControl ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)
@@ -376,4 +381,9 @@ export function detachRuntimeObservers(): void { for (const stop of [...observer
 export function selectRuntimeObservationRoot(root: string | null): void {
   for (const [observed, stop] of observers) if (!root || canonicalDirectory(observed) !== canonicalDirectory(root)) stop()
   if (root && ![...observers.keys()].some(observed => canonicalDirectory(observed) === canonicalDirectory(root))) observeRuntime(root)
+}
+
+/** Main-only native facade. No root or native authority is accepted from a renderer request body. */
+export function nativeWorkflowCutover(root: string, request: NativeWorkflowCutoverRequest, commandId: string = randomUUID()): Promise<unknown> {
+  return nativeDomainCall(root, 'runtime.workflowCutover', nativeWorkflowCutoverRequestSchema.parse(request), commandId)
 }

@@ -16,6 +16,7 @@ import type { executionCreationRefSchema } from '../../../src/shared/team-execut
 import { executionInputSchema } from '../../../src/shared/team-execution-input'
 
 type Host = Pick<CruxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
+  assertCutoverClaim(principal: StorePrincipal, command: Extract<TeamExecutionCommand, { kind: 'claim' }>): void
   inputs(principal: StorePrincipal, task: TeamTaskRef): TaskInputRead
   dependency(principal: StorePrincipal, task: TeamTaskRef, ref: Extract<z.infer<typeof teamExecutionDependencySchema>, { kind: 'confirmed-document' }>): { text: string; title: string; withdrawn: boolean }
   creation(principal: StorePrincipal, task: TeamTaskRef, ref: z.infer<typeof executionCreationRefSchema>): { text: string; title: string }
@@ -259,6 +260,7 @@ export class TeamTaskExecutions {
           if (head.activeExecutionId) fail('EXECUTION_WRITER_CONFLICT', 'Another execution owns this task')
           const progress = this.host.get('SELECT epoch,fence,bindingJson FROM crux_task_progress WHERE projectId=? AND taskId=?', ctx.ref.projectId, ctx.ref.taskId)
           if (progress?.bindingJson && progress.epoch === command.expectedEpoch && progress.fence === taskProgressFence(this.host, ctx.ref.projectId, ctx.task).fence) fail('EXECUTION_WRITER_CONFLICT', 'A v1 reporting binding already owns this task')
+          this.host.assertCutoverClaim(principal, command)
           this.checkInputs(ctx, command.inputBundle)
           if (command.predecessorExecutionId) {
             const previous = this.history(actor, ctx.ref, command.predecessorExecutionId)
