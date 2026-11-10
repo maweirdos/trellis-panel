@@ -75,6 +75,7 @@ export async function requestGuiLifecycleStop(context: DaemonContext, attempt: L
   if (descriptor.identity.profileId !== context.identity.profileId || descriptor.identity.installationId !== context.identity.installationId ||
     descriptor.owner.userId !== context.owner.userId) throw new DaemonError('E_DENIED', '桌面交接记录不属于目标安装。')
   if (!expected || !sameOwner(descriptor.owner, expected)) throw new DaemonError('E_CONFLICT', '原桌面代次已改变；旧确认不能关闭新的桌面。')
+  if (sameOwner(descriptor.owner, context.owner)) return
   const actual = await processIdentity(descriptor.owner.pid)
   if (!actual || !sameOwner(actual, descriptor.owner)) return
   await new Promise<void>((resolve, reject) => {
@@ -100,7 +101,7 @@ export async function developmentLifecycle(confirm: (input: LifecycleConfirmatio
   let guiOwner: ProcessOwner | null = null
   await runDaemonLifecycleWithDialog(context, {
     reason: 'development', targetBuild: currentDaemonBuild().sha256, launch: { id, owner: launcher }, confirm,
-    prepareAdditional: () => { guiOwner = capturedGuiLifecycleOwner(context); return prepareGuiTermination(context) },
+    prepareAdditional: () => { guiOwner = capturedGuiLifecycleOwner(context); return prepareGuiTermination(context, { recoverExitedLegacy: true }) },
     stopAdditional: attempt => requestGuiLifecycleStop(context, attempt, guiOwner)
   })
 }

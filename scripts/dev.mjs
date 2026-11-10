@@ -18,6 +18,13 @@ if (process.platform === 'win32' && process.env.CRUX_DEV_ABSOLUTE_ENTRY !== '1')
   process.exit(child.status ?? 1)
 }
 delete process.env.CRUX_DEV_ABSOLUTE_ENTRY
+const forwardedIndex = args.indexOf('--')
+const forwarded = forwardedIndex < 0 ? JSON.parse(process.env.ELECTRON_CLI_ARGS || '[]') : args.slice(forwardedIndex + 1)
+if (!Array.isArray(forwarded) || forwarded.some(value => typeof value !== 'string')) throw new Error('Electron arguments must be a string array')
+if (forwarded.some(value => value.startsWith('--trellis-role=') && value !== '--trellis-role=gui')) throw new Error('Development starts the GUI launcher only')
+const guiArgs = [...forwarded.filter(value => !value.startsWith('--trellis-role=')), '--trellis-role=gui-launcher']
+if (forwardedIndex < 0) args.push('--', ...guiArgs)
+else args.splice(forwardedIndex + 1, args.length, ...guiArgs)
 // electron-vite main rebuilds inherit this launch, renderer HMR does not create
 // a new one. The GUI binds it to this live launcher generation before stopping.
 process.env.CRUX_DEV_LAUNCH_ID = randomUUID()

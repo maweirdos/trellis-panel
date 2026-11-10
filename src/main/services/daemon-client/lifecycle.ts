@@ -23,7 +23,8 @@ export const lifecycleAttemptSchema = z.object({
   launch: z.object({ id: z.string().uuid(), owner: processOwnerSchema }).strict().optional(),
   phase: z.enum(['inspecting', 'awaiting-confirmation', 'cancelled', 'stopping', 'terminating', 'verifying', 'released', 'failed']),
   confirmed: z.boolean(), submitted: z.boolean(), admitted: z.boolean(), admissionRequested: z.boolean().optional(), admissionRetired: z.boolean().optional(),
-  startedAt: z.number().optional(), releasedAt: z.number().optional(), failure: z.string().max(400).optional()
+  startedAt: z.number().optional(), releasedAt: z.number().optional(), failure: z.string().max(400).optional(),
+  legacyGuiRecovery: z.object({ owner: processOwnerSchema, unmanagedDescendants: z.literal('unknown'), managedCleanup: z.enum(['pending', 'verified']) }).strict().optional()
 }).strict()
 export type LifecycleAttempt = z.infer<typeof lifecycleAttemptSchema>
 export interface LifecycleOptions {
@@ -256,11 +257,16 @@ async function run(context: DaemonContext, options: LifecycleOptions): Promise<L
     const failedCapture = captures.find(capture => capture.status === 'rejected')
     if (failedCapture?.status === 'rejected') throw failedCapture.reason
     const additionalScope = captures[1]?.status === 'fulfilled' ? captures[1].value : null
+    if (additionalScope?.legacyGuiRecovery) {
+      attempt.legacyGuiRecovery = { owner: additionalScope.legacyGuiRecovery.owner, unmanagedDescendants: 'unknown', managedCleanup: 'pending' }
+      save(context, attempt, options)
+    }
     const originalExitedBeforeBoot = captures[0]?.status === 'fulfilled' && captures[0].value?.exitedBeforeBoot === true
     // Older status has no activity contract. Never infer idle from zero jobs,
     // empty blockers or legacy/runtime authority.
-    const uncertain = attempt.admissionRetired === true || !status?.activity || status.activity.state === 'uncertain'
-    const liveScope = original && !originalExitedBeforeBoot || additionalScope && !additionalScope.exitedBeforeBoot
+    const uncertain = attempt.admissionRetired === true || !status?.activity || status.activity.state === 'uncertain' || additionalScope?.legacyGuiRecovery?.requiresConfirmation === true
+    const liveScope = original && !originalExitedBeforeBoot || additionalScope && !additionalScope.exitedBeforeBoot &&
+      (!additionalScope.legacyGuiRecovery || additionalScope.legacyGuiRecovery.requiresConfirmation)
     const needsConfirmation = Boolean(liveScope && (uncertain || status?.activity?.state === 'interruptible'))
     if (!attempt.confirmed && !attempt.admitted && needsConfirmation) {
       attempt.phase = 'awaiting-confirmation'; save(context, attempt, options)
@@ -349,6 +355,7 @@ async function run(context: DaemonContext, options: LifecycleOptions): Promise<L
     }
     attempt.phase = 'verifying'; save(context, attempt, options)
     await lifecycleDeadline(Promise.all(scopes.map(scope => scope.verify(nativeBudget(nativeDeadline)))), nativeDeadline, '原生退出范围核验失败。')
+    if (attempt.legacyGuiRecovery) attempt.legacyGuiRecovery.managedCleanup = 'verified'
     if (original) {
       const current = readLease(context)
       if (current && !sameLease(current, original)) throw new DaemonError('E_CONFLICT', '退出核验期间出现了另一个后台。')

@@ -75,6 +75,33 @@ original stop identities while adopting the new successor target. The original
 uninstaller may verify the 101-character `attemptId:targetSHA` receipt, but cannot
 create a replacement attempt, stop a new owner or revert the target fingerprint.
 
+
+GUI startup uses an internal `gui-launcher` role and a protected
+`--trellis-gui-contained=<nonce>` handoff. The native guardian creates the real
+GUI suspended inside `Global\CruxGui-<nonce>`, publishes its proof before resume,
+and watches the exact developer launcher handle. IDE termination therefore
+cleans the original GUI scope even before a successor starts. The headless
+launcher has separate sessionData and never acquires the GUI instance lock;
+only the contained root loads desktop composition after native membership checks.
+GUI creation preserves ordinary first-window visibility. Debugger arguments
+belong to the real GUI, not the launcher.
+
+The GUI Job permits the fixed daemon launcher to break away; that daemon is
+immediately created under its separate non-breakaway Job. GUI exit does not
+imply daemon exit. A new authenticated development launch stops the original
+daemon by its own owner/epoch and verifies its complete native scope.
+
+For a registered legacy GUI whose exact root has exited without a startup Job
+or retained capture, only authenticated development restart may reconcile its
+registered managed jobs and preserve unrecorded descendants as `unknown`.
+`prepareGuiTermination(context, {recoverExitedLegacy: true})` exposes that narrow
+policy; installation maintenance leaves it disabled. The attempt records
+`legacyGuiRecovery` with original owner, `unmanagedDescendants: unknown`, and
+managed cleanup state. Verification writes an original-owner history receipt;
+it does not authorize terminating unidentified descendants or replaying effects.
+A cancelled pre-lock development launch exits before publishing another GUI
+owner, preserving the original recovery target.
+
 ## Validation and error matrix
 
 | Condition | Required result |

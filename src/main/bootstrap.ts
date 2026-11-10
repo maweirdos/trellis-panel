@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 import { mkdirSync } from 'node:fs'
 import { dirname, join, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -13,7 +13,7 @@ const loadRole = createRequire(__filename)
 /** Role resolution must precede importing GUI composition or requesting its instance lock. */
 const roles = process.argv.filter((argument) => argument.startsWith('--trellis-role='))
 const role = roles.length ? roles[0].slice('--trellis-role='.length) : 'gui'
-if (roles.length > 1 || !['gui', 'daemon', 'control', 'maintenance'].includes(role)) {
+if (roles.length > 1 || !['gui', 'gui-launcher', 'daemon', 'control', 'maintenance'].includes(role)) {
   process.stderr.write('Invalid Trellis bootstrap role.\n'); app.exit(1)
 } else {
   const overrides = process.argv.filter((argument) => argument.startsWith('--trellis-user-data-base64='))
@@ -25,13 +25,31 @@ if (roles.length > 1 || !['gui', 'daemon', 'control', 'maintenance'].includes(ro
   }
   // Preserve the existing canonical userData, name and dev/prod behavior. Role paths are additive.
   const userData = app.getPath('userData')
-  if (role === 'gui') captureOnboarding(userData)
-  const roleDirectory = join(userData, 'daemon-v1', app.isPackaged ? 'production' : 'development', ['control', 'maintenance'].includes(role) ? `${role}-${randomUUID()}` : role)
+  const containedGui = role === 'gui' && process.argv.some(value => value.startsWith('--trellis-gui-contained='))
+  if (containedGui) captureOnboarding(userData)
+  const guiRole = role === 'gui' || role === 'gui-launcher'
+  const roleDirectory = join(userData, 'daemon-v1', app.isPackaged ? 'production' : 'development', guiRole && !containedGui ? `gui-launcher-${randomUUID()}` : ['control', 'maintenance'].includes(role) ? `${role}-${randomUUID()}` : role)
   mkdirSync(roleDirectory, { recursive: true })
   app.setPath('sessionData', roleDirectory)
-  if (role === 'gui') {
+  if (guiRole) {
     // Independently bundled; no static GUI imports are reachable from headless roles.
-    loadRole('./gui.js')
+    const originalArguments = process.argv.slice(1)
+    if (!containedGui) {
+      app.disableHardwareAcceleration()
+      // Keep the requested debugger port for the real GUI, not its headless launcher.
+      app.commandLine.removeSwitch('remote-debugging-port')
+      loadRole('node:inspector').close()
+    } else if (process.env.TPANEL_DEBUG_PORT) {
+      app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
+    }
+    const entry: { runGuiProcessBootstrap(args: string[]): Promise<boolean> } = loadRole('./gui-scope.js')
+    void entry.runGuiProcessBootstrap(originalArguments).then(contained => {
+      if (contained) loadRole('./gui.js')
+      else app.exit(0)
+    }).catch((error: unknown) => {
+      dialog.showErrorBox('桌面进程范围未就绪', error instanceof Error ? error.message : '请核验原启动范围后重试。')
+      app.exit(1)
+    })
   } else {
     let locked = true
     if (role === 'daemon') {

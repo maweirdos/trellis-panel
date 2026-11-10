@@ -11,12 +11,14 @@ import { DaemonError } from './errors'
 import { readBounded, writeAtomic } from './files'
 import { nativeResource, powershellPath, sameOwner } from './native'
 import { WINDOWS_WORKCOPY_COMMAND } from '../services/workcopy-use/windows-command'
+import { nativeJobProofSchema } from './job-proof'
 
 /** Capture is read-only. Arm only after consent or an authoritative idle admission.
  * dispose/disarm cancel a pending watchdog, never a termination already underway. */
 export interface DaemonTermination {
   /** Native kernel boot proof, never inferred from a missing root PID alone. */
   readonly exitedBeforeBoot?: true
+  readonly legacyGuiRecovery?: { owner: ProcessOwner; unmanagedDescendants: 'unknown'; requiresConfirmation: boolean }
   arm(graceMs: number, timeoutMs: number): Promise<void>
   disarm(): Promise<void>
   terminate(timeoutMs: number): Promise<void>
@@ -24,10 +26,7 @@ export interface DaemonTermination {
   dispose(): Promise<void>
 }
 const uuid = z.string().uuid()
-const proofSchema = z.object({
-  version: z.literal(1), nonce: uuid, jobName: z.string(), identity: daemonIdentitySchema,
-  root: processOwnerSchema, guardian: processOwnerSchema
-}).strict()
+const proofSchema = nativeJobProofSchema
 const processDetailsSchema = z.object({ owner: processOwnerSchema, argv: z.array(z.string()).max(256) })
 const inspectionSchema = z.object({ root: processDetailsSchema.nullable(), children: z.array(processDetailsSchema).max(4096), bootStartedAt: z.string().regex(/^[0-9]{1,19}$/).optional() })
 type ProcessDetails = z.infer<typeof processDetailsSchema>
@@ -234,12 +233,57 @@ function legacyJobs(context: DaemonContext, owner: ProcessOwner): Pick<Scope, 'j
   return { jobs, helpers, inventory, transports }
 }
 async function prepareScope(context: DaemonContext, owner: ProcessOwner, argv: string[], contained: boolean, jobs: Job[], helpers: ProcessOwner[], inventory: string[]): Promise<DaemonTermination> {
-  return controller({ root: owner, argv, contained, directory: context.directory, jobs, helpers, inventory })
+  return controller({ root: owner, argv, contained, directory: context.directory, jobs, helpers, inventory, recovering: contained })
 }
-async function legacyScope(context: DaemonContext, owner: ProcessOwner, inspection: z.infer<typeof inspectionSchema>): Promise<DaemonTermination> {
+export async function verifyGuiJobRoot(directory: string, proof: z.infer<typeof nativeJobProofSchema>): Promise<void> {
+  const scope = await controller({ root: proof.root, argv: [], contained: true, directory,
+    jobs: [{ name: proof.jobName, processes: [] }], helpers: [proof.guardian], inventory: [] })
+  await scope.dispose()
+}
+async function prepareGuiJob(context: DaemonContext, owner: ProcessOwner): Promise<DaemonTermination | null> {
+  for (const base of children(join(context.directory, 'gui-jobs'))) {
+    const file = join(base, 'proof.json')
+    if (!existsSync(file)) continue
+    const proof = proofSchema.parse(record(file))
+    if (!sameGeneration(proof.root, owner)) continue
+    if (proof.identity.profileId !== context.identity.profileId || proof.identity.installationId !== context.identity.installationId ||
+      proof.identity.mode !== context.identity.mode || proof.identity.userId !== context.identity.userId || proof.jobName !== `Global\\CruxGui-${proof.nonce}`) {
+      throw new DaemonError('E_DENIED', '桌面 Job 见证不属于当前安装或配置。')
+    }
+    return prepareScope(context, owner, [], true, [{ name: proof.jobName, processes: [] }], [proof.guardian], [])
+  }
+  return null
+}
+function legacyCaptureFile(context: DaemonContext, owner: ProcessOwner): string {
   const key = createHash('sha256').update(JSON.stringify([context.identity.installationId, context.identity.profileId,
     owner.pid, (BigInt(owner.startedAt) / 10n).toString(), owner.userId, owner.executable.toLowerCase()])).digest('hex')
-  const captureFile = join(context.directory, `native-lifecycle-scope-${key}.json`)
+  return join(context.directory, `native-lifecycle-scope-${key}.json`)
+}
+async function guiScope(context: DaemonContext, owner: ProcessOwner, inspection: z.infer<typeof inspectionSchema>, recoverExitedLegacy: boolean): Promise<DaemonTermination> {
+  const job = await prepareGuiJob(context, owner)
+  if (job) return job
+  const beforeBoot = inspection.bootStartedAt && BigInt(owner.startedAt) > 0n && BigInt(owner.startedAt) < BigInt(inspection.bootStartedAt)
+  if (inspection.root || beforeBoot || existsSync(legacyCaptureFile(context, owner)) || !recoverExitedLegacy) {
+    return legacyScope(context, owner, inspection)
+  }
+  // A dead old GUI is not the daemon's execution authority. Reconcile its
+  // registered managed jobs; preserve the unrecorded legacy effects as unknown.
+  const { transports: _transports, ...registered } = legacyJobs(context, owner)
+  const scope = await controller({ root: owner, argv: [], contained: false, directory: context.directory, ...registered, recovering: true })
+  const key = createHash('sha256').update(JSON.stringify(owner)).digest('hex')
+  return {
+    ...scope,
+    legacyGuiRecovery: { owner, unmanagedDescendants: 'unknown', requiresConfirmation: registered.jobs.length > 0 },
+    async verify(timeoutMs) {
+      await scope.verify(timeoutMs)
+      writeAtomic(join(context.directory, `legacy-gui-recovery-${key}.json`), JSON.stringify({
+        version: 1, identity: context.identity, owner, rootExited: true, managedJobsVerifiedAt: Date.now(), unmanagedDescendants: 'unknown'
+      }))
+    }
+  }
+}
+async function legacyScope(context: DaemonContext, owner: ProcessOwner, inspection: z.infer<typeof inspectionSchema>): Promise<DaemonTermination> {
+  const captureFile = legacyCaptureFile(context, owner)
   if (!inspection.root) {
     if (inspection.bootStartedAt && BigInt(owner.startedAt) > 0n && BigInt(owner.startedAt) < BigInt(inspection.bootStartedAt)) {
       // The native controller independently checks this kernel boot witness.
@@ -302,7 +346,7 @@ export async function prepareDaemonTermination(context: DaemonContext, lease: Da
   return legacyScope(context, lease.owner, inspection)
 }
 /** Main-owned installation discovery only; no renderer paths/PIDs are accepted. */
-export async function prepareGuiTermination(context: DaemonContext): Promise<DaemonTermination | null> {
+export async function prepareGuiTermination(context: DaemonContext, options?: { recoverExitedLegacy?: boolean }): Promise<DaemonTermination | null> {
   const target = context.lifecycleInstallation
   const appPath = target?.appPath ?? realpathSync(app.getAppPath())
   const executable = target?.executable ?? realpathSync(process.execPath)
@@ -324,8 +368,20 @@ export async function prepareGuiTermination(context: DaemonContext): Promise<Dae
   // Only these protected, same-scope owners may extend the current executable.
   const executables = [...new Map([executable, ...(guiOwner ? [guiOwner.executable] : []), ...(lease ? [lease.owner.executable] : [])]
     .map(path => { const canonical = realpathSync.native(path); return [canonical.toLowerCase(), canonical] as const })).values()]
+  let ownLauncher: ProcessOwner | undefined
+  const ownMarker = process.argv.find(value => value.startsWith('--trellis-gui-contained='))?.slice('--trellis-gui-contained='.length)
+  if (ownMarker) {
+    uuid.parse(ownMarker)
+    const proof = proofSchema.parse(record(join(context.directory, 'gui-jobs', ownMarker, 'proof.json')))
+    if (!sameGeneration(proof.root, context.owner) || proof.identity.profileId !== context.identity.profileId ||
+      proof.identity.installationId !== context.identity.installationId || proof.identity.userId !== context.identity.userId) {
+      throw new DaemonError('E_DENIED', '当前桌面启动器见证不属于本代次。')
+    }
+    ownLauncher = proof.controller
+  }
   const discovered = z.object({ candidates: z.array(processDetailsSchema).max(8) }).parse(await query('discover-gui', {
     executables, appPath: target || app.isPackaged ? null : appPath, excludePid: process.pid,
+    excludeOwner: ownLauncher,
     userId: context.identity.userId, userData: context.userData, guiOwner, daemonOwner: lease?.owner,
     allowDefaultProfile: existsSync(defaultProfile) && realpathSync.native(defaultProfile).toLowerCase() === realpathSync.native(context.userData).toLowerCase()
   }))
@@ -336,28 +392,29 @@ export async function prepareGuiTermination(context: DaemonContext): Promise<Dae
     || previous.identity.userId !== context.identity.userId)) throw new DaemonError('E_DENIED', 'Retained GUI scope belongs to another installation.')
   if (discovered.candidates.length > 1) throw new DaemonError('E_CONFLICT', 'Multiple exact GUI owners require explicit reconciliation.')
   const targetGui: ProcessDetails | undefined = discovered.candidates[0]
-  if (guiOwner && (!targetGui || !sameGeneration(guiOwner, targetGui.owner)) && (!previous || !sameGeneration(guiOwner, previous.owner))) {
+  if (guiOwner && targetGui && !sameGeneration(guiOwner, targetGui.owner) && (!previous || !sameGeneration(guiOwner, previous.owner))) {
     const registered = inspectionSchema.parse(await query('inspect', { root: guiOwner, recovering: true }))
     if (registered.root) throw new DaemonError('E_CONFLICT', '原登记桌面仍在运行，不能跳过它接管另一个桌面。')
-    const registeredScope = await legacyScope(context, guiOwner, registered)
+    const registeredScope = await guiScope(context, guiOwner, registered, options?.recoverExitedLegacy === true)
     try { await registeredScope.verify(1000) } finally { await registeredScope.dispose() }
   }
   if (previous?.state === 'captured' && targetGui && !sameGeneration(previous.owner, targetGui.owner)) {
     const oldInspection = inspectionSchema.parse(await query('inspect', { root: previous.owner, recovering: true }))
     if (oldInspection.root) throw new DaemonError('E_CONFLICT', 'The original GUI scope is still active alongside another GUI.')
-    const oldScope = await legacyScope(context, previous.owner, oldInspection)
+    const oldScope = await guiScope(context, previous.owner, oldInspection, options?.recoverExitedLegacy === true)
     try { await oldScope.verify(1000) } finally { await oldScope.dispose() }
     if (JSON.stringify(captureSchema.parse(record(captureFile))) !== JSON.stringify(previous)) throw new DaemonError('E_CONFLICT', 'The original GUI capture changed during reconciliation.')
     previous.state = 'exited'
     writeAtomic(captureFile, JSON.stringify(previous))
   }
-  const owner = previous?.state === 'captured' ? previous.owner : targetGui?.owner
+  const owner = previous?.state === 'captured' ? previous.owner : targetGui?.owner ?? guiOwner
   if (!owner) return null
-  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, recovering: previous?.state === 'captured' }))
+  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, recovering: true }))
   if (targetGui && inspection.root && JSON.stringify(inspection.root.argv) !== JSON.stringify(targetGui.argv)) throw new DaemonError('E_CONFLICT', 'Original GUI changed during capture.')
   // A dead GUI root does not erase its previously captured renderer/transport
   // obligation. Reopen the original durable scope before permitting release.
-  const scope = await legacyScope(context, owner, inspection)
+  const scope = await guiScope(context, owner, inspection, options?.recoverExitedLegacy === true)
+  if (scope.legacyGuiRecovery) return scope
   const capture = captureSchema.parse({ version: 1, identity: context.identity, owner, state: 'captured' })
   const original = JSON.stringify(capture)
   try { writeAtomic(captureFile, original) } catch (error) { await scope.dispose(); throw error }

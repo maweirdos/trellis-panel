@@ -245,13 +245,14 @@ public static class CruxLifecycleNative {
     foreach(char c in value) { if(c=='\\') { slashes++; continue; } result.Append('\\',c=='"'?slashes*2+1:slashes); result.Append(c); slashes=0; }
     return result.Append('\\',slashes*2).Append('"').ToString();
   }
-  static PROCESS_INFORMATION Create(string executable,string[] args,IntPtr job) {
+  static PROCESS_INFORMATION Create(string executable,string[] args,IntPtr job,bool breakaway=false,bool gui=false) {
     var line=new StringBuilder(Quote(executable)); foreach(string arg in args) line.Append(' ').Append(Quote(arg));
     if(line.Length>=32767) throw new ArgumentException("arguments");
-    STARTUPINFOEX startup=new STARTUPINFOEX(); startup.startup.cb=(uint)Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.startup.flags=1;
+    STARTUPINFOEX startup=new STARTUPINFOEX(); startup.startup.cb=(uint)Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.startup.flags=gui?0u:1u;
     IntPtr size=IntPtr.Zero,value=IntPtr.Zero; bool initialized=false;
     try {
-      uint flags=0x08000200; // NO_WINDOW | NEW_PROCESS_GROUP, never inherit control handles.
+      uint flags=gui?0x00000200u:0x08000200u; // GUI controls its own first show; helpers remain console-less.
+      if(breakaway) flags|=0x01000000;
       if(job!=IntPtr.Zero) {
         InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref size); startup.attributes=Marshal.AllocHGlobal(size);
         if(!InitializeProcThreadAttributeList(startup.attributes,1,0,ref size)) throw Failure("attributes"); initialized=true;
@@ -265,12 +266,15 @@ public static class CruxLifecycleNative {
     } finally { if(initialized) DeleteProcThreadAttributeList(startup.attributes); if(startup.attributes!=IntPtr.Zero) Marshal.FreeHGlobal(startup.attributes); if(value!=IntPtr.Zero) Marshal.FreeHGlobal(value); }
   }
   public static Owner Detach(string executable,string[] args) {
-    PROCESS_INFORMATION info=Create(executable,args,IntPtr.Zero);
+    return Detach(executable,args,false);
+  }
+  public static Owner Detach(string executable,string[] args,bool breakaway) {
+    PROCESS_INFORMATION info=Create(executable,args,IntPtr.Zero,breakaway);
     try { return Identity(info.process,(int)info.pid); } finally { CloseHandle(info.thread); CloseHandle(info.process); }
   }
   public sealed class Guardian : IDisposable {
     public CapturedJob job; public CapturedProcess root; IntPtr thread;
-    public Guardian(string name,string executable,string[] args) {
+    public Guardian(string name,string executable,string[] args,bool allowBreakaway=false) {
       IntPtr handle=CreateJobObjectW(IntPtr.Zero,name); int error=Marshal.GetLastWin32Error();
       if(handle==IntPtr.Zero) throw Failure("job-create");
       if(error==183) { CloseHandle(handle); throw new InvalidOperationException("job-exists"); }
@@ -278,9 +282,9 @@ public static class CruxLifecycleNative {
       try {
         // The independent guardian owns crash containment. Neither breakaway
         // flag is set; loss of its final Job handle cannot orphan descendants.
-        EXTENDED_LIMIT limits=new EXTENDED_LIMIT(); limits.basic.flags=0x2000;
+        EXTENDED_LIMIT limits=new EXTENDED_LIMIT(); limits.basic.flags=allowBreakaway?0x2800u:0x2000u;
         if(!SetInformationJobObject(handle,9,ref limits,(uint)Marshal.SizeOf(typeof(EXTENDED_LIMIT)))) throw Failure("job-limits");
-        PROCESS_INFORMATION info=Create(executable,args,handle); thread=info.thread;
+        PROCESS_INFORMATION info=Create(executable,args,handle,false,allowBreakaway); thread=info.thread;
         root=new CapturedProcess(info.process,Identity(info.process,(int)info.pid));
       } catch { Dispose(); throw; }
     }

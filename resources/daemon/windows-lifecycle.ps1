@@ -1,8 +1,10 @@
-param([ValidateSet('guardian','controller','discover-gui','inspect')][string]$Mode, [string]$SpecPath)
+param([ValidateSet('guardian','gui-guardian','gui-wait','controller','discover-gui','inspect')][string]$Mode, [string]$SpecPath)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
-[Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
-[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+if ($Mode -ne 'gui-guardian') {
+  [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
+  [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+}
 Add-Type -Path ([IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle-native.cs'))
 function Read-Record([string]$file, [int]$limit = 1048576) {
   $item = Get-Item -LiteralPath $file -Force
@@ -59,26 +61,51 @@ function Same-Arguments($actual, $expected) {
   for ($i=0; $i -lt $actual.Count; $i++) { if ($actual[$i] -cne $expected[$i]) { return $false } }
   return $true
 }
-if ($Mode -eq 'guardian') {
+if ($Mode -in @('guardian','gui-guardian')) {
   $guardian = $null
   try {
     $spec = Read-Record $SpecPath
     $nonce = [Guid]::Parse($spec.nonce).ToString()
-    if ($spec.version -ne 1 -or $spec.jobName -cne ('Global\CruxDaemon-' + $nonce)) { throw 'launch-scope' }
-    $guardian = New-Object CruxLifecycleNative+Guardian([string]$spec.jobName, [string]$spec.executable, [string[]]$spec.args)
+    $prefix = if ($Mode -eq 'gui-guardian') { 'Global\CruxGui-' } else { 'Global\CruxDaemon-' }
+    if ($spec.version -ne 1 -or $spec.jobName -cne ($prefix + $nonce)) { throw 'launch-scope' }
+    if ($Mode -eq 'gui-guardian') {
+      $guiController = [CruxLifecycleNative]::Capture((Owner $spec.controller))
+      if (-not $guiController -or $guiController.owner.userId -cne $spec.identity.userId) { throw 'launch-scope' }
+    }
+    $guardian = New-Object CruxLifecycleNative+Guardian([string]$spec.jobName, [string]$spec.executable, [string[]]$spec.args, ($Mode -eq 'gui-guardian'))
     $proof = @{version=1; nonce=$nonce; jobName=$spec.jobName; identity=$spec.identity; root=$guardian.root.owner; guardian=[CruxLifecycleNative]::Inspect($PID)}
+    if ($Mode -eq 'gui-guardian') { $proof.controller=$guiController.owner }
     Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'proof.json')) $proof
     $guardian.Resume()
-    while (-not $guardian.root.Exited) { [Threading.Thread]::Sleep(50) }
+    while (-not $guardian.root.Exited -and (-not $spec.watchController -or -not $guiController.Exited)) { [Threading.Thread]::Sleep(50) }
     $guardian.job.Terminate()
     $clock = [Diagnostics.Stopwatch]::StartNew()
     while (-not $guardian.job.Empty -and $clock.ElapsedMilliseconds -lt 10000) { [Threading.Thread]::Sleep(20) }
     Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'exit.json')) @{version=1; nonce=$nonce; root=$proof.root; cleaned=$guardian.job.Empty}
   } catch {
-    if ($SpecPath) { try { Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'failure.json')) @{version=1; code='native-launch-failed'} } catch {} }
+    if ($SpecPath) { try { Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'failure.json')) @{version=1; code='native-launch-failed'; diagnostic=(Failure-Facts $_ 'capture')} } catch {} }
     exit 71
-  } finally { if ($guardian) { $guardian.Dispose() } }
+  } finally { if ($guardian) { $guardian.Dispose() }; if ($guiController) { $guiController.Dispose() } }
   exit 0
+}
+if ($Mode -eq 'gui-wait') {
+  $waitingRoot=$null; $waitingGuardian=$null; $waitingJob=$null
+  try {
+    $spec=Read-Record $SpecPath
+    $proof=Read-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'proof.json'))
+    if ($proof.nonce -cne $spec.nonce -or $proof.jobName -cne ('Global\CruxGui-' + $spec.nonce)) { throw 'launch-scope' }
+    $waitingRoot=[CruxLifecycleNative]::CaptureOriginal((Owner $proof.root),$true)
+    $waitingGuardian=[CruxLifecycleNative]::CaptureOriginal((Owner $proof.guardian),$true)
+    while ($waitingRoot -and -not $waitingRoot.Exited -and $waitingGuardian -and -not $waitingGuardian.Exited) { [Threading.Thread]::Sleep(100) }
+    $waitingJob=[CruxLifecycleNative]::OpenJob([string]$proof.jobName)
+    if ($waitingJob) { $waitingJob.Terminate() }
+    $waiting=[Diagnostics.Stopwatch]::StartNew()
+    while (($waitingRoot -and -not $waitingRoot.Exited) -or ($waitingJob -and -not $waitingJob.Empty)) {
+      if ($waiting.ElapsedMilliseconds -gt 10000) { throw 'exit-deadline' }; [Threading.Thread]::Sleep(25)
+    }
+    Emit @{nonce=$spec.nonce; cleaned=$true}; exit 0
+  } catch { Emit @{cleaned=$false}; exit 71 }
+  finally { if ($waitingRoot) {$waitingRoot.Dispose()}; if ($waitingGuardian) {$waitingGuardian.Dispose()}; if ($waitingJob) {$waitingJob.Dispose()} }
 }
 $root = $null
 $jobs = New-Object 'Collections.Generic.List[CruxLifecycleNative+CapturedJob]'
@@ -131,6 +158,7 @@ try {
     }
     foreach ($owner in $owners) {
       if ($owner.pid -eq $spec.excludePid) { continue }
+      if ($spec.excludeOwner -and [CruxLifecycleNative]::Same((Owner $spec.excludeOwner), $owner)) { continue }
       $argumentOwner = [CruxLifecycleNative]::Capture($owner)
       if (-not $argumentOwner) { continue }
       try { if ($argumentOwner.Exited) { continue }; $argv = Arguments $argumentOwner } finally { $argumentOwner.Dispose() }
@@ -149,7 +177,7 @@ try {
       }
       $roles = @($tail | Where-Object { $_ -like '--trellis-role=*' })
       $profiles = @($tail | Where-Object { $_ -like '--trellis-user-data-base64=*' })
-      $other = @($tail | Where-Object { $_ -notlike '--trellis-role=*' -and $_ -notlike '--trellis-user-data-base64=*' -and $_ -notmatch '^--(remote-debugging-port|inspect|inspect-brk)=\d+$' -and $_ -ne '--no-sandbox' })
+      $other = @($tail | Where-Object { $_ -notlike '--trellis-role=*' -and $_ -notlike '--trellis-user-data-base64=*' -and $_ -notmatch '^--trellis-gui-contained=[a-f0-9-]{36}$' -and $_ -notmatch '^--(remote-debugging-port|inspect|inspect-brk)=\d+$' -and $_ -ne '--no-sandbox' })
       if ($roles.Count -gt 1 -or ($roles.Count -eq 1 -and $roles[0] -cne '--trellis-role=gui') -or $profiles.Count -gt 1 -or $other.Count -ne 0) { continue }
       if ($profiles.Count -eq 1) {
         $profile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($profiles[0].Substring('--trellis-user-data-base64='.Length)))

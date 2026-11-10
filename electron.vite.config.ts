@@ -69,6 +69,7 @@ export default defineConfig({
       externalizeDepsPlugin(),
       bundlePiEngine(),
       bundleMainRole('src/main/index.ts', 'gui.js'),
+      bundleMainRole('src/main/daemon/gui-scope.ts', 'gui-scope.js'),
       bundleMainRole('src/main/daemon/host.ts', 'daemon-host.js'),
       bundleMainRole('src/main/daemon/control.ts', 'daemon-control.js'),
       bundleMainRole('src/main/daemon/maintenance.ts', 'daemon-maintenance.js'),
@@ -92,7 +93,7 @@ export default defineConfig({
         // Bundling its ESM branch rewrites import.meta.resolve and breaks packaged launches.
         // These sibling bundles are emitted by bundleMainRole in closeBundle.
         // Resolve them from the emitted bootstrap at runtime, not from src/main.
-        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],
+        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './gui-scope.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],
         output: { format: 'cjs', entryFileNames: '[name].js' }
       }
     }

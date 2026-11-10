@@ -16,6 +16,7 @@ import { configureDaemonQuitDialog } from './services/daemon-quit-dialog'
 import { configureDaemonLifecycleDialog, showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog, lifecycleDialogWasClosed } from './services/daemon-lifecycle-dialog'
 import { configureLifecycleConfirmation } from './services/daemon-client/manager'
 import { developmentLifecycle, installGuiLifecycleEndpoint } from './services/gui-lifecycle'
+import { LifecycleCancelled } from './services/daemon-client/lifecycle'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
@@ -556,6 +557,14 @@ let developmentReady = false
 let developmentFailure: unknown
 try { await developmentLifecycle(showDaemonLifecycleConfirmation); developmentReady = true }
 catch (error) { developmentFailure = error }
+if (developmentFailure instanceof LifecycleCancelled) {
+  // Forward focus to an existing GUI, then end this cancelled launch without
+  // publishing a replacement GUI owner or losing the original cleanup scope.
+  app.requestSingleInstanceLock()
+  app.removeListener('window-all-closed', keepControllerAlive)
+  app.exit(0)
+  return
+}
 if (lifecycleDialogWasClosed(developmentFailure)) {
   // Closing a failed pre-lock restart ends this new controller. Continuing
   // into bootstrap would reopen the same failure under a newly acquired lock.

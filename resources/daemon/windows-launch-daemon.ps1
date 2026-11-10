@@ -10,7 +10,7 @@ try {
   Add-Type -Path ([IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle-native.cs'))
   $powershell = [IO.Path]::Combine($PSHOME, 'powershell.exe')
   $guardian = [CruxLifecycleNative]::Detach($powershell, [string[]]@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',
-    [IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle.ps1'),'-Mode','guardian','-SpecPath',$SpecPath))
+    [IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle.ps1'),'-Mode','guardian','-SpecPath',$SpecPath), $true)
   $directory = [IO.Path]::GetDirectoryName($SpecPath)
   $watch = [Diagnostics.Stopwatch]::StartNew()
   do {

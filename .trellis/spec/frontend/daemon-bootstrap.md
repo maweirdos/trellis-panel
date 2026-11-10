@@ -49,6 +49,12 @@ bytes remain intact, return an appearance warning and supply no captured density
 Verify propagation through separate actual GUI and maintenance processes, not
 only by injecting `fontSize` into a rendering fixture.
 
+The private `gui-launcher` role has no renderer. It creates the real GUI inside
+its protected native Job before desktop composition. Launcher sessionData stays
+separate from the persisted GUI session. Cancelling the pre-lock development
+confirmation forwards focus to an existing instance and exits this new launch
+before publishing any replacement GUI owner.
+
 Default focus is Cancel. Escape, window close and load failure cancel before
 execution. Repeated pending calls for the same attempt join the existing window;
 an already-settled UI attempt cannot cache permission for another stop.
