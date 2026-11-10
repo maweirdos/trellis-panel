@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 40
+- **Total Sessions**: 41
 - **Last Active**: 2026-11-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1390 | Active |
+| `journal-1.md` | ~1412 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 41 | 2026-11-10 | IDE 停止后的开发重启恢复 | `60e95a9` | `codex/team-task-execution` |
 | 40 | 2026-11-10 | 开发重启与升级退出交接 | `d909a95` | `codex/team-task-execution` |
 | 39 | 2026-11-09 | Jira PAT 与浏览器授权集成 | `e055a155c57bb67ceb8d3705480859028f21fb7f` | `codex/team-task-execution` |
 | 38 | 2026-11-06 | T07 编辑器领取与 MCP 接入 | `0db1f4d1c93ef2323a24b60c8f8704a7422ae148` | `codex/team-task-execution` |

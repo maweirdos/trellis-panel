@@ -1388,3 +1388,25 @@ Implemented same-build daemon attachment, guarded development replacement, stopp
 ### Status
 
 [OK] **Completed**
+
+
+## Session 41: IDE 停止后的开发重启恢复
+<!-- trellis-session: v=2 fp=82d39e0ec8929a74 -->
+
+**Date**: 2026-11-10
+**Task**: IDE 停止后的开发重启恢复
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+GUI 在 Windows Job 中挂起创建，先发布原生范围见证再恢复执行。开发启动器结束时清理 GUI 后代，独立后台保留到下一次明确开发启动按原 owner/epoch 停止并替换。已退出的旧版 GUI 登记通过开发兼容流程核验已登记工作，未登记后代结果保留为 unknown。取消前置开发确认时退出新启动，不发布替代 GUI owner。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60e95a9` | fix(daemon): 修复 IDE 停止后再次启动的退出交接 |
+
+### Status
+
+[OK] **Completed**
