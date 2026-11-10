@@ -1,10 +1,12 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, nativeTheme } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { DaemonStatus } from '../../shared/daemon'
 import type { DaemonQuitDecision, DaemonQuitState } from '../../shared/daemon-quit'
 import { daemonManager } from './daemon-client/manager'
 import { readDaemonLaunchPreferences } from './daemon-client/preferences'
+import { APPLICATION_ICON } from './notifications'
+import { getSettings } from './store'
 
 type Pending = { state: DaemonQuitState; resolve: (decision: DaemonQuitDecision) => void }
 let window: BrowserWindow | null = null, pending: Pending | null = null
@@ -30,8 +32,11 @@ export async function showDaemonQuitDialog(error: string | null = null): Promise
   const preference = status?.preferences ?? await readDaemonLaunchPreferences()
   const state: DaemonQuitState = { attemptId: randomUUID(), keepRunning: preference.keepRunning, daemonAvailable: status !== null, activeJobs: status?.activeJobs ?? 0, error }
   const main = parent?.()
-  window = new BrowserWindow({ width: 602, height: error ? 448 : 364, resizable: false, minimizable: false, maximizable: false, frame: false, show: false,
-    ...(main?.isVisible() ? { parent: main, modal: true } : { alwaysOnTop: true }), backgroundColor: '#fbfbfc', title: '确定退出 Trellis Panel？',
+  const theme = getSettings().theme
+  const isDark = theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors)
+  const backgroundColor = isDark ? '#191919' : '#f7f7f7'
+  window = new BrowserWindow({ icon: APPLICATION_ICON, width: 450, height: error ? 284 : 228, resizable: false, minimizable: false, maximizable: false, frame: false, show: false,
+    ...(main?.isVisible() ? { parent: main, modal: true } : { alwaysOnTop: true }), backgroundColor, title: '确定退出 Crux？',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, spellcheck: false } })
   const decision = new Promise<DaemonQuitDecision>(resolve => { pending = { state, resolve } })
   const created = window

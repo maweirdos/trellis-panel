@@ -1,4 +1,6 @@
 /** Application appearance, shared by Settings and every renderer window. */
+import type { BootstrapApi } from '@shared/bootstrap'
+
 export const UI_PREFERENCES_KEY = 'tpanel.my.ui'
 
 export const DEFAULT_SIDEBAR_WIDTH = 240
@@ -36,4 +38,22 @@ export const UI_DENSITY_OPTIONS: ReadonlyArray<{ value: UiFontSize; label: strin
 
 export function normalizeUiFontSize(value: unknown): UiFontSize {
   return value === 'small' || value === 'large' ? value : 'standard'
+}
+
+/** Missing/unreadable legacy storage cannot overwrite an existing native snapshot
+ * with a guessed default. Only an observed value or an explicit choice is sent. */
+export function syncNativeUiFontSize(bridge: Pick<BootstrapApi, 'appearance'> | undefined, selected?: UiFontSize): void {
+  if (!bridge?.appearance) return
+  let fontSize = selected
+  if (fontSize === undefined) {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')
+      const value = stored && typeof stored === 'object' && 'fontSize' in stored ? stored.fontSize : undefined
+      if (value !== 'small' && value !== 'standard' && value !== 'large') return
+      fontSize = value
+    } catch { return }
+  }
+  void bridge.appearance({ fontSize }).then(result => {
+    if (!result.ok) console.warn('维护窗口的界面密度快照未能保存。')
+  }).catch(() => { console.warn('维护窗口的界面密度快照暂不可用。') })
 }

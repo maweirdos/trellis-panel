@@ -31,6 +31,7 @@ import { installJiraDomain } from './jira'
 import { installGitlabDomain } from './gitlab'
 import { installDingTalkDomain } from './dingtalk-domain'
 import { DaemonError } from './errors'
+import { LIFECYCLE_RUNTIME_CONTROLS, LIFECYCLE_SESSION_ADMISSIONS } from '../../shared/daemon/lifecycle'
 
 export interface DaemonApplicationInput {
   context: DaemonContext; repository: DaemonRepository; settings: ProtectedSettingsOwner
@@ -50,7 +51,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
   let legacy: ReturnType<typeof createLegacyIntegrationActions> | undefined
   let polling: Promise<void> | undefined
   let idleProbe: symbol | undefined
-  let operations = 0
+  let operations = 0, sessionAdmissions = 0
   const runtimeObservers = new Set<(event: { root: string }) => void>()
   let disposeRuntimeObserver: (() => void) | undefined
   const rollbackRoots = new Set<string>()
@@ -60,7 +61,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
     if (closed) throw new DaemonError('E_UNAVAILABLE', 'Native application admission is closed.')
     if (idleProbe) throw new DaemonError('E_BUSY', 'Native application is checking idle shutdown; no new work was admitted.')
   }
-  const assertReady = (): void => { assertOwner(); if (closed || !initialized || settings.authority() !== 'daemon') throw new DaemonError('E_UNAVAILABLE', 'Native settings/runtime cutover is not ready.') }
+  const assertReady = (): void => { assertOwner(); if (!initialized || settings.authority() !== 'daemon') throw new DaemonError('E_UNAVAILABLE', 'Native settings/runtime cutover is not ready.') }
   const admission: IntegrationAdmissionPort = { async resolve(grant, source) {
     assertAdmission()
     assertReady(); scope?.assert(grant)
@@ -108,6 +109,26 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
     finally { if (initializing === pending) initializing = undefined }
   }
   const domains: DaemonDomainPort = {
+    activity: () => {
+      const snapshot = runtime?.activity() ?? { state: 'idle' as const, sessions: [], otherWork: operations }
+      return sessionAdmissions && snapshot.state === 'idle' ? { ...snapshot, state: 'interruptible' as const } : snapshot
+    },
+    admitLifecycle(interrupt) {
+      assertOwner()
+      // Synchronous check and permanent fence: no awaiting status, poll or GUI
+      // work between observing sessions and closing their native admissions.
+      if (!interrupt) {
+        if (sessionAdmissions) throw new DaemonError('E_BUSY', '有正在接纳的会话请求，需要确认中断后重启。')
+        runtime?.assertSessionsIdle()
+      }
+      closed = true
+      scheduler?.closeAdmission()
+      runtime?.closeAdmission()
+    },
+    shutdownForLifecycle(interrupt) {
+      domains.admitLifecycle(interrupt)
+      return domains.shutdown()
+    },
     observeRuntime(listener) { runtimeObservers.add(listener); return () => { runtimeObservers.delete(listener) } },
     async withWorkspaceChange(grant, change) {
       assertAdmission()
@@ -126,6 +147,13 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
     },
     handles: method => method in nativeStateRequests || method in runtimeRequests || method in providerWireContracts || method === 'integration.execute' || method === 'provider.read.cancel',
     async dispatch(request, actor, nativeGui) {
+      if (runtime && scope && LIFECYCLE_RUNTIME_CONTROLS.includes(request.method)) {
+        assertOwner()
+        const method = request.method as import('../../shared/daemon-runtime').RuntimeMethod
+        return scope.run(request.workspace ?? null, () => runtime?.dispatch(method, runtimeRequests[method].parse(request.payload), {
+          ...request, native: { actor, assertProduct: () => assertNativeGuiGrant(context, repository.epoch, actor, nativeGui) }
+        }))
+      }
       if (runtime && isBoundedNativeTaskControl(request.method, request.payload)) {
         assertOwner(); assertNativeGuiGrant(context, repository.epoch, actor, nativeGui)
         return runtime.dispatch('runtime.taskExecution', runtimeWireSchema.parse(request.payload), {
@@ -141,6 +169,8 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       }
       assertAdmission()
       operations++
+      const sessionAdmission = LIFECYCLE_SESSION_ADMISSIONS.includes(request.method)
+      if (sessionAdmission) sessionAdmissions++
       try { return await (async () => {
         assertOwner()
         if (request.method === 'native.state') return stateActions.snapshot()
@@ -188,7 +218,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
           } finally { rollbackRoots.delete(grant.root) }
         }
         return scope.run(request.workspace ?? null, () => providers?.dispatch(request, actor))
-      })() } finally { operations-- }
+      })() } finally { operations--; if (sessionAdmission) sessionAdmissions-- }
     },
     async poll() {
       if (!initialized || closed || idleProbe || polling || !jira || !gitlab) return
@@ -241,21 +271,26 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       closed = true; scheduler?.closeAdmission()
       cancellation.close()
       legacy?.shutdown()
-      await dingtalk?.closeAdmission()
       runtime?.closeAdmission()
       // An optional polling failure is not evidence that native execution has
       // stopped, and must not prevent attempting its actual shutdown below.
-      await polling?.catch(() => { process.emitWarning('An optional provider poll failed while shutdown was waiting.', { code: 'TRELLIS_PROVIDER_POLL_FAILED' }) })
+      const cleanup = [
+        Promise.resolve().then(() => dingtalk?.closeAdmission()).then(() => dingtalk?.shutdown()),
+        Promise.resolve().then(() => runtime?.shutdown()),
+        Promise.resolve().then(() => providerCommands?.drain()),
+        polling?.catch(() => { process.emitWarning('An optional provider poll failed while shutdown was waiting.', { code: 'TRELLIS_PROVIDER_POLL_FAILED' }) })
+      ]
+      cleanup.push(Promise.resolve().then(() => {
       for (const job of repository.allJobs().filter(value => value.state === 'queued')) {
         const workspace = repository.admission(job.id)
         if (!workspace) throw new DaemonError('E_UNKNOWN', 'Queued provider work lost its original admission.', 'unknown')
         const request: DaemonRequest = { type: 'request', version: 1, requestId: randomUUID(), commandId: randomUUID(), expectedEpoch: repository.epoch, method: 'jobs.cancel', workspace, payload: { id: job.id, revision: job.revision } }
         repository.cancel(request, job.id, job.revision, workspace)
       }
-      await runtime?.shutdown()
+      }))
+      const results = await Promise.allSettled(cleanup)
       disposeRuntimeObserver?.(); runtimeObservers.clear()
-      await dingtalk?.shutdown()
-      await providerCommands?.drain()
+      if (results.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '后台部分清理未确认；原命令和实际执行结果已保留。', 'unknown')
     }
   }
   return { registry: integrationRegistry, admission, domains, async start(value: IntegrationScheduler) { scheduler = value; if (settings.authority() === 'daemon') await initialize() } }

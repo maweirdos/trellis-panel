@@ -1,0 +1,99 @@
+.daemon-lifecycle-panel {
+  gap: var(--my-space-20);
+  padding: var(--my-settings-panel-padding);
+}
+
+.daemon-lifecycle-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.daemon-lifecycle-description {
+  margin: 0;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-ui);
+  line-height: var(--my-line-ui);
+}
+
+.daemon-lifecycle-uncertain {
+  margin-block: var(--my-space-8) 0;
+}
+
+.daemon-lifecycle-sessions {
+  list-style: none;
+  padding: var(--my-space-4) var(--my-space-12);
+  margin-block: var(--my-space-16) var(--my-space-8);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-1);
+}
+
+.daemon-lifecycle-sessions li {
+  padding-block: var(--my-space-6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daemon-lifecycle-sessions li + li {
+  border-top: 1px solid var(--my-border-subtle);
+}
+
+.daemon-lifecycle-error {
+  color: var(--my-txt-danger-primary);
+  font-size: var(--my-text-ui);
+  line-height: var(--my-line-ui);
+  margin-block: 0 var(--my-space-12);
+}
+
+.daemon-lifecycle-footer {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.daemon-lifecycle-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  margin-block: var(--my-space-16);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-ui);
+}
+
+.daemon-lifecycle-spinner {
+  flex-shrink: 0;
+  animation: daemon-lifecycle-spin 1s linear infinite;
+}
+
+.daemon-lifecycle-details {
+  margin-top: var(--my-space-16);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.daemon-lifecycle-details summary {
+  cursor: pointer;
+}
+
+.daemon-lifecycle-details summary:focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-1);
+}
+
+.daemon-lifecycle-details dd {
+  margin: 0;
+  font-family: var(--my-font-mono);
+}
+
+@keyframes daemon-lifecycle-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daemon-lifecycle-spinner { animation: none; }
+}

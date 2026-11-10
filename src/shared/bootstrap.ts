@@ -53,12 +53,14 @@ export type WorkcopyRecoveryResult = z.infer<typeof workcopyRecoveryResultSchema
 
 export const bootstrapPhaseSchema = z.enum(['window-ready', 'connecting', 'preparing', 'ready', 'error', 'incompatible'])
 export const bootstrapPaintSchema = z.object({ startTimeMs: z.number().finite().nonnegative() }).strict()
+export const desktopAppearanceSchema = z.object({ fontSize: z.enum(['small', 'standard', 'large']) }).strict()
+export type DesktopAppearance = z.infer<typeof desktopAppearanceSchema>
 export const bootstrapMigrationSchema = z.object({ commandId: z.string().uuid(), releaseId: z.string().uuid() }).strict()
 export type BootstrapMigration = z.infer<typeof bootstrapMigrationSchema>
 export const bootstrapSnapshotSchema = z.object({
   revision: z.number().int().nonnegative(),
   phase: bootstrapPhaseSchema,
-  ui: z.object({ theme: z.enum(['light', 'dark']), warning: z.string().optional() }).strict(),
+  ui: z.object({ theme: z.enum(['light', 'dark']), fontSize: desktopAppearanceSchema.shape.fontSize.optional(), warning: z.string().optional() }).strict(),
   failure: z.object({
     code: z.string(), message: z.string(), outcome: z.string(),
     stage: z.enum(['native', 'desktop']), retryable: z.boolean(),
@@ -81,6 +83,8 @@ export type BootstrapActionResult = { ok: true } | IpcFail
 /** Main-window-only shell capability; no project, settings or generic RPC access. */
 export interface BootstrapApi {
   status(): Promise<BootstrapResult>
+  /** Non-secret appearance only, captured from the ordinary GUI's preferences. */
+  appearance(input: DesktopAppearance): Promise<BootstrapActionResult>
   /** Read-only takeover facts; recovery remains an explicit authenticated control. */
   takeoverStatus(): Promise<DaemonResult<DaemonTakeoverDiagnostics>>
   retry(): Promise<BootstrapResult>

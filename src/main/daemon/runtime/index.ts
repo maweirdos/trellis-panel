@@ -36,6 +36,8 @@ import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './ta
 import { NativeTaskExecutions } from './task-execution'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
 import { NativeTaskProgressSender } from '../../services/crux/task-progress-sender'
+import { projectDaemonActivity, sessionActivity } from './activity'
+import { LIFECYCLE_RUNTIME_CONTROLS, LIFECYCLE_SESSION_ADMISSIONS, type DaemonActivity } from '../../../shared/daemon/lifecycle'
 
 export interface RuntimeDispatchContext { workspace?: WorkspaceGrant; commandId?: string; native?: Pick<NativeTaskPreparationAuthority, 'actor' | 'assertProduct'> }
 export interface DaemonRuntimePorts {
@@ -51,6 +53,8 @@ export interface DaemonRuntimePorts {
   assertWorkspaceGrant?(grant: WorkspaceGrant): void
 }
 export interface DaemonRuntime {
+  activity(): DaemonActivity
+  assertSessionsIdle(): void
   releaseWorkcopy(root: string, payload: RuntimeWire, commandId: string): Promise<RuntimeWire>
   dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>>
   status(): Promise<{ authority: 'legacy' | 'daemon'; admission: 'open' | 'closed'; sessions: number; workflows: number; operations: number; released: boolean; reason?: string }>
@@ -115,7 +119,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     } })
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
   let closed = false, released = false, stopping: Promise<void> | undefined
-  let operations = 0
+  let operations = 0, sessionAdmissions = 0
+  const activity = (): DaemonActivity => {
+    const snapshot = projectDaemonActivity(acp.listOwnedAcpSessionFacts(), operations + commands.count())
+    return sessionAdmissions && snapshot.state === 'idle' ? { ...snapshot, state: 'interruptible' } : snapshot
+  }
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const watchers = new Map<string, FSWatcher>()
@@ -149,11 +157,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     return { authority, admission: closed || authority !== 'daemon' ? 'closed' : 'open', sessions: acp.listOwnedAcpSessionFacts().length, workflows: await countOwnedWorkflowApplications(), operations: commands.count(), released, ...(reason ? { reason } : {}) }
   }
   const blockers: DaemonRuntime['blockers'] = async () => {
-    const owned = acp.listOwnedAcpSessionFacts().map(session => ({
+    const owned = acp.listOwnedAcpSessionFacts().filter(session => sessionActivity(session) !== 'idle').map(session => ({
       domain: 'runtime' as const,
-      state: session.cleanupRequired || session.disconnected || !session.connectionGeneration
+      state: sessionActivity(session) === 'uncertain'
         ? 'unknown' as const : 'active' as const,
-      label: `Runtime session ${session.sessionId || 'unknown'}`,
+      label: session.title?.trim().slice(0, 200) || '未命名会话',
       ownerGeneration: session.connectionGeneration ?? undefined
     }))
     const workflows = await countOwnedWorkflowApplications()
@@ -179,18 +187,21 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     knowledge.stopReads()
     stopping = (async () => {
       // Stop managed stages through their retained owners before canonical ACP cleanup.
-      await taskExecutions.shutdown()
-      await shutdownWorkflowApplications()
+      const results = await Promise.allSettled([
+        taskExecutions.shutdown(), shutdownWorkflowApplications(),
       // Give ordinary turns their existing bounded cancellation first. Failure here
       // still requires canonical termination of these exact owned runtime handles.
-      await Promise.allSettled(acp.listOwnedAcpSessionFacts().filter(session => session.turnActive || session.accepting || session.pendingPermission)
-        .map(session => acp.cancelAcpSession(session.projectRoot, session.sessionId)))
-      await acp.shutdownAcp()
-      await taskProgress.close()
-      await commands.drain()
+        (async () => {
+          await Promise.allSettled(acp.listOwnedAcpSessionFacts().filter(session => session.turnActive || session.accepting || session.pendingPermission)
+            .map(session => acp.cancelAcpSession(session.projectRoot, session.sessionId)))
+          await acp.shutdownAcp()
+        })(),
+        taskProgress.close(), commands.drain()
+      ])
       for (const timer of materialTimers.values()) clearTimeout(timer)
       materialTimers.clear()
       await Promise.all([...watchers.values()].map(watcher => watcher.close())); watchers.clear()
+      if (results.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '部分执行清理未确认；所有清理领域均已尝试。', 'unknown')
       if (acp.listOwnedAcpSessionFacts().length || await hasWorkflowApplications() || workcopies.facts().length) throw new DaemonError('E_UNKNOWN', '原 Runtime 或本机应用仍有工作副本登记；实际清理未确认，后台所有权已保留。', 'unknown')
     })().catch(error => { stopping = undefined; throw error })
     return stopping
@@ -202,8 +213,10 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const grant = context.workspace ?? taskExecutions.retainedGrant(input.dispatchId)
       return taskExecutions.execute(root, input, { ...context.native, grant }, context.commandId)
     }
-    ports.assertAdmission?.()
-    ports.assertWorkspaceAdmission?.(root, method)
+    if (!LIFECYCLE_RUNTIME_CONTROLS.includes(method)) {
+      ports.assertAdmission?.()
+      ports.assertWorkspaceAdmission?.(root, method)
+    }
     const valid = (): boolean => { ports.assertOwner(); ports.assertAuthority(); ports.assertWorkspaceAdmission?.(root, method); return !closed }
     const connection = <T extends { ok: boolean }>(target: { sessionId?: string; profileId?: string }, action: () => Promise<T>) => withOrdinaryConnectionAdmission(root, target, action)
     switch (method) {
@@ -378,6 +391,13 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   }
   return {
     status, blockers, closeAdmission, shutdown,
+    activity,
+    assertSessionsIdle() {
+      ports.assertOwner()
+      if (activity().state !== 'idle') {
+        throw new DaemonError('E_BUSY', '会话已开始执行或状态不明，需要确认中断后重启。')
+      }
+    },
     recoverWorkcopy: input => recoverExactAcpWorkcopyUse(ports.directory, workcopies, input),
     async releaseWorkcopy(_root, payload, commandId) {
       ports.assertOwner()
@@ -397,9 +417,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const workflows = await countOwnedWorkflowApplications()
       ports.assertOwner(); ports.assertAuthority()
       const sessions = acp.listOwnedAcpSessionFacts()
-      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || taskExecutions.busy() || workcopies.facts().length || sessions.some(session => !session.sessionId || !session.connectionGeneration || session.status !== 'ready'
-        || session.accepting || session.closing || session.disconnected || session.leaseHeld || session.cleanupRequired || session.backgroundWork
-        || session.unfinishedTools || session.turnActive || session.settling || session.pendingPermission)) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
+      if (closed || released || stopping || operations || commands.count() || workflows || taskProgress.busy() || taskExecutions.busy() || workcopies.facts().length || sessions.some(session => sessionActivity(session) !== 'idle')) throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
     },
     pack(root, value) { ports.assertOwner(); ports.assertAuthority(); return blobs.pack(root, value) },
     unpack(root, wire) { ports.assertOwner(); ports.assertAuthority(); return blobs.unpack(root, wire) },
@@ -414,10 +432,13 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
       ports.assertOwner()
-      await processRecoveryReady
-      if (!isBoundedNativeTaskControl(method, payload)) ports.assertAdmission?.()
+      if (!isBoundedNativeTaskControl(method, payload) && !LIFECYCLE_RUNTIME_CONTROLS.includes(method)) ports.assertAdmission?.()
       operations++
+      const sessionAdmission = LIFECYCLE_SESSION_ADMISSIONS.includes(method)
+      if (sessionAdmission) sessionAdmissions++
       try {
+        await processRecoveryReady
+        if (!isBoundedNativeTaskControl(method, payload) && !LIFECYCLE_RUNTIME_CONTROLS.includes(method)) ports.assertAdmission?.()
         const parsed = runtimeRequests[method].parse(payload)
         if (method === 'runtime.status') return await status() as RuntimeResult<M>
         if (released) throw new DaemonError('E_UNAVAILABLE', 'Runtime authority was released.')
@@ -503,7 +524,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
           }
         }
         return value as RuntimeResult<M>
-      } finally { operations-- }
+      } finally { operations--; if (sessionAdmission) sessionAdmissions-- }
     }
   }
 }

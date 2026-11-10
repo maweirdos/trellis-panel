@@ -13,7 +13,7 @@ const loadRole = createRequire(__filename)
 /** Role resolution must precede importing GUI composition or requesting its instance lock. */
 const roles = process.argv.filter((argument) => argument.startsWith('--trellis-role='))
 const role = roles.length ? roles[0].slice('--trellis-role='.length) : 'gui'
-if (roles.length > 1 || !['gui', 'daemon', 'control'].includes(role)) {
+if (roles.length > 1 || !['gui', 'daemon', 'control', 'maintenance'].includes(role)) {
   process.stderr.write('Invalid Trellis bootstrap role.\n'); app.exit(1)
 } else {
   const overrides = process.argv.filter((argument) => argument.startsWith('--trellis-user-data-base64='))
@@ -26,7 +26,7 @@ if (roles.length > 1 || !['gui', 'daemon', 'control'].includes(role)) {
   // Preserve the existing canonical userData, name and dev/prod behavior. Role paths are additive.
   const userData = app.getPath('userData')
   if (role === 'gui') captureOnboarding(userData)
-  const roleDirectory = join(userData, 'daemon-v1', app.isPackaged ? 'production' : 'development', role === 'control' ? `control-${randomUUID()}` : role)
+  const roleDirectory = join(userData, 'daemon-v1', app.isPackaged ? 'production' : 'development', ['control', 'maintenance'].includes(role) ? `${role}-${randomUUID()}` : role)
   mkdirSync(roleDirectory, { recursive: true })
   app.setPath('sessionData', roleDirectory)
   if (role === 'gui') {
@@ -46,8 +46,9 @@ if (roles.length > 1 || !['gui', 'daemon', 'control'].includes(role)) {
         process.stderr.write(diagnostic); app.exit(1)
       }
       try {
-        const entry: { runDaemonHost?: () => Promise<void>; runDaemonControl?: () => Promise<void> } = role === 'daemon' ? loadRole('./daemon-host.js') : loadRole('./daemon-control.js')
-        const run = role === 'daemon' ? entry.runDaemonHost : entry.runDaemonControl
+        const entry: { runDaemonHost?: () => Promise<void>; runDaemonControl?: () => Promise<void>; runDaemonMaintenance?: () => Promise<void> } =
+          role === 'daemon' ? loadRole('./daemon-host.js') : role === 'maintenance' ? loadRole('./daemon-maintenance.js') : loadRole('./daemon-control.js')
+        const run = role === 'daemon' ? entry.runDaemonHost : role === 'maintenance' ? entry.runDaemonMaintenance : entry.runDaemonControl
         if (!run) throw new Error('Missing daemon entrypoint')
         void run().catch((error: unknown) => { fail(error, 'run') })
       } catch (error) {

@@ -20,12 +20,13 @@ Keep the fixed daemon-host output unpacked and hash its physical file under
 the same inode as an extracted file descriptor. Reuse a hash only while the
 actual file's identity and nanosecond metadata remain unchanged.
 
-For verified outdated owners supporting guarded stop, fence all intake before
-checking native turns, pending admissions, workflows, provider commands, polling
-and initialization. Healthy idle connections may close canonically. Busy or
-unknown work rejects replacement without cancelling it and releases only the
-temporary probe fences. Confirm original process exit and lease release before
-starting a successor. Retain the original command UUID after an uncertain stop.
+Explicit restart and upgrade follow [desktop lifecycle](./daemon-lifecycle.md).
+Healthy idle connections do not prevent replacement. Active or uncertain
+conversations require confirmation; other background work is cancelled with
+the restart. Fence intake before atomic idle admission or confirmed shutdown.
+Use bounded canonical cleanup and exact native-scope termination, then verify
+execution-scope exit and lease release before starting a successor. Retain the
+original command UUID after an uncertain stop.
 Build mismatch still permits exact cleanup controls for already admitted owners
 through the authenticated control lane and retained workspace grant. It never
 authorizes new workspace grants or ordinary execution against an old build.
@@ -39,12 +40,13 @@ launched PID and time. Startup errors may read only that matching record; it
 never establishes readiness or releases ownership. Packaged checks must require
 control output pipes to close promptly after actual control-process exit.
 
-The GUI single-instance lock also applies to development launch. A duplicate
-launch exits with its fixed explanation and focuses the existing ready panel;
-it must not remove the lock or terminate the independent daemon. Release a
-verification GUI/server/port when handing control to a user's development terminal.
+The GUI single-instance lock remains authoritative. An ordinary duplicate
+focuses the existing panel; a verified explicit development launch first
+completes the original GUI/backend lifecycle handoff and then acquires the
+released lock. Never remove the lock or use an image-name process kill.
+Release verification GUI/server/ports before handing control to the user.
 
-The bootstrap loads `./gui.js`, `./daemon-host.js` and `./daemon-control.js` as sibling **output** bundles emitted by `bundleMainRole` in `closeBundle`. Use `createRequire(__filename)` and invoke its native loader only inside the selected role branch; this avoids relying on a bundler's lowering of direct conditional `require` calls. Keep these exact IDs external in the bootstrap main build. Direct source resolution would otherwise fail with `UNRESOLVED_IMPORT` before the role-output hooks run. Preserve relative CJS runtime paths and separate role bundles; do not add placeholder files under `src/main`, accept arbitrary loader paths from argv, or externalize all relative source imports.
+The bootstrap loads `./gui.js`, `./daemon-host.js`, `./daemon-control.js` and `./daemon-maintenance.js` as sibling **output** bundles emitted by `bundleMainRole` in `closeBundle`. Use `createRequire(__filename)` and invoke its native loader only inside the selected role branch; this avoids relying on a bundler's lowering of direct conditional `require` calls. Keep these exact IDs external in the bootstrap main build. Direct source resolution would otherwise fail with `UNRESOLVED_IMPORT` before the role-output hooks run. Preserve relative CJS runtime paths and separate role bundles; do not add placeholder files under `src/main`, accept arbitrary loader paths from argv, or externalize all relative source imports.
 
 Windows native helpers run the fixed Windows PowerShell executable and reset their process-local `PSModulePath` to `$PSHOME/Modules` before module auto-loading. A GUI launched through PowerShell 7 can otherwise inherit incompatible Core module paths; the observed result was `CommandNotFoundException` in directory protection before lease creation. Never fix command resolution by relaxing ACLs. For an already-owned directory, modify only its DACL and verify the resulting owner/current-user-only full-control rule; ownership mismatch fails closed.
 

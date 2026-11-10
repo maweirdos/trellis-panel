@@ -7,6 +7,7 @@ import { integrationNativeRequests, integrationNativeResults, integrationNativeM
 import { providerCancellationRequests, providerCancellationResults } from '../provider-cancellation'
 import { workcopyOwnerSchema } from '../workcopy-use'
 import { processOwnerSchema, workspaceGrantSchema } from './identity'
+import { daemonActivitySchema, daemonLifecycleStopSchema } from './lifecycle'
 export { processOwnerSchema, workspaceGrantSchema, type ProcessOwner, type WorkspaceGrant } from './identity'
 
 export const DAEMON_PROTOCOL_VERSION = 1 as const
@@ -45,6 +46,8 @@ export const daemonStatusSchema = z.object({
   capabilities: z.array(z.enum(['foundation', 'integration-jobs', 'runtime-control', 'native-protection', 'push-events'])).max(5),
   startupRegistration: z.enum(['confirmed', 'unknown', 'unavailable']).optional(), startupCommandId: z.string().uuid().optional(),
   stopCommandId: z.string().uuid().optional(), buildSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  lifecycleVersion: z.literal(1).optional(), activity: daemonActivitySchema.optional(),
+  lifecycleAttemptId: z.string().uuid().optional(),
   blockers: z.array(z.object({
     domain: z.enum(['runtime', 'workflow', 'application', 'work-copy', 'scheduler', 'stop']),
     state: z.enum(['active', 'unknown']), label: z.string().min(1).max(200),
@@ -73,7 +76,9 @@ export const daemonPayloads = {
   'daemon.preferences.get': empty,
   'daemon.preferences.set': z.object({ revision: z.number().int().positive().safe(), keepRunning: z.boolean(), startup: z.enum(['client', 'login', 'manual']) }).strict(),
   'daemon.startup.reconcile': z.object({ originalCommandId: z.string().uuid() }).strict(),
-  'daemon.stop': z.object({ expectedOwner: processOwnerSchema, idleOnly: z.literal(true).optional() }).strict(),
+  'daemon.stop': z.object({ expectedOwner: processOwnerSchema, idleOnly: z.literal(true).optional(), lifecycle: daemonLifecycleStopSchema.optional() }).strict(),
+  'daemon.lifecycle.admit': z.object({ expectedOwner: processOwnerSchema, lifecycle: daemonLifecycleStopSchema }).strict(),
+  'daemon.lifecycle.resolve': z.object({ expectedOwner: processOwnerSchema, nonce: z.string().uuid(), attemptId: z.string().uuid(), admissionId: z.string().uuid() }).strict(),
   'daemon.workcopyRecovery': workcopyRecoveryPayload,
   'daemon.logs': z.object({ after: z.number().int().nonnegative().safe().default(0), limit: z.number().int().min(1).max(100).default(50) }).strict(),
   'workspace.grant': z.object({ workspaceId: z.string().min(1).max(128), root: z.string().min(1).max(4096), expectedRevision: z.number().int().nonnegative().safe() }).strict(),
@@ -96,14 +101,14 @@ export type DaemonMethod = keyof typeof daemonPayloads
 export const DAEMON_CONTROL_METHODS: readonly DaemonMethod[] = [
   'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond',
   'runtime.workcopyCleanup',
-  'daemon.status', 'daemon.stop', 'daemon.workcopyRecovery', 'workspace.get', 'provider.read.cancel', 'jobs.cancel',
+  'daemon.status', 'daemon.stop', 'daemon.lifecycle.admit', 'daemon.lifecycle.resolve', 'daemon.workcopyRecovery', 'workspace.get', 'provider.read.cancel', 'jobs.cancel',
   'runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.permission',
   'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
   'jira.workspace.cancelRead', 'jira.workspace.cancel',
   'gitlab.workspace.cancelJob', 'dingtalk.workspace.cancelExecution'
 ]
 export type DaemonPayload<M extends DaemonMethod> = z.input<(typeof daemonPayloads)[M]>
-export const MUTATING_DAEMON_METHODS: readonly DaemonMethod[] = [...NATIVE_STATE_MUTATIONS, ...RUNTIME_MUTATING_METHODS, ...PROVIDER_MUTATING_METHODS, ...integrationNativeMutations, 'daemon.preferences.set', 'daemon.startup.reconcile', 'daemon.stop', 'daemon.workcopyRecovery', 'workspace.grant', 'workspace.revoke', 'jobs.enqueue', 'jobs.cancel']
+export const MUTATING_DAEMON_METHODS: readonly DaemonMethod[] = [...NATIVE_STATE_MUTATIONS, ...RUNTIME_MUTATING_METHODS, ...PROVIDER_MUTATING_METHODS, ...integrationNativeMutations, 'daemon.preferences.set', 'daemon.startup.reconcile', 'daemon.stop', 'daemon.lifecycle.admit', 'daemon.workcopyRecovery', 'workspace.grant', 'workspace.revoke', 'jobs.enqueue', 'jobs.cancel']
 export const daemonRequestSchema = z.object({
   type: z.literal('request'), version: z.literal(DAEMON_PROTOCOL_VERSION), requestId: z.string().uuid(),
   commandId: z.string().uuid().optional(), expectedEpoch: z.string().uuid(),
@@ -125,6 +130,8 @@ export const daemonResults = {
   ...providerCancellationResults,
   'daemon.status': daemonStatusSchema, 'daemon.preferences.get': daemonPreferencesSchema,
   'daemon.preferences.set': daemonPreferencesSchema, 'daemon.stop': z.object({ state: z.literal('stopping') }).strict(),
+  'daemon.lifecycle.admit': z.object({ admitted: z.literal(true) }).strict(),
+  'daemon.lifecycle.resolve': z.object({ state: z.enum(['admitted', 'not-admitted']), attemptId: z.string().uuid(), admissionId: z.string().uuid() }).strict(),
   'daemon.workcopyRecovery': z.object({
     released: z.boolean(), evidence: workcopyRecoveryEvidenceSchema.optional(),
     reason: z.enum(['released', 'already-released', 'missing-evidence']).optional()

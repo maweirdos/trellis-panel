@@ -2,9 +2,27 @@ import { app } from 'electron'
 import { daemonManager } from '../services/daemon-client/manager'
 import { DaemonError, daemonFailure } from './errors'
 import { daemonPreferencesSchema } from '../../shared/daemon'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { configureDaemonLifecycleDialog, showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog } from '../services/daemon-lifecycle-dialog'
+import { configureLifecycleConfirmation } from '../services/daemon-client/manager'
+import { desktopUiPreferences } from '../services/bootstrap'
+import { installWindowNavigation } from '../services/window-navigation'
 
 export async function runDaemonControl(): Promise<void> {
   await app.whenReady()
+  app.on('window-all-closed', () => {})
+  configureDaemonLifecycleDialog({
+    getMain: () => null, getAppearance: desktopUiPreferences,
+    load(window) {
+      const url = process.env.ELECTRON_RENDERER_URL ? new URL(process.env.ELECTRON_RENDERER_URL) : pathToFileURL(join(__dirname, '../renderer/index.html'))
+      url.searchParams.set('mode', 'daemon-lifecycle')
+      url.searchParams.set('theme', desktopUiPreferences().theme)
+      installWindowNavigation(window, url.href)
+      void window.loadURL(url.href)
+    }
+  })
+  configureLifecycleConfirmation(showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog)
   let result: unknown
   try {
     const commands = process.argv.filter((arg) => arg.startsWith('--trellis-command='))

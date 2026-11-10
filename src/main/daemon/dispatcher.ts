@@ -17,12 +17,16 @@ import { canonicalDirectory } from '../services/acp/metadata'
 import { assertNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
 import { isBoundedWorkcopyCleanup } from '../../shared/workcopy-use'
 import { isBoundedNativeTaskControl } from '../../shared/native-task-execution'
+import { LIFECYCLE_RUNTIME_CONTROLS } from '../../shared/daemon/lifecycle'
 
 export class DaemonDispatcher {
   private stopping = false
   private checkingIdle = false
   private operations = 0
   private stopAttempt?: { commandId: string; intent: string; result: Promise<unknown> }
+  private lifecycleAdmission?: string
+  private lifecycleAdmissionCommand?: string
+  private readonly retiredLifecycleAdmissions = new Map<string, string>()
   constructor(private readonly context: DaemonContext, private readonly lease: DaemonLease, private readonly repository: DaemonRepository, private readonly settings: ProtectedSettingsOwner, private readonly scheduler: IntegrationScheduler, private readonly log: DaemonLog, private readonly requestStop: () => void, private readonly domains?: DaemonDomainPort, private readonly ownerBuildSha256?: string) {}
   retainedStopCommandId(): string | undefined {
     return this.stopAttempt?.commandId
@@ -72,6 +76,8 @@ export class DaemonDispatcher {
       preferences: this.repository.preferences(), eventCursor: this.repository.cursor(), activeJobs: jobs.filter(activeJob).length,
       unknownJobs: jobs.filter((job) => job.state === 'unknown').length, capabilities: this.domains?.ready() ? ['foundation', 'integration-jobs', 'runtime-control', 'native-protection', 'push-events'] : ['foundation', 'native-protection', 'push-events'],
       startupRegistration, ...(intent ? { startupCommandId: intent.commandId } : {}), ...(this.ownerBuildSha256 ? { buildSha256: this.ownerBuildSha256 } : {}),
+      lifecycleVersion: 1, activity: this.domains?.activity() ?? { state: 'idle', sessions: [], otherWork: jobs.filter(activeJob).length },
+      ...(this.lifecycleAdmission ? { lifecycleAttemptId: this.lifecycleAdmission } : {}),
       ...(retainedStopCommandId ? { stopCommandId: retainedStopCommandId } : {}), ...(blockerList.length ? { blockers: blockerList } : {}) }
   }
   private workspace(request: DaemonRequest): WorkspaceGrant {
@@ -83,7 +89,8 @@ export class DaemonDispatcher {
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
     if (request.method.startsWith('runtime.private') || request.method === 'runtime.workflowCutover' || request.method === 'runtime.taskExecution' || request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
-    const management = ['daemon.status', 'daemon.stop', 'daemon.workcopyRecovery', 'daemon.logs', 'commands.get'].includes(request.method)
+    const management = ['daemon.status', 'daemon.stop', 'daemon.lifecycle.admit', 'daemon.lifecycle.resolve', 'daemon.workcopyRecovery', 'daemon.logs', 'commands.get'].includes(request.method)
+      || LIFECYCLE_RUNTIME_CONTROLS.includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)
       || isBoundedNativeTaskControl(request.method, request.payload)
     if ((this.checkingIdle || this.stopping) && !management) throw new DaemonError(this.stopping ? 'E_UNAVAILABLE' : 'E_BUSY', 'Native admission is closed while the original daemon owner is checking shutdown.')
@@ -94,6 +101,7 @@ export class DaemonDispatcher {
   private async stop(request: DaemonRequest): Promise<unknown> {
     const input = daemonPayloads['daemon.stop'].parse(request.payload)
     if (!sameOwner(input.expectedOwner, this.context.owner)) throw new DaemonError('E_CONFLICT', 'The daemon owner changed before stop.')
+    if (input.lifecycle && (input.idleOnly || input.lifecycle.nonce !== this.lease.nonce)) throw new DaemonError('E_CONFLICT', '生命周期确认不属于当前后台代次。')
     const committed = this.repository.committedResult(request)
     if (committed.found) return committed.data
     const intent = JSON.stringify(input)
@@ -106,7 +114,16 @@ export class DaemonDispatcher {
     }
     if (!request.commandId) throw new DaemonError('E_INVALID_ARG', 'Stop requires its original command ID.')
     const perform = async (): Promise<unknown> => {
-      if (input.idleOnly) {
+      if (input.lifecycle) {
+        this.checkingIdle = true
+        // The domain checks the actual session facts synchronously and closes
+        // intake before returning the shutdown promise. Other jobs are cleaned.
+        const domainStop = this.domains?.shutdownForLifecycle(input.lifecycle.interrupt)
+        this.stopping = true
+        this.scheduler.closeAdmission()
+        const cleanup = await Promise.allSettled([domainStop, this.scheduler.shutdown()])
+        if (cleanup.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '后台清理未确认，请核对原退出命令。', 'unknown')
+      } else if (input.idleOnly) {
         // Close all dispatcher/poll admission BEFORE any await or idle check.
         // The native domain must also atomically fence its independent owners.
         this.checkingIdle = true
@@ -126,7 +143,8 @@ export class DaemonDispatcher {
       } else {
         this.stopping = true
         this.scheduler.closeAdmission()
-        await this.domains?.shutdown()
+        const cleanup = await Promise.allSettled([this.domains?.shutdown(), this.scheduler.shutdown()])
+        if (cleanup.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '后台清理未确认，请核对原退出命令。', 'unknown')
       }
       this.stopping = true
       this.scheduler.closeAdmission()
@@ -154,7 +172,7 @@ export class DaemonDispatcher {
     if (request.expectedEpoch !== this.lease.epoch) throw new DaemonError('E_CONFLICT', 'Daemon epoch changed. Reconnect and inspect the original command receipt.')
     const mutating = MUTATING_DAEMON_METHODS.includes(request.method)
     if (mutating && !request.commandId) throw new DaemonError('E_INVALID_ARG', 'Mutations require a stable commandId.')
-    if (this.stopping && mutating && request.method !== 'daemon.stop' && request.method !== 'daemon.workcopyRecovery' && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
+    if (this.stopping && mutating && request.method !== 'daemon.stop' && request.method !== 'daemon.workcopyRecovery' && !LIFECYCLE_RUNTIME_CONTROLS.includes(request.method) && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) throw new DaemonError('E_UNAVAILABLE', 'Daemon is stopping. Inspect the retained command receipt.')
     // The private original lease remains cleanable after grant revocation.
     if (request.workspace && !isBoundedWorkcopyCleanup(request.method, request.payload) && !isBoundedNativeTaskControl(request.method, request.payload)) this.workspace(request)
     if (this.domains?.handles(request.method)) return this.domains.dispatch(request, actor, nativeGui)
@@ -163,6 +181,36 @@ export class DaemonDispatcher {
       if (committed.found) return committed.data
     }
     switch (request.method) {
+      case 'daemon.lifecycle.resolve': {
+        const input = daemonPayloads[request.method].parse(request.payload)
+        if (!sameOwner(input.expectedOwner, this.context.owner) || input.nonce !== this.lease.nonce) throw new DaemonError('E_CONFLICT', '退出准入核验目标已变化。')
+        if (this.lifecycleAdmission) {
+          if (this.lifecycleAdmission !== input.attemptId || this.lifecycleAdmissionCommand !== input.admissionId) throw new DaemonError('E_CONFLICT', '后台已由另一个退出请求关闭接纳。')
+          return { state: 'admitted', attemptId: input.attemptId, admissionId: input.admissionId }
+        }
+        const retired = this.retiredLifecycleAdmissions.get(input.attemptId)
+        if (retired && retired !== input.admissionId) throw new DaemonError('E_CONFLICT', '原退出准入命令身份已变化。')
+        if (!retired && this.retiredLifecycleAdmissions.size >= 256) throw new DaemonError('E_BUSY', '退出准入核验容量已满；原请求保持未知。')
+        // Synchronous epoch-local negative receipt: a delayed frame for this
+        // exact admission is now fenced before reporting that it was absent.
+        this.retiredLifecycleAdmissions.set(input.attemptId, input.admissionId)
+        return { state: 'not-admitted', attemptId: input.attemptId, admissionId: input.admissionId }
+      }
+      case 'daemon.lifecycle.admit': {
+        const input = daemonPayloads[request.method].parse(request.payload)
+        if (!sameOwner(input.expectedOwner, this.context.owner) || input.lifecycle.nonce !== this.lease.nonce) throw new DaemonError('E_CONFLICT', '退出准入目标已变化。')
+        if (this.retiredLifecycleAdmissions.has(input.lifecycle.attemptId)) throw new DaemonError('E_CONFLICT', '原退出准入已核验为未接纳，延迟请求不能再次关闭接纳。')
+        if (this.lifecycleAdmission && this.lifecycleAdmission !== input.lifecycle.attemptId) throw new DaemonError('E_BUSY', '原退出请求已关闭接纳。')
+        if (this.lifecycleAdmissionCommand && this.lifecycleAdmissionCommand !== request.commandId) throw new DaemonError('E_CONFLICT', '必须保留原退出准入命令身份。')
+        if (!this.lifecycleAdmission) {
+          this.domains?.admitLifecycle(input.lifecycle.interrupt)
+          this.checkingIdle = true
+          this.scheduler.closeAdmission()
+          this.lifecycleAdmission = input.lifecycle.attemptId
+          this.lifecycleAdmissionCommand = request.commandId
+        }
+        return this.repository.command(request, () => ({ admitted: true as const }))
+      }
       case 'daemon.status': daemonPayloads[request.method].parse(request.payload); return await this.status()
       case 'daemon.preferences.get':
         daemonPayloads[request.method].parse(request.payload)

@@ -127,7 +127,7 @@ export class DaemonClient {
       const timer = setTimeout(() => {
         this.pending.delete(requestId); this.pendingBytes -= frame.length
         complete(daemonFailure(new DaemonError('E_UNKNOWN', 'Daemon acknowledgement timed out. Inspect the original command ID; it may already be committed.', 'unknown'), commandId))
-      }, Math.max(DAEMON_LIMITS.requestMs, Math.min(options.timeoutMs ?? DAEMON_LIMITS.requestMs, 650_000)))
+      }, Math.max(1, Math.min(options.timeoutMs ?? DAEMON_LIMITS.requestMs, 650_000)))
       this.pending.set(requestId, { method, bytes: frame.length, commandId, timer, complete }); this.pendingBytes += frame.length
       try { this.socket.write(frame) }
       catch { this.disconnect(); this.socket.destroy() }

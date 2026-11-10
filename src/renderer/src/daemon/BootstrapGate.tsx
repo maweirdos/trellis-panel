@@ -5,6 +5,7 @@ import type { DaemonFailure } from '@shared/daemon'
 import { api, hasIpc } from '../api'
 import { BrandMark } from '../my/BrandMark'
 import { StartupSplash } from './StartupSplash'
+import { syncNativeUiFontSize, UI_PREFERENCES_KEY } from '../my/appearance'
 import { StartupContext, type StartupContentSlot } from './StartupContext'
 
 const labels: Record<BootstrapSnapshot['phase'], string> = {
@@ -425,6 +426,16 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
       if (result.ok) accept(result.data); else setError({ message: result.error, code: result.code })
     }).catch(cause => { if (current) setError({ message: cause instanceof Error ? cause.stack || cause.message : String(cause) }) })
     return () => { current = false; off() }
+  }, [bridge])
+
+  useEffect(() => {
+    if (!bridge) return
+    syncNativeUiFontSize(bridge)
+    const changed = (event: StorageEvent): void => {
+      if (event.key === UI_PREFERENCES_KEY || event.key === null) syncNativeUiFontSize(bridge)
+    }
+    window.addEventListener('storage', changed)
+    return () => window.removeEventListener('storage', changed)
   }, [bridge])
 
   useEffect(() => {

@@ -3,7 +3,8 @@ import { closeSync, fstatSync, lstatSync, openSync, readSync, type BigIntStats }
 import { basename, dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import type { DaemonContext } from './context'
-import { assertLease, daemonLeaseSchema, readLease, type DaemonLease } from './lease'
+import { assertLease, readLease } from './lease'
+import { daemonLeaseSchema, type DaemonLease } from './lease-schema'
 import { readBounded, writeExclusiveAtomic } from './files'
 import { DaemonError } from './errors'
 

@@ -13,6 +13,9 @@ import { stopObservationWorker } from './services/observability'
 import { routeNotifyRail } from './services/daemon-client/acp'
 import { detachRuntimeObservers, setRuntimeClientAdmissionClosed } from './services/daemon-client/runtime'
 import { configureDaemonQuitDialog } from './services/daemon-quit-dialog'
+import { configureDaemonLifecycleDialog, showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog, lifecycleDialogWasClosed } from './services/daemon-lifecycle-dialog'
+import { configureLifecycleConfirmation } from './services/daemon-client/manager'
+import { developmentLifecycle, installGuiLifecycleEndpoint } from './services/gui-lifecycle'
 import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
 import { httpApiStatus } from './services/httpapi'
 import { accessServer } from './services/access/server'
@@ -25,7 +28,7 @@ import { appRuntime } from './services/app-runtime'
 import { createDaemonQuitGate } from './services/daemon-quit-gate'
 import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
-import { createGuiBootstrap, takeoverDiagnostics, type GuiBootstrap } from './services/bootstrap'
+import { createGuiBootstrap, desktopUiPreferences, takeoverDiagnostics, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
 import { createOnboarding } from './onboarding'
 import { closeCreationService } from './services/creations'
@@ -57,6 +60,7 @@ import { resumeCruxWorkspace, closeCruxWorkspace, configureCruxConnectionService
 import { ensureTeamGitlabConnection } from './services/integrations/team-gitlab'
 
 let win: BrowserWindow | null = null
+let mainWindowCreated = false
 let capsule: BrowserWindow | null = null
 let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'card'
@@ -191,6 +195,7 @@ function createWindow(): void {
   })
 
   // state 里的主窗口引用必须随创建/销毁同步，深链聚焦依赖它（getMainWindow 判活）
+  mainWindowCreated = true
   setMainWindow(win)
   const window = win
   fullRendererAttached = false
@@ -529,22 +534,51 @@ function bridgeHandlers() {
 
 // Establish Shell identity before readiness and before any window can join a group.
 if (process.platform === 'win32') app.setAppUserModelId(TASKBAR_APPLICATION_ID)
+// Chromium switches must be installed before app.whenReady(), including the
+// independent pre-lock development confirmation/controller window.
+if (process.env.TPANEL_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
+}
 
+async function bootGui(): Promise<void> {
+// The independent development controller must finish handoff before asking for
+// the ordinary GUI lock. It never takes a second GUI ownership slot.
+const keepControllerAlive = (): void => {}
+app.on('window-all-closed', keepControllerAlive)
+await app.whenReady()
+configureDaemonLifecycleDialog({
+  load: window => loadAppWindow(window, { mode: 'daemon-lifecycle', theme: desktopUiPreferences().theme }),
+  getMain: () => win && !win.isDestroyed() ? win : null,
+  getAppearance: desktopUiPreferences
+})
+configureLifecycleConfirmation(showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog)
+let developmentReady = false
+let developmentFailure: unknown
+try { await developmentLifecycle(showDaemonLifecycleConfirmation); developmentReady = true }
+catch (error) { developmentFailure = error }
+if (lifecycleDialogWasClosed(developmentFailure)) {
+  // Closing a failed pre-lock restart ends this new controller. Continuing
+  // into bootstrap would reopen the same failure under a newly acquired lock.
+  app.removeListener('window-all-closed', keepControllerAlive)
+  app.exit(0)
+  return
+}
 const gotLock = app.requestSingleInstanceLock()
+app.removeListener('window-all-closed', keepControllerAlive)
 if (!gotLock) {
-  console.info('[Trellis Panel] 已有桌面实例正在运行，启动请求已转交该实例；本次新进程正常退出。')
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    console.info('[Trellis Panel] 如需启动开发版，请先通过已有桌面的托盘菜单「退出」，在退出对话框中保留后台守护进程，再重新运行 npm run dev。')
+  if (process.env.CRUX_DEV_LAUNCH_ID && !developmentFailure) {
+    developmentFailure = new DaemonError('E_UNAVAILABLE', '原桌面尚未释放单实例锁；未启动新桌面。旧启动参数可能缺少可核验的安装路径，请从原桌面退出后重试。')
   }
-  app.quit()
+  console.info('[Crux] 已有桌面实例正在运行，启动请求已转交该实例；本次新进程正常退出。')
+  if (developmentFailure && !lifecycleDialogWasClosed(developmentFailure) && !(developmentFailure instanceof Error && developmentFailure.message.startsWith('已取消重启'))) {
+    dialog.showErrorBox('桌面重启未完成', developmentFailure instanceof Error ? developmentFailure.message : '无法核验原桌面退出；未启动第二个桌面。')
+  }
+  app.exit(0)
 } else {
   const onboarding = createOnboarding(app.getPath('userData'))
-  // 调试端口（CDP 截图/自动化验收用）：TPANEL_DEBUG_PORT=9333 npm run dev
-  if (process.env.TPANEL_DEBUG_PORT) {
-    app.commandLine.appendSwitch('remote-debugging-port', process.env.TPANEL_DEBUG_PORT)
-  }
   let guiCleanupWork: Promise<void> | undefined
   let guiExitWork: Promise<void> | undefined
+  let disposeGuiLifecycle: (() => Promise<void>) | undefined
   const cleanupGui = (): Promise<void> => {
     if (guiCleanupWork) return guiCleanupWork
     guiClosing = true
@@ -572,6 +606,7 @@ if (!gotLock) {
       if (errors.length || results.some(result => result.status === 'rejected')) {
         throw new DaemonError('E_UNKNOWN', 'GUI cleanup has not completed. Preserve this window and retry desktop exit after checking the original local operations.', 'unknown')
       }
+      await disposeGuiLifecycle?.()
     })()
     guiCleanupWork = work
     // A timeout keeps joining this original cleanup. Only a settled failure may
@@ -606,6 +641,7 @@ if (!gotLock) {
         // but the user must be able to exit this recovery window immediately.
         void cleanupGui().catch(() => {})
       }
+      await disposeGuiLifecycle?.()
       app.exit(0)
     })()
     guiExitWork = work
@@ -631,7 +667,7 @@ if (!gotLock) {
     // One-shot full composition, reached only after native authority is ready.
     const { registerIpc } = await import('./ipc')
     if (guiClosing) throw new DaemonError('E_UNAVAILABLE', 'Desktop exit has closed GUI initialization.')
-    configureDaemonQuitDialog({ load: window => loadAppWindow(window, { mode: 'daemon-quit' }), getMain: () => win && !win.isDestroyed() ? win : null })
+    configureDaemonQuitDialog({ load: window => loadAppWindow(window, { mode: 'daemon-quit', theme: getSettings().theme }), getMain: () => win && !win.isDestroyed() ? win : null })
     // Notifications may otherwise register the generic Electron host as our app.
     prepareWindowsTaskbarShortcut(join(BRAND_RESOURCES, 'icon.ico'))
     if (process.defaultApp) {
@@ -726,10 +762,19 @@ if (!gotLock) {
     flushDaemonSettings()
   }
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    disposeGuiLifecycle = await installGuiLifecycleEndpoint(cleanupGui)
     let nativeState: typeof import('./services/daemon-client/native-state') | undefined
     bootstrap = createGuiBootstrap({
       prepare: async (onPreparing, onAuthenticated) => {
+        if (developmentFailure) {
+          const error = developmentFailure; developmentFailure = undefined
+          throw error
+        }
+        if (!developmentReady) {
+          await developmentLifecycle(showDaemonLifecycleConfirmation)
+          developmentReady = true
+        }
         nativeState = await import('./services/daemon-client/native-state')
         await nativeState.prepareGuiNativeState(onPreparing, onAuthenticated)
       },
@@ -785,6 +830,9 @@ if (!gotLock) {
   })
 
   app.on('window-all-closed', () => {
+    // A successful pre-lock progress window can close while the GUI endpoint
+    // is still being initialized. It is not a request to exit the new desktop.
+    if (!mainWindowCreated) return
     if (!guiNativeStateReady || !fullRendererEverAttached) { requestBootstrapExit(); return }
     // keep running in tray — quit only via tray menu
   })
@@ -792,7 +840,7 @@ if (!gotLock) {
   const quitGate = createDaemonQuitGate({
     closeGuiAdmission: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
     stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
-    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeCruxWorkspace() },
+    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeCruxWorkspace(); await disposeGuiLifecycle?.() },
     finalize: () => {
       disposeDaemonTray()
       if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }
@@ -821,3 +869,8 @@ if (!gotLock) {
     void quitGate.whenIdle().finally(() => { daemonTrayExitPending = false; rebuildTrayMenu() })
   })
 }
+}
+void bootGui().catch(error => {
+  dialog.showErrorBox('Crux 启动未完成', error instanceof Error ? error.message : '请重新打开应用。')
+  app.exit(1)
+})

@@ -59,6 +59,7 @@ win:
         - x64
   artifactName: TrellisPanel-Setup-${version}.exe
 nsis:
+  include: resources/installer/lifecycle.nsh
   installerIcon: resources/brand/icon.ico
   uninstallerIcon: resources/brand/icon.ico
   oneClick: false

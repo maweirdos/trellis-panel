@@ -1,9 +1,9 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { bootstrapPaintSchema, daemonTakeoverDiagnosticsSchema, legacyDaemonInspectionSchema, legacyDaemonStopInputSchema, workcopyRecoveryInputSchema, workcopyRecoveryResultSchema, type LegacyDaemonInspection, type LegacyDaemonStopInput, type WorkcopyRecoveryInput } from '../../shared/bootstrap'
+import { bootstrapPaintSchema, desktopAppearanceSchema, daemonTakeoverDiagnosticsSchema, legacyDaemonInspectionSchema, legacyDaemonStopInputSchema, workcopyRecoveryInputSchema, workcopyRecoveryResultSchema, type LegacyDaemonInspection, type LegacyDaemonStopInput, type WorkcopyRecoveryInput } from '../../shared/bootstrap'
 import type { DaemonFailure, DaemonResult } from '../../shared/daemon'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
-import type { GuiBootstrap } from '../services/bootstrap'
+import { saveDesktopAppearance, type GuiBootstrap } from '../services/bootstrap'
 import type { createOnboarding } from '../onboarding'
 import { DaemonError, daemonFailure } from '../daemon/errors'
 import { handle } from './registry'
@@ -50,6 +50,13 @@ export function registerBootstrapIpc(deps: {
     catch { return ipcFail(IpcErrorCode.Io, '无法保存引导状态，请检查本地数据目录后重试。') }
   })
   handle(ipcInvoke.bootstrap.status, event => guard(event) ? { ok: true, data: deps.bootstrap.state() } : denied())
+  handle(ipcInvoke.bootstrap.appearance, (event, input: unknown) => {
+    if (!guard(event)) return denied()
+    const parsed = desktopAppearanceSchema.safeParse(input)
+    if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '界面密度无效')
+    try { saveDesktopAppearance(parsed.data); return { ok: true } }
+    catch { return ipcFail(IpcErrorCode.Io, '维护窗口的界面密度快照未能保存；当前桌面偏好不受影响。') }
+  })
   handle(ipcInvoke.bootstrap.takeoverStatus, async event => {
     if (!guard(event)) return denied()
     const result = await deps.takeoverStatus()

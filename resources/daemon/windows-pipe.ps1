@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidatePattern('^trellis-daemon-v1-[a-f0-9]{64}$')][string]$Name)
+param([Parameter(Mandatory=$true)][ValidatePattern('^(trellis-daemon-v1-[a-f0-9]{64}|crux-gui-lifecycle-[a-f0-9]{64}-[a-f0-9]{16})$')][string]$Name)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
 [Console]::InputEncoding = [Text.Encoding]::UTF8

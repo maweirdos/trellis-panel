@@ -3,7 +3,7 @@ import { protectedStorage as safeStorage, installProtectedStorage } from './prot
 import { NativeProtection, decodeProtectedCiphertext } from './protection'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { daemonIdentitySchema, type DaemonIdentity, type ProcessOwner } from '../../shared/daemon'
 import { processIdentity, protectDirectory } from './native'
 import { readBounded, writeAtomic } from './files'
@@ -12,6 +12,8 @@ import { readLease, reconcileStaleLease, verifiedLease, type DaemonLease } from 
 import { z } from 'zod'
 
 export interface DaemonContext {
+  /** Only the installer maintenance role selects a canonical existing target. */
+  lifecycleInstallation?: { appPath: string; executable: string }
   identity: DaemonIdentity
   owner: ProcessOwner
   userData: string
@@ -101,6 +103,40 @@ export async function createDaemonContext(): Promise<DaemonContext> {
     try { await protection.prepare(ciphertext) } finally { ciphertext.fill(0) }
   }
   installProtectedStorage(protection)
+  return context
+}
+
+/** Lifecycle-only compatibility construction. Pin the installed path/profile and
+ * original native generation before using its version for status/stop auth.
+ * Ordinary connections retain their strict version checks. No key publication,
+ * settings installation, migration or stale-owner deletion happens here. */
+export async function createLifecycleControlContext(targetInstallation?: string): Promise<DaemonContext> {
+  const context = await createContextBase('ordinary')
+  if (targetInstallation) {
+    if (!app.isPackaged || !process.argv.includes('--trellis-role=maintenance')) throw new DaemonError('E_DENIED', '仅安装维护入口可选择被替换的安装目录。')
+    const target = realpathSync(targetInstallation)
+    const appPath = realpathSync(join(target, 'resources', 'app.asar'))
+    const executable = realpathSync(join(target, basename(process.execPath)))
+    if (lstatSync(target).isSymbolicLink() || lstatSync(appPath).isSymbolicLink() || lstatSync(executable).isSymbolicLink()) throw new DaemonError('E_DENIED', '安装维护目标不能重定向。')
+    context.identity = { ...context.identity, installationId: digest(appPath.toLowerCase()) }
+    context.lifecycleInstallation = { appPath, executable }
+  }
+  const lease = readLease(context)
+  if (lease) {
+    if (lease.identity.installationId !== context.identity.installationId ||
+      lease.identity.profileId !== context.identity.profileId || lease.identity.mode !== context.identity.mode ||
+      lease.identity.userId !== context.owner.userId || lease.owner.userId !== context.owner.userId) {
+      throw new DaemonError('E_DENIED', '退出目标不属于当前安装和 Windows 用户配置。')
+    }
+    // Status/stop compatibility is exact-target only, never an ordinary RPC
+    // version bypass. The coordinator must keep this captured lease unchanged.
+    context.identity = lease.identity
+    const file = join(context.directory, 'native-credential')
+    if (existsSync(file)) {
+      const ciphertext = decodeProtectedCiphertext(readBounded(file, 8192), 8192)
+      try { await context.protection.prepare(ciphertext) } finally { ciphertext.fill(0) }
+    }
+  }
   return context
 }
 

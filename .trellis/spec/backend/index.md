@@ -68,6 +68,7 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 ## Quick Navigation
 
 For independent daemon ownership, protected settings migration and provider workspace composition, read [Integration daemon contracts](./integration-daemon.md).
+For development restart, bounded native shutdown and Windows installer handoff, read [Desktop lifecycle](./daemon-lifecycle.md).
 
 ### Service Module Structure
 

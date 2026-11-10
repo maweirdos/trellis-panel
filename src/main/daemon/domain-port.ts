@@ -2,6 +2,9 @@ import type { DaemonRequest, ProcessOwner } from '../../shared/daemon'
 import type { NativeGuiAuthority } from './native-gui-grant'
 
 export interface DaemonDomainPort {
+  activity(): import('../../shared/daemon/lifecycle').DaemonActivity
+  admitLifecycle(interrupt: boolean): void
+  shutdownForLifecycle(interrupt: boolean): Promise<void>
   ready(): boolean
   handles(method: DaemonRequest['method']): boolean
   dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown>

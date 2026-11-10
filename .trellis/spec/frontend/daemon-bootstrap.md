@@ -14,6 +14,77 @@ Native-stage historical-owner `E_VERSION` or `E_UNAVAILABLE` has a narrow recove
 
 `BootstrapGate` delays the lazy full App until main publishes `ready`. Document/capsule/quicktodo/daemon-quit modes retain their separate composition. Full-App subscription attachment is distinct from the earlier restricted renderer commit.
 
+## Restart and upgrade confirmation
+
+The separate `daemon-lifecycle` renderer mode works before full desktop readiness.
+It exposes only `daemonLifecycleDialog.state` and `daemonLifecycleDialog.decide`
+through its dedicated preload bridge; main validates the actual dialog window,
+main frame and attempt ID. The lifecycle coordinator owns original-process
+confirmation and revalidation; UI approval alone is never process authority.
+
+Use `showDaemonLifecycleConfirmation({attemptId, reason, sessions, uncertain})`.
+The reason selects restart or update wording. Display at most five bounded
+session names and disclose any additional count. Unknown state warns that the
+current response may be interrupted; only already-saved history is promised.
+Read appearance from the non-secret desktop preferences, not the full Settings
+store. Reuse shared theme, density, Button and 10px geometry.
+
+The ordinary main frame publishes only `{fontSize: 'small'|'standard'|'large'}`
+through `bootstrap.appearance`. Main validates the strict payload and atomically
+writes `daemon-v1/<mode>/desktop-appearance.json` with `version: 1`. The restricted
+shell seeds this derived snapshot from an actually stored valid preference;
+explicit density changes and cross-window storage changes refresh it. Auxiliary
+windows and subframes cannot write it. Snapshot write failure does not change the
+GUI preference or block startup.
+
+`desktopUiPreferences()` reads that bounded non-secret snapshot and passes density
+through the lifecycle preload arguments. Maintenance/control retain their separate
+sessionData directories. The dedicated dialog uses a non-persistent
+`crux-lifecycle-<attemptId>` partition, including before the old GUI exits; its
+appearance comes exclusively from the native snapshot. Never share the GUI
+session or inspect its LevelDB.
+Older profiles without a snapshot use the maintenance renderer's Standard
+fallback; absence is not evidence of the user's saved preference. Invalid snapshot
+bytes remain intact, return an appearance warning and supply no captured density.
+Verify propagation through separate actual GUI and maintenance processes, not
+only by injecting `fontSize` into a rendering fixture.
+
+Default focus is Cancel. Escape, window close and load failure cancel before
+execution. Repeated pending calls for the same attempt join the existing window;
+an already-settled UI attempt cannot cache permission for another stop.
+`runDaemonLifecycleWithDialog` keeps that same restricted window after approval,
+projects the coordinator's stopping/terminating/verifying phases and closes only
+after verified release. Automatic idle exits also have a progress window.
+State-only polling restores the current phase after a renderer reload; it never
+resubmits a decision. Execution has no Cancel action, and native close/Escape
+cannot revoke an accepted stop.
+
+Once cleanup has settled as failed, show a concise failure with explicit
+`retry`/`close` actions and default-closed details containing the original command
+and reason. Retry runs the coordinator against its retained attempt and approval,
+not a fresh confirmation. Closing this failure is not successful exit or consent
+to installer overwrite. During pre-lock development startup, closing the failure
+exits that new controller before requesting the GUI single-instance lock or
+creating a desktop bootstrap; it must not reopen the same failure. Development, build replacement, explicit desktop control
+and interactive maintenance use this presenter before full App readiness; silent
+maintenance retains its noninteractive result contract.
+Before the first main BrowserWindow is successfully created, closing a transient
+lifecycle progress window must not trigger bootstrap exit through
+`window-all-closed`. Set `mainWindowCreated` only after the main constructor
+succeeds; retain normal close/exit behavior once that window has existed. Verify
+this with delayed GUI endpoint initialization and the full normal dev entry.
+Confirmation invokes the dedicated lifecycle path, never generic retry or a
+hidden force-stop behind ordinary GUI exit. See the
+[native lifecycle contract](../backend/daemon-lifecycle.md) for admitted,
+uncertain and timed-out operations.
+
+Verify the actual component in both themes and all three densities, long names,
+narrow width, keyboard focus/activation, reduced motion, unavailable bridge and
+rejected decisions. Check native window/main-frame/attempt guards separately;
+browser rendering does not prove process cleanup or installer handoff.
+Also exercise delayed stop, visible progress continuity and failure/retry using
+the same attempt identity; confirmation-only screenshots do not cover that flow.
+
 ## Launch presentation and motion
 
 `daemon/StartupSplash.tsx` renders `StartupSplash({ status, entrance? })` with the existing `my/BrandMark` and `resources/brand/mark.svg` as its only glyph source. `daemon/startup.css` owns presentation using canonical `my-tokens` roles; it does not import App/store, add a theme palette or load remote assets. Three fixed clipping windows assemble one 96px mark above the product name and an indeterminate activity shuttle.

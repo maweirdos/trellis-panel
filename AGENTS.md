@@ -26,6 +26,8 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Put temporary validation scripts and artifacts in the operating system's TEMP directory outside the repository. Do not introduce tracked test runners, CI test jobs or test-only dependencies.
 - Preserve production checks and lifecycle guards: `check:acpx`, `check:ui`, `typecheck`, `build`, `postinstall`, and the existing dev/build/typecheck/packaging guards. Run applicable production checks and report their results.
 - Do not change global Git configuration or Git hooks to enforce these rules.
+- 涉及注册表写入或卸载清理的真实安装验收必须在隔离 Windows 用户或虚拟机中执行；TEMP 安装目录不隔离 HKCU。不得对日常 Windows 用户的注册表执行测试清理或递归删除。
+- PowerShell 验证脚本不得将 `$Matches`、`$PID`、`$HOME` 等自动变量用作业务变量；正则匹配会覆盖大小写不敏感的 `$Matches`。删除或移动前必须校验非空的规范绝对路径和目标归属，任何校验错误立即终止脚本，不得继续清理。
 
 # UI design standard
 

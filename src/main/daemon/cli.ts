@@ -13,6 +13,7 @@ if (!command || !supported.includes(command) || (['set-preferences', 'reconcile-
   const development = process.env.TRELLIS_DAEMON_DEV_APP
   const launchArgs = [...(development ? [resolve(development)] : []), '--trellis-role=control', `--trellis-command=${command}`, ...(args[0] ? [`${command === 'reconcile-startup' ? '--trellis-original-command=' : '--trellis-preferences='}${args[0]}`] : [])]
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL; delete env.TPANEL_DEBUG_PORT
+  delete env.CRUX_DEV_LAUNCH_ID; delete env.CRUX_DEV_LAUNCH_PID; delete env.CRUX_DEV_LAUNCH_ROOT
   const executable = process.env.TRELLIS_DAEMON_EXECUTABLE || process.execPath
   const child = spawn(executable, launchArgs, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: development || join(__dirname, '../..') })
   let size = 0

@@ -673,6 +673,7 @@ function projectCategorizedSelections(meta: AcpSessionRecord): void {
 
 /** Main-only execution facts. Never read history/preferences or expose native objects. */
 export interface OwnedAcpSessionFacts {
+  title?: string
   projectRoot: string
   cwd: string | null
   sessionId: string
@@ -691,6 +692,7 @@ export interface OwnedAcpSessionFacts {
 }
 export function listOwnedAcpSessionFacts(): OwnedAcpSessionFacts[] {
   return [...sessions.values()].map((session) => ({
+    title: session.meta.title,
     projectRoot: session.meta.projectRoot, cwd: session.meta.cwd ?? null,
     sessionId: session.meta.sessionId, connectionGeneration: session.meta.connectionGeneration ?? null,
     status: session.meta.status, accepting: session.accepting, closing: session.closing,

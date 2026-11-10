@@ -26,6 +26,7 @@ import { createGitlabWorkspaceBridge } from '../shared/gitlab-integration'
 import { createDingTalkBridge } from '../shared/dingtalk-integration'
 import type { DaemonApi } from '../shared/daemon'
 import type { DaemonQuitApi } from '../shared/daemon-quit'
+import type { DaemonLifecycleDialogApi } from '../shared/daemon-lifecycle-dialog'
 import type { BootstrapApi } from '../shared/bootstrap'
 import type { KnowledgeApi } from '../shared/knowledge-access'
 import type { TrellisApi } from '../shared/types'
@@ -61,6 +62,8 @@ import type {
   MaterialUpdatedEvent,
   ContextExpectEntry
 } from '../shared/types'
+
+const isLifecycleDialog = process.argv.includes('--daemon-lifecycle-dialog')
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T): void => cb(payload)
@@ -115,7 +118,7 @@ function observeCruxContext(context: unknown): void {
     cruxScopeGeneration++
   }
 }
-subscribe(ipcEvent.cruxWorkspaceChanged, observeCruxContext)
+if (!isLifecycleDialog) subscribe(ipcEvent.cruxWorkspaceChanged, observeCruxContext)
 type CruxInvokeMethod = Exclude<keyof CruxApi, 'onWorkspaceChanged'>
 async function invokeCrux<K extends CruxInvokeMethod>(method: K, input?: unknown): Promise<Awaited<ReturnType<CruxApi[K]>>> {
   const generation = method === 'selectWorkspace' ? ++cruxScopeGeneration : cruxScopeGeneration
@@ -224,6 +227,7 @@ const api = {
   },
   bootstrap: {
     status: () => ipcRenderer.invoke(ipcInvoke.bootstrap.status),
+    appearance: (input) => ipcRenderer.invoke(ipcInvoke.bootstrap.appearance, input),
     takeoverStatus: () => ipcRenderer.invoke(ipcInvoke.bootstrap.takeoverStatus),
     retry: () => ipcRenderer.invoke(ipcInvoke.bootstrap.retry),
     legacyInspect: () => ipcRenderer.invoke(ipcInvoke.bootstrap.legacyInspect),
@@ -878,4 +882,18 @@ const api = {
 
 export type Api = typeof api
 
-contextBridge.exposeInMainWorld('trellis', api)
+if (isLifecycleDialog) {
+  const theme = process.argv.find(value => value.startsWith('--daemon-lifecycle-theme='))?.split('=')[1]
+  const density = process.argv.find(value => value.startsWith('--daemon-lifecycle-density='))?.split('=')[1]
+  const lifecycleBridge: DaemonLifecycleDialogApi = {
+    appearance: {
+      theme: theme === 'light' || theme === 'dark' ? theme : 'system',
+      ...(density === 'small' || density === 'standard' || density === 'large' ? { fontSize: density } : {})
+    },
+    state: () => ipcRenderer.invoke(ipcInvoke.daemonLifecycleDialog.state),
+    decide: input => ipcRenderer.invoke(ipcInvoke.daemonLifecycleDialog.decide, input)
+  }
+  contextBridge.exposeInMainWorld('daemonLifecycleDialog', lifecycleBridge)
+} else {
+  contextBridge.exposeInMainWorld('trellis', api)
+}

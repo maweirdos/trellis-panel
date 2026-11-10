@@ -71,6 +71,7 @@ export default defineConfig({
       bundleMainRole('src/main/index.ts', 'gui.js'),
       bundleMainRole('src/main/daemon/host.ts', 'daemon-host.js'),
       bundleMainRole('src/main/daemon/control.ts', 'daemon-control.js'),
+      bundleMainRole('src/main/daemon/maintenance.ts', 'daemon-maintenance.js'),
       bundleMainRole('src/main/daemon/cli.ts', 'daemon-cli.js'),
       bundleMainWorker('bundle-knowledge-browse-worker', 'src/main/services/knowledge-browse-worker.ts', 'knowledge-browse-worker.js'),
       bundleMainWorker('bundle-diff-worker', 'src/main/services/documents/diff-worker.ts', 'diff-worker.js'),
@@ -91,7 +92,7 @@ export default defineConfig({
         // Bundling its ESM branch rewrites import.meta.resolve and breaks packaged launches.
         // These sibling bundles are emitted by bundleMainRole in closeBundle.
         // Resolve them from the emitted bootstrap at runtime, not from src/main.
-        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './daemon-host.js', './daemon-control.js'],
+        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],
         output: { format: 'cjs', entryFileNames: '[name].js' }
       }
     }

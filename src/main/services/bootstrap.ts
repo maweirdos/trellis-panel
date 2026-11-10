@@ -3,25 +3,45 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { z } from 'zod'
-import type { BootstrapMigration, BootstrapSnapshot } from '../../shared/bootstrap'
+import { desktopAppearanceSchema, type BootstrapMigration, type BootstrapSnapshot, type DesktopAppearance } from '../../shared/bootstrap'
 import { daemonFailure } from '../daemon/errors'
-import { readBounded } from '../daemon/files'
+import { readBounded, writeAtomic } from '../daemon/files'
 
 const preferencesSchema = z.object({
   version: z.literal(1), revision: z.number().int().positive().safe(),
   theme: z.enum(['dark', 'light', 'system']).optional()
 })
+const appearanceSnapshotSchema = desktopAppearanceSchema.extend({ version: z.literal(1) }).strict()
+const appearanceFile = (): string => join(app.getPath('userData'), 'daemon-v1', app.isPackaged ? 'production' : 'development', 'desktop-appearance.json')
+
+/** Written only by the guarded ordinary-main-frame appearance IPC. This derived
+ * snapshot lets separate maintenance/control sessions avoid reading GUI storage. */
+export function saveDesktopAppearance(input: DesktopAppearance): void {
+  const appearance = desktopAppearanceSchema.parse(input)
+  writeAtomic(appearanceFile(), JSON.stringify({ version: 1, ...appearance }))
+}
+
+function readDesktopAppearance(): Pick<BootstrapSnapshot['ui'], 'fontSize' | 'warning'> {
+  try {
+    if (!existsSync(appearanceFile())) return {}
+    const appearance = appearanceSnapshotSchema.parse(JSON.parse(readBounded(appearanceFile(), 4096)))
+    return { fontSize: appearance.fontSize }
+  } catch {
+    return { warning: '界面密度快照暂不可读，维护窗口将使用标准密度；原文件已保留。' }
+  }
+}
 
 /** Read only the separate non-secret desktop file. Never initialize native
  * protection, merge legacy settings or write defaults to obtain a window theme. */
-function desktopUiPreferences(): BootstrapSnapshot['ui'] {
+export function desktopUiPreferences(): BootstrapSnapshot['ui'] {
   const file = join(app.getPath('userData'), 'daemon-v1', app.isPackaged ? 'production' : 'development', 'desktop-preferences.json')
+  const appearance = readDesktopAppearance()
   try {
-    if (!existsSync(file)) return { theme: 'dark' }
+    if (!existsSync(file)) return { theme: 'dark', ...appearance }
     const prefs = preferencesSchema.parse(JSON.parse(readBounded(file, 256 * 1024)))
-    return { theme: prefs.theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : prefs.theme ?? 'dark' }
+    return { theme: prefs.theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : prefs.theme ?? 'dark', ...appearance }
   } catch {
-    return { theme: 'dark', warning: '桌面外观偏好暂不可读，已使用默认外观；原文件已保留。' }
+    return { theme: 'dark', ...appearance, warning: '桌面外观偏好暂不可读，已使用默认外观；原文件已保留。' }
   }
 }
 
@@ -115,7 +135,7 @@ export function createGuiBootstrap(ports: Ports): {
     rendererReady() { rendererCommitted = true },
     refreshAppearance() {
       const ui = desktopUiPreferences()
-      if (ui.theme !== state.ui.theme || ui.warning !== state.ui.warning) { state.ui = ui; publish() }
+      if (ui.theme !== state.ui.theme || ui.fontSize !== state.ui.fontSize || ui.warning !== state.ui.warning) { state.ui = ui; publish() }
       return ui.theme
     },
     firstVisible() { if (state.marks.firstVisibleMs === undefined) { state.marks.firstVisibleMs = performance.now(); publish() } },
