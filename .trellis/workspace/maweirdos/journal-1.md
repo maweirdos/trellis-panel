@@ -1366,3 +1366,25 @@ Implemented same-build daemon attachment, guarded development replacement, stopp
 ### Next Steps
 
 - 配置实际 Jira 管理员应用与部署 HTTPS 回调，验收真实授权和刷新；实际工单写入需指定验收工单。
+
+
+## Session 40: 开发重启与升级退出交接
+<!-- trellis-session: v=2 fp=69b826be93c459ab -->
+
+**Date**: 2026-11-10
+**Task**: 开发重启与升级退出交接
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+统一开发重启与安装升级的原 owner 退出交接。使用 Windows 内核启动时间核验跨重启的旧执行范围，保留原退出命令身份。开发前置失败窗口关闭直接退出；临时进度窗口关闭不触发尚未创建的主桌面退出。注册表安装验收须隔离 Windows 用户或虚拟机，临时验证产物保留在系统 TEMP。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d909a95` | fix(daemon): 统一开发重启与安装升级退出交接 |
+
+### Status
+
+[OK] **Completed**
