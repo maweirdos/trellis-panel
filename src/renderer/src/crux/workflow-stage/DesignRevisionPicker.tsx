@@ -8,7 +8,7 @@ import { TeamMarkdown } from '../../team/TeamMarkdown'
 import { useCrux } from '../store'
 import { useInteractionActive } from '../../utils/interaction-scope'
 import { useTaskSource } from '../pages/task-detail/use-task-source'
-import { Field, inputClass } from '../ui'
+import { Field, inputClass, Select } from '../ui'
 import { matchesDesignReference, type DesignReference } from './design-reference'
 
 export function DesignRevisionPicker({ task, purpose, value, onChange, disabled = false }: {
@@ -65,9 +65,7 @@ export function DesignRevisionPicker({ task, purpose, value, onChange, disabled 
       label: `${document.draft.title} · ${'number' in item ? `v${item.number}` : '固定评审版'} · ${document.approved?.versionId === item.versionId ? '已批准' : document.latestSubmission?.versionId === item.versionId ? document.latestSubmission.status === 'rejected' ? '已退回' : '待评审' : '草稿'}` }))
   })
   return <section className="workflow-design-reference space-y-3" aria-label="共享设计固定版本">
-    {purpose !== 'read' && <Field label={purpose === 'approve' ? '关联已批准的共享设计版本（选填）' : '选择共享设计固定版本（选填）'}><select className={inputClass} value={selectedKey} disabled={disabled || loading} onChange={(event) => { if (!latest.current.owns()) return; const selected = options.find((option) => JSON.stringify(option.reference) === event.target.value); onChange?.(selected?.reference ?? null) }}>
-      <option value="">使用人工设计说明</option>{value && !options.some((option) => JSON.stringify(option.reference) === selectedKey) && <option value={selectedKey}>原选定固定版本 · 请核对正文</option>}{options.map((option) => <option key={JSON.stringify(option.reference)} value={JSON.stringify(option.reference)}>{option.label}</option>)}
-    </select></Field>}
+    {purpose !== 'read' && <Field label={purpose === 'approve' ? '关联已批准的共享设计版本（选填）' : '选择共享设计固定版本（选填）'}><Select className="w-full" value={selectedKey} disabled={disabled || loading} onChange={(val) => { if (!latest.current.owns()) return; const selected = options.find((option) => JSON.stringify(option.reference) === val); onChange?.(selected?.reference ?? null) }} options={[{ value: '', label: '使用人工设计说明' }, ...(value && !options.some((option) => JSON.stringify(option.reference) === selectedKey) ? [{ value: selectedKey, label: '原选定固定版本 · 请核对正文' }] : []), ...options.map((option) => ({ value: JSON.stringify(option.reference), label: option.label }))]} /></Field>}
     <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary"><span className="min-w-0 flex-1">{loading ? '正在核对设计版本…' : purpose === 'read' ? '交接采用的固定设计版本' : documents?.length === 0 ? '尚无共享设计，可先在设计工作区创建。' : purpose === 'approve' ? '文档批准后，在此关联版本并确认开发交接。' : '固定版本随交接保留，后续编辑不会替换本次版本。'}</span><Button size="sm" variant="ghost" disabled={loading || disabled} aria-label="刷新设计版本" onClick={() => setRefresh((current) => current + 1)}><RefreshCw size={13} /></Button></div>
     {hasMore && <p className="text-my-xs text-my-warning-text">目录尚未全部载入；可在共享材料中核对其余设计。</p>}
     {error && <p role="alert" className="collab-inline-error">{error}</p>}

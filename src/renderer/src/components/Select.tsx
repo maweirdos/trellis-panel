@@ -11,8 +11,26 @@ export interface SelectOption<T extends string = string> {
   disabled?: boolean
 }
 
+export interface SelectProps<T extends string = string> {
+  id?: string
+  value: T
+  onChange: (value: T) => void
+  options: Array<SelectOption<T> | string>
+  placeholder?: string
+  className?: string
+  size?: 'sm' | 'md'
+  disabled?: boolean
+  autoFocus?: boolean
+  ariaLabel?: string
+  'aria-label'?: string
+  'aria-describedby'?: string
+  title?: string
+  onBlur?: () => void
+}
+
 /** Theme-aware replacement for platform-native select menus. */
 export function Select<T extends string = string>({
+  id: idProp,
   value,
   onChange,
   options,
@@ -23,21 +41,13 @@ export function Select<T extends string = string>({
   autoFocus = false,
   ariaLabel,
   title,
-  onBlur
-}: {
-  value: T
-  onChange: (value: T) => void
-  options: Array<SelectOption<T> | string>
-  placeholder?: string
-  className?: string
-  size?: 'sm' | 'md'
-  disabled?: boolean
-  autoFocus?: boolean
-  ariaLabel?: string
-  title?: string
-  onBlur?: () => void
-}): JSX.Element {
-  const id = useId()
+  onBlur,
+  ...restProps
+}: SelectProps<T>): JSX.Element {
+  const autoId = useId()
+  const id = idProp ?? autoId
+  const finalAriaLabel = ariaLabel ?? restProps['aria-label']
+  const finalAriaDescribedBy = restProps['aria-describedby']
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef({ text: '', at: 0 })
@@ -47,6 +57,7 @@ export function Select<T extends string = string>({
   const selectedOption = normalizedOptions.find((option) => option.value === value)
   const fill = /(^|\s)(w-full|flex-1)(\s|$)/.test(className ?? '')
   const triggerLayoutClasses = (className ?? '').split(/\s+/).filter((name) => /^(?:[a-z]+:)?(?:h-|w-|min-w-|max-w-|flex-1)/.test(name))
+  const hostClasses = (className ?? '').split(/\s+/).filter((name) => name && name !== 'my-input').join(' ')
 
   const searchOptions = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229 || event.ctrlKey || event.altKey || event.metaKey || event.key.length !== 1 || event.key === ' ') return
@@ -74,16 +85,18 @@ export function Select<T extends string = string>({
     <div className="contents" onBlur={onBlur ? handleBlur : undefined}>
     <Dropdown
       disabled={disabled}
-      className={clsx('my-select-host min-w-0', fill && 'w-full', className)}
+      className={clsx('my-select-host min-w-0', fill && 'w-full', hostClasses)}
       trigger={({ open, toggle }) => {
         return (
           <button
             ref={triggerRef}
+            id={id}
             type="button"
             autoFocus={autoFocus}
             disabled={disabled}
             title={title}
-            aria-label={ariaLabel}
+            aria-label={finalAriaLabel}
+            aria-describedby={finalAriaDescribedBy}
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? `${id}-options` : undefined}
@@ -105,7 +118,7 @@ export function Select<T extends string = string>({
           ref={menuRef}
           id={`${id}-options`}
           role="listbox"
-          aria-label={ariaLabel ?? title ?? '选择一项'}
+          aria-label={finalAriaLabel ?? title ?? '选择一项'}
           className="my-select-menu my-scrollbar max-h-60 overflow-y-auto"
           onKeyDown={searchOptions}
         >

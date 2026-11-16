@@ -7,7 +7,7 @@ import { api } from '../../api'
 import { Button, Switch } from '../../my/ui'
 import { useInteractionActive } from '../../utils/interaction-scope'
 import { useCrux } from '../store'
-import { Field, inputClass, textareaClass } from '../ui'
+import { Field, inputClass, textareaClass, Select } from '../ui'
 import { taskSourceKey, useTaskSource, useTaskSurfaceGeneration } from '../pages/task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from '../pages/task-detail/task-drafts'
 import { TaskMaterialDocument, type MaterialSaveState } from './TaskMaterialDocument'
@@ -18,7 +18,7 @@ type Draft = { documentId: string; baseDraftRevision: number; baseVersionId: str
 type CreateDraft = { kind: TeamTaskMaterialKind; title: string; text: string; approverId: string }
 const message = (cause: unknown): string => cause instanceof Error ? cause.message : '任务材料暂不可用，请重试。'
 
-export interface TaskMaterialEntryRequest { requestId: number; kind: TeamTaskMaterialKind; mode?: 'work' | 'review' }
+export interface TaskMaterialEntryRequest { requestId: number; kind: TeamTaskMaterialKind; mode?: 'work' | 'review'; documentId?: string; versionId?: string }
 export interface TaskMaterialReviewState {
   state: 'loading' | 'ready' | 'unavailable'
   document: TeamTaskMaterialMetadata | null
@@ -248,6 +248,7 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
       const current = await load()
       if (!current || !currentOwner.current.owns() || latestEntry.current?.requestId !== entryRequest.requestId) return
       if (latest.current.draft || latest.current.creation || latest.current.intent) { setNotice('当前编辑或原操作仍保留，请先保存或核对，再打开另一份材料。'); return }
+      if (entryRequest.documentId) { await open(entryRequest.documentId, entryRequest.versionId); return }
       const existing = current.page.items.find((item) => item.kind === entryRequest.kind)
       if (existing) {
         const review = entryRequest.mode === 'review' ? existing.latestSubmission?.status === 'pending' ? existing.latestSubmission : existing.approved : null
@@ -284,7 +285,7 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
         <h4 className="text-my-sm font-medium">创建{TASK_MATERIAL_LABELS[creation.kind]}共享草稿</h4>
         <Field label="标题"><input autoFocus className={inputClass} value={creation.title} disabled={busy} maxLength={300} onChange={(event) => { setCreation({ ...creation, title: event.target.value }); editGeneration.current++ }} /></Field>
         <Field label="正文"><textarea className={textareaClass} rows={12} value={creation.text} disabled={busy} onChange={(event) => { setCreation({ ...creation, text: event.target.value }); editGeneration.current++ }} /></Field>
-        <Field label="评审人"><select className={inputClass} value={creation.approverId} disabled={busy} onChange={(event) => { setCreation({ ...creation, approverId: event.target.value }); editGeneration.current++ }}><option value="">请选择空间成员</option>{members.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}</select></Field>
+        <Field label="评审人"><Select value={creation.approverId} disabled={busy} onChange={(val) => { setCreation({ ...creation, approverId: val }); editGeneration.current++ }} options={[{ value: '', label: '请选择空间成员' }, ...members.map((member) => ({ value: member.id, label: member.name }))]} /></Field>
         <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={busy || Boolean(intent)} onClick={() => setCreation(null)}>取消</Button><Button size="sm" variant="primary" disabled={!canCreate || busy || Boolean(intent) || !creation.title.trim() || !creation.text.trim() || !creation.approverId} onClick={() => void create()}>创建共享草稿</Button></div>
       </div>}
       {view && <>

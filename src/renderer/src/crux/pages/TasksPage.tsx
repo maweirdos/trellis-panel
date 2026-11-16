@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useCrux, spaceTasks, applyTaskFilter, memberOf, statusOf, isTriagePending, visibleLabels, PRIORITY_LABEL } from '../store'
-import { PageHeader, StatusBadge, PriorityBadge, LabelChip, MemberChip, ExecutorBadge, compactInputClass } from '../ui'
+import { PageHeader, StatusBadge, PriorityBadge, LabelChip, MemberChip, ExecutorBadge, compactInputClass, Select } from '../ui'
 import { NewTaskModal } from './TaskDetailDrawer'
 import { Button, EmptyState, SearchInput } from '../../my/ui'
 import type { CruxID, CruxPriority, CruxViewFilter } from '@shared/crux'
@@ -25,13 +25,76 @@ export function TaskFilters({ value, onChange }: { value?: CruxViewFilter; onCha
   return <div className="flex flex-col gap-2" aria-label="任务筛选">
     <div className="flex flex-wrap items-center gap-2">
       <SearchInput value={filter.keyword ?? ''} onChange={(keyword) => setFilter({ keyword })} placeholder="搜索任务编号或标题" />
-      <select aria-label="筛选类型" className={`${compactInputClass}`} value={filter.typeIds?.[0] ?? ''} onChange={(e) => setFilter({ typeIds: e.target.value ? [e.target.value] : undefined })}><option value="">全部类型</option>{snapshot.taskTypes.filter((t) => t.spaceId === spaceId).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-      <select aria-label="筛选状态" className={`${compactInputClass}`} value={filter.statusIds?.[0] ?? ''} onChange={(e) => setFilter({ statusIds: e.target.value ? [e.target.value] : undefined })}><option value="">全部状态</option>{snapshot.taskStatuses.filter((s) => s.spaceId === spaceId).sort((a, b) => a.order - b.order).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-      <select aria-label="筛选优先级" className={`${compactInputClass}`} value={filter.priorities?.[0] ?? ''} onChange={(e) => setFilter({ priorities: e.target.value ? [e.target.value as CruxPriority] : undefined })}><option value="">全部优先级</option>{(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}</select>
-      <select aria-label="筛选处理人" className={`${compactInputClass}`} value="" onChange={(e) => { if (e.target.value) toggle('assigneeIds', e.target.value) }}><option value="">选择处理人…</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}{filter.assigneeIds?.includes(m.id) ? '（已选）' : ''}</option>)}</select>
-      <select aria-label="筛选版本" className={`${compactInputClass}`} value={filter.iterationId ?? ''} onChange={(e) => setFilter({ iterationId: e.target.value || undefined })}><option value="">全部版本</option>{snapshot.iterations.filter((it) => it.spaceId === spaceId).map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}</select>
-      <select aria-label="筛选专项" className={`${compactInputClass}`} value={filter.projectId ?? ''} onChange={(e) => setFilter({ projectId: e.target.value || undefined })}><option value="">全部专项</option>{snapshot.projects.filter((p) => p.spaceId === spaceId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-      <select aria-label="筛选标签" className={`${compactInputClass}`} value="" onChange={(e) => { if (e.target.value) toggle('labelIds', e.target.value) }}><option value="">选择标签（同时包含）…</option>{labels.map((l) => <option key={l.id} value={l.id}>{l.name}{filter.labelIds?.includes(l.id) ? '（已选）' : ''}</option>)}</select>
+      <Select
+        size="sm"
+        ariaLabel="筛选类型"
+        value={filter.typeIds?.[0] ?? ''}
+        onChange={(val) => setFilter({ typeIds: val ? [val] : undefined })}
+        options={[
+          { value: '', label: '全部类型' },
+          ...snapshot.taskTypes.filter((t) => t.spaceId === spaceId).map((t) => ({ value: t.id, label: t.name }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选状态"
+        value={filter.statusIds?.[0] ?? ''}
+        onChange={(val) => setFilter({ statusIds: val ? [val] : undefined })}
+        options={[
+          { value: '', label: '全部状态' },
+          ...snapshot.taskStatuses.filter((s) => s.spaceId === spaceId).sort((a, b) => a.order - b.order).map((s) => ({ value: s.id, label: s.name }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选优先级"
+        value={filter.priorities?.[0] ?? ''}
+        onChange={(val) => setFilter({ priorities: val ? [val as CruxPriority] : undefined })}
+        options={[
+          { value: '', label: '全部优先级' },
+          ...(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选处理人"
+        value=""
+        onChange={(val) => { if (val) toggle('assigneeIds', val) }}
+        options={[
+          { value: '', label: '选择处理人…' },
+          ...members.map((m) => ({ value: m.id, label: `${m.name}${filter.assigneeIds?.includes(m.id) ? '（已选）' : ''}` }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选版本"
+        value={filter.iterationId ?? ''}
+        onChange={(val) => setFilter({ iterationId: val || undefined })}
+        options={[
+          { value: '', label: '全部版本' },
+          ...snapshot.iterations.filter((it) => it.spaceId === spaceId).map((it) => ({ value: it.id, label: it.name }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选专项"
+        value={filter.projectId ?? ''}
+        onChange={(val) => setFilter({ projectId: val || undefined })}
+        options={[
+          { value: '', label: '全部专项' },
+          ...snapshot.projects.filter((p) => p.spaceId === spaceId).map((p) => ({ value: p.id, label: p.name }))
+        ]}
+      />
+      <Select
+        size="sm"
+        ariaLabel="筛选标签"
+        value=""
+        onChange={(val) => { if (val) toggle('labelIds', val) }}
+        options={[
+          { value: '', label: '选择标签（同时包含）…' },
+          ...labels.map((l) => ({ value: l.id, label: `${l.name}${filter.labelIds?.includes(l.id) ? '（已选）' : ''}` }))
+        ]}
+      />
       <Button variant="ghost" size="sm" onClick={reset}>清除筛选</Button>
     </div>
     {(Boolean(filter.assigneeIds?.length) || Boolean(filter.labelIds?.length)) && <div className="flex flex-wrap gap-2">

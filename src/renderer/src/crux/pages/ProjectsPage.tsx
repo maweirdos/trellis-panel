@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { useCrux, statusOf, memberOf } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, StatusBadge, MemberChip } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, StatusBadge, MemberChip, Select } from '../ui'
 import { FlowIcon } from '../icons'
 import { Button, EmptyState, Modal } from '../../my/ui'
 import { NewTaskModal } from './TaskDetailDrawer'
@@ -49,7 +49,17 @@ export function ProjectsPage(): JSX.Element | null {
       </section>
     })}</div>}
     {editing && spaceId && <ProjectEditor key={editing === 'new' ? 'new' : editing.id} snapshot={snapshot} spaceId={spaceId} project={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
-    <Modal open={Boolean(scopeProject)} onClose={() => setScopeProject(null)} width={460} ariaLabel="添加已有任务"><div className="flex flex-col gap-3 p-4"><h2 className="text-my-md font-medium text-my-primary">添加已有任务</h2><Field label="任务"><select className={inputClass} value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">选择任务…</option>{snapshot.tasks.filter((t) => t.spaceId === spaceId && t.projectId !== scopeProject).map((t) => <option key={t.id} value={t.id}>{t.id} · {t.title}{t.projectId ? '（将从原专项移入）' : ''}</option>)}</select></Field><div className="flex justify-end gap-2"><Button size="sm" onClick={() => setScopeProject(null)}>关闭</Button><Button variant="primary" size="sm" disabled={!taskId || busy} onClick={() => void addTask()}>添加到专项</Button></div></div></Modal>
+    <Modal open={Boolean(scopeProject)} onClose={() => setScopeProject(null)} width={460} ariaLabel="添加已有任务"><div className="flex flex-col gap-3 p-4"><h2 className="text-my-md font-medium text-my-primary">添加已有任务</h2><Field label="任务">
+      <Select
+        className="w-full"
+        value={taskId}
+        onChange={setTaskId}
+        options={[
+          { value: '', label: '选择任务…' },
+          ...snapshot.tasks.filter((t) => t.spaceId === spaceId && t.projectId !== scopeProject).map((t) => ({ value: t.id, label: `${t.id} · ${t.title}${t.projectId ? '（将从原专项移入）' : ''}` }))
+        ]}
+      />
+    </Field><div className="flex justify-end gap-2"><Button size="sm" onClick={() => setScopeProject(null)}>关闭</Button><Button variant="primary" size="sm" disabled={!taskId || busy} onClick={() => void addTask()}>添加到专项</Button></div></div></Modal>
     <NewTaskModal open={Boolean(newTaskProject)} onClose={() => setNewTaskProject(null)} projectId={newTaskProject ?? undefined} />
   </div>
 }

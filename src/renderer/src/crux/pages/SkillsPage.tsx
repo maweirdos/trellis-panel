@@ -7,7 +7,7 @@ import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { useCrux } from '../store'
-import { PageHeader, Field, inputClass, textareaClass } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, Select } from '../ui'
 import { AgentEditor } from './AgentsPage'
 
 export function SkillsPage(): JSX.Element | null {
@@ -54,7 +54,8 @@ function SkillEditor({ skill, spaceId, onClose }: { skill: CruxSkill | null; spa
   const [name, setName] = useState(skill?.name ?? '')
   const [description, setDescription] = useState(skill?.description ?? '')
   const [content, setContent] = useState(skill?.content ?? '')
-  const [scope, setScope] = useState(skill ? skill.spaceId ?? '' : spaceId ?? '')
+  const targetSpaceId = skill ? skill.spaceId : spaceId
+  const [scope, setScope] = useState(targetSpaceId ?? '')
   const submit = async (): Promise<void> => {
     if (busy || !name.trim() || !content.trim()) return
     const result = await run(skill ? '更新技能' : '创建技能', () => api.crux.saveSkill({ id: skill?.id, spaceId: scope || undefined, name: name.trim(), description: description.trim() || undefined, content: content.trim() }))
@@ -66,7 +67,18 @@ function SkillEditor({ skill, spaceId, onClose }: { skill: CruxSkill | null; spa
       <div className="my-scrollbar min-h-0 overflow-y-auto pr-1"><div className="flex flex-col gap-3">
         <Field label="技能名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="如：组件回归检查" /></Field>
         <Field label="用途描述"><input className={inputClass} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="说明适用的任务和时机" /></Field>
-        <Field label="可用范围" hint="组织技能可供所有空间绑定；空间技能仅供所属空间使用。"><select className={inputClass} disabled={Boolean(skill)} value={scope} onChange={(event) => setScope(event.target.value)}><option value="">组织技能</option>{(skill?.spaceId || spaceId) && <option value={skill?.spaceId ?? spaceId}>当前空间技能</option>}</select></Field>
+        <Field label="可用范围" hint="组织技能可供所有空间绑定；空间技能仅供所属空间使用。">
+          <Select
+            className="w-full"
+            disabled={Boolean(skill)}
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: '', label: '组织技能' },
+              ...(targetSpaceId ? [{ value: targetSpaceId, label: '当前空间技能' }] : [])
+            ]}
+          />
+        </Field>
         <Field label="技能指令" hint="写可复用的步骤、检查项与输出格式；不要写单次任务目标或敏感凭据。"><textarea className={`${textareaClass} font-mono text-my-xs`} style={{ minHeight: 'var(--my-space-192)' }} value={content} onChange={(event) => setContent(event.target.value)} placeholder="适用条件、工作步骤、验证方法与结果格式…" /></Field>
         <p className="text-my-xs text-my-tertiary">在 Agent 配置中勾选技能完成绑定。此处维护指令内容，执行时的技能加载由 Runtime 接入。</p>
       </div></div>

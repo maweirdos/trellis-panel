@@ -4,7 +4,7 @@ import type { CruxRuntimeKind, CruxSnapshot, CruxTask } from '@shared/crux'
 import { api } from '../../api'
 import { Button } from '../../my/ui'
 import { useCrux } from '../store'
-import { Field, inputClass, textareaClass } from '../ui'
+import { Field, inputClass, textareaClass, Select } from '../ui'
 import { useTaskDraft, useTaskDraftField } from '../pages/task-detail/task-drafts'
 import { useTaskSource } from '../pages/task-detail/use-task-source'
 
@@ -48,7 +48,7 @@ export function WorkflowAgentSetup({ snapshot, task, onCreated, onClose }: {
     <h4 className="text-my-sm font-medium">新建空间 Agent · {snapshot.spaces.find((space) => space.id === task.spaceId)?.name}</h4>
     <Field label="Agent 名称"><input className={inputClass} value={name} maxLength={200} disabled={busy} onChange={(event) => setName(event.target.value)} /></Field>
     <Field label="工作指令"><textarea className={textareaClass} rows={4} value={instructions} disabled={busy} placeholder="职责、动手前检查、验证方式与汇报要求" onChange={(event) => setInstructions(event.target.value)} /></Field>
-    <Field label="执行配置引用"><select className={inputClass} value={runtimeKind} disabled={busy} onChange={(event) => setRuntimeKind(event.target.value as CruxRuntimeKind)}><option value="codex">Codex</option><option value="claude-code">Claude Code</option><option value="custom">自定义</option></select></Field>
+    <Field label="执行配置引用"><Select value={runtimeKind} disabled={busy} onChange={(val) => setRuntimeKind(val as CruxRuntimeKind)} options={[{ value: 'codex', label: 'Codex' }, { value: 'claude-code', label: 'Claude Code' }, { value: 'custom', label: '自定义' }]} /></Field>
     <p className="text-my-xs text-my-tertiary">创建后返回当前交接草稿。配置 Agent 不会启动执行。</p>
     {error && <p role="alert" className="collab-inline-error">{error}</p>}
     <div className="flex flex-wrap justify-end gap-2"><Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>返回交接</Button><Button size="sm" variant="primary" disabled={busy || !source.available || !name.trim() || !instructions.trim()} onClick={() => void create()}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}创建并选用</Button></div>

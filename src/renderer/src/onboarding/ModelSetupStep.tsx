@@ -4,6 +4,7 @@ import { ArrowRight, Loader2, Plus, RefreshCw, Zap } from 'lucide-react'
 import type { AiConfig, ModelItem, ModelProvider } from '../../../shared/types'
 import { api, hasIpc } from '../api'
 import { Button } from '../my/ui'
+import { Select } from '../components/Select'
 import { OFFICIAL_TEMPLATES, type ProviderTemplate } from '../pages/Models'
 import { ModelProviderEditor, ProviderIdentity, type ModelSecretAction } from '../pages/settings/ModelEditors'
 import { useApp } from '../store'
@@ -197,10 +198,20 @@ export function ModelSetupStep({ onContinue, onSkip, onBusyChange, footerSlot }:
     <div className="space-y-2">
       {providers.length > 0 && <><label htmlFor="onboarding-provider" className="my-item-title block">已配置的供应商</label>
       <div className="flex flex-wrap gap-2">
-        <select id="onboarding-provider" className="my-input min-w-0 flex-1" value={providerId} disabled={!ai || !hasIpc || busy !== null} onChange={(event) => chooseProvider(event.target.value)}>
-          <option value="">选择供应商</option>
-          {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}{provider.enabled ? '' : '（已停用）'}</option>)}
-        </select>
+        <Select
+          id="onboarding-provider"
+          className="min-w-0 flex-1"
+          value={providerId}
+          disabled={!ai || !hasIpc || busy !== null}
+          onChange={chooseProvider}
+          options={[
+            { value: '', label: '选择供应商' },
+            ...providers.map((provider) => ({
+              value: provider.id,
+              label: `${provider.name}${provider.enabled ? '' : '（已停用）'}`
+            }))
+          ]}
+        />
         {selected && <Button variant="outline" disabled={busy !== null} onClick={() => setEditor({ provider: { ...selected }, original: source(selected) })}>编辑</Button>}
       </div></>}
       <p className="onboarding-section-label">{providers.length ? '添加供应商' : '选择模型服务'}</p>
@@ -213,7 +224,19 @@ export function ModelSetupStep({ onContinue, onSkip, onBusyChange, footerSlot }:
     {selected && <div className="rounded-my-lg border border-my-line bg-my-layer-2 p-4 space-y-4">
       <div className="flex items-center gap-3"><ProviderIdentity name={selected.name} local={selected.apiFormat === 'ollama'} /><div className="min-w-0"><p className="my-item-title">{selected.name}</p><p className="text-my-xs text-my-secondary">{selected.enabled ? selected.apiKeyEncrypted ? '密钥已保存' : selected.apiKey ? '密钥已保存（未加密）' : selected.apiFormat === 'ollama' ? '本地服务' : '尚未配置密钥' : '供应商已停用，请编辑后启用'}</p></div></div>
       <div className="space-y-2"><label htmlFor="onboarding-model" className="my-item-title block">模型</label>
-        <div className="flex flex-wrap gap-2"><select id="onboarding-model" className="my-input min-w-0 flex-1" value={modelId} disabled={busy !== null || !selected.enabled} onChange={(event) => { setModelId(event.target.value); setFeedback(null) }}><option value="">选择模型</option>{modelId && !models.some((model) => model.id === modelId) && <option value={modelId}>{modelId}</option>}{models.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select>
+        <div className="flex flex-wrap gap-2">
+          <Select
+            id="onboarding-model"
+            className="min-w-0 flex-1"
+            value={modelId}
+            disabled={busy !== null || !selected.enabled}
+            onChange={(val) => { setModelId(val); setFeedback(null) }}
+            options={[
+              { value: '', label: '选择模型' },
+              ...(modelId && !models.some((model) => model.id === modelId) ? [{ value: modelId, label: modelId }] : []),
+              ...models.map((model) => ({ value: model.id, label: model.name || model.id }))
+            ]}
+          />
           <Button variant="outline" disabled={busy !== null || !selected.enabled} onClick={() => void runRequest('fetch')}>{busy === 'fetch' ? <Loader2 size={14} className="motion-safe:animate-spin" /> : <RefreshCw size={14} />}获取模型</Button></div>
         <div className="flex flex-wrap gap-2"><input className="my-input min-w-0 flex-1" aria-label="手动输入模型 ID" placeholder="或手动输入模型 ID" value={manualId} disabled={busy !== null || !selected.enabled} onChange={(event) => setManualId(event.target.value)} /><Button variant="ghost" disabled={!manualId.trim() || busy !== null || !selected.enabled} onClick={() => { setModelId(manualId.trim()); setFeedback(null) }}>使用此 ID</Button></div>
       </div>
@@ -222,10 +245,6 @@ export function ModelSetupStep({ onContinue, onSkip, onBusyChange, footerSlot }:
     </div>}
     {feedback && <p role={feedback.ok ? 'status' : 'alert'} className={`text-my-sm ${feedback.ok ? 'text-my-success-text' : 'text-my-danger-text'}`}>{feedback.text}</p>}
     {footerSlot ? createPortal(actions, footerSlot) : actions}
-    {editor && <ModelProviderEditor key={editor.provider.id} provider={editor.provider} isNew={editor.original === null} onClose={() => setEditor(null)} onSave={saveProvider} onTest={async (draft) => {
-      if (!hasIpc) return { ok: false, error: '模型设置服务不可用。' }
-      try { const result = await api.aiFetchModels(draft); return { ok: result.ok, error: result.ok ? undefined : safeFailure(result.error, '模型目录连接失败，请检查配置后重试。') } }
-      catch { return { ok: false, error: '模型目录连接失败，请重试。' } }
-    }} />}
+    {editor && <ModelProviderEditor key={editor.provider.id} provider={editor.provider} isNew={editor.original === null} onClose={() => setEditor(null)} onSave={saveProvider} />}
   </section>
 }

@@ -6,7 +6,7 @@ import { api } from '../../api'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { useCrux } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, compactInputClass } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, compactInputClass, Select } from '../ui'
 
 type AgentView = 'active' | 'disabled' | 'archived' | 'exclusive'
 
@@ -37,9 +37,18 @@ export function AgentsPage(): JSX.Element | null {
       actions={<Button variant="primary" size="sm" disabled={busy || !currentSpaceId} onClick={() => setEditing('new')}><Plus size={14} />新建 Agent</Button>} />
     <div className="flex flex-wrap items-center gap-2">
       <input className={`${inputClass} max-w-xs`} aria-label="搜索 Agent" placeholder="搜索 Agent 名称或职责" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-      <select className={`${compactInputClass}`} aria-label="Agent 列表范围" value={view} onChange={(event) => setView(event.target.value as AgentView)}>
-        <option value="active">可独立指派</option><option value="disabled">已停用</option><option value="exclusive">小队专属配置</option><option value="archived">已归档</option>
-      </select>
+      <Select
+        size="sm"
+        ariaLabel="Agent 列表范围"
+        value={view}
+        onChange={(val) => setView(val as AgentView)}
+        options={[
+          { value: 'active', label: '可独立指派' },
+          { value: 'disabled', label: '已停用' },
+          { value: 'exclusive', label: '小队专属配置' },
+          { value: 'archived', label: '已归档' }
+        ]}
+      />
       <span className="text-my-xs text-my-tertiary">{agents.length} 个 Agent</span>
     </div>
     <p className="text-my-xs text-my-tertiary">此处保存协作配置。指派后的执行与对话等待 Runtime 接入。</p>
@@ -126,8 +135,31 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
           <details className="rounded-my-md border border-my-line p-2.5 text-my-xs text-my-secondary"><summary className="cursor-pointer">代码库与执行配置引用</summary>
             <div className="mt-3 flex flex-col gap-3">
               <p className="text-my-tertiary">仅保存配置引用；连接、隔离目录和实际执行由 Runtime 模块提供。</p>
-              <div className="grid grid-cols-2 gap-2"><Field label="Runtime 引用"><select className={inputClass} value={runtimeKind} onChange={(event) => setRuntimeKind(event.target.value as CruxRuntimeKind)}><option value="claude-code">Claude Code</option><option value="codex">Codex</option><option value="custom">自定义</option></select></Field>
-                <Field label="目录模式引用"><select className={inputClass} value={workingDirectory} onChange={(event) => setWorkingDirectory(event.target.value as CruxWorkingDirectoryMode)}><option value="repo">仓库目录</option><option value="temp">临时目录</option></select></Field></div>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Runtime 引用">
+                  <Select
+                    className="w-full"
+                    value={runtimeKind}
+                    onChange={(val) => setRuntimeKind(val as CruxRuntimeKind)}
+                    options={[
+                      { value: 'claude-code', label: 'Claude Code' },
+                      { value: 'codex', label: 'Codex' },
+                      { value: 'custom', label: '自定义' }
+                    ]}
+                  />
+                </Field>
+                <Field label="目录模式引用">
+                  <Select
+                    className="w-full"
+                    value={workingDirectory}
+                    onChange={(val) => setWorkingDirectory(val as CruxWorkingDirectoryMode)}
+                    options={[
+                      { value: 'repo', label: '仓库目录' },
+                      { value: 'temp', label: '临时目录' }
+                    ]}
+                  />
+                </Field>
+              </div>
               <Field label="代码库名称（每行一个）"><textarea className={`${textareaClass} font-mono text-my-xs`} style={{ minHeight: 'var(--my-space-64)' }} value={repos} onChange={(event) => setRepos(event.target.value)} /></Field>
             </div>
           </details>

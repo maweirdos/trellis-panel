@@ -1,14 +1,20 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, MousePointer2, RefreshCw, X } from 'lucide-react'
+import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, MousePointer2, RefreshCw, Loader2, Users, X } from 'lucide-react'
+import type { RequirementDocument, RequirementView } from '@shared/conversation-requirements'
+import { lastRequirementId } from './requirement-workbench/reading-position'
+import { NewTaskModal, type NewTaskModalProps } from '../crux/pages/TaskCreateModal'
+import { conversationTeamHandoff } from './team-handoff'
 import type { Conversation } from '@shared/private-conversations'
 import type { PiWebPreviewArtifact } from '@shared/pi-web-preview'
-import { Button, Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
+import { Button, Dropdown, DropdownHeader, DropdownItem, Modal } from '../my/ui'
+import { Select } from '../components/Select'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
+import { sameTranscriptOwner } from '../acp/conversation-transcript'
 import { ConversationArchive } from './Archive'
 import { PrivateConversation } from './Conversation'
 import { ConversationFiles } from './Files'
@@ -28,12 +34,15 @@ import { sendDesignMessage, usePendingDesignSend, type DesignConversationReferen
 import { useDesignNavigation } from '../designs/navigation'
 import type { DesignSelection } from '@shared/design-workspace'
 import type { RequirementBuildPreparation } from './requirement-workbench/useRequirementWorkbench'
+import { RequirementIntentAction } from './RequirementIntentAction'
+import { requirementIntent, requirementIntentCommandId, type RequirementSeed } from './requirement-intent'
 import type { RequirementBuildChoice } from './requirement-workbench/BuildPreparation'
 import { DocumentSourceProvider } from '../reader/document-source'
+import { MarkdownView } from '../components/MarkdownView'
 import { ConnectionNotice } from '../acp/ConnectionNotice'
-import { isPrivateEntrySelected, usePrivateDocumentSource } from './source'
+import { isPrivateEntrySelected, usePrivateDocumentSource, type PrivateDocumentPreview } from './source'
 import { conversationClient, conversationError, conversationValue } from './client'
-import { addFiles, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshWorkspace, requestComposerFocus, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
+import { addFiles, ensureConversation, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshFiles, refreshWorkspace, requestComposerFocus, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
 import '../acp/workspace.css'
 import './workspace.css'
 
@@ -41,7 +50,7 @@ const loadRequirementWorkbench = () => import('./requirement-workbench/Workbench
 const RequirementWorkbench = lazy(loadRequirementWorkbench)
 const RequirementExecutionFlow = lazy(() => import('./requirement-workbench/ExecutionFlow').then(module => ({ default: module.RequirementExecutionFlow })))
 const BuildPreparation = lazy(() => import('./requirement-workbench/BuildPreparation').then(module => ({ default: module.BuildPreparation })))
-type RequirementSelection = { id?: string; commandId: string }
+type RequirementSelection = { id?: string; commandId: string; seed?: RequirementSeed; document?: RequirementDocument }
 const retainedRequirements = new Map<string, RequirementSelection>()
 const buildAgentKey = (creatorId: string, conversationId: string, draftId: string): string => `tpanel.requirement-build-agent.v1.${encodeURIComponent(creatorId)}.${conversationId}.${draftId}`
 function readBuildAgent(creatorId: string, conversationId: string, draftId: string, planRevision?: string): string | undefined {
@@ -63,7 +72,7 @@ export function PrivateWorkspace(): JSX.Element {
   const selection = selected[scope] ?? '', current = entries[selection], archiveId = selection.startsWith('archive:') ? selection.slice(8) : null
   const [mobileHistory, setMobileHistory] = useState(false), [fileOwner, setFileOwner] = useState<string | null>(null)
   const [newPending, setNewPending] = useState(false), [error, setError] = useState('')
-  const [requirement, setRequirement] = useState<{ entryKey: string; id?: string; commandId: string } | null>(null)
+  const [requirement, setRequirement] = useState<RequirementSelection & { entryKey: string } | null>(null)
   const currentRequirement = useRef(requirement)
   currentRequirement.current = requirement
   const [execution, setExecution] = useState<{ entryKey: string; draftId: string; agentId?: string } | null>(null)
@@ -76,7 +85,11 @@ export function PrivateWorkspace(): JSX.Element {
   const directoryRequest = useRef<symbol | null>(null)
   const operationOwner = JSON.stringify([scope, selection]), currentOperationOwner = useRef(operationOwner)
   currentOperationOwner.current = operationOwner
-  const documentSource = usePrivateDocumentSource(selection)
+  const teamOwner = JSON.stringify([operationOwner, current?.owner, current?.conversation?.creatorId, current?.conversation?.id, current?.conversation?.workspace.root])
+  const currentTeamOwner = useRef(teamOwner); currentTeamOwner.current = teamOwner
+  const [documentPreview, setDocumentPreview] = useState<PrivateDocumentPreview | null>(null)
+  const documentSource = usePrivateDocumentSource(selection, document => { setFileOwner(null); setDocumentPreview(document) })
+  useEffect(() => { setDocumentPreview(null) }, [selection, current?.owner, current?.session?.connectionGeneration, active])
   const preview = usePiWebPreviewShelf({ root: current?.conversation?.workspace.root ?? '', session: current?.locked ? null : current?.session ?? null, events: current?.events ?? [], enabled: active && !archiveId && !current?.locked, isCurrent: documentSource.isCurrent, onAutoOpen: () => setMobileHistory(false) })
   const designs = useConversationDesigns(current, active && !archiveId && !current?.locked)
   const [designReference, setDesignReference] = useState<{ owner: string; reference: DesignConversationReference } | null>(null)
@@ -84,6 +97,13 @@ export function PrivateWorkspace(): JSX.Element {
   const designTarget = useDesignNavigation(state => state.conversationTarget)
   const consumedDesignTarget = useRef('')
   const currentDesignReference = designReference?.owner === designs.ownerKey ? designReference.reference : null
+  const [teamHandoff, setTeamHandoff] = useState<{ owner: string; value: NonNullable<NewTaskModalProps['handoff']> }>()
+  const teamHandoffRequest = useRef<symbol>()
+  const [teamHandoffPending, setTeamHandoffPending] = useState(false)
+  const teamHandoffFocus = useRef<{ owner: string; element: HTMLElement | null }>()
+  const conversationMore = useRef<HTMLButtonElement>(null)
+  const [conversationHandoffSource, setConversationHandoffSource] = useState<string>()
+  const [handoffRequirementId, setHandoffRequirementId] = useState('')
   const pendingDesignSend = usePendingDesignSend(selection, current?.owner)
   const sendReference = pendingDesignSend?.reference ?? currentDesignReference
   const activeDesign = designs.documents.find(document => document.id === designs.selectedId)
@@ -163,23 +183,74 @@ export function PrivateWorkspace(): JSX.Element {
     if (!canInteract()) return
     selectConversation(conversation); useMy.getState().setShellView(conversation.kind === 'code' ? 'development' : 'collaboration'); setMobileHistory(false)
   }
-  const openRequirement = (id?: string): void => {
+  const createTeamTask = async (requirement?: RequirementView, trigger?: HTMLButtonElement): Promise<void> => {
+    if (!canInteract() || !current?.conversation || !isPrivateEntrySelected(selection) || teamHandoffRequest.current) return
+    const ticket = Symbol('team-handoff'), owner = currentTeamOwner.current, key = selection
+    teamHandoffRequest.current = ticket; setTeamHandoffPending(true)
+    teamHandoffFocus.current = { owner, element: trigger ?? conversationMore.current }
+    try {
+      const seed = await conversationTeamHandoff(current, requirement)
+      if (canInteract() && currentTeamOwner.current === owner && isPrivateEntrySelected(key)) setTeamHandoff({ owner, value: seed })
+    } catch (cause) { if (canInteract() && currentTeamOwner.current === owner) setError(conversationError(cause)) }
+    finally { if (teamHandoffRequest.current === ticket) { teamHandoffRequest.current = undefined; setTeamHandoffPending(false) } }
+  }
+  const closeTeamHandoff = (): void => {
+    setTeamHandoff(undefined)
+    requestAnimationFrame(() => {
+      const target = teamHandoffFocus.current
+      if (canInteract() && target?.owner === currentTeamOwner.current && target.element?.isConnected) target.element.focus({ preventScroll: true })
+    })
+  }
+  const useTeamHandoffSource = async (): Promise<void> => {
+    if (!canInteract() || !current?.conversation || !isPrivateEntrySelected(selection)) return
+    const owner = currentTeamOwner.current, id = current.conversation.id
+    try {
+      const client = conversationClient()
+      if (!client?.requirements) throw new Error('需求读取功能暂不可用。')
+      const requirement = handoffRequirementId ? conversationValue(await client.requirements.read(id, handoffRequirementId)) : undefined
+      if (!canInteract() || currentTeamOwner.current !== owner) return
+      if (requirement && requirement.fileState !== 'saved') throw new Error('需求正文有未核对修改，请先打开需求工作台处理。')
+      await createTeamTask(requirement)
+      if (canInteract() && currentTeamOwner.current === owner) setConversationHandoffSource(undefined)
+    } catch (cause) { if (canInteract() && currentTeamOwner.current === owner) setError(conversationError(cause)) }
+  }
+  const openRequirement = (id?: string, seed?: RequirementSeed, document?: RequirementDocument): void => {
     if (!canInteract() || requirementRequest.current || !current || current.locked || current.conversation?.archivedAt !== undefined || current.kind === 'code' && !current.conversation && !current.directory || !isPrivateEntrySelected(selection)) return
     const ticket = Symbol('requirement')
     requirementRequest.current = ticket; setRequirementOpening(true)
-    void loadRequirementWorkbench().then(() => {
+    void loadRequirementWorkbench().then(async () => {
       if (!canInteract() || !isPrivateEntrySelected(selection) || currentOperationOwner.current !== operationOwner) return
+      const originalConversation = seed ? await ensureConversation(selection) : undefined
+      if (seed && originalConversation) {
+        await refreshFiles(selection)
+        const latest = useConversations.getState().entries[selection]
+        if (!latest || latest.owner !== current.owner || !canInteract() || !isPrivateEntrySelected(selection)) return
+        if (latest.fileError) throw new Error(latest.fileError)
+        const refreshed = requirementIntent(latest), initialDocument = seed.initialDocument
+        if (refreshed) seed = { ...refreshed, ...(initialDocument ? { initialDocument, references: [...refreshed.references.filter(item => item.fileId !== initialDocument.fileId), initialDocument] } : {}) }
+      }
+      const commandId = seed && originalConversation ? await requirementIntentCommandId(current.owner ?? '', originalConversation.id, seed) : crypto.randomUUID()
+      const latest = useConversations.getState().entries[selection]
+      if (!canInteract() || !isPrivateEntrySelected(selection) || latest?.owner !== current.owner || originalConversation && latest?.conversation?.id !== originalConversation.id) return
       const previous = retainedRequirements.get(requirementOwner)
-      const next = previous && previous.id === id ? previous : { id, commandId: crypto.randomUUID() }
+      const next = previous && previous.id === id && (!seed || previous.seed?.sourceKey === seed.sourceKey) ? { ...previous, document } : { id, commandId, seed, document }
       if (!retainedRequirements.has(requirementOwner) && retainedRequirements.size >= 32) {
         const oldest = retainedRequirements.keys().next().value
         if (oldest) retainedRequirements.delete(oldest)
       }
-      retainedRequirements.set(requirementOwner, next)
+      retainedRequirements.set(requirementOwner, { ...next, document: undefined })
       setRequirement({ entryKey: selection, ...next })
-    }).catch(cause => { if (canInteract() && currentOperationOwner.current === operationOwner) setError(conversationError(cause)) }).finally(() => {
+    }).catch(cause => { if (canInteract() && isPrivateEntrySelected(selection) && useConversations.getState().entries[selection]?.owner === current.owner) setError(conversationError(cause)) }).finally(() => {
       if (requirementRequest.current === ticket) { requirementRequest.current = null; setRequirementOpening(false) }
     })
+  }
+  const closeDocumentPreview = (): void => { documentSource.cancelRead(); setDocumentPreview(null) }
+  const adoptDocumentPreview = (): void => {
+    if (!documentPreview || documentPreview.pending || documentPreview.error || !current || !canInteract() || !isPrivateEntrySelected(selection)) return
+    const seed = requirementIntent(current) ?? { sourceKey: documentPreview.file.id, text: '将已保存的文档整理为需求初稿', references: current.files.filter(file => file.kind === 'input').map(file => ({ fileId: file.id, revision: file.revision })) }
+    const reference = { fileId: documentPreview.file.id, revision: documentPreview.file.revision }
+    openRequirement(undefined, { ...seed, initialDocument: reference, references: [...seed.references.filter(item => item.fileId !== reference.fileId), reference] })
+    setDocumentPreview(null)
   }
   const activeRequirement = requirement?.entryKey === selection && !archiveId && current && !current.locked ? requirement : null
   useEffect(() => {
@@ -216,18 +287,19 @@ export function PrivateWorkspace(): JSX.Element {
   const takeDesignReference = (reference: DesignConversationReference): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setDesignReference({ owner: designs.ownerKey, reference }); setDesignRestore(null); requestComposerFocus(selection) } }
   const selectedProject = projects.find((project) => project.id === current?.projectId)
   const composerContext = <>
+    {!activeRequirement && !requirementSummaries.records.length && !requirementSummaries.loading && <RequirementIntentAction key={selection} entry={current} disabled={requirementOpening || Boolean(current?.action)} onUse={seed => openRequirement(undefined, seed)} />}
     {kind === 'work' && projects.length > 0 && current && <Dropdown placement="top" width={256} trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="acp-context-action" aria-label="整理到分组" aria-expanded={open} disabled={Boolean(current.action)} onClick={toggle}><Folder size={14} aria-hidden="true" /><span>{selectedProject?.name ?? '未分组'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}>
       {(close) => <><DropdownHeader>整理到分组</DropdownHeader><DropdownItem selected={!current.projectId} onClick={() => { close(); void reclassifyConversation(current.key, null) }}>未分组</DropdownItem>{projects.map((project) => <DropdownItem key={project.id} selected={current.projectId === project.id} onClick={() => { close(); void reclassifyConversation(current.key, project.id) }}>{project.name}</DropdownItem>)}</>}
     </Dropdown>}
     <ConversationKnowledgeMenu canAddFiles={active && !archiveId && canImportFiles(current)} onAddFiles={importFiles} />
-    <ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={requirementOpening || !current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} onOpen={openRequirement} onRefresh={requirementSummaries.refresh} />
+    <ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={requirementOpening || !current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} preferredId={lastRequirementId(current?.conversation)} onOpen={(id, document) => openRequirement(id, undefined, document)} onRefresh={requirementSummaries.refresh} />
   </>
   return <DocumentSourceProvider client={documentSource}><section className={`acp-workspace${collapsed && !mobileHistory ? ' is-sidebar-collapsed' : ''}`} style={style} aria-label="对话工作区" onKeyDown={(event) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing || !canInteract()) return
     if ((event.ctrlKey || event.metaKey) && event.key === '.' && current) { event.preventDefault(); event.stopPropagation(); void controlConversation(current.key, 'cancel') }
   }}>
     <ContextRegion collapsed={collapsed && !mobileHistory}><div className="acp-navigation-host flex min-h-0 shrink-0"><ConversationHistory kind={kind} selected={selection} projectId={projectId} open={mobileHistory} onProject={(id) => selectProjectScope(kind, id)} onSelect={choose} onNew={startNew} onClose={() => setMobileHistory(false)} /></div></ContextRegion>
-    {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
+    {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}:${activeRequirement.document ?? ''}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} initialSource={activeRequirement.seed} initialDocument={activeRequirement.document} onTeamHandoff={(view, trigger) => void createTeamTask(view, trigger)} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.getState().setSnapshot(snapshot)
       useApp.getState().expandTaskWorkspace({ fromPage: 'chat', taskDir, archived: false, scrollTop: 0 }, `.trellis/tasks/${taskDir}/prd.md`)
@@ -254,10 +326,11 @@ export function PrivateWorkspace(): JSX.Element {
     <main className="acp-main my-conversation-frame">
       <ConversationWorkspaceHeader
         identity={<><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" /><strong title={title}>{title}</strong></>}
-        actions={!archiveId && current && !current.locked && current.conversation ? <Dropdown placement="bottom" align="right" width={224} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" onClick={toggle} aria-expanded={open} aria-label="更多会话操作"><MoreHorizontal size={17} /></button>}>
+        actions={!archiveId && current && !current.locked && current.conversation ? <Dropdown placement="bottom" align="right" width={224} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" ref={conversationMore} onClick={toggle} aria-expanded={open} aria-label="更多会话操作"><MoreHorizontal size={17} /></button>}>
           {(close) => <>
             <DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void readConversation(current.key) }}>刷新此对话</DropdownItem>
             <DropdownItem icon={<Files size={14} />} onClick={() => { close(); openFiles() }}>会话文件</DropdownItem>
+            <DropdownItem icon={<Users size={14} />} disabled={teamHandoffPending} onClick={() => { close(); if (requirementSummaries.records.length) { setHandoffRequirementId(''); setConversationHandoffSource(teamOwner) } else void createTeamTask() }}>从对话创建团队任务</DropdownItem>
             {kind === 'code' && projects.length > 0 && <>
               <DropdownHeader>整理到分组</DropdownHeader>
               <DropdownItem selected={!current.projectId} disabled={Boolean(current.action)} onClick={() => { close(); void reclassifyConversation(current.key, null) }}>未分组</DropdownItem>
@@ -270,13 +343,18 @@ export function PrivateWorkspace(): JSX.Element {
       {error && <div className="acp-history-note"><ConnectionNotice message={error} /><Button size="sm" variant="ghost" onClick={() => setError('')}>收起</Button></div>}
       {storageError && <ConnectionNotice message={storageError} />}
       {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} requirements={requirementSummaries.records} requirementsError={requirementSummaries.error} requirementsLoading={requirementSummaries.loading} onRefreshRequirements={requirementSummaries.refresh} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} onRequirement={openRequirement} />} onOpenWebPreview={showWebPreview}
-        transcriptFooter={<ConversationDesignCards documents={designs.documents} error={designs.error} onOpen={showDesign} onRefresh={designs.refresh} />}
+        transcriptHeader={designs.documents.some(document => !designs.origins.some(receipt => receipt.documentId === document.id)) ? <section aria-label="已保存的历史设计"><span className="my-item-description">已保存的设计</span><ConversationDesignCards documents={designs.documents.filter(document => !designs.origins.some(receipt => receipt.documentId === document.id))} error="" onOpen={showDesign} onRefresh={designs.refresh} /></section> : undefined}
+        renderTurnArtifacts={owner => { const ids = new Set(designs.origins.filter(receipt => sameTranscriptOwner(receipt.origin, owner)).map(receipt => receipt.documentId)); return <ConversationDesignCards documents={designs.documents.filter(document => ids.has(document.id))} error="" onOpen={showDesign} onRefresh={designs.refresh} /> }}
+        transcriptFooter={<ConversationDesignCards documents={[]} error={designs.error} busy={designs.busy} notice={designs.notice} onOpen={showDesign} onRefresh={designs.refresh} />}
         composerReferences={sendReference ? <div className="design-composer-reference my-activity-note"><MousePointer2 size={13} aria-hidden="true" /><span title={pendingDesignSend ? pendingDesignSend.text : sendReference.selection?.selector}>{pendingDesignSend ? current?.action === 'sending' ? '正在发送设计修改…' : `发送结果待核对 · ${pendingDesignSend.text.slice(0, 48)}` : `${sendReference.title}${sendReference.selection ? ` · ${sendReference.selection.tagName} · ${sendReference.selection.text?.slice(0, 48) ?? ''}` : ' · 整个设计'}`}</span>{pendingDesignSend ? <Button size="sm" disabled={Boolean(current?.action)} onClick={() => { void sendDesignMessage(selection, pendingDesignSend.reference).then(accepted => { if (accepted) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } }).catch(cause => { if (isPrivateEntrySelected(selection)) setError(conversationError(cause)) }) }}>核对原发送</Button> : <Button size="sm" variant="ghost" aria-label="移除设计引用" onClick={() => setDesignReference(null)}><X size={13} /></Button>}</div> : undefined}
         onSendMessage={sendReference ? async () => { if (await sendDesignMessage(selection, sendReference)) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } } : undefined}
       /> : <div className="acp-empty" role="status">正在准备输入区…</div>}
     </main>
     </WorkspaceCodePreview>
     </ConversationPreviewLayout>}
+    {documentPreview && documentPreview.conversationId === current?.conversation?.id && documentPreview.ownerKey === JSON.stringify([selection, current?.owner, current?.conversation?.id, current?.conversation?.workspace.root, current?.session?.connectionGeneration, current?.locked]) && !current?.locked && active && <Modal open ariaLabel="会话文档" width={900} onClose={closeDocumentPreview}><section><header className="private-files-heading"><strong className="my-item-title min-w-0 flex-1 break-words">{documentPreview.file.name}</strong><Button size="sm" variant="ghost" disabled={requirementOpening || Boolean(current.action) || documentPreview.pending || Boolean(documentPreview.error)} onClick={adoptDocumentPreview}>整理为需求</Button><Button size="sm" variant="ghost" aria-label="关闭会话文档" onClick={closeDocumentPreview}><X size={14} /></Button></header><div className="private-files-body my-scrollbar my-chat-prose">{documentPreview.pending ? <p className="my-activity-note" role="status"><Loader2 size={14} className="animate-spin" />正在读取文档…</p> : documentPreview.error ? <div role="alert"><p>{documentPreview.error}</p><Button size="sm" variant="ghost" onClick={() => void documentSource.openDocument(documentPreview.file.relativePath).catch(cause => setError(conversationError(cause)))}>重新读取文档</Button></div> : <MarkdownView content={documentPreview.body} />}</div></section></Modal>}
+    {teamHandoff?.owner === teamOwner && active && !current?.locked && <NewTaskModal open handoff={teamHandoff.value} onClose={closeTeamHandoff} />}
+    {conversationHandoffSource === teamOwner && active && !current?.locked && <Modal open ariaLabel="选择任务需求来源" onClose={() => setConversationHandoffSource(undefined)}><div className="flex flex-col gap-4 p-5"><h2 className="my-item-title">选择任务需求来源</h2><label className="flex flex-col gap-2"><span className="my-item-description">准备共享的需求稿</span><Select value={handoffRequirementId} onChange={setHandoffRequirementId} options={[{ value: '', label: '仅使用对话摘要' }, ...requirementSummaries.records.map(record => ({ value: record.id, label: record.title }))]} /></label><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setConversationHandoffSource(undefined)}>取消</Button><Button disabled={teamHandoffPending} onClick={() => void useTeamHandoffSource()}>核对团队任务</Button></div></div></Modal>}
     {fileOwner === selection && !archiveId && <ConversationFiles key={selection} entryKey={selection} onClose={() => setFileOwner(null)} />}
     {buildPreparation?.entryKey === selection && active && activeRequirement && <Suspense fallback={<div className="acp-empty" role="status">正在打开构建准备…</div>}><BuildPreparation entryKey={selection} request={buildPreparation.request} initialAgentId={readBuildAgent(buildPreparation.creatorId, buildPreparation.conversationId, buildPreparation.request.draftId, buildPreparation.request.expectedPlanRevision)} onResolve={finishBuildPreparation} /></Suspense>}
     {execution?.entryKey === selection && active && activeRequirement && <Suspense fallback={null}><RequirementExecutionFlow entryKey={selection} draftId={execution.draftId} preferredAgentId={execution.agentId} onClose={() => setExecution(null)} /></Suspense>}

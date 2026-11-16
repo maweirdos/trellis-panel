@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react'
 import { Button, EmptyState, SearchInput } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { useCrux } from '../store'
-import { compactInputClass, PageHeader } from '../ui'
+import { compactInputClass, PageHeader, Select } from '../ui'
 
 type DirectoryTab = 'all' | 'agent' | 'crew'
 
@@ -41,7 +41,17 @@ export function AgentDirectoryPage(): JSX.Element | null {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="my-segmented" role="group" aria-label="目录类型">{tabs.map((entry) => <button type="button" key={entry.id} aria-pressed={entry.id === tab} className={`my-control my-control-sm rounded-my-md ${entry.id === tab ? 'bg-my-layer-2 text-my-primary' : 'text-my-tertiary'}`} onClick={() => setTab(entry.id)}>{entry.label}<span className="ml-1 text-my-2xs text-my-tertiary collab-stat">{entry.count}</span></button>)}</div>
       <div className="flex flex-wrap items-center gap-2"><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索 Agent、小队或空间" />
-        <select aria-label="目录空间" className={`${compactInputClass} max-w-48`} value={spaceFilter} onChange={(event) => setSpaceFilter(event.target.value)}><option value="">全部空间</option>{snapshot.spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select>
+        <Select
+          size="sm"
+          ariaLabel="目录空间"
+          className="max-w-48"
+          value={spaceFilter}
+          onChange={setSpaceFilter}
+          options={[
+            { value: '', label: '全部空间' },
+            ...snapshot.spaces.map((space) => ({ value: space.id, label: space.name }))
+          ]}
+        />
       </div>
     </div>
     <div className="my-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">

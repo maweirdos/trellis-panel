@@ -4,7 +4,7 @@ import type { CruxSnapshot, CruxTask, CruxTaskRelationKind } from '@shared/crux'
 import { api } from '../../../api'
 import { Button, Tooltip } from '../../../my/ui'
 import { statusOf, useCrux } from '../../store'
-import { inputClass, StatusBadge } from '../../ui'
+import { inputClass, StatusBadge, Select } from '../../ui'
 import { canReadTaskSpace, type TaskMutation, type TaskSourceOwner } from './use-task-source'
 
 type RelationKind = CruxTaskRelationKind | 'blocked_by'
@@ -62,8 +62,28 @@ export function TaskLinks({ snapshot, task, disabled, source, mutate, onNewSubta
       {!relations.length && <p className="text-my-xs text-my-tertiary">暂无关联任务</p>}
       {adding && <fieldset disabled={disabled} className="mt-3 flex min-w-0 flex-col gap-2 rounded-my-md border border-my-line p-3">
         <input className={inputClass} aria-label="搜索关联任务" placeholder="搜索任务编号或标题" value={search} onChange={(event) => { setSearch(event.target.value); setTargetId('') }} />
-        <select aria-label="关联类型" className={inputClass} value={kind} onChange={(event) => setKind(event.target.value as RelationKind)}><option value="related">相关</option><option value="blocks">阻塞</option><option value="blocked_by">受阻于</option><option value="duplicate">重复</option></select>
-        <select aria-label="关联任务" className={inputClass} value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">选择任务</option>{candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.id} · {candidate.title}</option>)}</select>
+        <Select
+          className="w-full"
+          ariaLabel="关联类型"
+          value={kind}
+          onChange={(val) => setKind(val as RelationKind)}
+          options={[
+            { value: 'related', label: '相关' },
+            { value: 'blocks', label: '阻塞' },
+            { value: 'blocked_by', label: '受阻于' },
+            { value: 'duplicate', label: '重复' }
+          ]}
+        />
+        <Select
+          className="w-full"
+          ariaLabel="关联任务"
+          value={targetId}
+          onChange={setTargetId}
+          options={[
+            { value: '', label: '选择任务' },
+            ...candidates.map((candidate) => ({ value: candidate.id, label: `${candidate.id} · ${candidate.title}` }))
+          ]}
+        />
         <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setAdding(false)}>取消</Button><Button size="sm" disabled={!targetId} onClick={() => void add()}>添加关联</Button></div>
       </fieldset>}
     </section>

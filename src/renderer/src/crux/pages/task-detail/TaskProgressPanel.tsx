@@ -11,11 +11,12 @@ import { confirmDialog } from '../../../components/Dialogs'
 import { Button, Modal, Tooltip } from '../../../my/ui'
 import { useInteractionActive } from '../../../utils/interaction-scope'
 import { memberOf, statusOf, useCrux } from '../../store'
-import { Field, inputClass, MemberChip } from '../../ui'
+import { Field, inputClass, MemberChip, Select } from '../../ui'
 import { taskActorId, useTaskSource } from './use-task-source'
 import { useTaskDraft, useTaskDraftField } from './task-drafts'
 import { openTaskConversation } from '../../task-conversation'
 import { ConnectionPanel } from '../../ConnectionPanel'
+import { productTaskApi } from '../../development/ProductTaskEntry'
 
 const ACTIVITY_LABELS: Record<TeamTaskProgressState, string> = { running: '进行中', waiting_confirmation: '等确认', paused: '已暂停', interrupted: '已中断', idle: '待继续' }
 const PROGRESS_FIELDS = ['activity', 'step', 'blocker']
@@ -45,7 +46,18 @@ const settledLocal = (local: ProgressLocal | null | undefined): boolean => Boole
 /** A bounded summary over the real primary conversation; formal phase stays in TaskWorkflow. */
 export function TaskProgressPanel({ snapshot, task }: { snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
   const local = useCrux((state) => state.workspaceContext.state === 'local')
-  return local ? <section aria-label="任务执行进度" className="flex flex-wrap items-center gap-2 rounded-my-lg border border-my-line p-3 text-my-xs text-my-tertiary"><Activity size={15} /><span>连接团队服务后可同步执行动态</span><span className="ml-auto"><ConnectionPanel trigger="connect" /></span></section> : <SharedTaskProgressPanel snapshot={snapshot} task={task} />
+  return local ? <section aria-label="任务执行进度" className="flex flex-wrap items-center gap-2 rounded-my-lg border border-my-line p-3 text-my-xs text-my-tertiary"><Activity size={15} /><span>连接团队服务后可同步执行动态</span><span className="ml-auto"><ConnectionPanel trigger="connect" /></span></section> : task.workKind === 'code' && productTaskApi() ? <ProgressOwner snapshot={snapshot} task={task} /> : <SharedTaskProgressPanel snapshot={snapshot} task={task} />
+}
+
+function ProgressOwner({ snapshot, task }: { snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
+  const context = useCrux(s => s.workspaceContext), [legacy, setLegacy] = useState(false)
+  useEffect(() => {
+    let current = true
+    setLegacy(false)
+    void productTaskApi()?.read({ workspaceKey: context.key, taskId: task.id }).then(reply => { if (current) setLegacy(reply.ok && reply.value.owner === 'legacy') }).catch(() => { /* Unknown ownership never admits a new v1 binding. */ })
+    return () => { current = false }
+  }, [context.key, context.state, task.id, task.createdAt])
+  return legacy ? <SharedTaskProgressPanel snapshot={snapshot} task={task} /> : <></>
 }
 
 function SharedTaskProgressPanel({ snapshot, task }: { snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
@@ -260,7 +272,16 @@ function ProgressEditor({ snapshot, task, value, busy, error, onClose, onSubmit 
     void onSubmit(parsed.data, draft.acknowledge(PROGRESS_FIELDS))
   }
   return <Modal open onClose={onClose} ariaLabel="更新执行摘要" width={480}><div className="flex flex-col gap-4 p-5"><h2 className="text-my-lg font-semibold text-my-primary">更新执行摘要</h2>
-    <Field label="活动状态"><select aria-label="活动状态" className={inputClass} value={activity} disabled={busy} onChange={(event) => setActivity(event.target.value as TeamTaskProgressState)}>{Object.entries(ACTIVITY_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
+    <Field label="活动状态">
+      <Select
+        className="w-full"
+        ariaLabel="活动状态"
+        value={activity}
+        disabled={busy}
+        onChange={(val) => setActivity(val as TeamTaskProgressState)}
+        options={Object.entries(ACTIVITY_LABELS).map(([id, label]) => ({ value: id as TeamTaskProgressState, label }))}
+      />
+    </Field>
     <Field label="最新步骤"><input aria-label="最新步骤" className={inputClass} value={step} maxLength={500} disabled={busy} onChange={(event) => setStep(event.target.value)} /></Field>
     <Field label="阻塞原因（选填）"><input aria-label="阻塞原因" className={inputClass} value={blocker} maxLength={500} disabled={busy} onChange={(event) => setBlocker(event.target.value)} /></Field>
     {draft.stale && <div role="alert" className="flex flex-col gap-2 text-my-xs text-my-warning-text"><p>执行摘要或绑定已更新，草稿已保留。</p><p>当前：{value.server?.progress?.step ?? '暂无摘要'} · {value.server?.progress?.blockingReason ?? '无阻塞'}</p><Button size="sm" disabled={busy} onClick={draft.review}>已核对，保留草稿</Button></div>}
@@ -283,5 +304,28 @@ function StartAgentDialog({ busy, disabled = false, failure, independent, taskId
     void api.acpAgents().then((reply) => { if (!live) return; if (!reply.ok) { setError(reply.error ?? '读取 ACP 引擎失败'); return }; setAgents(reply.agents ?? []) }).catch((cause) => { if (live) setError(messageOf(cause)) })
     return () => { live = false }
   }, [active, engine])
-  return <Modal open onClose={onClose} ariaLabel={independent ? '使用独立副本重新绑定' : '启动任务 Agent'} width={independent ? 640 : 480}><div className="flex flex-col gap-4 p-5"><h2 className="text-my-lg font-semibold text-my-primary">{independent ? '核对原创建与新开发副本' : '启动任务 Agent'}</h2>{independent && <section className="space-y-3 text-my-xs text-my-secondary" aria-label="独立副本重绑核对"><p>原任务：{taskId}</p><div className="grid min-w-0 gap-3 sm:grid-cols-2"><dl className="min-w-0 space-y-1 rounded-my-md border border-my-line p-3"><dt className="font-medium text-my-primary">{independent.originalSessionPresent ? '原会话已找到 · 准备未完成' : '原创建 · 结果未知'}</dt><dd className="break-all">创建标识：{independent.alias}</dd><dd className="break-all">副本：{independent.oldRoot}</dd><dd className="break-all">任务目录：{independent.oldTaskDir ?? '尚未核实'}</dd></dl><dl className="min-w-0 space-y-1 rounded-my-md border border-my-line p-3"><dt className="font-medium text-my-primary">当前已准备的新候选</dt><dd className="break-all">副本：{independent.work.projectRoot}</dd><dd className="break-all">任务目录：{independent.work.taskDir}</dd></dl></div><p>两条路径文字不同，是否为独立工作副本仍由本机核验。同一物理副本将拒绝重新绑定。原创建未确认时，其记录与占用屏障保留；原文件保留，服务继续单独管理。</p>{independent.originalSessionPresent && <p className="text-my-warning-text">原受控会话已存在。本机完成核验后可能结束该会话，再为新副本创建新会话；不会把原会话改挂到新目录。</p>}<details><summary className="cursor-pointer">上报归属核对信息</summary><p className="mt-1 break-all">当前代次：{independent.takeover.expectedGeneration} · 绑定：{independent.takeover.expectedBindingId ?? '尚无绑定'}</p></details></section>}<Field label="执行引擎"><select className={inputClass} value={engine} disabled={busy || disabled} onChange={(event) => setEngine(event.target.value as 'pi' | 'acp')}><option value="pi">Pi</option><option value="acp">ACP</option></select></Field>{engine === 'acp' && <Field label="本机 ACP 引擎"><select className={inputClass} value={agentId} disabled={busy || disabled} onChange={(event) => setAgentId(event.target.value)}><option value="">选择已安装引擎</option>{agents.map((agent) => <option key={agent.id} value={agent.id} disabled={!agent.enabled || !agent.available}>{agent.name}{!agent.available ? ' · 不可用' : ''}</option>)}</select></Field>}{(error || failure) && <p role="alert" className="text-my-xs text-my-danger-text">{error || failure}</p>}<div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={onClose}>取消</Button><Button size="sm" variant="primary" disabled={busy || disabled || engine === 'acp' && !agentId} onClick={() => void onStart(engine, engine === 'acp' ? agentId : undefined)}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}{independent ? '确认使用独立副本重新绑定' : '启动并绑定主要会话'}</Button></div></div></Modal>
+  return <Modal open onClose={onClose} ariaLabel={independent ? '使用独立副本重新绑定' : '启动任务 Agent'} width={independent ? 640 : 480}><div className="flex flex-col gap-4 p-5"><h2 className="text-my-lg font-semibold text-my-primary">{independent ? '核对原创建与新开发副本' : '启动任务 Agent'}</h2>{independent && <section className="space-y-3 text-my-xs text-my-secondary" aria-label="独立副本重绑核对"><p>原任务：{taskId}</p><div className="grid min-w-0 gap-3 sm:grid-cols-2"><dl className="min-w-0 space-y-1 rounded-my-md border border-my-line p-3"><dt className="font-medium text-my-primary">{independent.originalSessionPresent ? '原会话已找到 · 准备未完成' : '原创建 · 结果未知'}</dt><dd className="break-all">创建标识：{independent.alias}</dd><dd className="break-all">副本：{independent.oldRoot}</dd><dd className="break-all">任务目录：{independent.oldTaskDir ?? '尚未核实'}</dd></dl><dl className="min-w-0 space-y-1 rounded-my-md border border-my-line p-3"><dt className="font-medium text-my-primary">当前已准备的新候选</dt><dd className="break-all">副本：{independent.work.projectRoot}</dd><dd className="break-all">任务目录：{independent.work.taskDir}</dd></dl></div><p>两条路径文字不同，是否为独立工作副本仍由本机核验。同一物理副本将拒绝重新绑定。原创建未确认时，其记录与占用屏障保留；原文件保留，服务继续单独管理。</p>{independent.originalSessionPresent && <p className="text-my-warning-text">原受控会话已存在。本机完成核验后可能结束该会话，再为新副本创建新会话；不会把原会话改挂到新目录。</p>}<details><summary className="cursor-pointer">上报归属核对信息</summary><p className="mt-1 break-all">当前代次：{independent.takeover.expectedGeneration} · 绑定：{independent.takeover.expectedBindingId ?? '尚无绑定'}</p></details></section>}<Field label="执行引擎">
+  <Select
+    className="w-full"
+    value={engine}
+    disabled={busy || disabled}
+    onChange={(val) => setEngine(val as 'pi' | 'acp')}
+    options={[
+      { value: 'pi', label: 'Pi' },
+      { value: 'acp', label: 'ACP' }
+    ]}
+  />
+</Field>
+{engine === 'acp' && <Field label="本机 ACP 引擎">
+  <Select
+    className="w-full"
+    value={agentId}
+    disabled={busy || disabled}
+    onChange={setAgentId}
+    options={[
+      { value: '', label: '选择已安装引擎' },
+      ...agents.map((agent) => ({ value: agent.id, label: `${agent.name}${!agent.available ? ' · 不可用' : ''}`, disabled: !agent.enabled || !agent.available }))
+    ]}
+  />
+</Field>}{(error || failure) && <p role="alert" className="text-my-xs text-my-danger-text">{error || failure}</p>}<div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={onClose}>取消</Button><Button size="sm" variant="primary" disabled={busy || disabled || engine === 'acp' && !agentId} onClick={() => void onStart(engine, engine === 'acp' ? agentId : undefined)}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}{independent ? '确认使用独立副本重新绑定' : '启动并绑定主要会话'}</Button></div></div></Modal>
 }

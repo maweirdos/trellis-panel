@@ -5,7 +5,7 @@ import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Switch, Tooltip } from '../../my/ui'
 import { useCrux, statusOf } from '../store'
-import { Field, inputClass, MemberChip, PageHeader, textareaClass } from '../ui'
+import { Field, inputClass, MemberChip, PageHeader, textareaClass, Select } from '../ui'
 import { SpaceCodeResources } from '../code-resources/SpaceCodeResources'
 import { SpaceGovernancePanel } from '../governance/SpaceGovernancePanel'
 
@@ -94,7 +94,17 @@ export function SpaceEditor({ space, onClose }: { space?: CruxSpace; onClose: ()
     <Field label="空间名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
     {!space && <Field label="任务前缀" hint="2～7 个英文字母或数字"><input className={inputClass} maxLength={7} value={key} aria-invalid={key.length > 0 && !validKey} onChange={(event) => setKey(event.target.value.toUpperCase())} /></Field>}
     <Field label="描述（选填）"><textarea className={textareaClass} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
-    <Field label="访问权限" hint={visibility === 'public' ? '组织成员可发现并自行加入。' : '仅空间成员可查看内容，由管理员添加成员。'}><select className={inputClass} value={visibility} onChange={(event) => setVisibility(event.target.value === 'private' ? 'private' : 'public')}><option value="public">组织内公开</option><option value="private">私有</option></select></Field>
+    <Field label="访问权限" hint={visibility === 'public' ? '组织成员可发现并自行加入。' : '仅空间成员可查看内容，由管理员添加成员。'}>
+      <Select
+        className="w-full"
+        value={visibility}
+        onChange={(val) => setVisibility(val === 'private' ? 'private' : 'public')}
+        options={[
+          { value: 'public', label: '组织内公开' },
+          { value: 'private', label: '私有' }
+        ]}
+      />
+    </Field>
     {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
   </div></div><div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy || !name.trim() || (!space && !validKey)} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}{space ? '保存' : '创建'}</Button></div></fieldset></Modal>
 }

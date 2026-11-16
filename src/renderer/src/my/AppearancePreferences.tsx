@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { Check } from 'lucide-react'
 import { normalizeCodeFontFamily, normalizeCodeFontSize, UI_DENSITY_OPTIONS } from './appearance'
+import { Select } from '../components/Select'
 import { useMy } from './store'
 import { PreferenceRow } from '../pages/settings/PreferenceSection'
 import type { Settings } from '../../../shared/types'
@@ -52,18 +53,28 @@ export function AppearancePreferences(): JSX.Element {
       </div>
     </PreferenceRow>
     <PreferenceRow label="界面字体" htmlFor="appearance-font" hint="应用于界面和阅读内容，代码字体保持不变。">
-      <select id="appearance-font" className="my-input" value={fontFamily} onChange={(event) => setFontFamily(event.target.value === 'system' ? 'system' : 'default')}>
-        <option value="default">默认（思源黑体 · Inter）</option>
-        <option value="system">系统字体</option>
-      </select>
+      <Select
+        id="appearance-font"
+        value={fontFamily}
+        onChange={(val) => setFontFamily(val === 'system' ? 'system' : 'default')}
+        options={[
+          { value: 'default', label: '默认（思源黑体 · Inter）' },
+          { value: 'system', label: '系统字体' }
+        ]}
+      />
     </PreferenceRow>
     <PreferenceRow label="代码字体" htmlFor="appearance-code-font" hint="用于 Markdown 代码块和产物源码；未安装的字体回退到默认等宽字体。"
       detail={<pre className="appearance-code-sample my-code-content" aria-label="代码字体预览">const result = await runTask()</pre>}>
-      <select id="appearance-code-font" className="my-input" value={codeFontFamily} onChange={(event) => setCodeFontFamily(normalizeCodeFontFamily(event.target.value))}>
-        <option value="default">默认等宽字体</option>
-        <option value="cascadia">Cascadia Mono</option>
-        <option value="consolas">Consolas</option>
-      </select>
+      <Select
+        id="appearance-code-font"
+        value={codeFontFamily}
+        onChange={(val) => setCodeFontFamily(normalizeCodeFontFamily(val))}
+        options={[
+          { value: 'default', label: '默认等宽字体' },
+          { value: 'cascadia', label: 'Cascadia Mono' },
+          { value: 'consolas', label: 'Consolas' }
+        ]}
+      />
     </PreferenceRow>
     <PreferenceRow label="代码字号" hint="相对界面密度调整代码块和产物源码的字号。">
       <div className="my-segmented preference-choices preference-size-choices" role="group" aria-label="代码字号">

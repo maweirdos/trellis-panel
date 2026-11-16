@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react'
 import type { TeamCodeResource, TeamSpaceResourceLink } from '@shared/team-code-resources'
 import { Button } from '../../my/ui'
 import { useCrux } from '../store'
-import { Field, inputClass, textareaClass } from '../ui'
+import { Field, inputClass, textareaClass, Select } from '../ui'
 import { ResourceLoadState, ResourceRecovery, ResourceSummary } from './ResourceControls'
 import { useResourceCommands, useResourceDraft, useResourceList, useResourceOwner, useResourceSurfaceKey } from './resource-state'
 
@@ -73,7 +73,7 @@ function SpaceResources({ spaceId }: { spaceId: string }): JSX.Element {
           <Field label="用途"><input aria-label="用途" className={inputClass} required maxLength={1000} value={editor.purpose} onChange={(event) => setEditor({ ...editor, purpose: event.target.value })} /></Field>
           <Field label="完整基座与模块说明"><textarea aria-label="完整基座与模块说明" className={textareaClass} required rows={3} maxLength={2000} value={editor.moduleDescription} onChange={(event) => setEditor({ ...editor, moduleDescription: event.target.value.replace(/[\r\n]/g, ' ') })} /></Field>
           {editor.resource ? <><ResourceSummary resource={editor.resource} /><label className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" checked={editor.disabled} onChange={(event) => setEditor({ ...editor, disabled: event.target.checked })} />停用此资源</label>{editor.disabled && <p className="text-my-xs text-my-warning-text">停用后已有选择会显示失效，需要重新核对；不会自动替换为其他资源。</p>}</> : <>
-            <Field label="仓库服务"><select aria-label="仓库服务" className={inputClass} value={editor.provider} onChange={(event) => setEditor({ ...editor, provider: event.target.value as Editor['provider'] })}>{['git', 'github', 'gitlab', 'azure-devops', 'other'].map((provider) => <option key={provider} value={provider}>{provider}</option>)}</select></Field>
+            <Field label="仓库服务"><Select ariaLabel="仓库服务" value={editor.provider} onChange={(value) => setEditor({ ...editor, provider: value as Editor['provider'] })} options={['git', 'github', 'gitlab', 'azure-devops', 'other']} /></Field>
             <Field label="仓库标识"><input aria-label="仓库标识" className={inputClass} required maxLength={256} placeholder="organization/repository" value={editor.repositoryId} onChange={(event) => setEditor({ ...editor, repositoryId: event.target.value })} /></Field>
             <Field label="仓库地址" hint="HTTP(S) 或 SSH 地址，不包含密码、查询参数或本机路径。"><input aria-label="仓库地址" className={inputClass} required maxLength={2048} placeholder="https://git.example.com/team/repository.git" value={editor.repositoryUrl} onChange={(event) => setEditor({ ...editor, repositoryUrl: event.target.value })} /></Field>
           </>}

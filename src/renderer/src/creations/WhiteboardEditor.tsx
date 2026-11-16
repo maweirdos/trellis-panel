@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } fro
 import { Background, Handle, Position, ReactFlow, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance } from '@xyflow/react'
 import { Maximize, Minus, Plus } from 'lucide-react'
 import { WHITEBOARD_COORDINATE_LIMIT, WHITEBOARD_MAX_EDGES, WHITEBOARD_MAX_NODES, WHITEBOARD_MAX_TEXT, whiteboardDocumentSchema, type WhiteboardDocument } from '../../../shared/creation-whiteboard'
+import { Select } from '../components/Select'
 import '@xyflow/react/dist/style.css'
 import './whiteboard-editor.css'
 
@@ -126,16 +127,16 @@ function WhiteboardCanvas({ value, readonly, onChange }: { value: WhiteboardDocu
         </ReactFlow>
       </div>
       {!readonly && <div className="whiteboard-inspector">
-        {value.nodes.length > 0 && <label className="whiteboard-picker"><span className="my-item-title">选择节点</span><select className="my-input" value={node?.id ?? ''} onChange={(event) => { setSelectedNode(event.target.value); setSelectedEdge('') }}><option value="">选择节点</option>{value.nodes.map((item, index) => <option key={item.id} value={item.id}>{item.text || `空节点 ${index + 1}`}</option>)}</select></label>}
+        {value.nodes.length > 0 && <label className="whiteboard-picker"><span className="my-item-title">选择节点</span><Select value={node?.id ?? ''} onChange={(val) => { setSelectedNode(val); setSelectedEdge('') }} options={[{ value: '', label: '选择节点' }, ...value.nodes.map((item, index) => ({ value: item.id, label: item.text || `空节点 ${index + 1}` }))]} /></label>}
         {node && <div className="whiteboard-fields">
           <label><span className="my-item-title">节点内容</span><textarea className="my-input nodrag" value={node.text} maxLength={WHITEBOARD_MAX_TEXT} onChange={(event) => emit({ ...value, nodes: value.nodes.map((item) => item.id === node.id ? { ...item, text: event.target.value } : item) })} /></label>
           <button type="button" className="my-control" onClick={() => { emit({ ...value, nodes: value.nodes.filter((item) => item.id !== node.id), edges: value.edges.filter((item) => item.source !== node.id && item.target !== node.id) }); setSelectedNode('') }}>删除节点</button>
         </div>}
-        {value.edges.length > 0 && <label className="whiteboard-picker"><span className="my-item-title">选择连线</span><select className="my-input" value={edge?.id ?? ''} onChange={(event) => { setSelectedEdge(event.target.value); setSelectedNode('') }}><option value="">选择连线</option>{value.edges.map((item, index) => <option key={item.id} value={item.id}>{`${value.nodes.find((entry) => entry.id === item.source)?.text || '空节点'} → ${value.nodes.find((entry) => entry.id === item.target)?.text || '空节点'} (${index + 1})`}</option>)}</select></label>}
+        {value.edges.length > 0 && <label className="whiteboard-picker"><span className="my-item-title">选择连线</span><Select value={edge?.id ?? ''} onChange={(val) => { setSelectedEdge(val); setSelectedNode('') }} options={[{ value: '', label: '选择连线' }, ...value.edges.map((item, index) => ({ value: item.id, label: `${value.nodes.find((entry) => entry.id === item.source)?.text || '空节点'} → ${value.nodes.find((entry) => entry.id === item.target)?.text || '空节点'} (${index + 1})` }))]} /></label>}
         {edge && <button type="button" className="my-control" onClick={() => { emit({ ...value, edges: value.edges.filter((item) => item.id !== edge.id) }); setSelectedEdge('') }}>删除连线</button>}
         <div className="whiteboard-fields" role="group" aria-label="创建连线">
-          <label><span className="my-item-title">起点</span><select className="my-input" value={source} onChange={(event) => setSource(event.target.value)}><option value="">选择节点</option>{value.nodes.map((item, index) => <option key={item.id} value={item.id}>{item.text || `空节点 ${index + 1}`}</option>)}</select></label>
-          <label><span className="my-item-title">终点</span><select className="my-input" value={target} onChange={(event) => setTarget(event.target.value)}><option value="">选择节点</option>{value.nodes.map((item, index) => <option key={item.id} value={item.id}>{item.text || `空节点 ${index + 1}`}</option>)}</select></label>
+          <label><span className="my-item-title">起点</span><Select value={source} onChange={setSource} options={[{ value: '', label: '选择节点' }, ...value.nodes.map((item, index) => ({ value: item.id, label: item.text || `空节点 ${index + 1}` }))]} /></label>
+          <label><span className="my-item-title">终点</span><Select value={target} onChange={setTarget} options={[{ value: '', label: '选择节点' }, ...value.nodes.map((item, index) => ({ value: item.id, label: item.text || `空节点 ${index + 1}` }))]} /></label>
           <button type="button" className="my-control" disabled={!value.nodes.some((item) => item.id === source) || !value.nodes.some((item) => item.id === target) || source === target || value.edges.length >= WHITEBOARD_MAX_EDGES} onClick={() => addEdge(source, target)}>添加连线</button>
         </div>
       </div>}

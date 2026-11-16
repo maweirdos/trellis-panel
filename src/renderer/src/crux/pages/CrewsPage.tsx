@@ -4,7 +4,7 @@ import type { CruxAgent, CruxCrew, CruxCrewInput, CruxRole, CruxSnapshot } from 
 import { api } from '../../api'
 import { Button, EmptyState, Modal, SearchInput, Tooltip } from '../../my/ui'
 import { useCrux } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, MemberChip } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, MemberChip, Select } from '../ui'
 import { AgentEditor } from './AgentsPage'
 
 const ROLE_LABEL: Record<CruxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
@@ -124,14 +124,29 @@ function CrewEditor({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew | nul
         <Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
         <Field label="职责（选填）"><input className={inputClass} value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
         <Field label="队长">
-          <select className={inputClass} value={captain ? `${captain.kind}:${captain.id}` : ''} onChange={(event) => selectCaptain(event.target.value)}>
-            <option value="">选择队长</option>
-            {captain && !captainReady && <option value={`${captain.kind}:${captain.id}`} disabled>{crew?.captain.name ?? captain.id}（不可用）</option>}
-            <optgroup label="空间成员">{people.map((member) => <option key={member.id} value={`member:${member.id}`}>{member.name}{member.title ? ` · ${member.title}` : ''}</option>)}</optgroup>
-            {captainCandidates.length > 0 && <optgroup label="Agent">{captainCandidates.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}</optgroup>}
-          </select>
+          <Select
+            className="w-full"
+            value={captain ? `${captain.kind}:${captain.id}` : ''}
+            onChange={selectCaptain}
+            options={[
+              { value: '', label: '选择队长' },
+              ...(captain && !captainReady ? [{ value: `${captain.kind}:${captain.id}`, label: `${crew?.captain.name ?? captain.id}（不可用）`, disabled: true }] : []),
+              ...people.map((member) => ({ value: `member:${member.id}`, label: `空间成员 · ${member.name}${member.title ? ` · ${member.title}` : ''}` })),
+              ...captainCandidates.map((agent) => ({ value: `agent:${agent.id}`, label: `Agent · ${agent.name}` }))
+            ]}
+          />
         </Field>
-        {captain?.kind === 'agent' && <Field label="负责人（选填）"><select className={inputClass} value={ownerId} onChange={(event) => setOwnerId(event.target.value)}><option value="">未设置</option>{people.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></Field>}
+        {captain?.kind === 'agent' && <Field label="负责人（选填）">
+          <Select
+            className="w-full"
+            value={ownerId}
+            onChange={setOwnerId}
+            options={[
+              { value: '', label: '未设置' },
+              ...people.map((member) => ({ value: member.id, label: member.name }))
+            ]}
+          />
+        </Field>}
         <fieldset><legend className="mb-2 text-my-xs font-medium text-my-tertiary">成员</legend>
           <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索成员或 Agent" />
           <div className="my-scrollbar flex max-h-56 flex-col gap-1 overflow-y-auto">

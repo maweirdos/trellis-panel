@@ -2,14 +2,16 @@
 import assert from 'node:assert/strict'
 import { globSync, readFileSync } from 'node:fs'
 import postcss from 'postcss'
+import { BRAND_ICON_SIZES, BRAND_ICO_SIZES, BRAND_COMPACT_SIZES, brandMarkSvg, brandTileSvg, validateBrandGeometry } from './brand-asset-source.mjs'
 
 const read = file => readFileSync(file, 'utf8')
 const root = 'src/renderer/src/'
 const tokens = read(root + 'my/my-tokens.css')
 const sources = [...globSync(root + '**/*.{ts,tsx,css}')].map(read).join('\n') + read('tailwind.config.js')
-const allowedRoots = new Set([root + 'App.tsx', root + 'daemon/BootstrapGate.tsx'])
+const allowedRoots = new Set([root + 'App.tsx', root + 'daemon/BootstrapGate.tsx', root + 'daemon/QuitDialog.tsx', root + 'daemon/LifecycleDialog.tsx'])
 for (const file of globSync(root + '**/*.tsx')) {
-  if (!allowedRoots.has(file.replace(/\\/g, '/'))) assert.doesNotMatch(read(file), /className=["'][^"']*\bmy-root\b/, `only App and BootstrapGate own typography roots: ${file}`)
+  if (!allowedRoots.has(file.replace(/\\/g, '/'))) assert.doesNotMatch(read(file), /className=["'][^"']*\bmy-root\b/, `only App, BootstrapGate, QuitDialog and LifecycleDialog own typography roots: ${file}`)
+  assert.doesNotMatch(read(file), /<select\b/, `use theme-aware Select component instead of native select: ${file}`)
 }
 assert.doesNotMatch(sources, /border-(?:left|inline-start)(?:-color)?\s*:[^;}]*--my-(?:txt|border|bg)-(?:danger|warning|success|info|blue)/, 'severity never uses a colored leading border')
 assert.doesNotMatch(sources, /--leaf-|(?:bg|text|border)-leaf\b|@fontsource-variable\/inter/)
@@ -34,7 +36,7 @@ for (const [theme, values] of Object.entries(themes)) {
 }
 
 const radiusNames = new Set(Object.keys(base).filter(name => /^--my-.*radius(?:-|$)/.test(name)))
-const functionalRadii = new Set(['--my-radius-none', '--my-radius-full', '--my-radius-round'])
+const functionalRadii = new Set(['--my-radius-none', '--my-radius-full', '--my-radius-round', '--my-radius-composer'])
 const resolveRadius = (name, values, trail = []) => {
   assert.ok(!trail.includes(name), `circular radius ${[...trail, name].join(' -> ')}`)
   const value = values[name]?.trim()
@@ -53,6 +55,7 @@ for (const [theme, values] of Object.entries(themes)) {
     assert.match(resolveRadius('--my-radius-none', context), /^0(?:px)?$/)
     assert.equal(resolveRadius('--my-radius-full', context), '9999px')
     assert.equal(resolveRadius('--my-radius-round', context), '50%')
+    assert.equal(resolveRadius('--my-radius-composer', context), '16px')
   }
 }
 const canonicalRadius = value => /^0(?:px|rem|em|%)?$/.test(value) || value === 'inherit' || radiusNames.has(value.match(/^var\((--my-[\w-]+)\)$/)?.[1])
@@ -72,15 +75,38 @@ assert.doesNotMatch(sources, /\brounded(?:-[a-z]+)?-\[[^\]]+\]/, 'use shared rou
 for (const match of sources.matchAll(/\bborderRadius\s*:\s*(?:(-?\d+(?:\.\d+)?)|(["'`])([^"'`]*)\2)/g)) {
   assert.ok(match[1] !== undefined ? Number(match[1]) === 0 : canonicalRadius(match[3]), `inline radius must use a canonical token or zero: ${match[0]}`)
 }
-const markPath = read('resources/brand/mark.svg').match(/<path[^>]+d="([^"]+)"/)[1]
-assert.ok(read('src/renderer/public/favicon.svg').includes(markPath), 'favicon derives from the canonical mark')
+const geometry = JSON.parse(read('resources/brand/geometry.json'))
+validateBrandGeometry(geometry)
+assert.equal(read('resources/brand/mark.svg'), brandMarkSvg(geometry), 'mark derives from canonical geometry')
+for (const size of BRAND_COMPACT_SIZES) {
+  const file = size === 24 ? 'mark-compact.svg' : `mark-${size}.svg`
+  assert.equal(read(`resources/brand/${file}`), brandMarkSvg(geometry, { size, optical: true }), `compact mark derives from canonical geometry: ${size}`)
+}
+for (const file of ['resources/brand/favicon.svg', 'src/renderer/public/favicon.svg', 'packages/team-web/public/favicon.svg']) {
+  assert.equal(read(file), brandTileSvg(geometry, 16), `favicon derives from canonical geometry: ${file}`)
+}
+assert.doesNotMatch(read('resources/brand/wordmark.svg'), /<(?:script|image|text|foreignObject|font)\b/i, 'wordmark uses only local vector outlines')
 assert.ok(read('src/renderer/src/my/BrandMark.tsx').includes('resources/brand/mark.svg?url'))
 const ico = readFileSync('resources/brand/icon.ico')
 const appId = read('electron-builder.yml').match(/^appId:\s*(\S+)/m)[1]
 assert.ok(read('src/main/services/window-branding.ts').includes(`APPLICATION_ID = '${appId}'`), 'native taskbar identity matches the packaged application')
 assert.equal(ico.readUInt16LE(2), 1)
-assert.equal(ico.readUInt16LE(4), 7)
-for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
+assert.equal(ico.readUInt16LE(4), BRAND_ICO_SIZES.length)
+let iconOffset = 6 + BRAND_ICO_SIZES.length * 16
+for (const [index, size] of BRAND_ICO_SIZES.entries()) {
+  const at = 6 + index * 16
+  assert.equal(ico[at] || 256, size)
+  assert.equal(ico[at + 1] || 256, size)
+  assert.equal(ico.readUInt16LE(at + 4), 1)
+  assert.equal(ico.readUInt16LE(at + 6), 32)
+  assert.equal(ico.readUInt32LE(at + 12), iconOffset)
+  const frame = readFileSync(`resources/brand/icon-${size}.png`)
+  assert.equal(ico.readUInt32LE(at + 8), frame.length)
+  assert.ok(ico.subarray(iconOffset, iconOffset + frame.length).equals(frame), `ICO frame uses canonical ${size}px PNG`)
+  iconOffset += frame.length
+}
+assert.equal(iconOffset, ico.length)
+for (const size of BRAND_ICON_SIZES) {
   const png = readFileSync(`resources/brand/icon-${size}.png`)
   assert.equal(png.readUInt32BE(16), size)
   assert.equal(png.readUInt32BE(20), size)

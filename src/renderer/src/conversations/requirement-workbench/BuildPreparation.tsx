@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type JSX } from 'react'
 import { CircleAlert, FolderOpen, Loader2, X } from 'lucide-react'
 import { requirementTargetSelectionSchema, type RequirementTargetSelection, type RequirementView } from '@shared/conversation-requirements'
 import { Button, Modal } from '../../my/ui'
+import { Select } from '../../components/Select'
 import { useInteractionGuard } from '../../utils/interaction-scope'
 import { projectRootKey } from '../../my/navigation'
 import { useApp } from '../../store'
@@ -77,7 +78,7 @@ export function BuildPreparation({ entryKey, request, initialAgentId, onResolve 
       {pending === 'read' && <p className="my-activity-note" role="status"><Loader2 size={14} className="animate-spin" />正在核对需求与计划…</p>}
       {view && <><h3 className="my-item-title">{view.draft.title}</h3>
         <div className="requirement-execution-review"><span className="my-item-title">目标工程</span><span className="my-item-description break-all">{target?.root ?? '尚未选择工程'}</span>{!view.draft.handoff?.task && <div className="requirement-workbench-line"><Button size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => void chooseDirectory()}>{target ? '更换工程' : '选择工程'}</Button>{entry?.conversation?.kind === 'code' && entry.conversation.workspace.kind === 'directory' && projectRootKey(target?.root) !== projectRootKey(entry.conversation.workspace.root) && <Button size="sm" variant="ghost" disabled={Boolean(pending)} onClick={() => setTarget({ root: entry.conversation?.workspace.root ?? '', selection: { kind: 'code' } })}>使用当前 Code 工程</Button>}</div>}</div>
-        <label className="requirement-execution-engine"><span className="my-item-title">执行引擎</span><select className="my-input" value={agentId} disabled={Boolean(pending)} onChange={event => setAgentId(event.target.value)} aria-label="执行引擎">{agentId && !available.some(item => item.id === agentId) && <option value={agentId} disabled>{runtimes.find(item => item.id === agentId)?.name ?? agentId}（不可用）</option>}{available.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label className="requirement-execution-engine"><span className="my-item-title">执行引擎</span><Select ariaLabel="执行引擎" value={agentId} disabled={Boolean(pending)} onChange={setAgentId} options={[...(agentId && !available.some(item => item.id === agentId) ? [{ value: agentId, label: `${runtimes.find(item => item.id === agentId)?.name ?? agentId}（不可用）`, disabled: true }] : []), ...available.map(item => ({ value: item.id, label: item.name }))]} /></label>
         {!available.length && <p className="my-item-description" role="status">当前没有可用执行引擎，请先完成引擎设置。</p>}
         <div className="requirement-workbench-line"><Button size="sm" variant="ghost" onClick={() => { onResolve(null); openConversationSettings() }}>配置引擎与默认模型</Button><Button size="sm" variant="ghost" onClick={() => { onResolve(null); useApp.getState().setPage('models') }}>管理模型连接</Button></div>
         <div className="requirement-execution-review"><span className="my-item-title">执行方式与权限</span><span className="my-item-description">使用所选工程；不会自动创建隔离工作副本。托管阶段会使用独立会话和引擎默认配置，实际模型与权限以引擎报告为准。执行准备完成后可查看和调整发起会话提供的选项；这些临时选择不会自动传给托管阶段。工具请求由原生授权处理，无法交互时拒绝。</span></div>

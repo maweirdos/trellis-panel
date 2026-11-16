@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BookmarkPlus, Plus, X } from 'lucide-react'
 import { api } from '../../api'
 import { useCrux, spaceTasks, applyTaskFilter, memberOf, statusOf, isTriagePending, allowedStatusIdsFor, PRIORITY_LABEL } from '../store'
-import { PageHeader, StatusBadge, PriorityBadge, ExecutorBadge, MemberChip, inputClass, compactInputClass } from '../ui'
+import { PageHeader, StatusBadge, PriorityBadge, ExecutorBadge, MemberChip, inputClass, compactInputClass, Select } from '../ui'
 import { Button, EmptyState } from '../../my/ui'
 import { TaskFilters } from './TasksPage'
 import { NewTaskModal } from './TaskDetailDrawer'
@@ -54,7 +54,13 @@ export function BoardPage(): JSX.Element | null {
   }
   return <div className="flex min-h-0 flex-1 flex-col gap-3">
     <PageHeader title="看板" description={`共 ${tasks.length} 条任务${groupBy === 'assignee' ? '；多人任务分别出现在每位处理人列，总数按任务去重' : '；按状态分组时可拖动卡片流转'}`} actions={<div className="flex flex-wrap items-center gap-2">
-      <select aria-label="看板分组" className={`${compactInputClass}`} value={groupBy} onChange={(e) => { setGroupBy(e.target.value as GroupBy); applyView(null) }}>{(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => <option key={g} value={g}>{GROUP_LABEL[g]}</option>)}</select>
+      <Select
+        size="sm"
+        ariaLabel="看板分组"
+        value={groupBy}
+        onChange={(val) => { setGroupBy(val as GroupBy); applyView(null) }}
+        options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({ value: g, label: GROUP_LABEL[g] }))}
+      />
       <Button size="sm" disabled={readOnly} onClick={() => setSaving(!saving)}><BookmarkPlus size={14} />保存视图</Button><Button size="sm" variant="primary" disabled={!spaceId || readOnly} onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button>
     </div>} />
     <TaskFilters />
@@ -73,7 +79,15 @@ export function BoardPage(): JSX.Element | null {
             <button type="button" onClick={() => openTask(task.id)} className="mb-2 w-full text-left text-my-xs leading-relaxed text-my-primary"><span className="mr-1 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : ''}>{task.title}</span></button>
             <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></div>
             <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
-            <select aria-label={`更改 ${task.id} 状态`} className={`${inputClass} mt-2`} disabled={busy || readOnly} value={task.statusId} onChange={(e) => moveTask(task.id, e.target.value)}>{statuses.filter((s) => allowed.has(s.id)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+            <Select
+              size="sm"
+              ariaLabel={`更改 ${task.id} 状态`}
+              className="mt-2 w-full"
+              disabled={busy || readOnly}
+              value={task.statusId}
+              onChange={(val) => moveTask(task.id, val)}
+              options={statuses.filter((s) => allowed.has(s.id)).map((s) => ({ value: s.id, label: s.name }))}
+            />
           </article>
         })}{column.tasks.length === 0 && <p className="py-3 text-center text-my-xs text-my-tertiary">暂无任务</p>}</div>
       </section>)}</div>}

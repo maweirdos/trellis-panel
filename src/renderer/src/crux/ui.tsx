@@ -5,6 +5,7 @@ import { cloneElement, isValidElement, useId, type ReactNode } from 'react'
 import { Info, X } from 'lucide-react'
 import { Button, Modal, Tooltip } from '../my/ui'
 import { PriorityIcon } from '../my/icons'
+import { Select, type SelectOption } from '../components/Select'
 import { FlowIcon } from './icons'
 import type { FlowIconName } from './icons'
 import type {
@@ -110,7 +111,7 @@ export function Drawer({ open, title, onClose, children, width = 520 }: { open: 
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }): JSX.Element {
   const generatedId = useId()
-  const direct = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)
+  const direct = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children) && (children.type === Select || (typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)))
   const controlId = direct ? children.props.id ?? generatedId : undefined
   const labelId = `${generatedId}-label`
   const hintId = `${generatedId}-hint`
@@ -122,6 +123,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
     </div>
   )
 }
+
+export { Select, type SelectOption }
 
 export const inputClass = 'my-input w-full'
 export const compactInputClass = inputClass.replace('w-full', 'w-auto')

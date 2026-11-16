@@ -8,7 +8,7 @@ import { Button, EmptyState, Modal } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { MemberInvitationDialog } from '../account/MemberInvitationDialog'
 import { useCrux } from '../store'
-import { PageHeader, Field, inputClass, MemberChip } from '../ui'
+import { PageHeader, Field, inputClass, MemberChip, Select } from '../ui'
 
 const ROLE_LABEL: Record<CruxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
 
@@ -105,9 +105,13 @@ function MemberEditor({ member, spaceId, spaceName, onClose }: { member: CruxMem
       <Field label="邮箱（可选，仅作联系记录）"><input className={inputClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
       <Field label="职位（可选）"><input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
       <Field label="名册角色" hint={lastOwner ? '需保留至少一位 Owner；先为另一位成员设置 Owner 后才能调整。' : '组织角色不自动加入任何空间。'}>
-        <select className={inputClass} disabled={lastOwner} value={role} onChange={(event) => setRole(event.target.value as CruxRole)}>
-          {(['owner', 'admin', 'member'] as const).map((value) => <option key={value} value={value}>{ROLE_LABEL[value]}</option>)}
-        </select>
+        <Select
+          className="w-full"
+          disabled={lastOwner}
+          value={role}
+          onChange={(val) => setRole(val as CruxRole)}
+          options={((['owner', 'admin', 'member'] as const)).map((value) => ({ value, label: ROLE_LABEL[value] }))}
+        />
       </Field>
       {!member && spaceId && <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={joinSpace} onChange={(event) => setJoinSpace(event.target.checked)} />同时加入「{spaceName}」</label>}
       </div></div>

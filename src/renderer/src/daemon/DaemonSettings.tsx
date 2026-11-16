@@ -4,6 +4,7 @@ import { hasDaemonApi, type DaemonApi, type DaemonPreferences, type DaemonStatus
 import { confirmDialog } from '../components/Dialogs'
 import { useInteractionSignal } from '../utils/interaction-scope'
 import { Button, Switch } from '../my/ui'
+import { Select } from '../components/Select'
 import { PreferenceRow, PreferenceSection } from '../pages/settings/PreferenceSection'
 
 export function DaemonSettings(): JSX.Element {
@@ -85,9 +86,17 @@ export function DaemonSettings(): JSX.Element {
           <Switch label="退出后继续运行" checked={draft.keepRunning} disabled={busy} onChange={keepRunning => setDraft({ ...draft, keepRunning })} />
         </PreferenceRow>
         <PreferenceRow label="启动方式" htmlFor={startupId}>
-          <select id={startupId} className="my-input" value={draft.startup} disabled={busy} onChange={event => setDraft({ ...draft, startup: event.target.value as DaemonPreferences['startup'] })}>
-            <option value="client">打开桌面时启动</option><option value="login">登录系统时启动</option><option value="manual">仅手动启动</option>
-          </select>
+          <Select
+            id={startupId}
+            value={draft.startup}
+            disabled={busy}
+            onChange={val => setDraft({ ...draft, startup: val as DaemonPreferences['startup'] })}
+            options={[
+              { value: 'client', label: '打开桌面时启动' },
+              { value: 'login', label: '登录系统时启动' },
+              { value: 'manual', label: '仅手动启动' }
+            ]}
+          />
           <Button size="sm" variant="primary" disabled={busy} onClick={() => void action('save')}>{busy ? '处理中…' : '保存后台设置'}</Button>
         </PreferenceRow>
         {(draft.startup === 'login' || status?.startupRegistration === 'unknown') && <PreferenceRow label="系统启动注册">

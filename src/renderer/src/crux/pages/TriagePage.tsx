@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { api } from '../../api'
 import { useCrux, PRIORITY_LABEL } from '../store'
-import { PageHeader, PriorityBadge, Field, inputClass, textareaClass } from '../ui'
+import { PageHeader, PriorityBadge, Field, inputClass, textareaClass, Select } from '../ui'
 import { Button, EmptyState } from '../../my/ui'
 import { NewTaskModal } from './TaskDetailDrawer'
 import type { CruxApi, CruxSnapshot, CruxTriageDisposition, CruxPriority } from '@shared/crux'
@@ -69,11 +69,28 @@ function TriageDecision({ snapshot, entry }: { snapshot: CruxSnapshot; entry: Qu
   return <section className="my-scrollbar min-h-0 overflow-y-auto rounded-my-md border border-my-line bg-my-layer-1 p-4" style={{ scrollbarGutter: 'stable' }}><fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
     <h2 className="text-my-md font-medium text-my-primary">{task.title}</h2><Button size="sm" variant="ghost" onClick={() => openTask(task.id)}>打开任务详情 · {task.id}</Button>
     {task.description && <p className="whitespace-pre-wrap text-my-sm text-my-secondary">{task.description}</p>}
-    <Field label="任务优先级"><select className={inputClass} value={task.priority} onChange={(e) => void run('设置优先级', () => api.crux.updateTask({ id: task.id, patch: { priority: e.target.value as CruxPriority } }))}>{(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}</select></Field>
+    <Field label="任务优先级">
+      <Select
+        className="w-full"
+        value={task.priority}
+        onChange={(val) => void run('设置优先级', () => api.crux.updateTask({ id: task.id, patch: { priority: val as CruxPriority } }))}
+        options={(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
+      />
+    </Field>
     <div className="flex items-center gap-2"><p className="min-w-0 flex-1 text-my-xs text-my-tertiary">{entry.reason}</p><Button size="sm" disabled={task.priority === entry.suggested} onClick={() => void run('采用建议优先级', () => api.crux.updateTask({ id: task.id, patch: { priority: entry.suggested } }))}>采用建议</Button></div>
     <div className="grid grid-cols-2 gap-2">{DISPOSITIONS.map((d) => <button key={d.id} type="button" aria-pressed={disposition === d.id} onClick={() => setDisposition(d.id)} className={`rounded-my-md border p-3 text-left ${disposition === d.id ? 'border-my-line-strong bg-my-layer-1-active' : 'border-my-line hover:bg-my-layer-1-active'}`}><span className="text-my-xs font-medium text-my-primary">{d.label}</span><p className="mt-1 text-my-xs text-my-tertiary">{d.hint}</p></button>)}</div>
     {disposition === 'assign' && <section><h3 className="mb-2 text-my-xs text-my-tertiary">处理人{!space?.multiAssignee && '（单人）'}</h3><div className="flex flex-wrap gap-2">{members.map((m) => <button key={m.id} type="button" aria-pressed={assigneeIds.includes(m.id)} onClick={() => setAssigneeIds((previous) => previous.includes(m.id) ? previous.filter((id) => id !== m.id) : space?.multiAssignee ? [...previous, m.id] : [m.id])} className={`rounded-my-md border px-2 py-1 text-my-xs ${assigneeIds.includes(m.id) ? 'border-my-line-strong bg-my-layer-1-active text-my-primary' : 'border-my-line text-my-secondary'}`}>{m.name}</button>)}</div></section>}
-    {disposition === 'iterate' && <Field label="目标版本"><select className={inputClass} value={iterationId} onChange={(e) => setIterationId(e.target.value)}><option value="">选择版本…</option>{iterations.map((it) => <option key={it.id} value={it.id}>{it.name}（{it.startDate} — {it.endDate}）</option>)}</select></Field>}
+    {disposition === 'iterate' && <Field label="目标版本">
+      <Select
+        className="w-full"
+        value={iterationId}
+        onChange={setIterationId}
+        options={[
+          { value: '', label: '选择版本…' },
+          ...iterations.map((it) => ({ value: it.id, label: `${it.name}（${it.startDate} — ${it.endDate}）` }))
+        ]}
+      />
+    </Field>}
     <Field label="分拣备注"><textarea className={textareaClass} style={{ minHeight: 'var(--my-space-64)' }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录分拣原因和后续安排" /></Field><div className="flex justify-end"><Button variant="primary" size="sm" disabled={(disposition === 'assign' && !assigneeIds.length) || (disposition === 'iterate' && !iterationId)} onClick={() => void apply()}>执行处置</Button></div>
   </fieldset></section>
 }

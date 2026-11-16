@@ -3,6 +3,7 @@ import { Columns2, ExternalLink, X } from 'lucide-react'
 import type { FixedDocumentComparison, FixedDocumentVersion, ReaderOrigin } from '../../../shared/document-windows'
 import { api } from '../api'
 import { Button, Modal } from '../my/ui'
+import { Select } from '../components/Select'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { DocumentDiffPanel } from './DocumentDiffPanel'
 
@@ -81,7 +82,7 @@ export function FixedDocumentActions({ version, origin, unavailable }: { version
       <div className="flex items-center gap-2 border-b border-my-line px-4 py-3"><h2 className="min-w-0 flex-1 text-my-md font-semibold">选择两份材料或两个版本</h2><Button size="sm" variant="ghost" title="关闭" onClick={close}><X size={14} /></Button></div>
       <div className="my-scrollbar max-h-[70vh] space-y-3 overflow-auto p-4">
         <p className="my-item-description">左侧是基准，右侧是对照版本。已保存版本保留原文；读取当前文件会另存一个版本。</p>
-        <div className="grid gap-3 sm:grid-cols-2">{(['left', 'right'] as const).map((side) => <label key={side} className="min-w-0 space-y-1"><span className="my-item-title block">{side === 'left' ? '左：基准材料 / 版本' : '右：对照材料 / 版本'}</span><select aria-label={side === 'left' ? '基准版本' : '对照版本'} className="my-input w-full" value={side === 'left' ? left : right} onChange={(event) => { sequence.current++; setBusy(false); (side === 'left' ? setLeft : setRight)(event.target.value); setComparison(null) }}><option value="">请选择固定版本</option>{versions.map((item) => <option key={item.token} value={item.token}>{label(item)}</option>)}</select></label>)}</div>
+        <div className="grid gap-3 sm:grid-cols-2">{(['left', 'right'] as const).map((side) => <label key={side} className="min-w-0 space-y-1"><span className="my-item-title block">{side === 'left' ? '左：基准材料 / 版本' : '右：对照材料 / 版本'}</span><Select ariaLabel={side === 'left' ? '基准版本' : '对照版本'} className="w-full" value={side === 'left' ? left : right} onChange={(val) => { sequence.current++; setBusy(false); (side === 'left' ? setLeft : setRight)(val); setComparison(null) }} options={[{ value: '', label: '请选择固定版本' }, ...versions.map((item) => ({ value: item.token, label: label(item) }))]} /></label>)}</div>
         <div className="flex flex-wrap items-center gap-2">{candidates.map((item) => <Button key={item.relativePath} size="sm" variant="outline" disabled={busy} onClick={() => void capture(item.relativePath)}>读取{item.title}</Button>)}{version && <Button size="sm" variant="outline" disabled={busy} onClick={() => void capture(version.relativePath)}>读取当前文件版本</Button>}{cursor && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void catalog(true)}>更多历史版本</Button>}</div>
         <div className="flex gap-2"><input className="my-input min-w-0 flex-1" aria-label="其他材料的项目相对路径" placeholder="其他材料：输入项目相对路径，例如 docs/product-requirements.md" value={path} onChange={(event) => setPath(event.target.value)} /><Button size="sm" variant="outline" disabled={busy || !path.trim()} onClick={() => void capture(path.trim())}>读取材料</Button></div>
         <div className="flex items-center gap-3"><Button size="sm" variant="primary" disabled={busy || !left || !right} onClick={() => void compare()}>{busy ? '处理中…' : '对照所选版本'}</Button>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}</div>

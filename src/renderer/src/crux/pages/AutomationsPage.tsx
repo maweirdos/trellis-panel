@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { Play, Plus, Trash2 } from 'lucide-react'
 import { api } from '../../api'
 import { useCrux, availableExecutionTargets } from '../store'
-import { PageHeader, Field, inputClass, textareaClass } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, Select } from '../ui'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import type { CruxAutomation, CruxAutomationTriggerKind } from '@shared/crux'
 import { FlowIcon } from '../icons'
@@ -149,21 +149,28 @@ function AutomationEditor({ automation, onClose, statuses, agents, crews, member
         <Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="如：每早汇总受阻任务" /></Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="触发器">
-            <select className={inputClass} value={triggerKind} onChange={(e) => {
-              const kind = e.target.value as CruxAutomationTriggerKind
-              setTriggerKind(kind)
-              setTriggerValue(kind === 'schedule' ? '09:00' : kind === 'task_status' ? statuses[0]?.id ?? '' : '')
-            }}>
-              {(['schedule', 'task_status', 'task_created', 'comment'] as CruxAutomationTriggerKind[]).map((k) => (
-                <option key={k} value={k}>{TRIGGER_LABEL[k]}</option>
-              ))}
-            </select>
+            <Select
+              className="w-full"
+              value={triggerKind}
+              onChange={(val) => {
+                const kind = val as CruxAutomationTriggerKind
+                setTriggerKind(kind)
+                setTriggerValue(kind === 'schedule' ? '09:00' : kind === 'task_status' ? statuses[0]?.id ?? '' : '')
+              }}
+              options={((['schedule', 'task_status', 'task_created', 'comment'] as CruxAutomationTriggerKind[])).map((k) => ({
+                value: k,
+                label: TRIGGER_LABEL[k]
+              }))}
+            />
           </Field>
           <Field label={triggerKind === 'schedule' ? '时间（HH:mm）' : triggerKind === 'task_status' ? '目标状态' : triggerKind === 'comment' ? '关键词' : '（无需参数）'}>
             {triggerKind === 'task_status'
-              ? <select className={inputClass} value={triggerValue} onChange={(e) => setTriggerValue(e.target.value)}>
-                  {statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+              ? <Select
+                  className="w-full"
+                  value={triggerValue}
+                  onChange={setTriggerValue}
+                  options={statuses.map((s) => ({ value: s.id, label: s.name }))}
+                />
               : triggerKind === 'task_created'
                 ? <input className={inputClass} disabled value="任意新任务" readOnly />
                 : <input className={inputClass} value={triggerValue} onChange={(e) => setTriggerValue(e.target.value)} placeholder={triggerKind === 'schedule' ? '09:00' : '关键词'} />}
@@ -171,12 +178,17 @@ function AutomationEditor({ automation, onClose, statuses, agents, crews, member
         </div>
         {triggerKind === 'schedule' && <Field label="执行日期" hint="不选择表示每天；应用运行期间按本机时区触发"><div className="flex flex-wrap gap-1">{[1, 2, 3, 4, 5, 6, 7].map((day) => <button type="button" key={day} aria-pressed={days.includes(day)} onClick={() => setDays(days.includes(day) ? days.filter((value) => value !== day) : [...days, day].sort())} className={`rounded-my-sm px-2 py-1 text-my-xs ${days.includes(day) ? 'bg-my-navigation-selected text-my-primary' : 'bg-my-layer-1 text-my-secondary'}`}>{['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day - 1]}</button>)}</div></Field>}
         <Field label="交给谁执行">
-          <select className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="none:">不指定（仅记录）</option>
-            {agents.map((a) => <option key={`agent:${a.id}`} value={`agent:${a.id}`}>Agent · {a.name}（等待 Runtime）</option>)}
-            {crews.map((c) => <option key={`crew:${c.id}`} value={`crew:${c.id}`}>小队 · {c.name}（等待 Runtime）</option>)}
-            {members.map((m) => <option key={`member:${m.id}`} value={`member:${m.id}`}>成员 · {m.name}（通知）</option>)}
-          </select>
+          <Select
+            className="w-full"
+            value={target}
+            onChange={setTarget}
+            options={[
+              { value: 'none:', label: '不指定（仅记录）' },
+              ...agents.map((a) => ({ value: `agent:${a.id}`, label: `Agent · ${a.name}（等待 Runtime）` })),
+              ...crews.map((c) => ({ value: `crew:${c.id}`, label: `小队 · ${c.name}（等待 Runtime）` })),
+              ...members.map((m) => ({ value: `member:${m.id}`, label: `成员 · ${m.name}（通知）` }))
+            ]}
+          />
         </Field>
         <Field label="指令 / 说明">
           <textarea className={textareaClass} style={{ minHeight: 'var(--my-space-80)' }} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="执行什么、输出什么、写回哪里" />

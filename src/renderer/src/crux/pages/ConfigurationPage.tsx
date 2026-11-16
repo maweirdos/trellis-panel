@@ -5,7 +5,7 @@ import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Tooltip } from '../../my/ui'
 import { useCrux } from '../store'
-import { Field, inputClass, LabelChip, PageHeader, StatusBadge } from '../ui'
+import { Field, inputClass, LabelChip, PageHeader, StatusBadge, Select } from '../ui'
 
 export type ConfigurationKind = 'types' | 'statuses' | 'labels'
 
@@ -104,8 +104,25 @@ function ConfigurationEditor({ kind, spaceId, snapshot, existing, onClose }: { k
     <h2 className="text-my-md font-semibold text-my-primary">{existing ? '编辑' : '新建'}{TITLES[kind]}</h2>
     <div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
       <Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
-      {kind === 'statuses' && <Field label="状态分类"><select className={inputClass} value={category} onChange={(event) => { const found = CATEGORIES.find(([value]) => value === event.target.value); if (found) setCategory(found[0]) }}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>}
-      {kind === 'labels' && <Field label="范围"><select className={inputClass} value={organization ? 'organization' : 'space'} onChange={(event) => setOrganization(event.target.value === 'organization')}><option value="space">当前空间</option><option value="organization">组织内所有空间</option></select></Field>}
+      {kind === 'statuses' && <Field label="状态分类">
+        <Select
+          className="w-full"
+          value={category}
+          onChange={(val) => { const found = CATEGORIES.find(([v]) => v === val); if (found) setCategory(found[0]) }}
+          options={CATEGORIES.map(([v, label]) => ({ value: v, label }))}
+        />
+      </Field>}
+      {kind === 'labels' && <Field label="范围">
+        <Select
+          className="w-full"
+          value={organization ? 'organization' : 'space'}
+          onChange={(val) => setOrganization(val === 'organization')}
+          options={[
+            { value: 'space', label: '当前空间' },
+            { value: 'organization', label: '组织内所有空间' }
+          ]}
+        />
+      </Field>}
       {kind === 'types' && <fieldset><legend className="mb-2 text-my-xs font-medium text-my-tertiary">可用状态</legend><label className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" checked={allStatuses} onChange={(event) => setAllStatuses(event.target.checked)} />全部空间状态</label>{!allStatuses && <div className="mt-2 flex flex-col gap-2">{statuses.map((status) => <label key={status.id} className="flex items-center gap-2"><input type="checkbox" checked={statusIds.includes(status.id)} onChange={(event) => setStatusIds((previous) => event.target.checked ? [...previous, status.id] : previous.filter((id) => id !== status.id))} /><StatusBadge status={status} /></label>)}</div>}{invalidStatuses && <p role="alert" className="mt-2 text-my-xs text-my-danger-text">至少选择一个状态。</p>}</fieldset>}
       {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
     </div></div>

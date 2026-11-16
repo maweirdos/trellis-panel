@@ -5,7 +5,7 @@ import { api } from '../../api'
 import { Button, EmptyState, Modal, SearchInput } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { applyTaskFilter, isTriagePending, spaceTasks, useCrux } from '../store'
-import { Field, inputClass, PageHeader } from '../ui'
+import { Field, inputClass, PageHeader, Select } from '../ui'
 import { TaskFilters } from './TasksPage'
 
 const GROUP_LABEL: Record<CruxView['groupBy'], string> = { status: '按状态', assignee: '按处理人', type: '按类型', priority: '按优先级' }
@@ -49,7 +49,14 @@ export function ViewsPage(): JSX.Element | null {
     <Modal open={creating} onClose={() => { if (!busy) setCreating(false) }} width={720} ariaLabel={editingId ? '编辑视图' : '新建视图'}>
       <div className="flex max-h-[var(--my-modal-max-height)] flex-col gap-4 p-4"><h2 className="text-my-lg font-semibold text-my-primary">{editingId ? '编辑视图' : '新建视图'}</h2>
         <div className="my-scrollbar min-h-0 space-y-4 overflow-y-auto pr-1"><Field label="视图名称"><input autoFocus className={inputClass} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：待我处理的高优先级任务" /></Field>
-          <Field label="分组方式"><select className={inputClass} value={groupBy} onChange={(event) => setGroupBy(event.target.value as CruxView['groupBy'])}>{(Object.keys(GROUP_LABEL) as CruxView['groupBy'][]).map((key) => <option key={key} value={key}>{GROUP_LABEL[key]}</option>)}</select></Field>
+          <Field label="分组方式">
+            <Select
+              className="w-full"
+              value={groupBy}
+              onChange={(val) => setGroupBy(val as CruxView['groupBy'])}
+              options={(Object.keys(GROUP_LABEL) as CruxView['groupBy'][]).map((key) => ({ value: key, label: GROUP_LABEL[key] }))}
+            />
+          </Field>
           <div><h3 className="mb-2 text-my-xs text-my-tertiary">任务筛选</h3><TaskFilters value={filter} onChange={(patch) => setFilter((previous) => ({ ...previous, ...patch }))} /></div>
         </div>
         <footer className="flex justify-end gap-2"><Button size="sm" disabled={busy || readOnly} onClick={() => setCreating(false)}>取消</Button><Button size="sm" variant="primary" disabled={busy || !name.trim()} onClick={() => void save()}>保存视图</Button></footer>

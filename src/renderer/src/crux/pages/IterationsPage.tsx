@@ -5,7 +5,7 @@ import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Tabs, Tooltip, TriProgressBar } from '../../my/ui'
 import { useCrux, statusOf, isTriagePending } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, StatusBadge, formatCollaborationTime } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, StatusBadge, formatCollaborationTime, Select } from '../ui'
 import { NewTaskModal } from './TaskDetailDrawer'
 
 export interface IterationsPageProps {
@@ -147,7 +147,18 @@ function VersionEditor({ snapshot, spaceId, iteration, onClose, onSaved }: { sna
   return <Modal open onClose={() => { if (!busy) onClose() }} width={600} ariaLabel={iteration ? '编辑版本' : '新建版本'}><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4"><h2 className="text-my-md font-semibold text-my-primary">{iteration ? '编辑版本' : '新建版本'}</h2><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
     <Field label="版本名称"><input autoFocus className={inputClass} value={name} onChange={(event) => setName(event.target.value)} /></Field>
     <Field label="交付目标（选填）"><textarea className={textareaClass} rows={2} value={goal} onChange={(event) => setGoal(event.target.value)} /></Field>
-    <Field label="启动安排"><select className={inputClass} disabled={iteration?.status === 'active'} value={predecessorId} onChange={(event) => setPredecessorId(event.target.value)}><option value="">并行开始</option>{candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>在 {candidate.name} 截版后开始</option>)}</select></Field>
+    <Field label="启动安排">
+      <Select
+        className="w-full"
+        disabled={iteration?.status === 'active'}
+        value={predecessorId}
+        onChange={setPredecessorId}
+        options={[
+          { value: '', label: '并行开始' },
+          ...candidates.map((candidate) => ({ value: candidate.id, label: `在 ${candidate.name} 截版后开始` }))
+        ]}
+      />
+    </Field>
     <div className="grid grid-cols-2 gap-2"><Field label="开始日期"><input type="date" disabled={iteration?.status === 'active'} className={inputClass} value={range.start} onChange={(event) => setRange((previous) => ({ ...previous, start: event.target.value }))} /></Field><Field label="结束日期"><input type="date" min={range.start} className={inputClass} value={range.end} onChange={(event) => setRange((previous) => ({ ...previous, end: event.target.value }))} /></Field></div>
     {invalidDates && <p role="alert" className="text-my-xs text-my-danger-text">请填写完整日期，结束日期不能早于开始日期。</p>}
     <fieldset className="min-w-0"><legend className="mb-2 text-my-xs font-medium text-my-tertiary">任务范围 · 已选 {taskIds.length}</legend><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索未排期任务" /><ul className="my-scrollbar mt-2 max-h-56 overflow-y-auto divide-y divide-my-line" style={{ scrollbarGutter: 'stable' }}>{tasks.map((task) => <li key={task.id}><label className="flex cursor-pointer items-center gap-2 py-2"><input type="checkbox" checked={taskIds.includes(task.id)} onChange={(event) => setTaskIds((previous) => event.target.checked ? [...previous, task.id] : previous.filter((id) => id !== task.id))} /><span className="font-mono text-my-xs text-my-tertiary">{task.id}</span><span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{task.title}</span><StatusBadge status={statusOf(snapshot, task.statusId)} /></label></li>)}{tasks.length === 0 && <li className="py-3 text-my-xs text-my-tertiary">没有可选任务</li>}</ul></fieldset>
@@ -177,8 +188,28 @@ function DeliveryEditor({ snapshot, targetId, onClose, onSaved }: { snapshot: Cr
     <fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4">
       <h2 className="shrink-0 text-my-md font-semibold text-my-primary">登记交付 · {target?.name}</h2>
       <div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
-        <Field label="来源版本"><select className={inputClass} value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">选择来源版本</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</select></Field>
-        <Field label="交付类型"><select className={inputClass} value={kind} onChange={(event) => setKind(event.target.value === 'artifact' ? 'artifact' : 'code')}><option value="code">代码</option><option value="artifact">制品</option></select></Field>
+        <Field label="来源版本">
+          <Select
+            className="w-full"
+            value={sourceId}
+            onChange={setSourceId}
+            options={[
+              { value: '', label: '选择来源版本' },
+              ...sources.map((source) => ({ value: source.id, label: source.name }))
+            ]}
+          />
+        </Field>
+        <Field label="交付类型">
+          <Select
+            className="w-full"
+            value={kind}
+            onChange={(val) => setKind(val === 'artifact' ? 'artifact' : 'code')}
+            options={[
+              { value: 'code', label: '代码' },
+              { value: 'artifact', label: '制品' }
+            ]}
+          />
+        </Field>
         <Field label="引用"><input className={inputClass} maxLength={10000} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={kind === 'code' ? '提交、合并请求或代码引用' : '制品地址或标识'} /></Field>
         <Field label="修订（选填）"><input className={inputClass} maxLength={1000} value={revision} onChange={(event) => setRevision(event.target.value)} /></Field>
         {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
@@ -224,7 +255,17 @@ function MoveScopeEditor({ snapshot, targetId, onClose }: { snapshot: CruxSnapsh
     <fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4">
       <h2 className="shrink-0 text-my-md font-semibold text-my-primary">移入任务 · {target?.name}</h2>
       <div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
-        {candidates.length === 0 ? <EmptyState title="没有可移入任务" /> : <><Field label="任务"><select className={inputClass} value={taskId} onChange={(event) => setTaskId(event.target.value)}><option value="">选择已排期任务</option>{candidates.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.title}</option>)}</select></Field>{task && <p className="text-my-xs text-my-secondary">当前版本：{sourceNames}</p>}</>}
+        {candidates.length === 0 ? <EmptyState title="没有可移入任务" /> : <><Field label="任务">
+          <Select
+            className="w-full"
+            value={taskId}
+            onChange={setTaskId}
+            options={[
+              { value: '', label: '选择已排期任务' },
+              ...candidates.map((item) => ({ value: item.id, label: `${item.id} · ${item.title}` }))
+            ]}
+          />
+        </Field>{task && <p className="text-my-xs text-my-secondary">当前版本：{sourceNames}</p>}</>}
         {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
       </div></div>
       <div className="flex shrink-0 justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" aria-busy={busy} disabled={busy || !task} onClick={() => void move()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}移入此版本</Button></div>
