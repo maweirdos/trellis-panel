@@ -26,6 +26,7 @@
 .team-identity p { margin:var(--my-space-5) 0 0;color:var(--my-txt-secondary);font-size:var(--my-text-xs) }
 .team-status { color:var(--my-txt-tertiary);font-size:var(--my-text-xs) }
 .team-provenance { max-width:50%;font-size:var(--my-text-item-description);color:var(--my-txt-item-description);overflow-wrap:anywhere;font-weight:var(--my-weight-normal) }
+.team-setup > .team-provenance { max-width:100% }
 .team-provenance summary,.team-document-source summary,.team-outbox summary,.team-feedback summary { cursor:pointer }
 .team-provenance code,.team-outbox code,.team-feedback code,.team-publication code { display:block;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--my-font-mono);font-size:var(--my-text-2xs) }
 .team-workspace-tabs { display:flex;align-items:center;justify-content:space-between;padding:0 var(--my-space-24) var(--my-space-12);gap:var(--my-space-12);border-bottom:1px solid var(--my-border-subtle);flex-shrink:0 }

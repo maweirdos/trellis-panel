@@ -18,7 +18,7 @@ type Draft = { documentId: string; baseDraftRevision: number; baseVersionId: str
 type CreateDraft = { kind: TeamTaskMaterialKind; title: string; text: string; approverId: string }
 const message = (cause: unknown): string => cause instanceof Error ? cause.message : '任务材料暂不可用，请重试。'
 
-export interface TaskMaterialEntryRequest { requestId: number; kind: TeamTaskMaterialKind; mode?: 'work' | 'review'; documentId?: string; versionId?: string }
+export interface TaskMaterialEntryRequest { requestId: number; kind: TeamTaskMaterialKind; mode?: 'work' | 'review'; documentId?: string; versionId?: string; creationReference?: { creationId: string; revisionId: string; bodyDigest: string } }
 export interface TaskMaterialReviewState {
   state: 'loading' | 'ready' | 'unavailable'
   document: TeamTaskMaterialMetadata | null
@@ -212,12 +212,15 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
   async function save(): Promise<void> {
     const editor = latest.current.draft, current = latest.current.view
     if (!editor || !current || !writable || flight.current || latest.current.intent || editor.baseDraftRevision !== current.document.draftRevision || !context.epoch) return
+    const references = [...current.selected.references]
+    const creationReference = latestEntry.current?.creationReference
+    if (creationReference && current.document.kind === 'design' && !references.some((reference) => reference.kind === 'creation' && reference.creationId === creationReference.creationId && reference.revisionId === creationReference.revisionId)) references.push({ kind: 'creation', ...creationReference })
     const generation = editGeneration.current
     try {
       const expectedDigest = await taskMaterialDigest(editor.text)
       if (!currentOwner.current.canWrite() || generation !== editGeneration.current || flight.current || latest.current.intent) return
       await execute({ action: 'saveDraft', commandId: crypto.randomUUID(), expectedEpoch: context.epoch, spaceId: task.spaceId, taskCreatedAt: task.createdAt,
-        documentId: editor.documentId, expectedDraftRevision: editor.baseDraftRevision, title: editor.title, text: editor.text, expectedDigest, references: current.selected.references })
+        documentId: editor.documentId, expectedDraftRevision: editor.baseDraftRevision, title: editor.title, text: editor.text, expectedDigest, references })
     } catch (cause) { if (currentOwner.current.owns()) { setError(message(cause)); setAutoSave(false) } }
   }
   useEffect(() => {
@@ -235,7 +238,7 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
       const expectedDigest = await taskMaterialDigest(captured.text)
       if (!currentOwner.current.canWrite() || generation !== editGeneration.current || flight.current || latest.current.intent) return
       await execute({ action: 'create', commandId: crypto.randomUUID(), expectedEpoch: context.epoch, spaceId: task.spaceId, taskCreatedAt: task.createdAt,
-        kind: captured.kind, title: captured.title, text: captured.text, expectedDigest, references: [], editorIds: [actor], approverIds: [captured.approverId] })
+        kind: captured.kind, title: captured.title, text: captured.text, expectedDigest, references: latestEntry.current?.creationReference && captured.kind === 'design' ? [{ kind: 'creation' as const, ...latestEntry.current.creationReference }] : [], editorIds: [actor], approverIds: [captured.approverId] })
     } catch (cause) { if (currentOwner.current.owns()) setError(message(cause)) }
   }
   useEffect(() => {

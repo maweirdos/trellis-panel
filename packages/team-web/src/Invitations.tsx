@@ -65,9 +65,9 @@ export function Invitations({ teamId, project, session }: { teamId: string; proj
     {revoking && <RevokeInvitation key={revoking.invitationId} invitation={revoking} onClose={() => setRevoking(null)} onDone={() => { setRevoking(null); invitations.refresh() }} />}
   </section>
 }
-function CreateInvitation({ teamId, project, onClose, onCreated, session }: { teamId: string; project: TeamProject | null; onClose: () => void; onCreated: () => void; session: TeamSession }) {
+export function CreateInvitation({ teamId, project, space, onClose, onCreated, session }: { teamId: string; project: TeamProject | null; space?: { id: string; name: string } | null; onClose: () => void; onCreated: () => void; session: TeamSession }) {
   const projects = usePage(`invitation-projects:${teamId}`, '/api/projects', teamProjectSchema)
-  const [projectId, setProject] = useState(project?.teamId === teamId ? project.projectId : ''), [spaceId, setSpace] = useState('')
+  const [projectId, setProject] = useState(project?.teamId === teamId ? project.projectId : ''), [spaceId, setSpace] = useState(space?.id ?? '')
   const spaces = useQuery(`invitation-spaces:${session.person.userId}:${projectId}`, async (signal) => {
     try { return await request(`/api/projects/${projectId}/crux/snapshot`, cruxRemoteSnapshotSchema, { signal, notifyDenied: false }) }
     catch (error) { if (error instanceof ApiError && error.status === 403) throw new Error('当前账号无法读取此工作区的空间。'); throw error }

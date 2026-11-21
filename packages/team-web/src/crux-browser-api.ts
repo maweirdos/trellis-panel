@@ -111,7 +111,8 @@ export class BrowserCruxWorkspace {
         const reply = await this.mutate('createTask', input)
         return reply.ok && reply.taskId ? { ...reply, taskId: reply.taskId } : reply.ok ? this.failure(new ApiError('COMMITTED_NOT_VISIBLE', '原操作已提交；新任务目前不在授权可见范围，请先核对结果再创建新操作')) : reply
       },
-      updateTask: (input) => this.mutate('updateTask', input), transitionTask: (input) => this.mutate('transitionTask', input), recordVersionDelivery: (input) => this.mutate('recordVersionDelivery', input), removeTask: (input) => this.mutate('removeTask', input), addRelation: (input) => this.mutate('addRelation', input), removeRelation: (input) => this.mutate('removeRelation', input),
+      updateTask: (input) => this.mutate('updateTask', input), restoreLightweightTask: (input) => this.mutate('restoreLightweightTask', input),
+      transitionTask: (input) => this.mutate('transitionTask', input), recordVersionDelivery: (input) => this.mutate('recordVersionDelivery', input), removeTask: (input) => this.mutate('removeTask', input), addRelation: (input) => this.mutate('addRelation', input), removeRelation: (input) => this.mutate('removeRelation', input),
       recordTaskDelivery: (input) => this.mutate('recordTaskDelivery', input),
       saveMilestone: (input) => this.mutate('saveMilestone', input),
       completeMilestone: (input) => this.mutate('completeMilestone', input),
@@ -373,10 +374,14 @@ const teamContent = new Proxy({} as TeamContentApi, { get: (_target, property) =
   const method = active && Reflect.get(active.teamContent.api, property)
   return typeof method === 'function' ? Reflect.apply(method, active?.teamContent.api, args) : Promise.resolve({ ok: false, code: 'WORKSPACE_UNAVAILABLE', error: '团队内容工作区尚未连接' })
 } })
-export const api = new Proxy({ crux, creations, cruxProgress, cruxResources, cruxMaterials, cruxGovernance, teamContent, openExternal: async (url: string): Promise<void> => {
-  const target = new URL(url, location.origin)
-  if (target.origin !== location.origin || target.pathname !== '/' || target.search || target.hash !== '#people') throw new ApiError('UNSUPPORTED_WEB_ACTION', '网页版仅支持前往当前服务的团队与邀请页面')
-  location.hash = '#people'
-} }, { get: (target, property) => property in target ? Reflect.get(target, property) : unsupportedNative(String(property)) }) as unknown as TrellisApi
+export const api = new Proxy({
+  crux, creations, cruxProgress, cruxResources, cruxMaterials, cruxGovernance, teamContent,
+  copyToClipboard: async (text: string): Promise<void> => { await navigator.clipboard.writeText(text) },
+  openExternal: async (url: string): Promise<void> => {
+    const target = new URL(url, location.origin)
+    if (target.origin !== location.origin || target.pathname !== '/' || target.search || target.hash !== '#people') throw new ApiError('UNSUPPORTED_WEB_ACTION', '网页版仅支持前往当前服务的团队与邀请页面')
+    location.hash = '#people'
+  }
+}, { get: (target, property) => property in target ? Reflect.get(target, property) : unsupportedNative(String(property)) }) as unknown as TrellisApi
 /** A compatible Crux bridge is present; this does not claim native IPC availability. */
 export const hasIpc = true

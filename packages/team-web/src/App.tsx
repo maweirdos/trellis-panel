@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { z } from 'zod'
-import { BookOpen, Users, Monitor, LogOut, Sun, Moon, GitBranch, RefreshCw, LayoutDashboard, Plus, Link as LinkIcon } from 'lucide-react'
+import { BookOpen, Users, Monitor, LogOut, Sun, Moon, RefreshCw, LayoutDashboard, Plus, Link as LinkIcon } from 'lucide-react'
 import { teamSessionSchema, teamProjectSchema, teamIdSchema, teamEventPageSchema, type TeamSession } from './contracts'
 import { ApiError, authEvents, setClientSession, publishSessionChange, listenForSessionChanges, request, pendingCommands, commandEvents, reconcileCommand, retryCommand, canRetry, type PendingCommand } from './client'
 import { usePage, useQuery } from './hooks'
@@ -82,7 +82,7 @@ export function App() {
     finally { logoutLock.current = false; setLoggingOut(false) }
   }
   return <div className="team-app" data-my-theme={theme}>
-    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="brand"><GitBranch size={22} /><strong>Trellis</strong><span>团队协作</span></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>一起规划工作区，<br />协作推进任务。</h1><p>使用个人账号加入组织；也可使用服务已配置的 GitLab 登录。</p>{teamIdSchema.safeParse(new URLSearchParams(location.search).get('pairing')).success && <Notice>已保留电脑连接请求。请登录要授权这台电脑的个人账号。</Notice>}{invitation ? <Notice>已保留团队邀请，登录或注册后即可核对并加入。<button type="button" onClick={closeInvitation}>取消邀请</button></Notice> : <details className="team-login-invitation"><summary>已有邀请链接</summary><InvitationLinkForm onOpen={openInvitation} /></details>}<SignIn onOidcLogin={login} onSignedIn={(next, returnTo) => { identityEpoch.current++; hadSession.current = true; setClientSession(next); setSession(next); setError(''); setEpoch((old) => old + 1); history.replaceState(null, '', returnTo); try { sessionStorage.setItem('trellis-team-last-account-v1', next.person.userId) } catch { /* Session proof remains authoritative. */ }; publishSessionChange() }} /><ErrorLine>{error}</ErrorLine></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} theme={theme} epoch={epoch} invitation={invitation} onInvitation={openInvitation} onCloseInvitation={closeInvitation} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void logout().catch(() => {}) }} onSwitchAccount={logout} loggingOut={loggingOut} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
+    {loading ? <Empty title="正在核对登录状态…" /> : !session ? <main className="login"><div className="team-login-brand" role="img" aria-label="Crux 团队协作"><span className="team-brand-mark" aria-hidden="true" /><span className="team-brand-wordmark" aria-hidden="true" /></div><div className="login-body"><span className="eyebrow">共同推进每一份需求</span><h1>一起规划工作区，<br />协作推进任务。</h1><p>使用个人账号加入组织；也可使用服务已配置的 GitLab 登录。</p>{teamIdSchema.safeParse(new URLSearchParams(location.search).get('pairing')).success && <Notice>已保留电脑连接请求。请登录要授权这台电脑的个人账号。</Notice>}{invitation ? <Notice>已保留团队邀请，登录或注册后即可核对并加入。<button type="button" onClick={closeInvitation}>取消邀请</button></Notice> : <details className="team-login-invitation"><summary>已有邀请链接</summary><InvitationLinkForm onOpen={openInvitation} /></details>}<SignIn onOidcLogin={login} onSignedIn={(next, returnTo) => { identityEpoch.current++; hadSession.current = true; setClientSession(next); setSession(next); setError(''); setEpoch((old) => old + 1); history.replaceState(null, '', returnTo); try { sessionStorage.setItem('trellis-team-last-account-v1', next.person.userId) } catch { /* Session proof remains authoritative. */ }; publishSessionChange() }} /><ErrorLine>{error}</ErrorLine></div><button type="button" className="theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}切换主题</button></main> : <SignedIn key={session.person.userId} session={session} theme={theme} epoch={epoch} invitation={invitation} onInvitation={openInvitation} onCloseInvitation={closeInvitation} refreshIdentity={() => { setEpoch((old) => old + 1); void reload.current() }} onLogout={() => { void logout().catch(() => {}) }} onSwitchAccount={logout} loggingOut={loggingOut} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} error={error} />}
   </div>
 }
 type WebTab = 'collaboration' | 'documents' | 'people' | 'devices'
@@ -92,7 +92,7 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
   const shellView = useMy((state) => state.shellView)
   const fontSize = useMy((state) => state.fontSize)
   const [tab, setTab] = useState<WebTab>(locationTab), [projectId, setProject] = useState(workspaceProjectFromLocation)
-  const [creatingWorkspace, setCreatingWorkspace] = useState(false), [joiningWorkspace, setJoiningWorkspace] = useState(false)
+  const [creatingOrganization, setCreatingOrganization] = useState(false), [creatingWorkspace, setCreatingWorkspace] = useState(false), [joiningWorkspace, setJoiningWorkspace] = useState(false)
   const [invitedSpace, setInvitedSpace] = useState<{ projectId: string; accountId: string; spaceId: string } | null>(null)
   const invitationOwner = useRef({ invitation, revision: 0 })
   if (invitationOwner.current.invitation !== invitation) invitationOwner.current = { invitation, revision: invitationOwner.current.revision + 1 }
@@ -108,7 +108,10 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
   const [pairing, setPairing] = useState<string | null>(() => { const id = new URLSearchParams(location.search).get('pairing'); return teamIdSchema.safeParse(id).success ? id : null })
   const eventKey = `${session.person.userId}:${project?.projectId}:${epoch}`, cursor = useRef<{ key: string; value: string | null }>({ key: '', value: null })
   const [gap, setGap] = useState(false), [change, setChange] = useState(false)
-  const projectsChanged = (selectedProjectId?: string): void => { if (selectedProjectId) { setProject(selectedProjectId); navigate('collaboration'); setGap(false); setChange(false) }; refreshIdentity() }
+  const projectsChanged = (selectedProjectId?: string, selectedSpaceId?: string): void => {
+    if (selectedProjectId) { setProject(selectedProjectId); navigate('collaboration'); setGap(false); setChange(false); if (selectedSpaceId) setInvitedSpace({ projectId: selectedProjectId, accountId: session.person.userId, spaceId: selectedSpaceId }) }
+    refreshIdentity()
+  }
   const events = useQuery(eventKey, async (signal) => {
     if (cursor.current.key !== eventKey) cursor.current = { key: eventKey, value: null }
     const previous = cursor.current.value
@@ -124,10 +127,10 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
   else if (projects.loading || projectId && projects.more && !projects.error) content = <section className="team-workspace-state" role="status"><RefreshCw size={22} aria-hidden="true" /><h2>正在读取工作区…</h2></section>
   else if (projects.error) content = <section className="team-workspace-state"><h2>暂时无法读取工作区</h2><ErrorLine>{projects.error}</ErrorLine><button type="button" onClick={projects.refresh}>重新读取工作区</button></section>
   else if (projectId || projects.items.length) content = <section className="team-workspace-state"><h2>原工作区当前不可用</h2><p>请选择其他已授权工作区，或重新核对权限。</p><div className="team-workspace-actions">{projects.items[0] && <button type="button" className="primary" onClick={() => setProject(projects.items[0].projectId)}>进入 {projects.items[0].name}</button>}<button type="button" onClick={projects.refresh}>重新核对</button>{!projects.items.length && <button type="button" onClick={() => setProject('')}>创建或加入工作区</button>}</div></section>
-  else content = <WorkspaceOnboarding onCreate={() => setCreatingWorkspace(true)} onInvitation={onInvitation} />
+  else content = <WorkspaceOnboarding onCreate={() => setCreatingOrganization(true)} onInvitation={onInvitation} />
   return <><div className="team-shell">
     <aside className="team-module-rail" aria-label="模块栏">
-      <div className="team-rail-brand" role="img" aria-label="Trellis 团队协作"><span className="team-brand-mark" /></div>
+      <div className="team-rail-brand" role="img" aria-label="Crux 团队协作"><span className="team-brand-mark" aria-hidden="true" /></div>
       <nav className="team-module-navigation" aria-label="团队导航">
         {WEB_MODULES.map(({ id, label, Icon }) => <button type="button" className="team-module-button" aria-label={label} title={label} aria-current={tab === id ? 'page' : undefined} key={id} onClick={() => navigate(id)}><Icon aria-hidden="true" /><span>{label}</span></button>)}
       </nav>
@@ -147,7 +150,8 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
     </div>
     </div>
   </div>{pairing && <Pairing key={`${pairing}:${epoch}`} id={pairing} projects={projects.items} session={session} onSwitchAccount={onSwitchAccount} onClose={closePairing} />}
-    {creatingWorkspace && <WorkspaceSetup session={session} epoch={epoch} initialTeamId={project?.teamId} onClose={() => { setCreatingWorkspace(false); refreshIdentity() }} onCreated={(created) => { setCreatingWorkspace(false); projectsChanged(created.projectId) }} />}
+    {creatingOrganization && <WorkspaceSetup key="organization" session={session} epoch={epoch} initialMode="organization" onClose={() => { setCreatingOrganization(false); refreshIdentity() }} onCreated={(created, spaceId) => { setCreatingOrganization(false); projectsChanged(created.projectId, spaceId) }} />}
+    {creatingWorkspace && <WorkspaceSetup session={session} epoch={epoch} initialTeamId={project?.teamId} onClose={() => { setCreatingWorkspace(false); refreshIdentity() }} onCreated={(created, spaceId) => { setCreatingWorkspace(false); projectsChanged(created.projectId, spaceId) }} />}
     {joiningWorkspace && <Modal title="接受工作区邀请" onClose={() => setJoiningWorkspace(false)}><InvitationLinkForm onOpen={(next) => { setJoiningWorkspace(false); onInvitation(next) }} /></Modal>}
     {invitation && <AcceptInvitation key={`${session.person.userId}:${invitation.invitationId}:${invitationOwner.current.revision}`} {...invitation} session={session} onSwitchAccount={onSwitchAccount} onClose={onCloseInvitation} onAccepted={(accepted) => { if (accepted.space) setInvitedSpace({ projectId: accepted.projectId, accountId: session.person.userId, spaceId: accepted.space.id }); onCloseInvitation(); projectsChanged(accepted.projectId) }} />}
   </>

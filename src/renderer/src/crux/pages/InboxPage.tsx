@@ -3,7 +3,7 @@ import { formatCollaborationTime } from '../ui'
  * 收件箱：全部/重要/其他 + 稍后 + 已清理（REA 实测分区模型），
  * 任务级聚合展示、分区未读数、分区级全部已读/全部清理、稍后选项。
  */
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { AlarmClock, ArchiveRestore, Check, Eraser } from 'lucide-react'
 import { api } from '../../api'
 import { inboxGroups, statusOf, useCrux } from '../store'
@@ -16,13 +16,30 @@ const KIND_LABEL: Record<CruxInboxKind, string> = {
   assign: '被指派', mention: '提及', status: '状态', dispatch: '派发', automation: '自动化', triage: '分拣'
 }
 
+type InboxTab = 'all' | 'important' | 'other' | 'snoozed' | 'cleared'
+let lastInbox: { owner: string; tab: InboxTab; keyword: string; scrollTop: number; expanded: Set<string> } | undefined
+
 export function InboxPage(): JSX.Element {
+  const owner = useCrux(s => JSON.stringify([s.workspaceContext.key, s.workspaceContext.actorId, s.workspaceContext.epoch]))
+  return <InboxContents key={owner} owner={owner} />
+}
+
+function InboxContents({ owner }: { owner: string }): JSX.Element {
   const snapshot = useCrux((s) => s.snapshot)
   const run = useCrux((s) => s.run)
   const openTask = useCrux((s) => s.openTask)
-  const [tab, setTab] = useState<'all' | 'important' | 'other' | 'snoozed' | 'cleared'>('all')
-  const [keyword, setKeyword] = useState('')
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [initial] = useState(() => lastInbox?.owner === owner ? lastInbox : undefined)
+  const [tab, setTab] = useState<InboxTab>(initial?.tab ?? 'all')
+  const [keyword, setKeyword] = useState(initial?.keyword ?? '')
+  const [expanded, setExpanded] = useState<Set<string>>(() => initial?.expanded ?? new Set())
+  const listElement = useRef<HTMLDivElement>(null)
+  const openId = useCrux(s => s.openTaskId)
+  useLayoutEffect(() => {
+    if (!openId && listElement.current && lastInbox?.owner === owner) listElement.current.scrollTop = lastInbox.scrollTop
+  }, [owner, openId])
+  useLayoutEffect(() => {
+    lastInbox = { owner, tab, keyword, expanded, scrollTop: lastInbox?.owner === owner ? lastInbox.scrollTop : 0 }
+  }, [owner, tab, keyword, expanded])
   const now = useNow()
   if (!snapshot) return <></>
 
@@ -97,7 +114,7 @@ export function InboxPage(): JSX.Element {
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
       />
-      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto rounded-my-md border border-my-line bg-my-layer-1">
+      <div ref={listElement} onScroll={event => { if (!openId && lastInbox?.owner === owner) lastInbox.scrollTop = event.currentTarget.scrollTop }} className="my-scrollbar min-h-0 flex-1 overflow-y-auto rounded-my-md border border-my-line bg-my-layer-1">
         {aggregated.size === 0
           ? <EmptyState title="这里很安静" description={tab === 'snoozed' ? '没有稍后处理的通知' : tab === 'cleared' ? '没有已清理的通知' : '没有待处理的通知'} />
           : (

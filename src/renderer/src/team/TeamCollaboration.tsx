@@ -3,8 +3,10 @@ import { ArrowUpRight, Check, Copy, FilePlus2, Globe2, Link2, Loader2, RefreshCw
 import type { DesktopTeamConnection, DesktopTeamConnectionContext } from '../../../shared/team-desktop'
 import { api } from '../api'
 import { Button, Modal } from '../my/ui'
+import { ConnectionPanel } from '../crux/ConnectionPanel'
 import { Select } from '../components/Select'
 import { InteractionScope, useInteractionActive } from '../utils/interaction-scope'
+import { DEFAULT_TEAM_ORIGIN } from '../team-service-origin'
 import { connectionLabel, denied, errorText, roleLabel, timeLabel, valueOf } from './model'
 import { useTeamOwner } from './use-team-owner'
 import { Documents } from './Documents'
@@ -13,16 +15,21 @@ import { PublicationDialog } from './PublicationDialog'
 import './team.css'
 
 export function TeamCollaborationEntry({ root }: { root: string }): JSX.Element | null {
-  const interactive = useInteractionActive(), [opened, setOpened] = useState<string | null>(null)
+  const interactive = useInteractionActive(), [opened, setOpened] = useState<{ root: string; view: 'sharing' | 'account' } | null>(null)
   const owner = useTeamOwner(root)
   useEffect(() => setOpened(null), [owner.lifetime])
   if (typeof api?.teamDesktop?.connections !== 'function') return null
-  return <><Button variant="outline" onClick={() => setOpened(root)}><Globe2 size={14} />团队共享</Button><TeamWorkspaceDialog root={root} open={opened === root && interactive} onClose={() => setOpened(null)} /></>
+  const visible = opened?.root === root && interactive
+  return <>
+    <Button variant="outline" onClick={() => setOpened({ root, view: 'sharing' })}><Globe2 size={14} />团队共享</Button>
+    <TeamWorkspaceDialog root={root} open={visible && opened?.view === 'sharing'} onAccount={() => setOpened({ root, view: 'account' })} onClose={() => setOpened(null)} />
+    <ConnectionPanel hideTrigger initialStep="auth" open={visible && opened?.view === 'account'} onOpenChange={(open) => { if (!open) setOpened({ root, view: 'sharing' }) }} />
+  </>
 }
 
-function TeamWorkspaceDialog({ root, open, onClose }: { root: string; open: boolean; onClose: () => void }): JSX.Element {
+function TeamWorkspaceDialog({ root, open, onAccount, onClose }: { root: string; open: boolean; onAccount: () => void; onClose: () => void }): JSX.Element {
   const owner = useTeamOwner(JSON.stringify([root, open])), [connections, setConnections] = useState<DesktopTeamConnection[]>([]), [selected, setSelected] = useState(''), [connecting, setConnecting] = useState(false)
-  const [origin, setOrigin] = useState(''), [deviceName, setDeviceName] = useState('我的桌面工作台'), [busy, setBusy] = useState(''), [error, setError] = useState('')
+  const [origin, setOrigin] = useState(DEFAULT_TEAM_ORIGIN), [deviceName, setDeviceName] = useState('我的桌面工作台'), [busy, setBusy] = useState(''), [error, setError] = useState('')
   const lock = useRef<symbol | null>(null), ticket = useRef(0)
   const refresh = async (): Promise<void> => {
     const captured = owner.capture(), request = ++ticket.current
@@ -56,7 +63,16 @@ function TeamWorkspaceDialog({ root, open, onClose }: { root: string; open: bool
     <section className="team-workspace"><header className="team-dialog-header"><div><span className="team-eyebrow">协作资料</span><h2>团队共享</h2></div><div className="team-inline-actions"><Button size="sm" variant="ghost" onClick={() => { void refresh() }}><RefreshCw size={14} />刷新连接</Button><button type="button" className="my-icon-control" aria-label="关闭团队共享" onClick={onClose}><X size={18} /></button></div></header>
       <div className="team-connection-bar"><label className="team-field team-connection-picker">团队连接<Select ariaLabel="当前团队连接" value={selected} onChange={(val) => { ticket.current++; setSelected(val); setConnecting(false); setError('') }} options={[{ value: '', label: '选择连接' }, ...connections.map((item) => ({ value: item.connectionId, label: `${item.deviceName} · ${connectionLabel(item)}` }))]} /></label><Button size="sm" variant="outline" onClick={() => setConnecting(!connecting)}><Link2 size={14} />{connecting ? '返回已连接工作区' : '连接团队服务'}</Button></div>
       {error && <p role="alert" className="team-notice team-band">{error}</p>}
-      {connecting ? <div className="team-setup my-scrollbar"><div className="team-setup-heading"><Globe2 size={30} /><h3>把这台工作台接入团队</h3><p>在浏览器登录并选择有权限的工作区。本机只保留受保护的设备凭据，代码仓库仍留在本地。</p></div><label className="team-field">团队服务地址<input className="my-input" aria-label="团队服务地址" value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="https://team.example.com" /></label><label className="team-field">这台设备的名称<input className="my-input" aria-label="本机设备名称" value={deviceName} maxLength={150} onChange={(event) => setDeviceName(event.target.value)} /></label><Button variant="primary" disabled={Boolean(busy) || !origin.trim() || !deviceName.trim()} onClick={() => { void begin() }}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />}保存配对并打开浏览器</Button></div> : connection ? <ConnectionWorkspace key={JSON.stringify([root, connection.connectionId, connection.ownerId, connection.projectId, connection.state, connection.accessLocked])} root={root} connection={connection} onUpdated={() => { void refresh() }} /> : <div className="team-empty"><Globe2 size={30} /><h3>选择一个团队连接</h3><p>发布的文档可供授权成员阅读，本机原始会话不会默认共享。</p></div>}
+      {connecting ? <div className="team-setup my-scrollbar">
+        <div className="team-setup-heading"><Globe2 size={30} /><h3>连接团队工作区</h3></div>
+        <Button variant="primary" disabled={Boolean(busy)} onClick={onAccount}>在应用内登录 / 注册</Button>
+        <details className="team-provenance">
+          <summary>使用浏览器配对</summary>
+          <label className="team-field">团队服务地址<input className="my-input" value={origin} disabled={Boolean(busy)} onChange={(event) => setOrigin(event.target.value)} placeholder="https://team.example.com" inputMode="url" spellCheck={false} /></label>
+          <label className="team-field">这台设备的名称<input className="my-input" aria-label="本机设备名称" value={deviceName} maxLength={150} disabled={Boolean(busy)} onChange={(event) => setDeviceName(event.target.value)} /></label>
+          <Button variant="outline" disabled={Boolean(busy) || !origin.trim() || !deviceName.trim()} onClick={() => { void begin() }}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />}保存配对并打开浏览器</Button>
+        </details>
+      </div> : connection ? <ConnectionWorkspace key={JSON.stringify([root, connection.connectionId, connection.ownerId, connection.projectId, connection.state, connection.accessLocked])} root={root} connection={connection} onUpdated={() => { void refresh() }} /> : <div className="team-empty"><Globe2 size={30} /><h3>选择一个团队连接</h3><p>发布的文档可供授权成员阅读，本机原始会话不会默认共享。</p></div>}
     </section>
   </Modal>
 }

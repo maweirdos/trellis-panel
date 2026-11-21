@@ -6,12 +6,14 @@ import type { CruxTaskMaterialsApi } from '@shared/crux-task-materials'
 import type { TaskInputBundle, TaskInputCandidates, TaskInputRead } from '@shared/team-task-inputs'
 import { Button } from '../../my/ui'
 import { TeamMarkdown } from '../../team/TeamMarkdown'
-import { Field, inputClass, textareaClass, Select } from '../ui'
+import { Field, inputClass, textareaClass } from '../ui'
+import { Select } from '../../components/Select'
 import { GovernanceRecovery, useGovernanceCommands } from './governance-state'
 
 export type TaskInputPanelProps = {
   api: TeamGovernanceApi; workspaceKey: string; spaceId: string; taskId: string; taskCreatedAt: string; canAdopt: boolean;
   actorId?: string; materialsApi?: CruxTaskMaterialsApi; onAdopted?(bundle: TaskInputBundle): void | Promise<void>
+  onRead?(inputs: TaskInputRead | null): void
   refreshRevision?: number
   workspaceRevision?: number
 }
@@ -22,10 +24,11 @@ const short = (digest: string): string => digest.slice(0, 10)
 const same = (a: Selection, b: Selection): boolean => JSON.stringify({ documents: [...a.documents].sort((x, y) => x.documentId.localeCompare(y.documentId)), rules: [...a.rules].sort((x, y) => x.packageId.localeCompare(y.packageId)), template: a.template }) === JSON.stringify({ documents: [...b.documents].sort((x, y) => x.documentId.localeCompare(y.documentId)), rules: [...b.rules].sort((x, y) => x.packageId.localeCompare(y.packageId)), template: b.template })
 
 export function TaskInputPanel(props: TaskInputPanelProps): JSX.Element { return <TaskInputs key={`${props.workspaceKey}:${props.spaceId}:${props.taskId}:${props.taskCreatedAt}`} {...props} /> }
-function TaskInputs({ api, workspaceKey, spaceId, taskId, taskCreatedAt, canAdopt, actorId, materialsApi, onAdopted, refreshRevision = 0, workspaceRevision = 0 }: TaskInputPanelProps): JSX.Element {
+function TaskInputs({ api, workspaceKey, spaceId, taskId, taskCreatedAt, canAdopt, actorId, materialsApi, onAdopted, onRead, refreshRevision = 0, workspaceRevision = 0 }: TaskInputPanelProps): JSX.Element {
   const [inputs, setInputs] = useState<TaskInputRead | null>(null), [candidates, setCandidates] = useState<TaskInputCandidates | null>(null)
   const [selection, setSelection] = useState<Selection>({ documents: [], rules: [], template: null }), [selectionRevision, setSelectionRevision] = useState<number | null>(null)
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [review, setReview] = useState(false), [preview, setPreview] = useState<Preview | null>(null), [previewing, setPreviewing] = useState(false), [reason, setReason] = useState('')
+  useEffect(() => { onRead?.(loading || error ? null : inputs) }, [inputs, loading, error, onRead])
   const alive = useRef(0), loadId = useRef(0), previewId = useRef(0), initialized = useRef(false)
   const seenRefresh = useRef([refreshRevision, workspaceRevision])
   const scope = { workspaceKey, spaceId, taskId, taskCreatedAt }

@@ -1,6 +1,7 @@
 import type { CruxSnapshot, CruxStatusCategory, CruxTask } from '@shared/crux'
 import type { MyDataset, StateGroup } from '../my/types'
 import { getCruxTaskStageMetadata } from '@shared/crux-domain/workflow'
+import { canRestoreLightweightTask } from '@shared/crux-domain/lightweight'
 
 export const CRUX_STATE_GROUPS: Record<CruxStatusCategory, StateGroup> = {
   backlog: 'backlog', todo: 'unstarted', in_progress: 'started', in_review: 'started',
@@ -24,7 +25,8 @@ export function deriveTaskWorkspaceDataset(
   const projects = snapshot.projects.filter((project) => spaceIds.has(project.spaceId))
   const referencedPeople = new Set(tasks.flatMap((task) => [...task.assigneeIds, task.creatorId]))
   const people = snapshot.members.filter((member) => !spaceId || referencedPeople.has(member.id) || spaces.some((space) => space.memberIds.includes(member.id)))
-  const workflowStages = [...new Set(tasks.flatMap((task) => task.workflow && !task.triagePending && snapshot.taskStatuses.find((status) => status.id === task.statusId)?.category !== 'cancelled' ? [task.workflow.stage] : []))]
+  const visibleStage = (task: CruxTask) => task.workflow && !canRestoreLightweightTask(task) && !task.triagePending && snapshot.taskStatuses.find(status => status.id === task.statusId)?.category !== 'cancelled' ? task.workflow.stage : undefined
+  const workflowStages = [...new Set(tasks.flatMap(task => { const stage = visibleStage(task); return stage ? [stage] : [] }))]
   const workflowStates = workflowStages.map((stage, index) => { const metadata = getCruxTaskStageMetadata(stage); const group = CRUX_STATE_GROUPS[metadata.category]; return { id: `workflow:${stage}`, name: metadata.label, color: `var(--my-txt-icon-states-${group})`, group, sequence: index } })
   return {
     workspace: { name: workspaceName ?? spaces[0]?.name ?? '团队', slug: workspaceKey, memberId: actorId ?? '' },
@@ -51,9 +53,10 @@ export function deriveTaskWorkspaceDataset(
       .map((label) => ({ id: label.id, name: label.name, color: label.color })),
     issues: tasks.map((task) => {
       const dates = versions.filter((version) => task.iterationIds.includes(version.id))
+      const stage = visibleStage(task)
       return {
         id: task.id, projectId: task.spaceId, sequenceId: Number(task.id.match(/-(\d+)$/)?.[1] ?? 0),
-        name: task.title, description: task.description ?? '', stateId: task.workflow && !task.triagePending && snapshot.taskStatuses.find((status) => status.id === task.statusId)?.category !== 'cancelled' ? `workflow:${task.workflow.stage}` : task.statusId, priority: task.priority,
+        name: task.title, description: task.description ?? '', stateId: stage ? `workflow:${stage}` : task.statusId, priority: task.priority,
         assigneeId: task.assigneeIds[0] ?? null, labelIds: task.labelIds,
         cycleId: task.iterationIds[0] ?? null, cycle: task.iterationIds[0] ?? null,
         moduleId: task.projectId ?? null, pkg: projects.find((project) => project.id === task.projectId)?.name ?? null,

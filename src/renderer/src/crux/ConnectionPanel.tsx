@@ -14,7 +14,7 @@ export interface ConnectionPanelProps {
   initialStep?: 'entry' | 'accounts' | 'auth'
   returnToOnboarding?: boolean
 }
-export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onOpenChange, hideTrigger = false, initialStep = 'entry', returnToOnboarding = false }: ConnectionPanelProps = {}): JSX.Element {
+export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onOpenChange, hideTrigger = false, initialStep, returnToOnboarding = false }: ConnectionPanelProps = {}): JSX.Element {
   const workspaceContext = useCrux((state) => state.workspaceContext)
   const selectWorkspace = useCrux((state) => state.selectWorkspace)
   const bootstrap = useCrux((state) => state.bootstrap)
@@ -27,7 +27,7 @@ export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onO
     onOpenChange?.(value)
   }
   const label = workspaceContext.state === 'local'
-    ? '本机个人使用'
+    ? '登录 / 注册'
     : workspaceContext.state === 'connected'
       ? workspaceContext.projectName ?? '团队工作区'
       : workspaceContext.state === 'offline'
@@ -40,16 +40,16 @@ export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onO
       disabled={!hasIpc}
       onClick={() => setOpen(true)}
       className="flex min-h-8 w-full items-center gap-2 rounded-my-md py-1 text-left text-my-xs text-my-secondary hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
-      aria-label={trigger === 'connect' ? '打开账号与工作区' : '选择本机或团队工作区'}
+      aria-label={workspaceContext.state === 'local' ? '登录 / 注册' : trigger === 'connect' ? '打开账号与工作区' : '选择本机或团队工作区'}
     >
       <Globe size={15} />
-      <span className="min-w-0 flex-1 truncate">{trigger === 'connect' ? '账号与工作区' : label}</span>
+      <span className="min-w-0 flex-1 truncate">{trigger === 'connect' && workspaceContext.state !== 'local' ? '账号与工作区' : label}</span>
       {workspaceContext.pendingCount > 0 && <span>{workspaceContext.pendingCount} 待核对</span>}
     </button>}
     <Modal open={open} onClose={() => requestCloseRef.current?.()} fullScreen ariaLabel="账号、组织与工作区">
       <AccountFlow
         open={open}
-        initialStep={initialStep}
+        initialStep={initialStep ?? (workspaceContext.state === 'local' ? 'auth' : 'entry')}
         returnToOnboarding={returnToOnboarding}
         currentConnectionId={workspaceContext.connectionId}
         currentIsLocal={workspaceContext.state === 'local'}

@@ -4,13 +4,13 @@ import { hasIpc } from '../../api'
 import { useMy } from '../store'
 import { projectRootKey } from '../navigation'
 import { PageToolbar } from '../layout/PageLayout'
-import { Button, EmptyState } from '../ui'
+import { Button, EmptyState, Tabs } from '../ui'
 import { WorkItemsPage } from './WorkItemsPage'
 import { TaskWorkspace } from '../../crux/TaskWorkspace'
 import { useCrux } from '../../crux/store'
 import { useCollaborationWorkspace } from '../../crux/CruxApp'
 import { ConnectionPanel } from '../../crux/ConnectionPanel'
-import { NewTaskModal, TaskDetailDrawer } from '../../crux/pages/TaskDetailDrawer'
+import { NewTaskModal } from '../../crux/pages/TaskDetailDrawer'
 
 function PersonalTeamTasks(): JSX.Element {
   useCollaborationWorkspace()
@@ -23,7 +23,6 @@ function PersonalTeamTasks(): JSX.Element {
   if (!snapshot) return <div role="status" className="grid h-full place-items-center text-my-sm text-my-tertiary">正在加载团队任务…</div>
   return <>
     <TaskWorkspace scope="mine" />
-    <TaskDetailDrawer />
     <NewTaskModal {...createTaskContext} open={createTaskOpen} onClose={() => setCreateTaskOpen(false)} />
   </>
 }
@@ -46,13 +45,17 @@ export function PersonalTasksPage(): JSX.Element {
   }
   return <div className="flex h-full min-h-0 min-w-0 flex-col" data-personal-task-source={source}>
     <PageToolbar>
-      <span className="text-my-xs text-my-tertiary">来源</span>
-      <div className="my-segmented shrink-0" role="group" aria-label="任务来源">
-        {([{ id: 'team', label: '团队任务' }, { id: 'local', label: '本地工作' }] as const).map((item) => <button key={item.id} type="button" aria-pressed={source === item.id} className={`my-control my-control-sm shrink-0 whitespace-nowrap ${source === item.id ? 'bg-my-layer-1-active text-my-primary' : 'text-my-tertiary'}`} onClick={() => selectSource(item.id)}>{item.label}</button>)}
-      </div>
-      {source === 'team' && hasIpc && <div className="ml-auto min-w-0"><ConnectionPanel /></div>}
+      <Tabs<'team' | 'local'>
+        tabs={[
+          { id: 'team', label: '团队任务' },
+          { id: 'local', label: '本地工作' }
+        ]}
+        active={source}
+        onChange={selectSource}
+      />
+      {source === 'team' && hasIpc && <div className="ml-auto shrink-0"><ConnectionPanel /></div>}
     </PageToolbar>
-    <div className="min-h-0 min-w-0 flex-1">
+    <div className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden">
       {source === 'team' ? <PersonalTeamTasks /> : root ? <WorkItemsPage key={root} /> : <div className="flex flex-col items-center"><EmptyState title="先打开本机项目" /><Button variant="outline" disabled={!hasIpc} onClick={() => void useApp.getState().pickAndOpen()}>打开项目</Button></div>}
     </div>
   </div>

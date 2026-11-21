@@ -21,12 +21,20 @@
   color: var(--my-txt-primary);
 }
 .team-brand-mark {
-  width: var(--my-space-22);
-  height: var(--my-space-22);
+  display: inline-block;
+  flex: none;
+  width: var(--my-module-icon-size);
+  height: var(--my-module-icon-size);
   background: currentColor;
-  mask: url('../../../resources/brand/mark.svg') center / contain no-repeat;
-  -webkit-mask: url('../../../resources/brand/mark.svg') center / contain no-repeat;
+  mask: url('../../../resources/brand/mark-compact.svg') center / contain no-repeat;
+  -webkit-mask: url('../../../resources/brand/mark-compact.svg') center / contain no-repeat;
 }
+.team-rail-brand .team-brand-mark { mask-image: url('../../../resources/brand/mark-20.svg'); -webkit-mask-image: url('../../../resources/brand/mark-20.svg'); }
+.team-shell:has(.team-view-control[data-my-font-size='small']) .team-rail-brand .team-brand-mark { mask-image: url('../../../resources/brand/mark-16.svg'); -webkit-mask-image: url('../../../resources/brand/mark-16.svg'); }
+.team-shell:has(.team-view-control[data-my-font-size='large']) .team-rail-brand .team-brand-mark { mask-image: url('../../../resources/brand/mark-compact.svg'); -webkit-mask-image: url('../../../resources/brand/mark-compact.svg'); }
+.team-login-brand { display: inline-flex; align-items: center; gap: var(--my-space-12); color: var(--my-txt-primary); }
+.team-login-brand .team-brand-mark { width: var(--my-space-32); height: var(--my-space-32); mask-image: url('../../../resources/brand/mark.svg'); -webkit-mask-image: url('../../../resources/brand/mark.svg'); }
+.team-brand-wordmark { display: inline-block; flex: none; width: var(--my-space-96); aspect-ratio: 241.55 / 76.7; background: currentColor; mask: url('../../../resources/brand/wordmark.svg') center / contain no-repeat; -webkit-mask: url('../../../resources/brand/wordmark.svg') center / contain no-repeat; }
 .team-module-navigation {
   display: flex;
   flex: 1;

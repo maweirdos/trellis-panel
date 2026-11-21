@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { clsx } from 'clsx'
 import { ChevronDown } from 'lucide-react'
 import type { CruxSnapshot, CruxTask, CruxTaskPatchInput, CruxViewFilter } from '@shared/crux'
+import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { WorkItemsPage } from '../my/pages/WorkItemsPage'
@@ -11,8 +13,10 @@ import { PageToolbar } from '../my/layout/PageLayout'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { applyTaskFilter, useCrux, type CruxTaskFilterState } from './store'
 import { LabelChip } from './ui'
+import { TaskOutputReviewBoardBadge } from './task-output-review/task-output-review'
 import { deriveTaskWorkspaceDataset, CRUX_STATE_GROUPS } from './task-workspace-adapter'
 import { MyNextSteps } from './cockpit/MyNextSteps'
+import { EmbeddedTaskPost } from './pages/TaskDetailDrawer'
 import { taskSourceKey } from './pages/task-detail/use-task-source'
 import { captureScrollPositions, restoreScrollPositions } from './development/context'
 import type { TaskListLocation } from './development/types'
@@ -24,6 +28,7 @@ export interface TaskWorkspaceProps {
   /** Initial layout; subsequent choices belong to this collaboration source. */
   layout?: WorkItemLayout
 }
+const TASK_LAYOUT_SOURCE_KEYS = new Set(['mine', 'space', 'triage'])
 
 export type PersonalTaskRelation = 'assigned' | 'created' | 'involved' | 'followed'
 
@@ -177,8 +182,15 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
     return Boolean(writable && task && canWriteSpace(task.spaceId))
   }
   const patchTask = async (id: string, patch: CruxTaskPatchInput): Promise<void> => {
-    if (!canEdit(id)) return
-    if ('assigneeIds' in patch && currentTask(id)?.workflow) return
+    const task = currentTask(id)
+    if (!task || !canEdit(id)) return
+    const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined)
+    if (patch.statusId && (!flow.canEditStatus || !flow.statusOptions.some(item => item.id === patch.statusId))) return
+    if (patch.assigneeIds && !flow.canAssign) return
+    if (task.workflow && (patch.statusId || patch.assigneeIds)) {
+      if (flow.canRestore) await state.run('更新任务', () => api.crux.restoreLightweightTask({ taskId: id, expectedUpdatedAt: task.updatedAt, statusId: patch.statusId, assigneeIds: patch.assigneeIds }))
+      return
+    }
     await state.run('更新任务', () => canEdit(id) ? api.crux.updateTask({ id, patch }) : Promise.resolve({ ok: false as const, error: '任务来源已变化，请重新打开任务。' }))
   }
   const filters: IssueFilters = {
@@ -221,11 +233,18 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
     key: `${workspaceContext.key}:${workspaceContext.instanceId ?? ''}:${workspaceContext.epoch ?? ''}:${actorId ?? ''}:${scope}:${spaceId ?? ''}`,
     kind: 'collaboration', projectId: spaceId,
     capabilities: {
-      editableFields: writable ? ['priority', 'assigneeId'] : [],
+      editableFields: writable ? ['priority', 'assigneeId', 'stateId'] : [],
       create: Boolean(writable && canWriteSpace(createSpaceId) && (!iterationId || snapshot.iterations.find((item) => item.id === iterationId)?.status !== 'completed')),
       favorites: true, saveView: Boolean(canSaveScope && writable && spaceId && canWriteSpace(spaceId) && saveGroup)
     },
-    canEditIssue: (id, field) => canEdit(id) && (field !== 'assigneeId' || !currentTask(id)?.workflow),
+    canEditIssue: (id, field) => {
+      const task = currentTask(id)
+      if (!task || !canEdit(id)) return false
+      const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined)
+      if (field === 'stateId') return flow.canEditStatus && (!task.workflow || flow.canRestore)
+      if (field === 'assigneeId') return flow.canAssign && (!task.workflow || flow.canRestore)
+      return true
+    },
     setAssignees: async (id, ids) => {
       const task = currentTask(id)
       const taskSpace = snapshot.spaces.find((item) => item.id === task?.spaceId)
@@ -235,6 +254,14 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
     presentation: {
       title: scope === 'mine' ? '我的任务' : scope === 'triage' ? '分拣' : '任务',
       identifier: (issue) => issue.id,
+      renderBoardReview: issue => {
+        const task = taskById.get(issue.id)
+        return task?.outputReview ? <TaskOutputReviewBoardBadge task={task} /> : null
+      },
+      stateIds: id => {
+        const task = taskById.get(id)
+        return task ? getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined).statusOptions.map(status => status.id) : []
+      },
       cycleMode: 'version', cycleIds: (issue) => taskById.get(issue.id)?.iterationIds ?? [],
       assigneeIds: (issue) => taskById.get(issue.id)?.assigneeIds ?? [],
       assigneeOptions: (id) => data.members.filter((member) => snapshot.spaces.find((item) => item.id === taskById.get(id)?.spaceId)?.memberIds.includes(member.id)),
@@ -273,11 +300,11 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
       setDisplay: (patch) => setDisplay((previous) => ({ ...previous, ...patch })),
       openIssue: (id) => { if (currentTask(id)) state.openTask(id) },
       updateIssue: async (id, patch) => {
-        if (Object.keys(patch).some((field) => field !== 'priority' && field !== 'assigneeId')) {
+        if (Object.keys(patch).some((field) => field !== 'priority' && field !== 'assigneeId' && field !== 'stateId')) {
           useApp.getState().pushToast({ kind: 'info', title: '请在任务详情中操作' })
           return
         }
-        await patchTask(id, { ...(patch.priority ? { priority: patch.priority } : {}),
+        await patchTask(id, { ...(patch.priority ? { priority: patch.priority } : {}), ...(patch.stateId ? { statusId: patch.stateId } : {}),
           ...('assigneeId' in patch ? { assigneeIds: patch.assigneeId ? [patch.assigneeId] : [] } : {}) })
       },
       setCreateIssueOpen: (open) => {
@@ -289,28 +316,103 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
       favorites, toggleFavorite: (id) => setFavorites((previous) => toggleValue(previous, id).slice(-50)), saveView
     }
   }
+  const openTaskId = state.openTaskId
+  const openTask = openTaskId ? snapshot.tasks.find(task => task.id === openTaskId && (scope === 'mine' || task.spaceId === spaceId)) : undefined
   return <div ref={locationRoot} onScrollCapture={persistLocation} className="flex h-full min-h-0 min-w-0 flex-col">
     {scope === 'mine' && <MyNextSteps />}
-    {scope === 'mine' && <PageToolbar>
-      <Dropdown trigger={({ open, toggle }) => <Button size="sm" variant="outline" aria-label="任务关系" aria-expanded={open} onClick={toggle}>{PERSONAL_RELATIONS.find((item) => item.id === relation)?.label}<ChevronDown size={13} /></Button>}>
-        {(close) => PERSONAL_RELATIONS.map((item) => <DropdownItem key={item.id} selected={relation === item.id} onClick={() => { if (ownsSource()) setRelation(item.id); close() }}>{item.label}</DropdownItem>)}
-      </Dropdown>
-      <Dropdown trigger={({ open, toggle }) => <Button size="sm" variant="outline" aria-label="个人任务状态" aria-expanded={open} onClick={toggle}>{personalStatus?.label ?? '已筛选状态'}<ChevronDown size={13} /></Button>}>
-        {(close) => PERSONAL_STATUSES.map((item) => <DropdownItem key={item.id} selected={personalStatus === item} onClick={() => { if (ownsSource()) { setStateGroups(item.groups); setTab('all'); setFilter({ statusIds: undefined }) } close() }}>{item.label}</DropdownItem>)}
-      </Dropdown>
-      <Dropdown trigger={({ open, toggle }) => <Button size="sm" variant="outline" aria-label="个人任务空间" aria-expanded={open} onClick={toggle}><span className="max-w-40 truncate">{snapshot.spaces.find((space) => space.id === personalSpaceId)?.name ?? '全部空间'}</span><ChevronDown size={13} /></Button>}>
-        {(close) => <>
-          <DropdownItem selected={!personalSpaceId} onClick={() => { if (ownsSource()) setPersonalSpaceId(null); close() }}>全部空间</DropdownItem>
-          {snapshot.spaces.map((space) => <DropdownItem key={space.id} selected={personalSpaceId === space.id} onClick={() => { if (ownsSource()) { setPersonalSpaceId(space.id); setFilter({ typeIds: undefined, statusIds: undefined, iterationId: undefined, projectId: undefined }) } close() }}>{space.name}</DropdownItem>)}
-        </>}
-      </Dropdown>
-      <Dropdown trigger={({ open, toggle }) => <Button size="sm" variant="outline" aria-label="个人任务版本" aria-expanded={open} onClick={toggle}><span className="max-w-40 truncate">{snapshot.iterations.find((version) => version.id === filter.iterationId)?.name ?? '全部版本'}</span><ChevronDown size={13} /></Button>}>
-        {(close) => <>
-          <DropdownItem selected={!filter.iterationId} onClick={() => { setFilter({ iterationId: undefined }); close() }}>全部版本</DropdownItem>
-          {snapshot.iterations.filter((version) => !personalSpaceId || version.spaceId === personalSpaceId).map((version) => <DropdownItem key={version.id} selected={filter.iterationId === version.id} onClick={() => { setFilter({ iterationId: version.id }); close() }}>{personalSpaceId ? version.name : `${snapshot.spaces.find((space) => space.id === version.spaceId)?.name ?? ''} · ${version.name}`}</DropdownItem>)}
-        </>}
-      </Dropdown>
+    {scope === 'mine' && <PageToolbar className="bg-my-surface-1 py-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Dropdown trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            aria-label="任务关系"
+            aria-expanded={open}
+            onClick={toggle}
+            className={clsx(
+              'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
+              relation !== 'assigned'
+                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
+                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+            )}
+          >
+            <span>{PERSONAL_RELATIONS.find((item) => item.id === relation)?.label}</span>
+            <ChevronDown size={12} className={clsx('text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
+          </button>
+        )}>
+          {(close) => PERSONAL_RELATIONS.map((item) => <DropdownItem key={item.id} selected={relation === item.id} onClick={() => { if (ownsSource()) setRelation(item.id); close() }}>{item.label}</DropdownItem>)}
+        </Dropdown>
+        <Dropdown trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            aria-label="个人任务状态"
+            aria-expanded={open}
+            onClick={toggle}
+            className={clsx(
+              'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
+              personalStatus?.id !== 'open'
+                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
+                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+            )}
+          >
+            <span>{personalStatus?.label ?? '已筛选状态'}</span>
+            <ChevronDown size={12} className={clsx('text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
+          </button>
+        )}>
+          {(close) => PERSONAL_STATUSES.map((item) => <DropdownItem key={item.id} selected={personalStatus === item} onClick={() => { if (ownsSource()) { setStateGroups(item.groups); setTab('all'); setFilter({ statusIds: undefined }) } close() }}>{item.label}</DropdownItem>)}
+        </Dropdown>
+        <Dropdown trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            aria-label="个人任务空间"
+            aria-expanded={open}
+            onClick={toggle}
+            className={clsx(
+              'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
+              personalSpaceId
+                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
+                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+            )}
+          >
+            <span className="max-w-40 truncate">{snapshot.spaces.find((space) => space.id === personalSpaceId)?.name ?? '全部空间'}</span>
+            <ChevronDown size={12} className={clsx('text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
+          </button>
+        )}>
+          {(close) => <>
+            <DropdownItem selected={!personalSpaceId} onClick={() => { if (ownsSource()) setPersonalSpaceId(null); close() }}>全部空间</DropdownItem>
+            {snapshot.spaces.map((space) => <DropdownItem key={space.id} selected={personalSpaceId === space.id} onClick={() => { if (ownsSource()) { setPersonalSpaceId(space.id); setFilter({ typeIds: undefined, statusIds: undefined, iterationId: undefined, projectId: undefined }) } close() }}>{space.name}</DropdownItem>)}
+          </>}
+        </Dropdown>
+        <Dropdown trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            aria-label="个人任务版本"
+            aria-expanded={open}
+            onClick={toggle}
+            className={clsx(
+              'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
+              filter.iterationId
+                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
+                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+            )}
+          >
+            <span className="max-w-40 truncate">{snapshot.iterations.find((version) => version.id === filter.iterationId)?.name ?? '全部版本'}</span>
+            <ChevronDown size={12} className={clsx('text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
+          </button>
+        )}>
+          {(close) => <>
+            <DropdownItem selected={!filter.iterationId} onClick={() => { setFilter({ iterationId: undefined }); close() }}>全部版本</DropdownItem>
+            {snapshot.iterations.filter((version) => !personalSpaceId || version.spaceId === personalSpaceId).map((version) => <DropdownItem key={version.id} selected={filter.iterationId === version.id} onClick={() => { setFilter({ iterationId: version.id }); close() }}>{personalSpaceId ? version.name : `${snapshot.spaces.find((space) => space.id === version.spaceId)?.name ?? ''} · ${version.name}`}</DropdownItem>)}
+          </>}
+        </Dropdown>
+      </div>
     </PageToolbar>}
-    <WorkItemsPage source={source} />
+    <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+      {openTask && TASK_LAYOUT_SOURCE_KEYS.has(scope)
+        ? <section className="team-task-layout" aria-label="任务与列表">
+            <div className="team-task-reader"><EmbeddedTaskPost taskId={openTask.id} onClose={() => { if (ownsSource()) state.openTask(null) }} /></div>
+            <div className="team-task-list" aria-label="来源工作视图"><WorkItemsPage source={source} /></div>
+          </section>
+        : <WorkItemsPage source={source} />}
+    </div>
   </div>
 }

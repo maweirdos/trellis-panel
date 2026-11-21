@@ -4,7 +4,7 @@ import { FlowIcon } from './icons'
 import { COLLABORATION_MODULES, type CollaborationModule } from './navigation'
 import { isTriagePending, useCrux } from './store'
 
-export function WorkspaceNavigation({ unread }: { unread: number }): JSX.Element | null {
+export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: number; onOpenAutomations?: () => void }): JSX.Element | null {
   const { snapshot, module, currentSpaceId, workspaceContext, setModule, setCurrentSpace, beginCreateTask } = useCrux()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [branches, setBranches] = useState<Record<string, boolean>>({})
@@ -22,7 +22,8 @@ export function WorkspaceNavigation({ unread }: { unread: number }): JSX.Element
   const configuration = COLLABORATION_MODULES.filter((entry) => entry.group === '配置')
   const navigate = (entry: CollaborationModule, spaceId?: string): void => {
     if (spaceId && spaceId !== currentSpaceId) setCurrentSpace(spaceId)
-    setModule(entry.id)
+    if (entry.id === 'automations' && onOpenAutomations) onOpenAutomations()
+    else setModule(entry.id)
   }
   const item = (entry: CollaborationModule, spaceId?: string): JSX.Element => {
     const selected = module === entry.id && (entry.scope === 'global' || currentSpaceId === spaceId)

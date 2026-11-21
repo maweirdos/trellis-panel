@@ -38,6 +38,7 @@ export interface WorkItemsSource {
     stateIds?: (issueId: string) => readonly string[]
     labelColor?: (label: Label) => string
     renderLabel?: (label: Label) => ReactNode
+    renderBoardReview?: (issue: Issue) => ReactNode
     filterContent?: ReactNode
     additionalFilterCount?: number
     startDateLabel?: string

@@ -30,10 +30,10 @@ export interface DesktopAccountAdapter {
   authOptions(origin: string): Promise<DesktopTeamAuthOptions>
   loadConnectedAccounts(currentConnectionId: string | null): Promise<DesktopConnectedAccountSnapshot>
   subscribe(onChange: () => void): () => void
-  authenticateLocal(input: { mode: AccountAuthMode; origin: string; username: string; displayName?: string; password: string }): Promise<{ session: DesktopAccountSession; scope: DesktopScopeSnapshot }>
+  authenticateLocal(input: { mode: AccountAuthMode; origin: string; username: string; displayName?: string; password: string }): Promise<DesktopAccountSession>
   openAccount(accountId: string): Promise<{ session: DesktopAccountSession; scope: DesktopScopeSnapshot }>
   logoutAccount(accountId: string): Promise<void>
-  createOrganization(session: DesktopAccountSession, commandId: string, name: string): Promise<{ scope: DesktopScopeSnapshot; organizationId: string }>
+  createOrganization(session: DesktopAccountSession, commandId: string, name: string): Promise<{ scope: DesktopScopeSnapshot; organizationId: string; workspaceId: string }>
   createWorkspace(session: DesktopAccountSession, commandId: string, organizationId: string, name: string): Promise<{ scope: DesktopScopeSnapshot; workspaceId: string }>
   inspectInvitation(session: DesktopAccountSession, url: string): Promise<DesktopScopeInvitation>
   acceptInvitation(session: DesktopAccountSession, commandId: string, invitation: DesktopScopeInvitation): Promise<DesktopScopeSnapshot>
@@ -270,7 +270,7 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
     const account = input.mode === 'login'
       ? replyValue(await bridge.login({ origin: input.origin, username: input.username, password: input.password }))
       : replyValue(await bridge.register({ origin: input.origin, username: input.username, displayName: input.displayName ?? '', password: input.password }))
-    return { session: sessionOf(account), scope: await loadScopeForAccount(account) }
+    return sessionOf(account)
   },
 
   async openAccount(accountId) {
@@ -288,8 +288,10 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
     const account = replyValue(await requireBridge().accounts()).find((item) => item.accountId === session.accountId)
     if (!account) throw new Error('组织已创建，但原桌面账号不再可用；请重新登录后核对。')
     const scope = await loadScopeForAccount(account)
-    if (!scope.organizations.some((organization) => organization.organizationId === receipt.result.teamId)) throw new Error('组织已创建，但当前账号尚未读到该组织，请重试核对。')
-    return { scope, organizationId: receipt.result.teamId }
+    const organization = scope.organizations.find((item) => item.organizationId === receipt.result.teamId)
+    const workspace = organization?.workspaces.find((item) => item.workspaceId === receipt.result.projectId)
+    if (!organization || !workspace) throw new Error('组织已创建，但当前账号尚未读到该工作区，请重试核对。')
+    return { scope, organizationId: receipt.result.teamId, workspaceId: receipt.result.projectId }
   },
 
   async createWorkspace(session, commandId, organizationId, name) {

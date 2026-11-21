@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { ArrowRight, Bot, ChevronDown, PenLine, Sparkles, X } from 'lucide-react'
+import { Bot, ChevronDown, PenLine, Sparkles, X } from 'lucide-react'
 import type { CruxID, CruxPriority, CruxSnapshot, CruxTaskInput, CruxTaskWorkKind } from '@shared/crux'
 import { cruxTaskWorkKindSchema } from '@shared/crux-schema'
+import type { TaskSourceFile } from '@shared/task-source-files'
+import { taskInputCanonical } from '@shared/team-canonical'
 import { api, hasIpc } from '../../api'
 import { Button, Modal, Tooltip } from '../../my/ui'
 import { InteractionScope } from '../../utils/interaction-scope'
 import { observeCollaborationWorkspace, PRIORITY_LABEL, useCrux, visibleLabels } from '../store'
 import { Field, inputClass, textareaClass, Select } from '../ui'
+import { capturePostFiles, sendPostFiles, PostFilePicker } from './task-detail/TaskPostFiles'
 import { TaskAllocationPicker, type TaskAllocation } from './task-detail/TaskAllocationPicker'
 import { canReadTaskSpace, taskActorId, taskSourceKey, useTaskMutation, useTaskSource, useTaskSurfaceGeneration } from './task-detail/use-task-source'
 import { useTaskDraft, useTaskDraftField } from './task-detail/task-drafts'
@@ -14,8 +17,6 @@ import { ConnectionPanel } from '../ConnectionPanel'
 import { RequirementIntake } from '../intake/RequirementIntake'
 import { bodyDigest, discussionInput } from '../intake/requirements'
 import { clearTaskHandoffFields, clearTaskHandoffRecovery, readTaskHandoffIntent, readTaskHandoffRecovery, rememberTaskHandoffSource, saveTaskHandoffIntent, saveTaskHandoffRecovery, type TaskHandoffFields, type TaskHandoffIntent, type TaskHandoffRecovery, type TaskHandoffSource } from './task-detail/task-handoff-source'
-import { useApp } from '../../store'
-import { useMy } from '../../my/store'
 import type { IntakeFile } from '../intake/use-requirement-intake'
 
 export interface NewTaskModalProps {
@@ -27,7 +28,7 @@ export interface NewTaskModalProps {
   parentTaskId?: CruxID
   triagePending?: boolean
   handoff?: TaskHandoffSource
-  onCreated?: (receipt: { taskId: string; spaceId: string; triagePending: boolean; materialDocumentId?: string }) => void
+  onCreated?: (receipt: { taskId: string; spaceId: string; triagePending: boolean; materialDocumentId?: string; materialVersionId?: string; files?: TaskSourceFile[] }) => void
 }
 
 const WORK_KIND_LABELS: Record<CruxTaskWorkKind, string> = { code: '研发工作', general: '日常工作' }
@@ -77,12 +78,12 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
   } catch (cause) { readError = cause instanceof Error ? cause.message : String(cause) }
   const handoff = recovery?.source ?? props.handoff
   const spaces = snapshot?.spaces.filter(space => !space.archived && context.actorId && space.memberIds.includes(context.actorId)) ?? []
-  const handoffAvailable = context.state === 'connected' && (!recovery || recovery.authority === authority && recovery.authorityIdentity === actorId)
+  const handoffAvailable = ['local', 'connected'].includes(context.state) && (!recovery || recovery.authority === authority && recovery.authorityIdentity === actorId)
   const existingTask = handoff && snapshot?.tasks.find(task => task.handoff?.id === handoff.id && task.creatorId === context.actorId)
   const handoffSpace = recovery?.spaceId ?? existingTask?.spaceId ?? retained?.input.spaceId ?? (spaces.find(space => space.id === currentSpaceId)?.id || spaces[0]?.id)
   const spaceId = props.handoff ? handoffSpace : props.spaceId ?? currentSpaceId
   const initialCheck = Boolean(props.handoff && checkedHandoff !== props.handoff.id)
-  const waiting = checking || initialCheck || (busy && context.state !== 'connected')
+  const waiting = checking || initialCheck || (busy && !snapshot)
   // Persist before admitting an editable form. A failed write leaves the source intact.
   useEffect(() => {
     if (props.open && handoff && !waiting && !loadError && !readError && !recoveryError && handoffAvailable && spaceId && spaces.some(space => space.id === spaceId) && !recovery) {
@@ -106,10 +107,8 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
       : !snapshot.spaces.some(space => !space.archived) ? '当前团队暂无可用空间。'
       : !spaces.length ? '当前身份未加入可用空间，请联系管理员加入空间。'
       : '原目标空间已停用或当前身份已无创建权限，请联系空间管理员。'
-    return <>
-      <Modal open={!connectionOpen} onClose={props.onClose} ariaLabel="创建团队需求任务">
-        <div className="flex flex-col gap-4 bg-my-canvas p-5">
-          <h2 className="my-item-title">创建团队需求任务</h2>
+    const content = <div className="flex flex-col gap-4 bg-my-canvas p-5">
+          <h2 className="my-item-title">创建团队任务</h2>
           <p role={waiting ? 'status' : 'alert'} className="my-item-description">{message}</p>
           {!waiting && (context.error || loadError) && <details className="my-item-description"><summary className="cursor-pointer">查看连接详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{context.error || loadError}</p></details>}
           <div className="flex flex-wrap justify-end gap-2">
@@ -118,7 +117,8 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
             {!waiting && <Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => setConnectionOpen(true)}>{context.state === 'access-revoked' ? '重新登录' : '账号与工作区'}</Button>}
           </div>
         </div>
-      </Modal>
+    return <>
+      {props.handoff.draftId && props.triagePending ? !connectionOpen && content : <Modal open={!connectionOpen} onClose={props.onClose} ariaLabel="创建团队任务">{content}</Modal>}
       <ConnectionPanel open={connectionOpen} hideTrigger onOpenChange={open => { setConnectionOpen(open); if (!open) void refresh() }} />
     </>
   }
@@ -127,7 +127,7 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
   return <InteractionScope key={key} active><TaskCreateForm {...props} handoff={handoff} retained={retained} unsent={recovery?.fields[spaceId]} onUnsentChange={fields => {
     if (!handoff) return
     const latest = useCrux.getState()
-    if (!latest.snapshot || latest.workspaceContext.state !== 'connected' || taskSourceKey(latest.snapshot, latest.workspaceContext) !== authority || !canReadTaskSpace(latest.snapshot, latest.workspaceContext, spaceId)) throw Error('原交接当前不可保存，请恢复原账号和空间权限。')
+    if (!latest.snapshot || !['local', 'connected'].includes(latest.workspaceContext.state) || taskSourceKey(latest.snapshot, latest.workspaceContext) !== authority || !canReadTaskSpace(latest.snapshot, latest.workspaceContext, spaceId)) throw Error('原交接当前不可保存，请恢复原账号和空间权限。')
     if (fields) saveTaskHandoffRecovery(handoff, authority, actorId, spaceId, fields)
     else clearTaskHandoffFields(latest.workspaceContext, handoff, authority, actorId)
   }} snapshot={snapshot} spaceId={spaceId} handoffSpaces={spaces} onSelectSpace={id => {
@@ -148,15 +148,16 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const selectedMaterial = retained?.material ?? handoff?.material
   const [title, setTitle] = useTaskDraftField(draft, 'title', unsent?.title ?? (retained?.input.title ?? handoff?.title ?? ''))
   const [description, setDescription] = useTaskDraftField(draft, 'description', unsent?.description ?? (retained ? retained.input.description ?? '' : handoff?.description ?? ''))
+  const [selectedFileIds, setSelectedFileIds] = useTaskDraftField<string[]>(draft, 'selectedFileIds', () => unsent?.selectedFileIds ?? handoff?.fileChoices?.filter(file => retained ? retained.input.handoff?.files?.some(ref => ref.revision === file.revision) : file.selected).map(file => file.fileId) ?? [])
   const [shareMaterial, setShareMaterial] = useTaskDraftField(draft, 'shareMaterial', unsent?.shareMaterial ?? (retained ? Boolean(retained.material) : handoff?.attachByDefault ?? false))
   const [submitted, setSubmitted] = useTaskDraftField<CruxTaskInput | null>(draft, 'handoffSubmitted', retained?.input ?? null)
   const submittedRef = useRef(submitted)
   const [handoffError, setHandoffError] = useState('')
   const [savingMaterial, setSavingMaterial] = useState(false)
-  const [receipt, setReceipt] = useState<Parameters<NonNullable<NewTaskModalProps['onCreated']>>[0] | null>(null)
   const flight = useRef(false)
   const [criteria, setCriteria] = useTaskDraftField(draft, 'criteria', unsent?.criteria ?? (retained?.input.acceptanceCriteria?.join('\n') ?? ''))
   const [workKind, setWorkKind] = useTaskDraftField<CruxTaskWorkKind>(draft, 'workKind', unsent?.workKind ?? (retained?.input.workKind ?? 'code'))
+  const [staged, setStaged] = useTaskDraftField(draft, 'staged', unsent?.staged ?? Boolean(retained?.input.workKind))
   const [typeId, setTypeId] = useTaskDraftField(draft, 'typeId', unsent?.typeId ?? (retained ? retained.input.typeId ?? '' : types.find((type) => type.isDefault)?.id ?? types[0]?.id ?? ''))
   const [priority, setPriority] = useTaskDraftField<CruxPriority>(draft, 'priority', unsent?.priority ?? (retained?.input.priority ?? 'none'))
   const [allocation, setAllocation] = useTaskDraftField<TaskAllocation>(draft, 'allocation', unsent?.allocation ?? ({ assigneeIds: retained?.input.assigneeIds ?? [], executor: retained?.input.executor ?? null }))
@@ -165,19 +166,19 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const [iterationId, setIterationId] = useTaskDraftField(draft, 'iterationId', unsent?.iterationId ?? (retained ? retained.input.iterationIds?.[0] ?? '' : explicitTriage === true ? '' : initialIteration ?? ''))
   const [parentTaskId, setParentTaskId] = useTaskDraftField(draft, 'parentTaskId', unsent?.parentTaskId ?? (retained ? retained.input.parentTaskId ?? '' : initialParent ?? ''))
   const [creationMode, setCreationMode] = useTaskDraftField<'ai' | 'manual'>(draft, 'creationMode', 'manual')
-  const [creationIntent, setCreationIntent] = useTaskDraftField<TaskCreationIntent>(draft, 'creationIntent', unsent?.creationIntent ?? (retained ? retained.input.triagePending ? 'triage' : 'schedule' : explicitTriage === true ? 'triage' : initialIteration || initialParent ? 'schedule' : 'triage'))
+  const [creationIntent, setCreationIntent] = useTaskDraftField<TaskCreationIntent>(draft, 'creationIntent', unsent?.creationIntent ?? ((retained ? retained.input.triagePending : explicitTriage) ? 'triage' : 'schedule'))
   const [intakeOriginal] = useTaskDraftField(draft, 'intakeOriginal', '')
   const [intakeFiles] = useTaskDraftField<IntakeFile[]>(draft, 'intakeFiles', [])
   const [draftError, setDraftError] = useState('')
   const [discarding, setDiscarding] = useState(false)
   const [reconciliationRequired, setReconciliationRequired] = useState(false)
   useLayoutEffect(() => {
-    if (!handoff || !source.available || !source.owns() || submitted || retained || receipt || reconciliationRequired || flight.current) return
+    if (!handoff || !source.available || !source.owns() || submitted || retained || reconciliationRequired || flight.current) return
     try {
-      onUnsentChange({ title, description, shareMaterial, criteria, workKind, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent })
+      onUnsentChange({ title, description, selectedFileIds, shareMaterial, criteria, workKind, staged, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent })
       setDraftError('')
     } catch (cause) { setDraftError(cause instanceof Error ? cause.message : String(cause)) }
-  }, [handoff?.id, source.available, submitted, retained, receipt, reconciliationRequired, title, description, shareMaterial, criteria, workKind, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent, onUnsentChange])
+  }, [handoff?.id, source.available, submitted, retained, reconciliationRequired, title, description, selectedFileIds, shareMaterial, criteria, workKind, staged, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent, onUnsentChange])
   const space = snapshot.spaces.find((candidate) => candidate.id === spaceId)
   if (!space || !source.available) return null
   const actorId = taskActorId(snapshot, context)
@@ -187,7 +188,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const labels = visibleLabels(snapshot, spaceId)
   const iterations = snapshot.iterations.filter((iteration) => iteration.spaceId === spaceId && iteration.status !== 'completed')
   const needsFallback = Boolean(allocation.executor && !allocation.assigneeIds.some((id) => space.memberIds.includes(id)))
-  const heading = handoff ? '创建团队需求任务' : initialParent ? '新建子任务' : '新建任务'
+  const heading = handoff ? '创建团队任务' : initialParent ? '新建子任务' : '新建任务'
   const originalTask = handoff && snapshot.tasks.find(task => task.creatorId === actorId && task.handoff?.id === handoff.id && task.spaceId === spaceId)
   const locked = Boolean(submitted || retained || originalTask || reconciliationRequired)
   const requiresAssignee = Boolean(handoff && !triagePending && !allocation.assigneeIds.length)
@@ -228,12 +229,12 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const submit = async (): Promise<void> => {
     if (flight.current || disabled || reconciliationRequired || !actorId || (!locked && (!title.trim() || needsFallback || requiresAssignee))) return
     const input: CruxTaskInput = submittedRef.current ?? {
-      spaceId, creatorId: actorId, title: title.trim(), description: description.trim() || undefined,
-      workKind, acceptanceCriteria: criteria.split(/\r?\n/).map((criterion) => criterion.trim()).filter(Boolean),
+      spaceId, creatorId: actorId, title: title.trim(), description: handoff?.draftId ? handoff.description : description.trim() || undefined,
+      ...(staged ? { workKind, acceptanceCriteria: criteria.split(/\r?\n/).map((criterion) => criterion.trim()).filter(Boolean) } : {}),
       typeId: typeId || undefined, priority, assigneeIds: allocation.assigneeIds, executor: allocation.executor,
       labelIds, projectId: projectId || undefined, iterationIds: triagePending ? [] : iterationId ? [iterationId] : [],
       parentTaskId: parentTaskId || undefined, triagePending,
-      ...(handoff ? { handoff: { id: handoff.id, versionLabel: shareMaterial ? handoff.material?.versionLabel : undefined } } : {})
+      ...(handoff ? { handoff: { id: handoff.id, versionLabel: handoff.material?.versionLabel }, ...(handoff.conversationId ? { bindConversation: { id: handoff.conversationId, title: handoff.title } } : {}) } : {})
     }
     if (handoff) {
       const ticket = source.ticket()
@@ -243,7 +244,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
         setHandoffError('需求材料须有正文且不超过 1 MiB，请保留原稿并选择可共享的版本。')
         return
       }
-      if ((originalTask ? originalTask.handoff?.versionLabel : input.handoff?.versionLabel) && (!material || !materials || !context.epoch)) {
+      if ((originalTask ? originalTask.handoff?.versionLabel : input.handoff?.versionLabel) && (!material || context.state !== 'local' && (!materials || !context.epoch))) {
         setHandoffError('原需求版本或材料接口不可用，请回到原需求后重试。')
         return
       }
@@ -251,8 +252,14 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
       setHandoffError('')
       setSavingMaterial(true)
       try {
+        const captures = await capturePostFiles(handoff, selectedFileIds, () => source.canWrite(ticket))
+        if (!source.canWrite(ticket)) return
         if (!submittedRef.current && !originalTask) {
-          if (material && input.handoff) input.handoff.materialDigest = await bodyDigest(material.body)
+          if (captures.length && input.handoff) input.handoff.files = captures.map(item => item.file)
+          if (material && input.handoff) {
+            input.handoff.materialDigest = await bodyDigest(material.body)
+            if (handoff.draftId) input.handoff.sourceDraftId = handoff.draftId
+          }
           if (!source.canWrite(ticket)) return
           saveTaskHandoffIntent(context, handoff.id, { input, material }, handoff)
           submittedRef.current = input
@@ -266,7 +273,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
         const pending = pendingReply.data
           .find(command => command.operation === 'createTask' && command.taskHandoff?.id === handoff.id && command.taskHandoff.spaceId === spaceId && command.taskHandoff.creatorId === actorId)
         if (!task || submittedRef.current && pending) {
-          const created = await mutate('创建团队需求任务', () => api.crux.createTask(input))
+          const created = await mutate('创建团队任务', () => api.crux.createTask(input))
           if (!created || !source.owns(ticket)) return
           task = created.data.tasks.find(candidate => candidate.id === created.taskId && candidate.spaceId === spaceId && candidate.creatorId === actorId && candidate.handoff?.id === handoff.id)
           if (!task) throw Error('无法核对原任务回执。')
@@ -275,8 +282,10 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
           try { rememberTaskHandoffSource(context, task, handoff.conversationId, handoff.creatorId) }
           catch { setHandoffError('任务已创建，当前设备无法保存私人来源入口。') }
         }
-        let materialDocumentId: string | undefined
-        if (material && materials && context.epoch) {
+        if (taskInputCanonical(task.handoff?.files ?? []) !== taskInputCanonical(captures.map(item => item.file))) throw Error('附件与原交接不一致，请重选原版本')
+        await sendPostFiles({ workspaceKey: context.key, taskId: task.id, spaceId, taskCreatedAt: task.createdAt }, handoff.id, captures, () => source.canWrite(ticket))
+        let materialDocumentId: string | undefined, materialVersionId: string | undefined
+        if (material && materials && context.epoch && context.state !== 'local') {
           const scope = { workspaceKey: context.key, taskId: task.id, spaceId, taskCreatedAt: task.createdAt }
           const reconciled = await materials.reconcile({ ...scope, commandId: handoff.id })
           if (!source.canWrite(ticket)) return
@@ -307,6 +316,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
               saved.actorId !== actorId || saved.epoch !== context.epoch || saved.instanceId !== context.instanceId) throw Error('材料回执与原任务不匹配。')
           materialDocumentId = saved.documentId
           if (!saved.versionId) throw Error('材料回执缺少固定版本。')
+          materialVersionId = saved.versionId
           const fixed = await materials.read({ ...scope, documentId: saved.documentId, versionId: saved.versionId })
           if (!source.canWrite(ticket)) return
           if (!fixed.ok) throw Error(fixed.error)
@@ -316,11 +326,14 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
           const refreshed = await mutate('刷新团队需求材料', () => api.crux.snapshot())
           if (!refreshed || !source.canWrite(ticket)) return
         }
-        const completed = { taskId: task.id, spaceId, triagePending: Boolean(task.triagePending), materialDocumentId }
+        const completed = { taskId: task.id, spaceId, triagePending: Boolean(task.triagePending), materialDocumentId,
+          materialVersionId,
+          files: captures.map(item => item.file) }
         draft.discard()
         clearTaskHandoffRecovery(context, handoff, taskSourceKey(snapshot, context), actorId)
-        setReceipt(completed)
         onCreated?.(completed)
+        onClose()
+
       } catch (cause) {
         if (source.owns(ticket)) setHandoffError(cause instanceof Error ? cause.message : String(cause))
       } finally {
@@ -333,14 +346,14 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
     const result = await mutate('新建任务', async () => { const result = await api.crux.createTask(input); if (result.ok) acknowledge(); return result })
     if (result) { onClose(); useCrux.getState().openTask(result.taskId) }
   }
-  if (receipt) return <Modal open onClose={close} ariaLabel="团队任务已创建"><div className="flex flex-col gap-3 p-5"><h2 className="my-item-title">{receipt.taskId}</h2><p role="status" className="text-my-sm text-my-secondary">{receipt.triagePending ? '已进入分拣队列' : '已安排负责人'}{receipt.materialDocumentId ? ' · 已添加需求材料' : ''}</p><div className="flex justify-end gap-2"><Button size="sm" onClick={close}>关闭</Button><Button size="sm" variant="primary" onClick={() => {
-    close()
-    const store = useCrux.getState()
-    store.setModule(receipt.triagePending ? 'triage' : 'tasks')
-    store.openTask(receipt.taskId)
-    useMy.getState().setShellView('collaboration')
-    useApp.getState().setPage('crux')
-  }}>{receipt.materialDocumentId ? '打开任务和材料' : '打开任务'}</Button></div></div></Modal>
+  if (handoff?.draftId && explicitTriage) return <section className="flex flex-wrap items-center gap-2 border-b border-my-line bg-my-panel px-4 py-2" aria-label="交接需求">
+    <span className="my-item-title">{handoff.material?.versionLabel ?? handoff.title}</span>
+    <Select ariaLabel="目标空间" disabled={disabled || locked || savingMaterial} value={spaceId} onChange={onSelectSpace} options={handoffSpaces.map(item => ({ value: item.id, label: item.name }))} />
+    {context.state === 'connected' && <fieldset className="min-w-0 border-0" disabled={disabled || locked || savingMaterial}><PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} /></fieldset>}
+    <Button size="sm" variant="primary" disabled={disabled || savingMaterial || reconciliationRequired} onClick={() => void submit()}>{savingMaterial ? '正在交接…' : locked ? '核对原任务' : '创建任务'}</Button>
+    <Button size="sm" variant="ghost" onClick={close}>收起</Button>
+    {(handoffError || draftError || error) && <span role="alert" className="collab-inline-error">{handoffError || draftError || error}</span>}
+  </section>
   if (!handoff && creationMode === 'ai' && actorId) return <div className="relative flex min-h-0 flex-1 flex-col bg-my-canvas">
     <div className="z-10 flex shrink-0 items-center gap-2 border-b border-my-line bg-my-canvas px-4 py-2">
       <span className="text-my-xs text-my-tertiary">创建方式</span>
@@ -370,9 +383,13 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
               options={handoffSpaces.map((item) => ({ value: item.id, label: item.name }))}
             />
           </Field>}
-          <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><div className="mb-2 flex items-center gap-2 text-my-xs text-my-tertiary"><Sparkles size={14} /><span>先说清楚要完成什么</span></div><Field label="任务标题"><input autoFocus required className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：修复登录页 401 错误" /></Field><div className="mt-3"><Field label="补充说明（可选）"><textarea className={textareaClass} rows={2} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="用一句话补充背景或目标" /></Field></div></div>
-          {selectedMaterial && <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><label className="flex items-center gap-2 text-my-sm text-my-primary"><input type="checkbox" checked={shareMaterial || Boolean(originalTask && originalTask.handoff?.versionLabel)} onChange={(event) => setShareMaterial(event.target.checked)} />共享需求版本 · {selectedMaterial.versionLabel}</label><details className="mt-2 text-my-sm text-my-secondary"><summary className="cursor-pointer">查看共享正文</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></details></div>}
-          {!initialParent && <section className="rounded-my-md border border-my-line bg-my-layer-1 p-3" aria-label="创建后流程"><div className="mb-2 flex items-center justify-between gap-2"><div><p className="text-my-xs text-my-tertiary">创建后进入</p><p className="text-my-sm font-medium text-my-primary">{triagePending ? '分拣队列' : '直接安排'}</p></div><ArrowRight size={16} className="text-my-tertiary" /></div><div className="grid grid-cols-2 gap-2"><Button type="button" size="sm" variant={triagePending ? 'neutral' : 'outline'} aria-pressed={triagePending} disabled={!canChooseIntent} onClick={() => chooseIntent('triage')}>先分拣</Button><Button type="button" size="sm" variant={!triagePending ? 'neutral' : 'outline'} aria-pressed={!triagePending} disabled={!canChooseIntent || !canAct} onClick={() => chooseIntent('schedule')}>直接安排</Button></div>{triagePending && <p className="mt-2 text-my-xs text-my-tertiary">创建后由分拣人决定负责人、版本和下一阶段。</p>}{!triagePending && <p className="mt-2 text-my-xs text-my-tertiary">创建后进入可安排状态，可立即选择版本和负责人。</p>}</section>}
+          <Field label="任务标题"><input autoFocus required className={inputClass} value={title} onChange={event => setTitle(event.target.value)} /></Field>
+          <Field label={handoff ? '共享的任务描述' : '描述'}><textarea className={textareaClass} rows={handoff ? 6 : 3} value={description} onChange={event => setDescription(event.target.value)} /></Field>
+          {handoff && <PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} />}
+          {selectedMaterial && <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><p className="text-my-sm text-my-primary">首次正文 · {selectedMaterial.versionLabel}</p><details className="mt-2 text-my-sm text-my-secondary"><summary className="cursor-pointer">查看共享正文</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></details></div>}
+          {handoff && !triagePending && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">负责人</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></section>}
+          <details><summary className="flex cursor-pointer items-center gap-2 text-my-xs font-medium text-my-secondary"><ChevronDown size={14} />完善任务属性</summary><div className="mt-3 flex flex-col gap-3">
+          {!initialParent && canChooseIntent && <Field label="安排"><Select value={creationIntent} onChange={value => chooseIntent(value as TaskCreationIntent)} options={[{ value: 'schedule', label: '加入看板' }, { value: 'triage', label: '交给分拣台' }]} /></Field>}
           {!triagePending && <Field label="版本">
             <Select
               className="w-full"
@@ -384,21 +401,8 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
               ]}
             />
           </Field>}
-          {handoff && <Field label="专项">
-            <Select
-              className="w-full"
-              value={projectId}
-              onChange={setProjectId}
-              options={[
-                { value: '', label: '无专项' },
-                ...snapshot.projects.filter((project) => project.spaceId === spaceId && project.status === 'active').map((project) => ({ value: project.id, label: project.name }))
-              ]}
-            />
-          </Field>}
-          {handoff && !triagePending && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">负责人</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></section>}
-          <details><summary className="flex cursor-pointer items-center gap-2 text-my-xs font-medium text-my-secondary"><ChevronDown size={14} />完善任务属性</summary><div className="mt-3 flex flex-col gap-3">
-            <Field label="验收标准"><textarea className={textareaClass} rows={3} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一条，创建后也可以补充" /></Field>
-            <div className="grid grid-cols-3 gap-2">
+            {staged && <>
+              <Field label="验收标准"><textarea className={textareaClass} rows={3} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一条，创建后也可以补充" /></Field>
               <Field label="工作内容">
                 <Select
                   className="w-full"
@@ -407,6 +411,8 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
                   options={cruxTaskWorkKindSchema.options.map((kind) => ({ value: kind, label: WORK_KIND_LABELS[kind] }))}
                 />
               </Field>
+            </>}
+            <div className="grid grid-cols-2 gap-2">
               <Field label="类型">
                 <Select
                   className="w-full"
@@ -429,7 +435,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
             </div>
           <div className="flex flex-col gap-3">
             {!handoff && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">分工</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled} /></section>}
-            {!handoff && <Field label="专项">
+            <Field label="专项">
               <Select
                 className="w-full"
                 value={projectId}
@@ -439,7 +445,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
                   ...snapshot.projects.filter((project) => project.spaceId === spaceId && project.status === 'active').map((project) => ({ value: project.id, label: project.name }))
                 ]}
               />
-            </Field>}
+            </Field>
             <Field label="父任务">
               <Select
                 className="w-full"
@@ -457,7 +463,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
         {originalTask && handoffError && <p role="status" className="mt-3 text-my-sm text-my-secondary">{originalTask.id} 已创建，需求材料待补挂。</p>}
         {needsFallback && <p role="alert" className="mt-3 text-my-xs text-my-secondary">请为 Agent 或小队选择一名兜底处理人。</p>}
       </div>
-      <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-my-line px-4 py-3">{(draft.hasDraft || handoff) && !locked && <Button size="sm" variant="ghost" className="mr-auto" disabled={busy || pending || discarding} onClick={() => void discard()}>{discarding ? '核对中…' : '放弃草稿'}</Button>}<Button size="sm" variant="ghost" onClick={close}>取消</Button><Tooltip label={explicitTriage === true ? '先进入分拣，接纳后可安排版本' : 'Ctrl+Enter 或 Command+Enter 创建'} wrap><Button size="sm" variant="primary" disabled={disabled || savingMaterial || discarding || reconciliationRequired || (!locked && (!title.trim() || needsFallback || requiresAssignee || !triagePending && !canAct))} onClick={() => void submit()}>{pending ? '创建中…' : savingMaterial ? '保存材料中…' : reconciliationRequired ? '需核对创建结果' : originalTask ? '核对任务和材料' : locked ? '核对并重试' : handoff ? '创建团队需求任务' : '创建任务'}</Button></Tooltip></footer>
+      <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-my-line px-4 py-3">{(draft.hasDraft || handoff) && !locked && <Button size="sm" variant="ghost" className="mr-auto" disabled={busy || pending || discarding} onClick={() => void discard()}>{discarding ? '核对中…' : '放弃草稿'}</Button>}<Button size="sm" variant="ghost" onClick={close}>取消</Button><Tooltip label={explicitTriage === true ? '先进入分拣，接纳后可安排版本' : 'Ctrl+Enter 或 Command+Enter 创建'} wrap><Button size="sm" variant="primary" disabled={disabled || savingMaterial || discarding || reconciliationRequired || (!locked && (!title.trim() || needsFallback || requiresAssignee || !triagePending && !canAct))} onClick={() => void submit()}>{pending ? '创建中…' : savingMaterial ? '保存材料中…' : reconciliationRequired ? '需核对创建结果' : originalTask ? '核对任务和材料' : locked ? '核对并重试' : handoff ? '创建团队任务' : '创建任务'}</Button></Tooltip></footer>
     </div>
   </Modal>
 }

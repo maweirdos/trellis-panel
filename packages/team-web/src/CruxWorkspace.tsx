@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type JSX } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'react'
 import { CruxApp } from '../../../src/renderer/src/crux/CruxApp'
 import { useCrux } from '../../../src/renderer/src/crux/store'
 import { DialogHost } from '../../../src/renderer/src/components/Dialogs'
@@ -10,6 +10,9 @@ import type { CruxWorkspaceContext } from '../../../src/shared/crux-remote'
 import type { TeamProject, TeamSession } from './contracts'
 import { isClientSession } from './client'
 import { bindBrowserCrux, BrowserCruxWorkspace } from './crux-browser-api'
+import { CreateInvitation } from './Invitations'
+import { FeishuMemberEntry } from './FeishuMemberEntry'
+import { useTeamManagement } from './WorkspaceSetup'
 import { WorkspaceTaskLocation } from './WorkspaceTaskLocation'
 import './crux-workspace.css'
 
@@ -18,6 +21,17 @@ const runSharedCommand = useCrux.getState().run
 
 export function CruxWorkspace({ project, session, theme, authEpoch = 0, invitedSpaceId, onInvitedSpaceOpened }: CruxWorkspaceProps): JSX.Element {
   const fontSize = useMy((state) => state.fontSize)
+  const snapshot = useCrux((state) => state.snapshot)
+  const currentSpaceId = useCrux((state) => state.currentSpaceId)
+  const workspaceContext = useCrux((state) => state.workspaceContext)
+  const teamManagement = useTeamManagement(session, project.teamId, authEpoch)
+  const canManageTeam = session.person.isPlatformAdmin || teamManagement.value === true
+  const selectedSpace = snapshot?.spaces.find((space) => space.id === currentSpaceId) ?? null
+  const canInviteSelectedSpace = Boolean(selectedSpace && !selectedSpace.archived && workspaceContext.projectId === project.projectId && workspaceContext.actorId === session.person.userId && (selectedSpace.visibility !== 'private' || selectedSpace.memberIds.includes(session.person.userId)) && (workspaceContext.canManage || selectedSpace.ownerId === session.person.userId && selectedSpace.memberIds.includes(session.person.userId)))
+  const [invitationOpen, setInvitationOpen] = useState(false)
+  const openInvitation = useCallback(() => { setInvitationOpen(true) }, [])
+  useEffect(() => { setInvitationOpen(false) }, [project.projectId, project.teamId, session.person.userId, authEpoch])
+  useEffect(() => { if (!canManageTeam) setInvitationOpen(false) }, [canManageTeam])
   const [lease, setLease] = useState<{ workspace: BrowserCruxWorkspace; epoch: number; session: TeamSession } | null>(null)
   useLayoutEffect(() => {
     const workspace = new BrowserCruxWorkspace({ project, session })
@@ -42,8 +56,24 @@ export function CruxWorkspace({ project, session, theme, authEpoch = 0, invitedS
     }
   }, [project.projectId, session.person.userId, session.csrfToken, authEpoch])
   const current = lease && lease.epoch === authEpoch && lease.session.person.userId === session.person.userId && lease.session.csrfToken === session.csrfToken && lease.workspace.context().projectId === project.projectId && isClientSession(session)
+  const spaceMember = current && selectedSpace && !selectedSpace.archived &&
+    workspaceContext.state === 'connected' && workspaceContext.projectId === project.projectId &&
+    workspaceContext.actorId === session.person.userId && selectedSpace.memberIds.includes(session.person.userId)
+  const feishuEntry = spaceMember && <FeishuMemberEntry
+    key={JSON.stringify([workspaceContext.key, workspaceContext.instanceId, workspaceContext.epoch, workspaceContext.authorizationRevision, authEpoch, selectedSpace.id, selectedSpace.createdAt])}
+    projectId={project.projectId} spaceId={selectedSpace.id} spaceName={selectedSpace.name}
+    isCurrent={() => {
+      const state = useCrux.getState()
+      const context = state.workspaceContext
+      return lease.workspace.isCurrent() && context.state === 'connected' && context.key === workspaceContext.key &&
+        context.projectId === project.projectId && context.actorId === session.person.userId &&
+        context.instanceId === workspaceContext.instanceId && context.epoch === workspaceContext.epoch &&
+        context.authorizationRevision === workspaceContext.authorizationRevision && state.currentSpaceId === selectedSpace.id &&
+        Boolean(state.snapshot?.spaces.some((space) => space.id === selectedSpace.id && space.createdAt === selectedSpace.createdAt &&
+          !space.archived && space.memberIds.includes(session.person.userId)))
+    }} />
   return <section className="my-root crux-host" data-my-theme={theme} data-my-font-size={fontSize} aria-label="工作区协作">
-    {current ? <><WorkspaceTaskLocation workspace={lease.workspace} accountId={session.person.userId} />{invitedSpaceId && <InvitationSpaceLocation projectId={project.projectId} accountId={session.person.userId} spaceId={invitedSpaceId} onOpened={onInvitedSpaceOpened} />}<WorkspaceCommands workspace={lease.workspace} /><div className="crux-host-body"><CruxApp host="web" /></div><DialogHost /><Toasts /></> : <p role="status">正在连接工作区协作…</p>}
+    {current ? <><WorkspaceTaskLocation workspace={lease.workspace} accountId={session.person.userId} />{invitedSpaceId && <InvitationSpaceLocation projectId={project.projectId} accountId={session.person.userId} spaceId={invitedSpaceId} onOpened={onInvitedSpaceOpened} />}<WorkspaceCommands workspace={lease.workspace} /><div className="crux-host-body"><CruxApp host="web" webInvitation={{ canManage: canManageTeam, open: openInvitation }} webSpaceAction={feishuEntry} /></div>{invitationOpen && canManageTeam && <CreateInvitation key={`${project.teamId}:${project.projectId}:${session.person.userId}:${authEpoch}`} teamId={project.teamId} project={project} space={canInviteSelectedSpace ? selectedSpace : null} session={session} onClose={() => setInvitationOpen(false)} onCreated={() => undefined} />}<DialogHost /><Toasts /></> : <p role="status">正在连接工作区协作…</p>}
   </section>
 }
 

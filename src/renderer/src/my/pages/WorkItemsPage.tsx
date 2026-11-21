@@ -657,6 +657,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
     .filter((l): l is Label => Boolean(l))
   const done = state?.group === 'completed' || state?.group === 'cancelled'
   const sub = subProgress(issue, data.issues, data.states)
+  const displayLabels = (labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2)
   return (
     <div
       role="button"
@@ -677,18 +678,20 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
       )}
     >
       <span className="my-row-handle select-none text-my-xs leading-none text-my-icon-tertiary">⠿</span>
-      <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
+      <span className="w-20 shrink-0 select-none font-mono text-my-xs text-my-tertiary whitespace-nowrap">
         {issueIdentifier(source, issue, ident)}
       </span>
       <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
         <PriorityIcon priority={issue.priority} size={12} />
       </span>
-      <span className="flex w-[110px] shrink-0 items-center gap-1 overflow-hidden">
-        {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
-          <WorkItemLabel key={lb.id} label={lb} />
-        ))}
-      </span>
       <span className={clsx('my-item-title min-w-0 flex-1 truncate', done && 'opacity-60')}>{issue.name}</span>
+      {displayLabels.length > 0 && (
+        <span className="flex shrink-0 items-center gap-1 overflow-hidden">
+          {displayLabels.map((lb) => (
+            <WorkItemLabel key={lb.id} label={lb} />
+          ))}
+        </span>
+      )}
       <SubProgressBadge done={sub.done} total={sub.total} />
       <IssueVersions issue={issue} />
       {issue.dueDate && state && <DueChip due={issue.dueDate} stateGroup={state.group} done={done} />}
@@ -833,7 +836,7 @@ function ListLayout({
 
 /* ---------------- Board 布局 ---------------- */
 
-function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Element {
+function BoardCard({ issue, ident, draggable, onDrag }: { issue: Issue; ident: string; draggable: boolean; onDrag(id: string | null): void }): JSX.Element {
   const source = useWorkItemsSource()
   const { data, openIssue } = useWorkItems()
   const state = data.states.find((s) => s.id === issue.stateId)
@@ -846,11 +849,14 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
     <div
       role="button"
       tabIndex={0}
-      draggable={source.kind === 'native'}
+      draggable={draggable}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/my-issue-id', issue.id)
+        e.dataTransfer.setData('application/x-crux-source', source.key)
         e.dataTransfer.effectAllowed = 'move'
+        onDrag(issue.id)
       }}
+      onDragEnd={() => onDrag(null)}
       onClick={() => openIssue(issue.id)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return
@@ -860,7 +866,7 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
           openIssue(issue.id)
         }
       }}
-      className="my-card mx-2.5 mb-1.5 cursor-grab p-2.5 active:cursor-grabbing"
+      className={clsx('my-card mx-2.5 mb-1.5 p-2.5', draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
     >
       <div className="flex items-start gap-1.5">
         <span className="mt-[2px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
@@ -868,6 +874,7 @@ function BoardCard({ issue, ident }: { issue: Issue; ident: string }): JSX.Eleme
         </span>
         <span className="my-item-title line-clamp-2">{issue.name}</span>
       </div>
+      {source.presentation?.renderBoardReview?.(issue)}
       <div className="mt-2 flex min-h-[18px] items-center gap-1.5">
         <span className="shrink-0 text-my-2xs text-my-disabled">{issueIdentifier(source, issue, ident)}</span>
         {(labels.length > 0 ? labels : [pkgLabel(issue.pkg)].filter((l): l is Label => Boolean(l))).slice(0, 2).map((lb) => (
@@ -905,7 +912,9 @@ function BoardLayout({
 }): JSX.Element {
   const source = useWorkItemsSource()
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const canMove = (stateId: string): boolean => Boolean(dragging && canEditWorkItem(source, 'stateId', dragging) && source.presentation?.stateIds?.(dragging).includes(stateId))
+  const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0 || g.meta.kind === 'state' && canMove(g.meta.state.id))
   if (shown.every((g) => g.issues.length === 0)) {
     return <EmptyState title="没有工作项" description="当前筛选与页签下没有匹配的工作项。" />
   }
@@ -918,8 +927,8 @@ function BoardLayout({
             key={g.key}
             onDragOver={(e) => {
               const droppable =
-                source.kind === 'native' && ((groupBy === 'state' && g.meta.kind === 'state') ||
-                (groupBy === 'cycle' && g.meta.kind === 'cycle' && canEditWorkItem(source, 'cycle')))
+                (groupBy === 'state' && g.meta.kind === 'state' && (source.kind === 'native' || canMove(g.meta.state.id))) ||
+                (source.kind === 'native' && groupBy === 'cycle' && g.meta.kind === 'cycle' && canEditWorkItem(source, 'cycle'))
               if (!droppable) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'move'
@@ -933,7 +942,8 @@ function BoardLayout({
               setDragOver(null)
               const issueId = e.dataTransfer.getData('text/my-issue-id')
               if (!issueId || !source.store.data.issues.some((issue) => issue.id === issueId)) return
-              if (source.kind !== 'native') return
+              if (source.kind !== 'native' && (issueId !== dragging || e.dataTransfer.getData('application/x-crux-source') !== source.key || g.meta.kind !== 'state' || !canMove(g.meta.state.id))) return
+              setDragging(null)
               if (groupBy === 'state' && g.meta.kind === 'state') onMoveToState(g.meta.state.id, issueId)
               else if (groupBy === 'cycle' && g.meta.kind === 'cycle') onMoveToCycle(g.meta.cycle || '', issueId)
             }}
@@ -960,7 +970,7 @@ function BoardLayout({
             {!isCollapsed && (
               <div className="min-h-[80px]">
                 {g.issues.map((i) => (
-                  <BoardCard key={i.id} issue={i} ident={ident} />
+                  <BoardCard key={i.id} issue={i} ident={ident} draggable={source.kind === 'native' || groupBy === 'state' && canEditWorkItem(source, 'stateId', i.id)} onDrag={setDragging} />
                 ))}
                 {g.issues.length === 0 && (
                   <div className="mx-2.5 mt-2 rounded-my-md border border-dashed border-my-line py-5 text-center text-my-xs text-my-disabled">
@@ -1015,7 +1025,7 @@ function SpreadsheetRow({
       <span className="flex w-8 shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={checked} onChange={(v) => onCheck(issue.id, v)} />
       </span>
-      <span className="w-16 shrink-0 text-my-sm text-my-tertiary">
+      <span className="w-20 shrink-0 select-none font-mono text-my-xs text-my-tertiary whitespace-nowrap">
         {issueIdentifier(source, issue, ident)}
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1121,7 +1131,7 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
           <span className={clsx(headCell, 'w-8 shrink-0')}>
             <Checkbox checked={allChecked} onChange={onCheckAll} />
           </span>
-          <span className="w-16 shrink-0">ID</span>
+          <span className="w-20 shrink-0">ID</span>
           <span className="min-w-0 flex-1">名称</span>
           <span className="w-24 shrink-0">优先级</span>
           <span className="w-32 shrink-0">状态</span>
@@ -1613,6 +1623,7 @@ function WorkItemsPageInner(): JSX.Element {
         ident={ident}
         onMoveToState={(stateId, issueId) => {
           if (source.kind !== 'native') {
+            void store.updateIssue(issueId, { stateId })
             return
           }
           // 拖到目标状态列 = 提供该状态的工作流入口（复制受控命令）；

@@ -54,6 +54,9 @@ export async function request<T>(path: string, schema: z.ZodType<T>, options: Re
     const parsed = teamApiReplySchema(schema).safeParse(raw)
     if (!parsed.success) throw new ApiError('INVALID_RESPONSE', '团队响应与当前接口版本不符', response.status, encoded !== undefined)
     if (!parsed.data.ok) {
+      if (path === '/api/organizations' && response.status === 404 && parsed.data.code === 'NOT_FOUND') {
+        throw new ApiError('ORGANIZATION_SETUP_UNAVAILABLE', '当前团队服务版本较旧。请重启更新后的团队服务，再创建组织。', 404)
+      }
       if (parsed.data.code === 'SESSION_CHANGED') authEvents.dispatchEvent(new Event('external-session-changed'))
       if (options.notifyDenied !== false && !options.signal?.aborted && options.isCurrent?.() !== false && [401, 403].includes(response.status)) authEvents.dispatchEvent(new CustomEvent('denied', { detail: response.status }))
       throw new ApiError(parsed.data.code, parsed.data.error, response.status, encoded !== undefined && response.status >= 500)

@@ -24,6 +24,8 @@ import { useApp } from '../../store'
 import { useCrux } from '../store'
 import type { CruxInitialTaskType, CruxPendingCommand } from '@shared/crux'
 import type { DesktopTeamAuthOptions } from '@shared/team-desktop-account'
+import { teamLocalUsernameSchema } from '@shared/team-auth'
+import { teamAuthFailure } from '@shared/team-auth-feedback'
 import type { TeamRole } from '@shared/team-platform'
 import {
   accountFlowReducer,
@@ -38,7 +40,7 @@ import {
   type DesktopWorkspaceChoice,
   type OrganizationMembershipRole
 } from './model'
-import { desktopAccountAdapter, type DesktopAccountAdapter } from './desktop-account-adapter'
+import { DesktopAccountReplyError, desktopAccountAdapter, type DesktopAccountAdapter } from './desktop-account-adapter'
 import { releaseCommandId, retainCommandId } from './command-identity'
 import './organization-create.css'
 
@@ -165,8 +167,10 @@ export function AccountFlow({
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [validation, setValidation] = useState<FieldValidation | null>(null)
-  const [authOptions, setAuthOptions] = useState<DesktopTeamAuthOptions | null>(null)
+  const [authCheck, setAuthCheck] = useState<{ origin: string; options: DesktopTeamAuthOptions } | null>(null)
   const [authOptionsError, setAuthOptionsError] = useState<string | null>(null)
+  const [authCheckAttempt, setAuthCheckAttempt] = useState(0)
+  const authOptions = authCheck?.origin === state.draft.origin ? authCheck.options : null
   const [spacePending, setSpacePending] = useState<CruxPendingCommand[] | null>(null)
   const [spacePendingOwner, setSpacePendingOwner] = useState<string | null>(null)
   const [pendingError, setPendingError] = useState<string | null>(null)
@@ -181,6 +185,7 @@ export function AccountFlow({
   const headingRef = useRef<HTMLHeadingElement>(null)
   const usernameRef = useRef<HTMLInputElement>(null)
   const originRef = useRef<HTMLInputElement>(null)
+  const authOriginDetailsRef = useRef<HTMLDetailsElement>(null)
   const displayNameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const confirmPasswordRef = useRef<HTMLInputElement>(null)
@@ -272,7 +277,7 @@ export function AccountFlow({
     dispatch({ type: 'opened' })
     if (initialStep !== 'entry') dispatch({ type: 'go', step: initialStep })
     setValidation(null)
-    setAuthOptions(null)
+    setAuthCheck(null)
     setAuthOptionsError(null)
     organizationCommand.current = null
     workspaceCommand.current = null
@@ -298,17 +303,24 @@ export function AccountFlow({
 
   useEffect(() => {
     if (!open || state.step !== 'auth') return
-    if (!state.draft.origin.trim()) { setAuthOptions(null); setAuthOptionsError(null); return }
-    const ticket = ++authOptionsTicket.current
-    setAuthOptions(null)
+    const origin = state.draft.origin
+    setAuthCheck(null)
     setAuthOptionsError(null)
-    void adapter.authOptions(state.draft.origin).then((options) => {
-      if (ticket === authOptionsTicket.current && openRef.current) setAuthOptions(options)
+    if (!origin.trim()) return
+    const ticket = ++authOptionsTicket.current
+    void adapter.authOptions(origin).then((options) => {
+      if (ticket === authOptionsTicket.current && openRef.current) setAuthCheck({ origin, options })
     }).catch((cause) => {
       if (ticket === authOptionsTicket.current && openRef.current) setAuthOptionsError(errorMessage(cause))
     })
     return () => { authOptionsTicket.current++ }
-  }, [adapter, open, state.step, state.draft.origin])
+  }, [adapter, open, state.step, state.draft.origin, authCheckAttempt])
+
+  useLayoutEffect(() => {
+    if (open && state.step === 'auth' && !state.draft.origin.trim() && authOriginDetailsRef.current) {
+      authOriginDetailsRef.current.open = true
+    }
+  }, [open, state.step, state.draft.origin])
 
   useEffect(() => {
     if (!open) return
@@ -327,7 +339,12 @@ export function AccountFlow({
       await commit?.(result)
       if (id === operationTicket.current && openRef.current) dispatch({ type: 'operation-succeeded', id, status: successStatus })
     } catch (cause) {
-      if (id === operationTicket.current && openRef.current) dispatch({ type: 'operation-failed', id, error: errorMessage(cause) })
+      if (id === operationTicket.current && openRef.current) {
+        const authError = kind === 'authenticate' && state.step === 'auth' && cause instanceof DesktopAccountReplyError
+          ? teamAuthFailure(cause.code, state.authMode === 'register', cause.outcomeUnknown)
+          : null
+        dispatch({ type: 'operation-failed', id, error: authError ?? { message: errorMessage(cause) } })
+      }
     } finally {
       if (id === operationTicket.current) operationLock.current = false
     }
@@ -384,31 +401,51 @@ export function AccountFlow({
   }
 
   const validateAuthentication = (): boolean => {
-    if (!state.draft.origin.trim()) { focusInvalid({ field: 'origin', message: '请输入团队服务地址。' }, originRef); return false }
+    if (!state.draft.origin.trim()) {
+      if (authOriginDetailsRef.current) authOriginDetailsRef.current.open = true
+      focusInvalid({ field: 'origin', message: '请输入团队服务地址。' }, originRef)
+      return false
+    }
     if (!state.draft.username.trim()) { focusInvalid({ field: 'username', message: '请输入用户名。' }, usernameRef); return false }
+    if (!teamLocalUsernameSchema.safeParse(state.draft.username).success) {
+      focusInvalid({ field: 'username', message: '用户名需要 3～64 位，以英文字母或数字开头，也可包含点、下划线和短横线。' }, usernameRef)
+      return false
+    }
     if (state.authMode === 'register' && authOptions?.selfRegistration === false) { dispatch({ type: 'set-error', error: '此团队服务未开放自主注册。' }); return false }
     if (state.authMode === 'register' && !state.draft.displayName.trim()) { focusInvalid({ field: 'displayName', message: '请输入显示名称。' }, displayNameRef); return false }
     if (!state.draft.password) { focusInvalid({ field: 'password', message: '请输入密码。' }, passwordRef); return false }
-    if (state.authMode === 'register' && state.draft.password.length < 10) { focusInvalid({ field: 'password', message: '密码至少需要 10 个字符。' }, passwordRef); return false }
     if (state.authMode === 'register' && state.draft.confirmPassword !== state.draft.password) { focusInvalid({ field: 'confirmPassword', message: '两次输入的密码不一致。' }, confirmPasswordRef); return false }
     return true
   }
 
   const authenticateLocal = (): void => {
     if (!validateAuthentication()) return
+    if (!authOptions || authOptionsError) return
     if (!adapter.capabilities.localCredentials) {
       dispatch({ type: 'set-error', error: '当前共享类型尚未提供桌面内本地账号登录与注册 API；已保留输入，待原生能力接入后可直接提交。' })
       return
     }
     void runOwned('authenticate', () => adapter.authenticateLocal({
       mode: state.authMode,
-      origin: state.draft.origin.trim(),
+      origin: authOptions.origin,
       username: state.draft.username.trim(),
       ...(state.authMode === 'register' ? { displayName: state.draft.displayName.trim() } : {}),
       password: state.draft.password
-    }), ({ session, scope }) => {
-      dispatch({ type: 'authenticated', session, scope })
-      dispatch({ type: 'set-draft', field: 'invitationToken', value: invitationDrafts.get(session.accountId) ?? '' })
+    }), async (saved) => {
+      const ticket = operationTicket.current
+      dispatch({ type: 'set-draft', field: 'password', value: '' })
+      dispatch({ type: 'set-draft', field: 'confirmPassword', value: '' })
+      try {
+        const { session, scope } = await adapter.openAccount(saved.accountId)
+        if (!openRef.current || ticket !== operationTicket.current) return
+        dispatch({ type: 'authenticated', session, scope })
+        dispatch({ type: 'set-draft', field: 'invitationToken', value: invitationDrafts.get(session.accountId) ?? '' })
+      } catch (cause) {
+        if (!openRef.current || ticket !== operationTicket.current) return
+        dispatch({ type: 'go', step: 'accounts' })
+        void refreshAccounts(true)
+        throw new Error(`账号已登录，读取组织与工作区失败。${errorMessage(cause)}`)
+      }
     })
   }
 
@@ -425,12 +462,12 @@ export function AccountFlow({
     if (!state.draft.organizationName.trim()) { focusInvalid({ field: 'organizationName', message: '请输入组织名称。' }, organizationNameRef); return }
     const name = state.draft.organizationName.trim()
     const commandId = retainedCommand(organizationCommand, `organization:${session.accountId}:${name}`)
-    void runOwned('scope', () => adapter.createOrganization(session, commandId, name), ({ scope, organizationId }) => {
+    void runOwned('scope', () => adapter.createOrganization(session, commandId, name), ({ scope, organizationId, workspaceId }) => {
       releaseRetainedCommand(organizationCommand)
       dispatch({ type: 'scope-updated', scope })
-      dispatch({ type: 'select-scope', organizationId, workspaceId: '' })
-      dispatch({ type: 'go', step: 'create-workspace' })
-    }, '组织已创建，继续创建工作区。')
+      dispatch({ type: 'select-scope', organizationId, workspaceId })
+      dispatch({ type: 'go', step: 'device' })
+    }, '组织与默认工作区已创建，继续连接电脑。')
   }
 
   const createWorkspace = (): void => {
@@ -654,7 +691,12 @@ export function AccountFlow({
       if (requestCloseRef.current === requestClose) requestCloseRef.current = null
     }
   })
-  const feedbackError = state.error ?? loadError
+  const feedbackError = state.error?.message ?? loadError
+  const setAuthMode = (mode: 'login' | 'register'): void => {
+    if (mode === state.authMode) return
+    setValidation(null)
+    dispatch({ type: 'set-auth-mode', mode })
+  }
 
   const entry = <div className="account-choice-grid">
     {workspaceContext.state === 'connected' && workspaceContext.connectionId && <button type="button" className="account-entry-choice" disabled={working} onClick={() => dispatch({ type: 'go', step: 'space' })}>
@@ -721,21 +763,27 @@ export function AccountFlow({
 
   const auth = <div className="account-auth">
     <div className="account-auth-tabs" role="group" aria-label="本地账号操作">
-      <button type="button" aria-pressed={state.authMode === 'login'} onClick={() => dispatch({ type: 'set-auth-mode', mode: 'login' })}><LogIn size={15} />登录</button>
-      <button type="button" aria-pressed={state.authMode === 'register'} disabled={authOptions?.selfRegistration === false} onClick={() => dispatch({ type: 'set-auth-mode', mode: 'register' })}><UserPlus size={15} />注册</button>
+      <button type="button" aria-pressed={state.authMode === 'login'} disabled={working} onClick={() => setAuthMode('login')}><LogIn size={15} />登录</button>
+      <button type="button" aria-pressed={state.authMode === 'register'} disabled={working || authOptions?.selfRegistration === false} onClick={() => setAuthMode('register')}><UserPlus size={15} />注册</button>
     </div>
     <form id="account-auth-form" onSubmit={(event) => { event.preventDefault(); authenticateLocal() }} onKeyDown={(event) => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault() }}>
-      <Field label="团队服务地址"><input ref={originRef} className={inputClass} value={state.draft.origin} disabled={working} aria-invalid={validation?.field === 'origin' || undefined} onChange={(event) => updateDraft('origin', event.target.value)} inputMode="url" spellCheck={false} /></Field>
-      {validation?.field === 'origin' && <p className="account-field-error">{validation.message}</p>}
+      <details ref={authOriginDetailsRef} className="account-service-settings">
+        <summary><Cloud size={14} /><span>服务设置</span><code>{state.draft.origin || '未设置'}</code></summary>
+        <div>
+          <Field label="团队服务地址"><input ref={originRef} className={inputClass} value={state.draft.origin} disabled={working} aria-invalid={validation?.field === 'origin' || undefined} aria-describedby={validation?.field === 'origin' ? 'team-service-origin-error' : undefined} onChange={(event) => updateDraft('origin', event.target.value)} inputMode="url" spellCheck={false} /></Field>
+          {validation?.field === 'origin' && <p id="team-service-origin-error" className="account-field-error">{validation.message}</p>}
+        </div>
+      </details>
       <Field label="用户名"><input ref={usernameRef} className={inputClass} autoComplete="username" value={state.draft.username} disabled={working} aria-invalid={validation?.field === 'username' || undefined} onChange={(event) => updateDraft('username', event.target.value)} /></Field>
       {validation?.field === 'username' && <p className="account-field-error">{validation.message}</p>}
-      {state.authMode === 'register' && <><Field label="显示名称"><input ref={displayNameRef} className={inputClass} autoComplete="name" value={state.draft.displayName} disabled={working} aria-invalid={validation?.field === 'displayName' || undefined} onChange={(event) => updateDraft('displayName', event.target.value)} /></Field>{validation?.field === 'displayName' && <p className="account-field-error">{validation.message}</p>}</>}
-      <Field label="密码"><input ref={passwordRef} className={inputClass} type="password" autoComplete={state.authMode === 'register' ? 'new-password' : 'current-password'} value={state.draft.password} disabled={working} aria-invalid={validation?.field === 'password' || undefined} onChange={(event) => updateDraft('password', event.target.value)} /></Field>
+      {state.authMode === 'register' && <><Field label="显示名称"><input ref={displayNameRef} className={inputClass} autoComplete="name" maxLength={200} value={state.draft.displayName} disabled={working} aria-invalid={validation?.field === 'displayName' || undefined} onChange={(event) => updateDraft('displayName', event.target.value)} /></Field>{validation?.field === 'displayName' && <p className="account-field-error">{validation.message}</p>}</>}
+      <Field label="密码"><input ref={passwordRef} className={inputClass} type="password" maxLength={256} autoComplete={state.authMode === 'register' ? 'new-password' : 'current-password'} value={state.draft.password} disabled={working} aria-invalid={validation?.field === 'password' || undefined} onChange={(event) => updateDraft('password', event.target.value)} /></Field>
       {validation?.field === 'password' && <p className="account-field-error">{validation.message}</p>}
       {state.authMode === 'register' && <><Field label="确认密码"><input ref={confirmPasswordRef} className={inputClass} type="password" autoComplete="new-password" value={state.draft.confirmPassword} disabled={working} aria-invalid={validation?.field === 'confirmPassword' || undefined} onChange={(event) => updateDraft('confirmPassword', event.target.value)} /></Field>{validation?.field === 'confirmPassword' && <p className="account-field-error">{validation.message}</p>}</>}
       <button type="submit" className="sr-only" tabIndex={-1}>提交</button>
     </form>
-    {authOptionsError && <div className="account-capability-note"><ShieldCheck size={16} /><span><strong>无法核对登录方式</strong><small>{authOptionsError}</small></span></div>}
+    {state.snapshot.accounts.length > 0 && <Button variant="ghost" size="sm" disabled={working} onClick={() => dispatch({ type: 'go', step: 'accounts' })}>查看已保存的账号</Button>}
+    {authOptionsError && <div className="account-inline-error" role="alert"><span>无法读取登录方式。{authOptionsError}</span><Button size="sm" variant="ghost" disabled={working} onClick={() => setAuthCheckAttempt((attempt) => attempt + 1)}>重试</Button></div>}
     {authOptions?.selfRegistration === false && <div className="account-capability-note"><ShieldCheck size={16} /><span><strong>此服务只允许登录</strong><small>需要新账号时请联系组织管理员。</small></span></div>}
     {authOptions?.externalLogin && <div className="account-capability-note"><ShieldCheck size={16} /><span><strong>{authOptions.externalLogin.label} 暂不可用，请使用用户名登录</strong></span></div>}
   </div>
@@ -856,7 +904,7 @@ export function AccountFlow({
       <div className="organization-create-inner">
         <span className="organization-create-icon" aria-hidden="true"><Building2 size={26} /></span>
         <h2 ref={headingRef} tabIndex={-1}>创建组织</h2>
-        <p className="organization-create-description">为团队创建组织，接下来设置工作区。</p>
+        <p className="organization-create-description">为团队创建组织和默认工作区，然后连接这台电脑。</p>
         {feedbackError && <div className="account-inline-error" role="alert"><span>{feedbackError}</span>{loadError && <Button size="sm" variant="ghost" disabled={working} onClick={() => void refreshAccounts(false)}>重试</Button>}</div>}
         {state.status && <div className="account-inline-status" role="status">{state.status}</div>}
         <form className="organization-create-form" onSubmit={(event) => { event.preventDefault(); createOrganization() }} onKeyDown={(event) => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault() }}>
@@ -873,18 +921,18 @@ export function AccountFlow({
   return <div className="account-flow">
     <header className="account-flow-header">
       {state.step !== 'entry' ? <button type="button" className="account-header-button" aria-label="返回上一步" disabled={working} onClick={() => dispatch({ type: 'back' })}><ArrowLeft size={17} /></button> : <span className="account-header-spacer" />}
-      <div><h2 ref={headingRef} tabIndex={-1}>{stepTitles[state.step]}</h2>{state.step !== 'entry' && state.step !== 'confirm-switch' && <small>{state.draft.origin}</small>}</div>
+      <div><h2 ref={headingRef} tabIndex={-1}>{state.step === 'auth' && state.authMode === 'register' ? '注册团队账号' : stepTitles[state.step]}</h2>{state.step !== 'entry' && state.step !== 'auth' && state.step !== 'confirm-switch' && <small>{state.draft.origin}</small>}</div>
       <button type="button" className="account-header-button" aria-label="关闭账号与工作区" disabled={working} onClick={requestClose}><X size={17} /></button>
     </header>
     <AccountProgress step={state.step} />
     <div className="account-flow-body my-scrollbar">
       <div className="account-flow-inner">
-      {feedbackError && <div className="account-inline-error" role="alert"><span>{feedbackError}</span>{loadError && <Button size="sm" variant="ghost" onClick={() => void refreshAccounts(false)}>重试</Button>}</div>}
+      {feedbackError && <div className="account-inline-error" role="alert"><span>{feedbackError}</span>{state.step === 'auth' && state.authMode === 'register' && state.error?.offerLogin && <Button size="sm" variant="ghost" disabled={working} onClick={() => { setAuthMode('login'); passwordRef.current?.focus() }}>去登录</Button>}{!state.error && loadError && <Button size="sm" variant="ghost" onClick={() => void refreshAccounts(false)}>重试</Button>}</div>}
       {state.status && <div className="account-inline-status" role="status">{state.status}</div>}
       {content}
       {(state.step !== 'entry') && <footer className="account-flow-footer">
       <Button variant="ghost" disabled={working} onClick={() => dispatch({ type: 'back' })}>{state.step === 'confirm-switch' ? '取消' : '返回'}</Button>
-      <span className="account-operation-status" role="status" aria-live="polite">{state.operation ? <><LoaderCircle className="account-spinner" size={14} />{operationLabels[state.operation.kind]}</> : null}</span>
+      <span className="account-operation-status" role="status" aria-live="polite">{state.operation ? <><LoaderCircle className="account-spinner" size={14} />{state.step === 'auth' && state.authMode === 'register' && state.operation.kind === 'authenticate' ? '正在注册…' : operationLabels[state.operation.kind]}</> : null}</span>
       {primary}
       </footer>}
       </div>

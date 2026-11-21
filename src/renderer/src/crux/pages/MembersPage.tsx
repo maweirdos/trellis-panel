@@ -11,8 +11,9 @@ import { useCrux } from '../store'
 import { PageHeader, Field, inputClass, MemberChip, Select } from '../ui'
 
 const ROLE_LABEL: Record<CruxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
+export type WebInvitationCapability = { canManage: boolean; open: () => void }
 
-export function MembersPage(): JSX.Element | null {
+export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCapability }): JSX.Element | null {
   const snapshot = useCrux((state) => state.snapshot)
   const currentSpaceId = useCrux((state) => state.currentSpaceId)
   const run = useCrux((state) => state.run)
@@ -25,6 +26,7 @@ export function MembersPage(): JSX.Element | null {
   const [onlySpace, setOnlySpace] = useState(false)
   if (!snapshot) return null
   const space = snapshot.spaces.find((item) => item.id === currentSpaceId)
+  const canInvite = Boolean(workspace.connectionId ? workspace.canManage : webInvitation?.canManage)
   const spaceMemberIds = new Set(space?.memberIds ?? [])
   const owners = snapshot.members.filter((member) => member.role === 'owner').length
   const members = snapshot.members.filter((member) => (!onlySpace || spaceMemberIds.has(member.id)) &&
@@ -43,7 +45,7 @@ export function MembersPage(): JSX.Element | null {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader title="同事" description={shared ? `已登录的团队成员 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人` : `本机同事名册 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人 · 添加不会发送邀请`}
-        actions={shared ? <Button variant="primary" size="sm" disabled={busy || !workspace.connectionId || !workspace.canManage} onClick={() => setInviting(true)}><Plus size={14} />邀请成员</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
+        actions={shared ? <Button variant="primary" size="sm" disabled={busy || !canInvite} onClick={() => { if (workspace.connectionId) setInviting(true); else webInvitation?.open() }}><Plus size={14} />邀请成员</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
       <div className="flex flex-wrap items-center gap-3">
         <input className={`${inputClass} max-w-xs`} aria-label="搜索同事" placeholder="搜索姓名、邮箱或职位" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
         <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={onlySpace} onChange={(event) => setOnlySpace(event.target.checked)} />仅当前空间</label>

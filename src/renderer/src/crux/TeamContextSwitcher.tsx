@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Layers } from 'lucide-react'
+import { clsx } from 'clsx'
 import { hasIpc } from '../api'
 import { Button, Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../my/ui'
 import { useCrux } from './store'
@@ -27,8 +28,8 @@ export function TeamContextSwitcher({ variant = 'default', selectOpensTasks = tr
     void bootstrap().finally(() => { if (ticket === request.current) setReading(false) })
   }
   return <div className={global ? 'no-drag my-header-team' : 'no-drag flex min-w-0 items-center gap-2'}>
-    <Dropdown width={260} className={global ? 'my-header-team-menu' : undefined} placement={global ? 'bottom' : 'auto'} trigger={({ toggle, open }) => {
-      const button = <Button variant="ghost" className={global ? 'my-header-team-trigger' : 'my-project-switcher min-w-0'} onClick={() => { if (!open) refreshOnOpen(); toggle() }} aria-expanded={open} aria-label={`切换团队空间${global ? `，当前${name}${status ? ` · ${status}` : ''}` : ''}`}><Layers size={17} aria-hidden="true" /><span className={global ? 'my-header-team-name my-item-title' : 'my-project-switcher-name max-w-64 truncate'}>{name}</span><ChevronDown size={13} aria-hidden="true" /></Button>
+    <Dropdown width={240} className={global ? 'my-header-team-menu' : undefined} placement={global ? 'bottom' : 'auto'} trigger={({ toggle, open }) => {
+      const button = <Button variant="ghost" className={global ? 'my-header-team-trigger' : 'my-project-switcher min-w-0'} onClick={() => { if (!open) refreshOnOpen(); toggle() }} aria-expanded={open} aria-label={`切换团队空间${global ? `，当前${name}${status ? ` · ${status}` : ''}` : ''}`}><Layers size={16} strokeWidth={1.7} aria-hidden="true" /><span className={global ? 'my-header-team-name my-item-title' : 'my-project-switcher-name max-w-64 truncate'}>{name}</span><ChevronDown size={12} strokeWidth={1.7} className={clsx('my-trigger-chevron shrink-0 text-my-icon-tertiary transition-transform', open && 'rotate-180')} aria-hidden="true" /></Button>
       return global ? <Tooltip side="bottom" label={`${name}${status ? ` · ${status}` : ''}`} wrap>{button}</Tooltip> : button
     }}>
       {(close) => <><DropdownHeader>{global ? '团队空间' : workspaceContext.projectName ?? '团队协作'}</DropdownHeader>

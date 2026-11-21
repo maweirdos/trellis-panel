@@ -6,6 +6,7 @@ import { PageHeader, StatusBadge, PriorityBadge, ExecutorBadge, MemberChip, inpu
 import { Button, EmptyState } from '../../my/ui'
 import { TaskFilters } from './TasksPage'
 import { NewTaskModal } from './TaskDetailDrawer'
+import { TaskOutputReviewBoardBadge } from '../task-output-review/task-output-review'
 import type { CruxTask, CruxView, CruxPriority } from '@shared/crux'
 
 type GroupBy = CruxView['groupBy']
@@ -78,7 +79,7 @@ export function BoardPage(): JSX.Element | null {
           return <article key={task.id} draggable={groupBy === 'status' && !busy && !readOnly} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-crux-task', task.id) }} className="rounded-my-md border border-my-line bg-my-canvas p-2">
             <button type="button" onClick={() => openTask(task.id)} className="mb-2 w-full text-left text-my-xs leading-relaxed text-my-primary"><span className="mr-1 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : ''}>{task.title}</span></button>
             <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></div>
-            <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}<TaskOutputReviewBoardBadge task={task} />{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
             <Select
               size="sm"
               ariaLabel={`更改 ${task.id} 状态`}

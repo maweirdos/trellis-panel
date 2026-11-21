@@ -40,6 +40,7 @@ import { useKnowledgeDiscussion } from '../knowledge/discussion-panel'
 import { KnowledgeScopeControl } from '../knowledge/KnowledgeScopeControl'
 import { KnowledgeSourceView } from '../knowledge/KnowledgeSourceView'
 import { KnowledgeBrowser } from '../knowledge/KnowledgeBrowser'
+import { TeamPublishedKnowledge } from '../knowledge/TeamPublishedKnowledge'
 import '../knowledge/KnowledgeBrowser.css'
 import { knowledgeBridge, knowledgeError, knowledgeStatusLabel, requireKnowledge, useProjectKnowledge } from '../knowledge/bridge'
 import type { KnowledgeCollection, KnowledgeDocument, KnowledgeFolderTree, KnowledgeSource } from '../../../shared/knowledge-access'
@@ -95,6 +96,32 @@ const LIB_CHIP: Record<KbLibrary, string> = {
 }
 
 export function KnowledgePage(): JSX.Element {
+  const sidebarStyle = useSidebarWidthStyle()
+  const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
+  const hasProject = useApp((state) => Boolean(state.snapshot?.meta.root))
+  const pickAndOpen = useApp((state) => state.pickAndOpen)
+  const openError = useApp((state) => state.openError)
+  const knowledgeView = useMy((state) => state.knowledgeView)
+  if (!hasProject) {
+    return <div className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
+      <ContextRegion collapsed={sidebarCollapsed}><div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+        <SidebarResizeHandle />
+        <header className="flex h-my-header shrink-0 items-center px-4"><h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1></header>
+        <ModuleLinks domain="knowledge" />
+      </div></ContextRegion>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">{knowledgeView === 'materials' ? <TeamPublishedKnowledge /> :
+        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="企业知识库">
+          <h2 className="my-item-title">打开项目以读取企业知识库</h2>
+          <p className="my-item-description">企业知识库使用项目配置的连接。团队已发布的文档可在左侧「团队知识库」查看。</p>
+          <Button variant="outline" onClick={pickAndOpen}>打开本机项目</Button>
+          {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
+        </section>}</div>
+    </div>
+  }
+  return <KnowledgePageContent />
+}
+
+function KnowledgePageContent(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
   const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
   const snapshot = useApp((s) => s.snapshot)

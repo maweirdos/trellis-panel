@@ -1,8 +1,8 @@
 import type { DesktopTeamConnection } from '@shared/team-desktop'
 import type { CruxPendingCommand } from '@shared/crux'
+import type { TeamAuthFeedback } from '@shared/team-auth-feedback'
 import type { TeamRole } from '@shared/team-platform'
-
-export const DEFAULT_TEAM_ORIGIN = ''
+import { DEFAULT_TEAM_ORIGIN } from '../../team-service-origin'
 
 export type AccountFlowStep = 'entry' | 'accounts' | 'auth' | 'scope' | 'create-organization' | 'create-workspace' | 'accept-invitation' | 'device' | 'space' | 'confirm-switch'
 export type AccountAuthMode = 'login' | 'register'
@@ -130,7 +130,7 @@ export interface AccountFlowState {
   logoutTarget: DesktopAccountGroup | null
   disconnectTarget: DesktopWorkspaceChoice | null
   operation: { id: number; kind: AccountOperation } | null
-  error: string | null
+  error: TeamAuthFeedback | null
   status: string | null
 }
 
@@ -200,7 +200,7 @@ export type AccountFlowAction =
   | { type: 'request-disconnect'; target: DesktopWorkspaceChoice | null }
   | { type: 'operation-started'; id: number; kind: AccountOperation }
   | { type: 'operation-succeeded'; id: number; status?: string | null }
-  | { type: 'operation-failed'; id: number; error: string }
+  | { type: 'operation-failed'; id: number; error: TeamAuthFeedback }
   | { type: 'set-error'; error: string }
   | { type: 'set-status'; status: string }
   | { type: 'clear-feedback' }
@@ -250,13 +250,17 @@ export function accountFlowReducer(state: AccountFlowState, action: AccountFlowA
       return { ...state, step: target, draft: target === 'entry' || target === 'accounts' ? { ...state.draft, password: '', confirmPassword: '' } : state.draft, switchTarget: null, logoutTarget: null, disconnectTarget: null, error: null, status: null }
     }
     case 'set-auth-mode':
-      return { ...state, authMode: action.mode, error: null, status: null }
+      return { ...state, authMode: action.mode, draft: { ...state.draft, password: '', confirmPassword: '' }, error: null, status: null }
     case 'set-auth-provider':
       return { ...state, authProvider: action.provider, error: null, status: null }
     case 'set-draft':
       return {
         ...state,
-        draft: { ...state.draft, [action.field]: action.value },
+        draft: {
+          ...state.draft,
+          ...(action.field === 'origin' && action.value !== state.draft.origin ? { password: '', confirmPassword: '' } : {}),
+          [action.field]: action.value
+        },
         originEdited: action.field === 'origin' ? true : state.originEdited,
         error: null,
         status: null
@@ -265,7 +269,7 @@ export function accountFlowReducer(state: AccountFlowState, action: AccountFlowA
       return {
         ...state,
         snapshot: action.snapshot,
-        draft: !state.originEdited && action.snapshot.suggestedOrigin
+        draft: !state.originEdited && (state.step === 'entry' || state.step === 'accounts' || state.step === 'auth' && !state.draft.origin) && action.snapshot.suggestedOrigin
           ? { ...state.draft, origin: action.snapshot.suggestedOrigin }
           : state.draft
       }
@@ -310,7 +314,7 @@ export function accountFlowReducer(state: AccountFlowState, action: AccountFlowA
     case 'operation-failed':
       return state.operation?.id === action.id ? { ...state, operation: null, error: action.error, status: null } : state
     case 'set-error':
-      return { ...state, error: action.error, status: null }
+      return { ...state, error: { message: action.error }, status: null }
     case 'set-status':
       return { ...state, error: null, status: action.status }
     case 'clear-feedback':
