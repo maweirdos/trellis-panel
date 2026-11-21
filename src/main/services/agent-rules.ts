@@ -7,7 +7,7 @@ import { agentRulesManifestSchema, MAX_AGENT_RULE_SOURCES, teamTaskRulesContextS
 import { readDocument } from './documents/controller'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { taskDirSchema } from './acp/types'
-import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule } from './crux/task-input-rules'
+import { assertNoUnownedTeamTaskRules, MAX_TASK_RULE_BYTES, readTaskInputRules, readExecutionInputRules, type FixedTaskRule, type FixedExecutionRules } from './crux/task-input-rules'
 import { executionContextManifestSchema, executionContextPacketSchema, type ExecutionContextManifest, type ExecutionInputSource } from '../../shared/team-execution-input'
 import { executionContextEnvelopeBytes, FIXED_EXECUTION_CONTEXT_MIME } from './execution-context-budget'
 
@@ -28,6 +28,7 @@ export type PrepareAgentRulesInput = z.input<typeof prepareSchema>
 export type PreparedAgentRules = { instructions: string; manifest: AgentRulesManifest }
 export type PrepareExecutionAgentRulesInput = { executionSource: ExecutionInputSource; nodeId: string }
 export type PreparedExecutionAgentRules = { instructions: string; manifest: ExecutionContextManifest; assertCurrent(): Promise<void> }
+const completeExecutionRules = new WeakMap<PreparedExecutionAgentRules, { instructions: string; manifest: string; assertCurrent(): Promise<void> }>()
 type Rule = { path: string; source: 'project' | 'team'; body: string | null; totalBytes: number; declaredVersion?: string; indexOnly?: boolean; required?: boolean; fixed?: FixedTaskRule }
 const manifestLineSchema = z.object({ file: z.string().min(1).max(2048), type: z.string().optional() }).passthrough()
 const rootKey = (root: string): string => digest(process.platform === 'win32' ? root.toLowerCase() : root)
@@ -173,7 +174,22 @@ export async function prepareAgentRules(raw: PrepareAgentRulesInput | PrepareExe
 
 /** Same rule owner, additive fixed-source path; legacy packets/hashes stay byte-identical. */
 export async function prepareExecutionAgentRules(raw: PrepareExecutionAgentRulesInput): Promise<PreparedExecutionAgentRules> {
-  const fixed = await readExecutionInputRules(raw.executionSource, raw.nodeId), { input } = fixed.view
+  const fixed = await readExecutionInputRules(raw.executionSource, raw.nodeId)
+  const prepared = await composeFixedExecutionAgentRules(fixed)
+  completeExecutionRules.set(prepared, { instructions: prepared.instructions, manifest: JSON.stringify(prepared.manifest), assertCurrent: fixed.assertCurrent })
+  return prepared
+}
+
+/** Only a complete original-node preparation can authorize the legacy prompt path. */
+export async function assertCompleteExecutionAgentRules(prepared: PreparedExecutionAgentRules): Promise<void> {
+  const original = completeExecutionRules.get(prepared)
+  if (!original || prepared.instructions !== original.instructions || JSON.stringify(prepared.manifest) !== original.manifest) throw new Error('A partitioned or modified execution context requires its original atomic aggregate')
+  await original.assertCurrent()
+}
+
+/** Shared accounting implementation; a partitioned result is usable only in its aggregate. */
+export async function composeFixedExecutionAgentRules(fixed: FixedExecutionRules): Promise<PreparedExecutionAgentRules> {
+  const { input } = fixed.view
   const role = input.definition.roles.find(item => item.id === fixed.node.roleId)
   if (!role) throw new Error('Fixed node has no logical role instructions')
   type Source = z.infer<typeof executionContextPacketSchema>['sources'][number]

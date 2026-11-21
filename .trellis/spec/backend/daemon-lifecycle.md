@@ -148,6 +148,13 @@ such as `$lifecycleRegistrations`, never `$Matches`, which regex operators overw
 
 ## Wrong and correct
 
+ACP job owner replacement may opt into bounded Windows EPERM/EBUSY/EACCES rename
+retries at 5, 10, 20 and 40ms. Keep the synchronous durable write before spawn.
+Never unlink the original owner file to make replacement succeed. Commit the
+launch ID list before mutating the in-memory owner or spawning a transport.
+A late witness cannot promote a cleaned or closing job to running. Persistent
+replacement failure preserves ownership and rejects launch.
+
 Wrong: check `blockers.length` before same-build attachment, then infer that an existing connection must finish before the application can update.
 
 Correct: distinguish attach from replacement, classify current conversation activity, obtain consent where needed, and verify exact-owner exit before replacement.
