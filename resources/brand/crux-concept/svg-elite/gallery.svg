@@ -1,0 +1,693 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 1020" fill="none">
+  <title>CRUX - Brand Identity Master Concepts</title>
+  <desc>Five premier branding directions for CRUX: Astral Prism, Nexus Mobius, Monogram C-Crux, Trellis Constellation, Singularity Core.</desc>
+  
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1560" y2="1020" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#090B10"/>
+      <stop offset="50%" stop-color="#0E121A"/>
+      <stop offset="100%" stop-color="#080A0E"/>
+    </linearGradient>
+
+    <!-- Card Background Gradient -->
+    <linearGradient id="card-grad" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#151A24"/>
+      <stop offset="100%" stop-color="#10131B"/>
+    </linearGradient>
+
+    <!-- Border Glow -->
+    <linearGradient id="border-glow" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#334155" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#1E293B" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <!-- Wordmark gradient -->
+    <linearGradient id="wm-grad" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Deep Obsidian Canvas -->
+  <rect width="1560" height="1020" fill="url(#bg-grad)"/>
+
+  <!-- Subtle Precision Matrix Grid Lines -->
+  <g stroke="#1E293B" stroke-width="0.5" stroke-dasharray="2 6" opacity="0.4">
+    <line x1="80" y1="0" x2="80" y2="1020"/>
+    <line x1="1480" y1="0" x2="1480" y2="1020"/>
+    <line x1="0" y1="140" x2="1560" y2="140"/>
+    <line x1="0" y1="940" x2="1560" y2="940"/>
+  </g>
+
+  <!-- Header Banner -->
+  <g transform="translate(80 50)">
+    <text x="0" y="32" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', Segoe UI, sans-serif" font-size="12" font-weight="700" letter-spacing="3">CRUX BRAND SYSTEM / V3 FLAGSHIP PROPOSAL</text>
+    <text x="0" y="66" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', Segoe UI, sans-serif" font-size="28" font-weight="600" letter-spacing="-0.5">面向 AI Native 团队协同平台的五套旗舰品牌标识方案</text>
+    <text x="0" y="94" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', Segoe UI, sans-serif" font-size="14">Linear &amp; Apple Notes 顶级克制美学 · 负空间与数学几何张力 · 16px 至 1024px 全视距清晰自适应</text>
+  </g>
+
+  <!-- ROW 1: Concept 01, 02, 03 -->
+  <!-- CARD 01: Astral Prism -->
+  <g transform="translate(80 160)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">01 / ASTRAL PRISM</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">星枢切面 · 钛金棱镜</text>
+    <text x="24" y="82" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="12">45° 精密倒角折面，悬浮星核与天文定向刻度</text>
+    
+    <!-- Big Stage Glyph -->
+    <g transform="translate(160 100) scale(1.0)">
+      
+  
+  
+  <defs>
+    <!-- Dark & Titanium Facet Gradients -->
+    <linearGradient id="prism-light-top" x1="60" y1="12" x2="76" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-top" x1="44" y1="38" x2="60" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-right" x1="108" y1="60" x2="73" y2="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-right" x1="82" y1="44" x2="73" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-bottom" x1="60" y1="108" x2="44" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-bottom" x1="76" y1="82" x2="60" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-left" x1="12" y1="60" x2="47" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-left" x1="38" y1="76" x2="47" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-core-glow" x1="54" y1="54" x2="66" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Precision Facets -->
+  <!-- Top Arm -->
+  <path d="M60 12 L76 38 L68 47 L60 47 Z" fill="url(#prism-light-top)"/>
+  <path d="M60 12 L60 47 L52 47 L44 38 Z" fill="url(#prism-dark-top)"/>
+
+  <!-- Right Arm -->
+  <path d="M108 60 L82 76 L73 68 L73 60 Z" fill="url(#prism-light-right)"/>
+  <path d="M108 60 L73 60 L73 52 L82 44 Z" fill="url(#prism-dark-right)"/>
+
+  <!-- Bottom Arm -->
+  <path d="M60 108 L44 82 L52 73 L60 73 Z" fill="url(#prism-light-bottom)"/>
+  <path d="M60 108 L60 73 L68 73 L76 82 Z" fill="url(#prism-dark-bottom)"/>
+
+  <!-- Left Arm -->
+  <path d="M12 60 L38 44 L47 52 L47 60 Z" fill="url(#prism-light-left)"/>
+  <path d="M12 60 L47 60 L47 68 L38 76 Z" fill="url(#prism-dark-left)"/>
+
+  <!-- Center Floating Diamond Core -->
+  <path d="M60 54 L66 60 L60 66 L54 60 Z" fill="url(#prism-core-glow)"/>
+
+  <!-- Precision Corner Reticles (Subtle Astrolabe Notches) -->
+  <line x1="32" y1="32" x2="38" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="32" x2="82" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="32" y1="88" x2="38" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="88" x2="82" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+
+
+    </g>
+
+    <!-- Bottom Lockup & Tile -->
+    <g transform="translate(24 280)">
+      <rect width="48" height="48" rx="12" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+      <g transform="translate(8 8) scale(0.266)">
+        
+  
+  
+  <defs>
+    <!-- Dark & Titanium Facet Gradients -->
+    <linearGradient id="prism-light-top" x1="60" y1="12" x2="76" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-top" x1="44" y1="38" x2="60" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-right" x1="108" y1="60" x2="73" y2="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-right" x1="82" y1="44" x2="73" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-bottom" x1="60" y1="108" x2="44" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-bottom" x1="76" y1="82" x2="60" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-left" x1="12" y1="60" x2="47" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-left" x1="38" y1="76" x2="47" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-core-glow" x1="54" y1="54" x2="66" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Precision Facets -->
+  <!-- Top Arm -->
+  <path d="M60 12 L76 38 L68 47 L60 47 Z" fill="url(#prism-light-top)"/>
+  <path d="M60 12 L60 47 L52 47 L44 38 Z" fill="url(#prism-dark-top)"/>
+
+  <!-- Right Arm -->
+  <path d="M108 60 L82 76 L73 68 L73 60 Z" fill="url(#prism-light-right)"/>
+  <path d="M108 60 L73 60 L73 52 L82 44 Z" fill="url(#prism-dark-right)"/>
+
+  <!-- Bottom Arm -->
+  <path d="M60 108 L44 82 L52 73 L60 73 Z" fill="url(#prism-light-bottom)"/>
+  <path d="M60 108 L60 73 L68 73 L76 82 Z" fill="url(#prism-dark-bottom)"/>
+
+  <!-- Left Arm -->
+  <path d="M12 60 L38 44 L47 52 L47 60 Z" fill="url(#prism-light-left)"/>
+  <path d="M12 60 L47 60 L47 68 L38 76 Z" fill="url(#prism-dark-left)"/>
+
+  <!-- Center Floating Diamond Core -->
+  <path d="M60 54 L66 60 L60 66 L54 60 Z" fill="url(#prism-core-glow)"/>
+
+  <!-- Precision Corner Reticles (Subtle Astrolabe Notches) -->
+  <line x1="32" y1="32" x2="38" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="32" x2="82" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="32" y1="88" x2="38" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="88" x2="82" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+
+
+      </g>
+      <text x="64" y="24" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" font-weight="700" letter-spacing="3">CRUX</text>
+      <text x="64" y="42" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">PRECISION NAVIGATION</text>
+    </g>
+  </g>
+
+  <!-- CARD 02: Nexus Mobius -->
+  <g transform="translate(560 160)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">02 / NEXUS MOBIUS</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">莫比乌斯枢纽 · 人机共生</text>
+    <text x="24" y="82" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="12">无尽拓扑流体环咬合交叠，闭环流转自洽</text>
+    
+    <!-- Big Stage Glyph -->
+    <g transform="translate(160 100) scale(1.0)">
+      
+  
+  
+  <defs>
+    <!-- Primary Gradient (Silver Cyan) -->
+    <linearGradient id="mobius-grad-1" x1="20" y1="20" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="mobius-grad-2" x1="100" y1="20" x2="20" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <!-- Subtle drop shadow filter for floating overlap -->
+    <filter id="overlap-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Under Loop (Diagonal Southeast-Northwest Flow) -->
+  <path d="M26 26 C42 10, 78 10, 94 26 C110 42, 110 78, 94 94 C78 110, 42 110, 26 94 C10 78, 10 42, 26 26 Z" 
+        stroke="url(#mobius-grad-2)" stroke-width="7" stroke-dasharray="115 16 115 16" stroke-dashoffset="8" stroke-linecap="round"/>
+
+  <!-- Four Inward Converging Arcs Forming Crux Center -->
+  <!-- Top Leaf -->
+  <path d="M60 14 C68 28, 76 44, 76 60 C64 60, 48 52, 44 38 C40 24, 52 14, 60 14 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+  
+  <!-- Right Leaf -->
+  <path d="M106 60 C92 68, 76 76, 60 76 C60 64, 68 48, 82 44 C96 40, 106 52, 106 60 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Bottom Leaf -->
+  <path d="M60 106 C52 92, 44 76, 44 60 C56 60, 72 68, 76 82 C80 96, 68 106, 60 106 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Left Leaf -->
+  <path d="M14 60 C28 52, 44 44, 60 44 C60 56, 52 72, 38 76 C24 80, 14 68, 14 60 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Center Luminescent Intersection -->
+  <circle cx="60" cy="60" r="3.5" fill="#FFFFFF"/>
+
+
+    </g>
+
+    <!-- Bottom Lockup & Tile -->
+    <g transform="translate(24 280)">
+      <rect width="48" height="48" rx="12" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+      <g transform="translate(8 8) scale(0.266)">
+        
+  
+  
+  <defs>
+    <!-- Primary Gradient (Silver Cyan) -->
+    <linearGradient id="mobius-grad-1" x1="20" y1="20" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="mobius-grad-2" x1="100" y1="20" x2="20" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <!-- Subtle drop shadow filter for floating overlap -->
+    <filter id="overlap-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Under Loop (Diagonal Southeast-Northwest Flow) -->
+  <path d="M26 26 C42 10, 78 10, 94 26 C110 42, 110 78, 94 94 C78 110, 42 110, 26 94 C10 78, 10 42, 26 26 Z" 
+        stroke="url(#mobius-grad-2)" stroke-width="7" stroke-dasharray="115 16 115 16" stroke-dashoffset="8" stroke-linecap="round"/>
+
+  <!-- Four Inward Converging Arcs Forming Crux Center -->
+  <!-- Top Leaf -->
+  <path d="M60 14 C68 28, 76 44, 76 60 C64 60, 48 52, 44 38 C40 24, 52 14, 60 14 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+  
+  <!-- Right Leaf -->
+  <path d="M106 60 C92 68, 76 76, 60 76 C60 64, 68 48, 82 44 C96 40, 106 52, 106 60 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Bottom Leaf -->
+  <path d="M60 106 C52 92, 44 76, 44 60 C56 60, 72 68, 76 82 C80 96, 68 106, 60 106 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Left Leaf -->
+  <path d="M14 60 C28 52, 44 44, 60 44 C60 56, 52 72, 38 76 C24 80, 14 68, 14 60 Z" 
+        fill="url(#mobius-grad-1)" opacity="0.95" filter="url(#overlap-shadow)"/>
+
+  <!-- Center Luminescent Intersection -->
+  <circle cx="60" cy="60" r="3.5" fill="#FFFFFF"/>
+
+
+      </g>
+      <text x="64" y="24" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" font-weight="700" letter-spacing="3">CRUX</text>
+      <text x="64" y="42" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">CONTINUOUS FLOW</text>
+    </g>
+  </g>
+
+  <!-- CARD 03: Monogram C-Crux -->
+  <g transform="translate(1040 160)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">03 / MONOGRAM C-CRUX</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">引力字标 · 黄金弧度</text>
+    <text x="24" y="82" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="12">首字母 C 与南十字星内核融为一体，超强穿透力</text>
+    
+    <!-- Big Stage Glyph -->
+    <g transform="translate(160 100) scale(1.0)">
+      
+  
+  
+  <defs>
+    <linearGradient id="mono-glow" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="star-accent" x1="50" y1="50" x2="88" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sculpted Monogram C Arch -->
+  <path d="M86 32 C78 22, 68 18, 56 18 C33 18, 16 37, 16 60 C16 83, 33 102, 56 102 C68 102, 78 98, 86 88 L76 77 C71 83, 64 87, 56 87 C41 87, 31 75, 31 60 C31 45, 41 33, 56 33 C64 33, 71 37, 76 43 Z" 
+        fill="url(#mono-glow)"/>
+
+  <!-- The Crux Star Anchor (Centered at the Aperture Core) -->
+  <!-- Four-Pointed Precision Star -->
+  <path d="M68 40 L71 55 L86 58 L71 61 L68 76 L65 61 L50 58 L65 55 Z" 
+        fill="url(#star-accent)"/>
+
+  <!-- Delicate Focus Rings (Negative Space Guiding Dots) -->
+  <circle cx="68" cy="58" r="2.5" fill="#FFFFFF"/>
+
+
+    </g>
+
+    <!-- Bottom Lockup & Tile -->
+    <g transform="translate(24 280)">
+      <rect width="48" height="48" rx="12" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+      <g transform="translate(8 8) scale(0.266)">
+        
+  
+  
+  <defs>
+    <linearGradient id="mono-glow" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="star-accent" x1="50" y1="50" x2="88" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sculpted Monogram C Arch -->
+  <path d="M86 32 C78 22, 68 18, 56 18 C33 18, 16 37, 16 60 C16 83, 33 102, 56 102 C68 102, 78 98, 86 88 L76 77 C71 83, 64 87, 56 87 C41 87, 31 75, 31 60 C31 45, 41 33, 56 33 C64 33, 71 37, 76 43 Z" 
+        fill="url(#mono-glow)"/>
+
+  <!-- The Crux Star Anchor (Centered at the Aperture Core) -->
+  <!-- Four-Pointed Precision Star -->
+  <path d="M68 40 L71 55 L86 58 L71 61 L68 76 L65 61 L50 58 L65 55 Z" 
+        fill="url(#star-accent)"/>
+
+  <!-- Delicate Focus Rings (Negative Space Guiding Dots) -->
+  <circle cx="68" cy="58" r="2.5" fill="#FFFFFF"/>
+
+
+      </g>
+      <text x="64" y="24" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" font-weight="700" letter-spacing="3">CRUX</text>
+      <text x="64" y="42" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">ICONIC MONOGRAM</text>
+    </g>
+  </g>
+
+  <!-- ROW 2: Concept 04, 05, Design Specifications -->
+  <!-- CARD 04: Trellis Constellation -->
+  <g transform="translate(80 550)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">04 / TRELLIS CONSTELLATION</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">量子晶格 · 负空间星核</text>
+    <text x="24" y="82" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="12">外显模块秩序，内生璀璨十字，结构主义极品</text>
+    
+    <!-- Big Stage Glyph -->
+    <g transform="translate(160 100) scale(1.0)">
+      
+  
+  
+  <defs>
+    <!-- Deep Obsidian to Titanium Slate Gradient -->
+    <linearGradient id="quad-tl" x1="20" y1="20" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="60%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+    <linearGradient id="quad-tr" x1="100" y1="20" x2="64" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="quad-br" x1="100" y1="100" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="60%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="quad-bl" x1="20" y1="100" x2="56" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Four Precision Monolithic Quads with Negative-Space Star Radii -->
+  
+  <!-- Top-Left Monolith -->
+  <path d="M30 18 H54 C54 39, 39 54, 18 54 V30 C18 23.4, 23.4 18, 30 18 Z" 
+        fill="url(#quad-tl)"/>
+
+  <!-- Top-Right Monolith -->
+  <path d="M66 54 C87 54, 102 39, 102 18 H78 C71.4 18, 66 23.4, 66 30 V54 Z" 
+        fill="url(#quad-tr)"/>
+
+  <!-- Bottom-Right Monolith -->
+  <path d="M90 102 H66 V78 C66 71.4, 71.4 66, 78 66 H102 C102 87, 87 102, 66 102 Z" 
+        fill="url(#quad-br)"/>
+
+  <!-- Bottom-Left Monolith -->
+  <path d="M54 66 V90 C54 96.6, 48.6 102, 42 102 H18 C18 81, 33 66, 54 66 Z" 
+        fill="url(#quad-bl)"/>
+
+  <!-- Central Star Focus Dot -->
+  <circle cx="60" cy="60" r="2.8" fill="#FFFFFF"/>
+
+
+    </g>
+
+    <!-- Bottom Lockup & Tile -->
+    <g transform="translate(24 280)">
+      <rect width="48" height="48" rx="12" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+      <g transform="translate(8 8) scale(0.266)">
+        
+  
+  
+  <defs>
+    <!-- Deep Obsidian to Titanium Slate Gradient -->
+    <linearGradient id="quad-tl" x1="20" y1="20" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="60%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+    <linearGradient id="quad-tr" x1="100" y1="20" x2="64" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="quad-br" x1="100" y1="100" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="60%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="quad-bl" x1="20" y1="100" x2="56" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="60%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Four Precision Monolithic Quads with Negative-Space Star Radii -->
+  
+  <!-- Top-Left Monolith -->
+  <path d="M30 18 H54 C54 39, 39 54, 18 54 V30 C18 23.4, 23.4 18, 30 18 Z" 
+        fill="url(#quad-tl)"/>
+
+  <!-- Top-Right Monolith -->
+  <path d="M66 54 C87 54, 102 39, 102 18 H78 C71.4 18, 66 23.4, 66 30 V54 Z" 
+        fill="url(#quad-tr)"/>
+
+  <!-- Bottom-Right Monolith -->
+  <path d="M90 102 H66 V78 C66 71.4, 71.4 66, 78 66 H102 C102 87, 87 102, 66 102 Z" 
+        fill="url(#quad-br)"/>
+
+  <!-- Bottom-Left Monolith -->
+  <path d="M54 66 V90 C54 96.6, 48.6 102, 42 102 H18 C18 81, 33 66, 54 66 Z" 
+        fill="url(#quad-bl)"/>
+
+  <!-- Central Star Focus Dot -->
+  <circle cx="60" cy="60" r="2.8" fill="#FFFFFF"/>
+
+
+      </g>
+      <text x="64" y="24" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" font-weight="700" letter-spacing="3">CRUX</text>
+      <text x="64" y="42" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">NEGATIVE SPACE</text>
+    </g>
+  </g>
+
+  <!-- CARD 05: Singularity Core -->
+  <g transform="translate(560 550)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">05 / SINGULARITY CORE</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">引力聚核 · 斐波那契涡旋</text>
+    <text x="24" y="82" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="12">刀锋流线向心聚拢，极速任务收敛与执行力</text>
+    
+    <!-- Big Stage Glyph -->
+    <g transform="translate(160 100) scale(1.0)">
+      
+  
+  
+  <defs>
+    <linearGradient id="blade-grad-0" x1="60" y1="14" x2="82" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-90" x1="106" y1="60" x2="64" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="50%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-180" x1="60" y1="106" x2="38" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-270" x1="14" y1="60" x2="56" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(60 60)">
+    <!-- 4 Vortex Blades symmetrically rotated around the singularity center -->
+    <!-- Blade 0 (North) -->
+    <path d="M 0 -48 C 14 -48, 26 -38, 26 -24 C 26 -10, 14 0, 0 -3 C 6 -10, 8 -22, 6 -32 C 4 -40, 2 -45, 0 -48 Z" 
+          fill="url(#blade-grad-0)"/>
+    
+    <!-- Blade 1 (East) -->
+    <path d="M 48 0 C 48 14, 38 26, 24 26 C 10 26, 0 14, 3 0 C 10 6, 22 8, 32 6 C 40 4, 45 2, 48 0 Z" 
+          fill="url(#blade-grad-90)"/>
+
+    <!-- Blade 2 (South) -->
+    <path d="M 0 48 C -14 48, -26 38, -26 24 C -26 10, -14 0, 0 3 C -6 10, -8 22, -6 32 C -4 40, -2 45, 0 48 Z" 
+          fill="url(#blade-grad-180)"/>
+
+    <!-- Blade 3 (West) -->
+    <path d="M -48 0 C -48 -14, -38 -26, -24 -26 C -10 -26, 0 -14, -3 0 C -10 -6, -22 -8, -32 -6 C -40 -4, -45 -2, -48 0 Z" 
+          fill="url(#blade-grad-270)"/>
+
+    <!-- Singularity Center Pivot -->
+    <circle cx="0" cy="0" r="3.2" fill="#FFFFFF"/>
+  </g>
+
+
+    </g>
+
+    <!-- Bottom Lockup & Tile -->
+    <g transform="translate(24 280)">
+      <rect width="48" height="48" rx="12" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+      <g transform="translate(8 8) scale(0.266)">
+        
+  
+  
+  <defs>
+    <linearGradient id="blade-grad-0" x1="60" y1="14" x2="82" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-90" x1="106" y1="60" x2="64" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="50%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-180" x1="60" y1="106" x2="38" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-270" x1="14" y1="60" x2="56" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(60 60)">
+    <!-- 4 Vortex Blades symmetrically rotated around the singularity center -->
+    <!-- Blade 0 (North) -->
+    <path d="M 0 -48 C 14 -48, 26 -38, 26 -24 C 26 -10, 14 0, 0 -3 C 6 -10, 8 -22, 6 -32 C 4 -40, 2 -45, 0 -48 Z" 
+          fill="url(#blade-grad-0)"/>
+    
+    <!-- Blade 1 (East) -->
+    <path d="M 48 0 C 48 14, 38 26, 24 26 C 10 26, 0 14, 3 0 C 10 6, 22 8, 32 6 C 40 4, 45 2, 48 0 Z" 
+          fill="url(#blade-grad-90)"/>
+
+    <!-- Blade 2 (South) -->
+    <path d="M 0 48 C -14 48, -26 38, -26 24 C -26 10, -14 0, 0 3 C -6 10, -8 22, -6 32 C -4 40, -2 45, 0 48 Z" 
+          fill="url(#blade-grad-180)"/>
+
+    <!-- Blade 3 (West) -->
+    <path d="M -48 0 C -48 -14, -38 -26, -24 -26 C -10 -26, 0 -14, -3 0 C -10 -6, -22 -8, -32 -6 C -40 -4, -45 -2, -48 0 Z" 
+          fill="url(#blade-grad-270)"/>
+
+    <!-- Singularity Center Pivot -->
+    <circle cx="0" cy="0" r="3.2" fill="#FFFFFF"/>
+  </g>
+
+
+      </g>
+      <text x="64" y="24" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" font-weight="700" letter-spacing="3">CRUX</text>
+      <text x="64" y="42" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">GRAVITATIONAL CORE</text>
+    </g>
+  </g>
+
+  <!-- CARD 06: Guidelines & Palette Specs -->
+  <g transform="translate(1040 550)">
+    <rect width="440" height="360" rx="14" fill="url(#card-grad)" stroke="url(#border-glow)" stroke-width="1"/>
+    <text x="24" y="36" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="2">STANDARDS &amp; PALETTE</text>
+    <text x="24" y="60" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="18" font-weight="600">品牌设计基准与落地参数</text>
+    
+    <g transform="translate(24 95)">
+      <!-- Color Chips -->
+      <g transform="translate(0 0)">
+        <rect width="70" height="32" rx="6" fill="#0B0E14" stroke="#334155" stroke-width="1"/>
+        <text x="6" y="20" fill="#F8FAFC" font-size="10" font-family="monospace">#0B0E14</text>
+        <text x="6" y="44" fill="#94A3B8" font-size="9" font-family="sans-serif">黑曜石底色</text>
+      </g>
+      <g transform="translate(80 0)">
+        <rect width="70" height="32" rx="6" fill="#1E293B"/>
+        <text x="6" y="20" fill="#F8FAFC" font-size="10" font-family="monospace">#1E293B</text>
+        <text x="6" y="44" fill="#94A3B8" font-size="9" font-family="sans-serif">深钛灰表面</text>
+      </g>
+      <g transform="translate(160 0)">
+        <rect width="70" height="32" rx="6" fill="#38BDF8"/>
+        <text x="6" y="20" fill="#0B0E14" font-size="10" font-family="monospace" font-weight="bold">#38BDF8</text>
+        <text x="6" y="44" fill="#94A3B8" font-size="9" font-family="sans-serif">离子冷青</text>
+      </g>
+      <g transform="translate(240 0)">
+        <rect width="70" height="32" rx="6" fill="#F8FAFC"/>
+        <text x="6" y="20" fill="#0B0E14" font-size="10" font-family="monospace" font-weight="bold">#F8FAFC</text>
+        <text x="6" y="44" fill="#94A3B8" font-size="9" font-family="sans-serif">冷钛白纯光</text>
+      </g>
+    </g>
+
+    <!-- Micro Specs list -->
+    <g transform="translate(24 180)">
+      <text x="0" y="0" fill="#CBD5E1" font-size="13" font-weight="600">工程与视觉落地准则：</text>
+      <text x="0" y="24" fill="#94A3B8" font-size="12">▪ 极简无衬线字标：全大写 CRUX，字距 +0.18em</text>
+      <text x="0" y="48" fill="#94A3B8" font-size="12">▪ 图标倒角：桌面 Tile 统一采用 10~12px 连续超椭圆 (Squircle)</text>
+      <text x="0" y="72" fill="#94A3B8" font-size="12">▪ 响应式多尺度：微小托盘 (16/24/32px) 单色自适应无模糊</text>
+      <text x="0" y="96" fill="#94A3B8" font-size="12">▪ 动效建议：悬浮微光呼吸 + 极微平滑缩放 (1.05x cubic-bezier)</text>
+    </g>
+  </g>
+
+  <!-- Footer Notice -->
+  <g transform="translate(80 970)">
+    <text x="0" y="0" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11">CRUX BRAND SYSTEM · ASSETS STORED AT resources/brand/crux-concept/svg-elite/ · GENERATED 2026</text>
+  </g>
+</svg>

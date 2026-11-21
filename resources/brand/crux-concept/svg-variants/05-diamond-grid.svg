@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Diamond Grid</title>
+  <desc>Nested diamonds express alignment around a shared center.</desc>
+  <path d="m60 15 45 45-45 45-45-45 45-45Z" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/>
+  <path d="m60 35 25 25-25 25-25-25 25-25Z" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/>
+  <path d="m60 49 11 11-11 11-11-11 11-11Z" fill="currentColor"/>
+</svg>

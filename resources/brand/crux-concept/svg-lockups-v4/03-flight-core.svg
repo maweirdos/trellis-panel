@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none">
+  <title>Crux Flight Core</title>
+  <desc>A four-winged flight shape carries many inputs toward one clear direction.</desc>
+  <path fill="#2869E8" fill-rule="evenodd" d="M6 36c11-15 26-24 42-23l12 13 12-13c16-1 31 8 42 23-13-1-23 4-30 16l-12-6-12 16-12-16-12 6C29 40 19 35 6 36ZM60 29l8 7-8 7-8-7 8-7Z"/>
+  <path d="M60 46v13" stroke="#2869E8" stroke-width="5" stroke-linecap="round"/>
+  <text x="116" y="50" fill="#2869E8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

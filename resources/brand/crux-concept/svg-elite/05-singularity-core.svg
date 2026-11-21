@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 05 The Singularity Core</title>
+  <desc>Aerodynamic dynamic blades converging with gravitational pull into the execution crux.</desc>
+  <defs>
+    <linearGradient id="blade-grad-0" x1="60" y1="14" x2="82" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-90" x1="106" y1="60" x2="64" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="50%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-180" x1="60" y1="106" x2="38" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="blade-grad-270" x1="14" y1="60" x2="56" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="50%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(60 60)">
+    <!-- 4 Vortex Blades symmetrically rotated around the singularity center -->
+    <!-- Blade 0 (North) -->
+    <path d="M 0 -48 C 14 -48, 26 -38, 26 -24 C 26 -10, 14 0, 0 -3 C 6 -10, 8 -22, 6 -32 C 4 -40, 2 -45, 0 -48 Z" 
+          fill="url(#blade-grad-0)"/>
+    
+    <!-- Blade 1 (East) -->
+    <path d="M 48 0 C 48 14, 38 26, 24 26 C 10 26, 0 14, 3 0 C 10 6, 22 8, 32 6 C 40 4, 45 2, 48 0 Z" 
+          fill="url(#blade-grad-90)"/>
+
+    <!-- Blade 2 (South) -->
+    <path d="M 0 48 C -14 48, -26 38, -26 24 C -26 10, -14 0, 0 3 C -6 10, -8 22, -6 32 C -4 40, -2 45, 0 48 Z" 
+          fill="url(#blade-grad-180)"/>
+
+    <!-- Blade 3 (West) -->
+    <path d="M -48 0 C -48 -14, -38 -26, -24 -26 C -10 -26, 0 -14, -3 0 C -10 -6, -22 -8, -32 -6 C -40 -4, -45 -2, -48 0 Z" 
+          fill="url(#blade-grad-270)"/>
+
+    <!-- Singularity Center Pivot -->
+    <circle cx="0" cy="0" r="3.2" fill="#FFFFFF"/>
+  </g>
+</svg>

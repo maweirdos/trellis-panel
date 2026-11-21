@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 01 The Astral Prism</title>
+  <desc>Precision faceted four-arm star converging into a floating diamond core.</desc>
+  <defs>
+    <!-- Dark & Titanium Facet Gradients -->
+    <linearGradient id="prism-light-top" x1="60" y1="12" x2="76" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-top" x1="44" y1="38" x2="60" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-right" x1="108" y1="60" x2="73" y2="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-right" x1="82" y1="44" x2="73" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-bottom" x1="60" y1="108" x2="44" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-bottom" x1="76" y1="82" x2="60" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-light-left" x1="12" y1="60" x2="47" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="prism-dark-left" x1="38" y1="76" x2="47" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="prism-core-glow" x1="54" y1="54" x2="66" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Precision Facets -->
+  <!-- Top Arm -->
+  <path d="M60 12 L76 38 L68 47 L60 47 Z" fill="url(#prism-light-top)"/>
+  <path d="M60 12 L60 47 L52 47 L44 38 Z" fill="url(#prism-dark-top)"/>
+
+  <!-- Right Arm -->
+  <path d="M108 60 L82 76 L73 68 L73 60 Z" fill="url(#prism-light-right)"/>
+  <path d="M108 60 L73 60 L73 52 L82 44 Z" fill="url(#prism-dark-right)"/>
+
+  <!-- Bottom Arm -->
+  <path d="M60 108 L44 82 L52 73 L60 73 Z" fill="url(#prism-light-bottom)"/>
+  <path d="M60 108 L60 73 L68 73 L76 82 Z" fill="url(#prism-dark-bottom)"/>
+
+  <!-- Left Arm -->
+  <path d="M12 60 L38 44 L47 52 L47 60 Z" fill="url(#prism-light-left)"/>
+  <path d="M12 60 L47 60 L47 68 L38 76 Z" fill="url(#prism-dark-left)"/>
+
+  <!-- Center Floating Diamond Core -->
+  <path d="M60 54 L66 60 L60 66 L54 60 Z" fill="url(#prism-core-glow)"/>
+
+  <!-- Precision Corner Reticles (Subtle Astrolabe Notches) -->
+  <line x1="32" y1="32" x2="38" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="32" x2="82" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="32" y1="88" x2="38" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="88" y1="88" x2="82" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+</svg>

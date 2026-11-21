@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none" color="#1B1D21">
+  <title>Crux Shared Aperture</title>
+  <desc>Four structural rails open toward one shared center.</desc>
+  <g stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 19h22l10 10 10-10h22"/>
+    <path d="M8 53h22l10-10 10 10h22"/>
+    <path d="M40 29v14"/>
+  </g>
+  <path d="m40 27 9 9-9 9-9-9 9-9Z" fill="currentColor"/>
+  <text x="88" y="50" fill="currentColor" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

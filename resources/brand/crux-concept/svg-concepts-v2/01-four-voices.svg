@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Four Voices</title>
+  <desc>Four distinct work streams converge on one shared core: people, agents, code and teams.</desc>
+  <path d="M16 24C29 17 43 20 53 34L60 46" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M104 24C91 17 77 20 67 34L60 46" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 96C29 103 43 100 53 86L60 74" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M104 96C91 103 77 100 67 86L60 74" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m60 43 17 17-17 17-17-17 17-17Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>
+</svg>

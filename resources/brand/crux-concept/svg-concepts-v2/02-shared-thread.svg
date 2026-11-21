@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Shared Thread</title>
+  <desc>Two shared threads cross, exchange context and continue as one workflow.</desc>
+  <path d="M15 31C27 15 44 16 56 28c8 8 8 17 4 25-4 8-4 17 4 25 12 12 29 11 41-5" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="M15 89C27 105 44 104 56 92c8-8 8-17 4-25-4-8-4-17 4-25 12-12 29-11 41 5" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="m60 46 14 14-14 14-14-14 14-14Z" fill="currentColor"/>
+</svg>

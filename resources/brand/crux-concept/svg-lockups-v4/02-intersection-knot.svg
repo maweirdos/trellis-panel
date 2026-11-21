@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none">
+  <title>Crux Intersection Knot</title>
+  <desc>Separate routes interlock and become a shared working knot.</desc>
+  <path fill="#5B5BF7" fill-rule="evenodd" d="M10 28c8-12 22-15 34-7l16 11 16-11c12-8 26-5 34 7l-10 7c-4-6-11-7-17-3L69 36l14 10c6 4 13 3 17-3l10 7c-8 12-22 15-34 7L60 46 44 57c-12 8-26 5-34-7l10-7c4 6 11 7 17 3l14-10-14-10c-6-4-13-3-17 3l-10-7ZM60 28l11 8-11 8-11-8 11-8Z"/>
+  <circle cx="60" cy="36" r="3.5" fill="#F7F7F6"/>
+  <text x="108" y="50" fill="#5B5BF7" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>
+

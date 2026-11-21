@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Aperture</title>
+  <desc>Four open brackets direct attention toward a central point.</desc>
+  <path d="M22 42V22h20M98 42V22H78M22 78v20h20M98 78v20H78" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M60 26v20M60 74v20M26 60h20M74 60h20" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="m60 45 15 15-15 15-15-15 15-15Z" fill="currentColor"/>
+</svg>

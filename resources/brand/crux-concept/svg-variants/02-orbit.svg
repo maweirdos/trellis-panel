@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Orbit</title>
+  <desc>A quiet orbit with four axis breaks around a central point.</desc>
+  <path d="M60 18a42 42 0 1 1 0 84 42 42 0 0 1 0-84Z" stroke="currentColor" stroke-width="8"/>
+  <path d="M60 18v20M102 60H82M60 102V82M18 60h20" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <path d="m60 45 15 15-15 15-15-15 15-15Z" fill="currentColor"/>
+</svg>

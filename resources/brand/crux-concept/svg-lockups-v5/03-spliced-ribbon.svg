@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none" color="#1B1D21">
+  <title>Crux Spliced Ribbon</title>
+  <desc>Two continuous ribbons exchange context and become one shared route.</desc>
+  <g stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 22c9-12 20-12 29-2l3 4 3-4c9-10 20-10 29 2"/>
+    <path d="M8 50c9 12 20 12 29 2l3-4 3 4c9 10 20 10 29-2"/>
+  </g>
+  <circle cx="40" cy="36" r="6" fill="currentColor"/>
+  <text x="88" y="50" fill="currentColor" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

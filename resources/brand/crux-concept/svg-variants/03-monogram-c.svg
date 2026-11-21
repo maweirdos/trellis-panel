@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Monogram C</title>
+  <desc>An open C shape holds a sharp central point.</desc>
+  <path d="M91 37c-7.3-10.6-19.4-17-31-17-22.1 0-40 17.9-40 40s17.9 40 40 40c11.6 0 23.7-6.4 31-17" stroke="currentColor" stroke-width="10" stroke-linecap="round"/>
+  <path d="m60 42 18 18-18 18-18-18 18-18Z" fill="currentColor"/>
+</svg>

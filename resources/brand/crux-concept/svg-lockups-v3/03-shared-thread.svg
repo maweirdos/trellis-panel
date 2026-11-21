@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none">
+  <title>Crux Shared Thread</title>
+  <desc>Two shared threads exchange context and continue as one workflow.</desc>
+  <g stroke="#0B8F83" stroke-width="8" stroke-linecap="round">
+    <path d="M5 36c9-20 26-20 35 0s26 20 35 0"/>
+    <path d="M5 36c9 20 26 20 35 0s26-20 35 0"/>
+  </g>
+  <circle cx="40" cy="36" r="6" fill="#0B8F83"/>
+  <text x="90" y="50" fill="#0B8F83" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

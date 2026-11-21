@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 05 Singularity Core (Monochrome)</title>
+  <g fill="currentColor" transform="translate(60 60)">
+    <path d="M 0 -48 C 14 -48, 26 -38, 26 -24 C 26 -10, 14 0, 0 -3 C 6 -10, 8 -22, 6 -32 C 4 -40, 2 -45, 0 -48 Z"/>
+    <path d="M 48 0 C 48 14, 38 26, 24 26 C 10 26, 0 14, 3 0 C 10 6, 22 8, 32 6 C 40 4, 45 2, 48 0 Z"/>
+    <path d="M 0 48 C -14 48, -26 38, -26 24 C -26 10, -14 0, 0 3 C -6 10, -8 22, -6 32 C -4 40, -2 45, 0 48 Z"/>
+    <path d="M -48 0 C -48 -14, -38 -26, -24 -26 C -10 -26, 0 -14, -3 0 C -10 -6, -22 -8, -32 -6 C -40 -4, -45 -2, -48 0 Z"/>
+    <circle cx="0" cy="0" r="3.2"/>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none">
+  <title>Crux Four Voices</title>
+  <desc>Four distinct voices curve toward one shared core.</desc>
+  <g stroke="#635BFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 20c11-9 22-8 30 4l8 12"/>
+    <path d="M64 20c-11-9-22-8-30 4l-8 12"/>
+    <path d="M8 52c11 9 22 8 30-4l8-12"/>
+    <path d="M64 52c-11 9-22 8-30-4l-8-12"/>
+  </g>
+  <circle cx="40" cy="36" r="8" fill="#635BFF"/>
+  <text x="90" y="50" fill="#635BFF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

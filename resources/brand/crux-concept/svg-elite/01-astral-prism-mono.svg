@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 01 Astral Prism (Monochrome)</title>
+  <g fill="currentColor">
+    <!-- Top Arm -->
+    <path d="M60 12 L75 37 L67 46 L60 46 Z"/>
+    <path d="M60 12 L60 46 L53 46 L45 37 Z" opacity="0.65"/>
+    <!-- Right Arm -->
+    <path d="M108 60 L83 75 L74 67 L74 60 Z"/>
+    <path d="M108 60 L74 60 L74 53 L83 45 Z" opacity="0.65"/>
+    <!-- Bottom Arm -->
+    <path d="M60 108 L45 83 L53 74 L60 74 Z"/>
+    <path d="M60 108 L60 74 L67 74 L75 83 Z" opacity="0.65"/>
+    <!-- Left Arm -->
+    <path d="M12 60 L37 45 L46 53 L46 60 Z"/>
+    <path d="M12 60 L46 60 L46 67 L37 75 Z" opacity="0.65"/>
+    <!-- Floating Center Diamond -->
+    <path d="M60 54 L66 60 L60 66 L54 60 Z"/>
+  </g>
+</svg>

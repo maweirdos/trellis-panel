@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Trellis Bridge</title>
+  <desc>A shared trellis carries four paths into one working bridge.</desc>
+  <path d="M18 30h26l16 16 16-16h26M18 90h26l16-16 16 16h26" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M30 18v26l16 16-16 16v26M90 18v26L74 60l16 16v26" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m60 46 14 14-14 14-14-14 14-14Z" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
+</svg>

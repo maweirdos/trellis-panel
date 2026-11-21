@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 900" fill="none">
+  <title>Crux narrative SVG concepts</title>
+  <desc>Four narrative logo directions about people, agents, code and teams converging.</desc>
+  <rect width="1240" height="900" fill="#EEECE7"/>
+  <text x="64" y="72" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="600" letter-spacing="2">CRUX / NARRATIVE CONCEPTS</text>
+  <text x="64" y="108" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17">Four different sources meet inside one shared working core.</text>
+
+  <g transform="translate(64 150)">
+    <rect width="532" height="310" rx="20" fill="#FFF"/>
+    <text x="32" y="42" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">01 / FOUR VOICES</text>
+    <text x="32" y="69" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">人、Agent、代码、团队 → 一个共享核心</text>
+    <g transform="translate(202 94) scale(1.05)">
+      <path d="M16 24C29 17 43 20 53 34L60 46M104 24C91 17 77 20 67 34L60 46M16 96C29 103 43 100 53 86L60 74M104 96C91 103 77 100 67 86L60 74" stroke="#1B1D21" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="m60 43 17 17-17 17-17-17 17-17Z" stroke="#1B1D21" stroke-width="7" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <g transform="translate(644 150)">
+    <rect width="532" height="310" rx="20" fill="#FFF"/>
+    <text x="32" y="42" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">02 / SHARED THREAD</text>
+    <text x="32" y="69" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">交换上下文，接力成为一条工作线</text>
+    <g transform="translate(202 94) scale(1.05)">
+      <path d="M15 31C27 15 44 16 56 28c8 8 8 17 4 25-4 8-4 17 4 25 12 12 29 11 41-5M15 89C27 105 44 104 56 92c8-8 8-17 4-25-4-8-4-17 4-25 12-12 29-11 41 5" stroke="#1B1D21" stroke-width="9" stroke-linecap="round"/>
+      <path d="m60 46 14 14-14 14-14-14 14-14Z" fill="#1B1D21"/>
+    </g>
+  </g>
+
+  <g transform="translate(64 510)">
+    <rect width="532" height="310" rx="20" fill="#FFF"/>
+    <text x="32" y="42" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">03 / TRELLIS BRIDGE</text>
+    <text x="32" y="69" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">结构承托不同角色，共同跨过交付边界</text>
+    <g transform="translate(202 94) scale(1.05)">
+      <path d="M18 30h26l16 16 16-16h26M18 90h26l16-16 16 16h26M30 18v26l16 16-16 16v26M90 18v26L74 60l16 16v26" stroke="#1B1D21" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="m60 46 14 14-14 14-14-14 14-14Z" stroke="#1B1D21" stroke-width="6" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <g transform="translate(644 510)">
+    <rect width="532" height="310" rx="20" fill="#FFF"/>
+    <text x="32" y="42" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">04 / CONVERGING RIBBON</text>
+    <text x="32" y="69" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">四条路径折叠、汇合，再形成共同结果</text>
+    <g transform="translate(202 94) scale(1.05)">
+      <path fill="#1B1D21" fill-rule="evenodd" d="M18 20h28l14 14 14-14h28v28L88 60l14 14v28H74L60 88 46 102H18V74l14-14-14-14V20Zm42 27 13 13-13 13-13-13 13-13Z"/>
+      <path d="M60 15v13M60 92v13M15 60h13M92 60h13" stroke="#1B1D21" stroke-width="5" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

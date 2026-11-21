@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 04 Trellis Constellation (Monochrome)</title>
+  <g fill="currentColor">
+    <path d="M30 18 H54 C54 39, 39 54, 18 54 V30 C18 23.4, 23.4 18, 30 18 Z"/>
+    <path d="M66 54 C87 54, 102 39, 102 18 H78 C71.4 18, 66 23.4, 66 30 V54 Z"/>
+    <path d="M90 102 H66 V78 C66 71.4, 71.4 66, 78 66 H102 C102 87, 87 102, 66 102 Z"/>
+    <path d="M54 66 V90 C54 96.6, 48.6 102, 42 102 H18 C18 81, 33 66, 54 66 Z"/>
+    <circle cx="60" cy="60" r="3"/>
+  </g>
+</svg>

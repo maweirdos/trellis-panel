@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRUX — 品牌标识与视觉系统概念提案 (Brand Identity Showcase)</title>
+  <style>
+    :root {
+      --bg: #0B0E14;
+      --surface: #141820;
+      --surface-border: #232936;
+      --surface-hover: #1B212D;
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --accent: #38BDF8;
+      --accent-glow: rgba(56, 189, 248, 0.15);
+      --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    [data-theme="light"] {
+      --bg: #F6F5F1;
+      --surface: #FFFFFF;
+      --surface-border: #E2DFD8;
+      --surface-hover: #FAF9F6;
+      --text-primary: #18191B;
+      --text-secondary: #57595D;
+      --text-muted: #8C8F95;
+      --accent: #0284C7;
+      --accent-glow: rgba(2, 132, 199, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-stack);
+      line-height: 1.5;
+      padding: 40px 24px 80px;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      background-image: radial-gradient(circle at 50% 0%, var(--accent-glow) 0%, transparent 60%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    /* Header Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .header-titles h1 {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-titles h1 span.badge {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--surface-hover);
+      color: var(--accent);
+      border: 1px solid var(--surface-border);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    .header-titles p {
+      font-size: 15px;
+      color: var(--text-secondary);
+      max-width: 680px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    button.btn-theme {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--surface-border);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button.btn-theme:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+    }
+
+    /* Narrative Bar */
+    .narrative-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-md);
+      padding: 24px 28px;
+      margin-bottom: 48px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    .narrative-card h3 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .narrative-card p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* Grid of Concepts */
+    .concepts-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    .concept-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      transition: var(--transition);
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 36px;
+    }
+
+    .concept-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Left Stage */
+    .concept-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-md);
+      padding: 36px 20px;
+      position: relative;
+    }
+
+    .concept-stage svg {
+      width: 140px;
+      height: 140px;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.25));
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .concept-card:hover .concept-stage svg {
+      transform: scale(1.05);
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .copy-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    /* Right Details */
+    .concept-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .concept-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .concept-num {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+    }
+
+    .concept-title {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .concept-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    /* Sub-scenarios Grid (Application Matrix) */
+    .application-matrix {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      padding-top: 20px;
+      border-top: 1px solid var(--surface-border);
+    }
+
+    .app-item {
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .app-item span.label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* App icon tile simulation */
+    .tile-preview {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: #11141A;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    [data-theme="light"] .tile-preview {
+      background: #1A1C20;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .tile-preview svg {
+      width: 30px;
+      height: 30px;
+    }
+
+    /* Lockup simulation */
+    .lockup-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--surface);
+      border-radius: 6px;
+      border: 1px solid var(--surface-border);
+    }
+
+    .lockup-preview svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .lockup-preview span.wordmark {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: var(--text-primary);
+    }
+
+    /* Small size testing */
+    .small-sizes {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .small-sizes .icon-16 svg { width: 16px; height: 16px; }
+    .small-sizes .icon-24 svg { width: 24px; height: 24px; }
+    .small-sizes .icon-32 svg { width: 32px; height: 32px; }
+
+    /* Footer */
+    footer {
+      margin-top: 64px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--surface-border);
+      padding-top: 24px;
+    }
+
+    @media (max-width: 960px) {
+      .concept-card {
+        grid-template-columns: 1fr;
+      }
+      .application-matrix {
+        grid-template-columns: 1fr 1fr;
+      }
+      .narrative-card {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="header-titles">
+      <h1>CRUX 品牌标识提案 <span class="badge">Visual Concepts V3</span></h1>
+      <p>面向研发团队「渐进式 AI Native」协同平台的旗舰视觉符号体系。秉承 Linear 与 Apple Notes 顶级克制美学、数学几何纯度与全场景高自适应性。</p>
+    </div>
+    <div class="controls">
+      <button class="btn-theme" onclick="toggleTheme()">
+        <span id="theme-icon">◐</span>
+        <span id="theme-text">切换明暗主题</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Narrative & Foundation -->
+  <div class="narrative-card">
+    <div>
+      <h3>品牌核心意象 (The Narrative Essence)</h3>
+      <p><strong>Crux</strong> 在语境中兼具「关键核心 (The Crux of the Matter)」与「南十字座 (Southern Cross Constellation)」双重寓意。它是混乱纷繁研发任务中的确定性锚点，也是连接异构系统（Jira/Git/飞书）与自主智能体（Claude Code/Codex）的执行枢纽。</p>
+    </div>
+    <div>
+      <h3>设计执行准则 (Design Standards)</h3>
+      <p>严格遵循：① 拒绝冗余装饰与俗套花哨，以精确比例与负空间构形；② 16px 至 1024px 全视距清晰锐利；③ 完美适配深空黑曜（Dark Obsidian）与雅致暖灰（Warm Paper）双重光影。</p>
+    </div>
+  </div>
+
+  <!-- 5 Concepts Showcase -->
+  <div class="concepts-grid">
+
+    <!-- Concept 01 -->
+    <div class="concept-card">
+      <div class="concept-stage">
+        <button class="copy-btn" onclick="copySvg('svg-01')">复制 SVG</button>
+        <svg id="svg-01" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="p1-t" x1="60" y1="12" x2="76" y2="47" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="p1-td" x1="44" y1="38" x2="60" y2="47" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#64748B"/><stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+            <linearGradient id="p1-r" x1="108" y1="60" x2="73" y2="76" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#F1F5F9"/><stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="p1-rd" x1="82" y1="44" x2="73" y2="60" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#64748B"/><stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+            <linearGradient id="p1-b" x1="60" y1="108" x2="44" y2="73" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#E2E8F0"/><stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="p1-bd" x1="76" y1="82" x2="60" y2="73" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#64748B"/><stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+            <linearGradient id="p1-l" x1="12" y1="60" x2="47" y2="44" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="p1-ld" x1="38" y1="76" x2="47" y2="60" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#64748B"/><stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+          </defs>
+          <path d="M60 12 L76 38 L68 47 L60 47 Z" fill="url(#p1-t)"/>
+          <path d="M60 12 L60 47 L52 47 L44 38 Z" fill="url(#p1-td)"/>
+          <path d="M108 60 L82 76 L73 68 L73 60 Z" fill="url(#p1-r)"/>
+          <path d="M108 60 L73 60 L73 52 L82 44 Z" fill="url(#p1-rd)"/>
+          <path d="M60 108 L44 82 L52 73 L60 73 Z" fill="url(#p1-b)"/>
+          <path d="M60 108 L60 73 L68 73 L76 82 Z" fill="url(#p1-bd)"/>
+          <path d="M12 60 L38 44 L47 52 L47 60 Z" fill="url(#p1-l)"/>
+          <path d="M12 60 L47 60 L47 68 L38 76 Z" fill="url(#p1-ld)"/>
+          <path d="M60 54 L66 60 L60 66 L54 60 Z" fill="#FFFFFF"/>
+          <line x1="32" y1="32" x2="38" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <line x1="88" y1="32" x2="82" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <line x1="32" y1="88" x2="38" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+          <line x1="88" y1="88" x2="82" y2="82" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="concept-info">
+        <div>
+          <div class="concept-meta">
+            <span class="concept-num">CONCEPT 01</span>
+            <h2 class="concept-title">星枢切面 · The Astral Prism</h2>
+          </div>
+          <p class="concept-desc">采用 45° 精密工业倒角切面，四组双折面冷钛羽翼向心环抱，中心自然悬浮一颗高纯度菱形星核。外围融入微米级天文定向刻度，完美传达南十字星航向标与现代高精密计算工具的理性高级感。</p>
+        </div>
+        <div class="application-matrix">
+          <div class="app-item">
+            <span class="label">App Icon 磁贴</span>
+            <div class="tile-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-01"/></svg>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">字标组合 Lockup</span>
+            <div class="lockup-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-01"/></svg>
+              <span class="wordmark">CRUX</span>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">小尺寸托盘/Favicon</span>
+            <div class="small-sizes">
+              <div class="icon-16"><svg viewBox="0 0 120 120"><use href="#svg-01"/></svg></div>
+              <div class="icon-24"><svg viewBox="0 0 120 120"><use href="#svg-01"/></svg></div>
+              <div class="icon-32"><svg viewBox="0 0 120 120"><use href="#svg-01"/></svg></div>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">气质特征</span>
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">精密 · 冷峻 · 理性航标</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept 02 -->
+    <div class="concept-card">
+      <div class="concept-stage">
+        <button class="copy-btn" onclick="copySvg('svg-02')">复制 SVG</button>
+        <svg id="svg-02" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="p2-g1" x1="20" y1="20" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#38BDF8"/><stop offset="50%" stop-color="#F8FAFC"/><stop offset="100%" stop-color="#818CF8"/>
+            </linearGradient>
+            <linearGradient id="p2-g2" x1="100" y1="20" x2="20" y2="100" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#F8FAFC"/><stop offset="60%" stop-color="#94A3B8"/><stop offset="100%" stop-color="#475569"/>
+            </linearGradient>
+          </defs>
+          <path d="M26 26 C42 10, 78 10, 94 26 C110 42, 110 78, 94 94 C78 110, 42 110, 26 94 C10 78, 10 42, 26 26 Z" stroke="url(#p2-g2)" stroke-width="7" stroke-dasharray="115 16 115 16" stroke-dashoffset="8" stroke-linecap="round"/>
+          <path d="M60 14 C68 28, 76 44, 76 60 C64 60, 48 52, 44 38 C40 24, 52 14, 60 14 Z" fill="url(#p2-g1)"/>
+          <path d="M106 60 C92 68, 76 76, 60 76 C60 64, 68 48, 82 44 C96 40, 106 52, 106 60 Z" fill="url(#p2-g1)"/>
+          <path d="M60 106 C52 92, 44 76, 44 60 C56 60, 72 68, 76 82 C80 96, 68 106, 60 106 Z" fill="url(#p2-g1)"/>
+          <path d="M14 60 C28 52, 44 44, 60 44 C60 56, 52 72, 38 76 C24 80, 14 68, 14 60 Z" fill="url(#p2-g1)"/>
+          <circle cx="60" cy="60" r="3.5" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <div class="concept-info">
+        <div>
+          <div class="concept-meta">
+            <span class="concept-num">CONCEPT 02</span>
+            <h2 class="concept-title">莫比乌斯枢纽 · The Nexus Mobius</h2>
+          </div>
+          <p class="concept-desc">两条平滑无尽的三维拓扑曲面连续咬合交叠。隐喻人类工程师决策与 AI 智能体执行两条看似平行的轨道，在 Crux 枢纽处形成完美穿插与无限自洽的连续流动闭环，极具现代拓扑数学的高雅韵味。</p>
+        </div>
+        <div class="application-matrix">
+          <div class="app-item">
+            <span class="label">App Icon 磁贴</span>
+            <div class="tile-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-02"/></svg>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">字标组合 Lockup</span>
+            <div class="lockup-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-02"/></svg>
+              <span class="wordmark">CRUX</span>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">小尺寸托盘/Favicon</span>
+            <div class="small-sizes">
+              <div class="icon-16"><svg viewBox="0 0 120 120"><use href="#svg-02"/></svg></div>
+              <div class="icon-24"><svg viewBox="0 0 120 120"><use href="#svg-02"/></svg></div>
+              <div class="icon-32"><svg viewBox="0 0 120 120"><use href="#svg-02"/></svg></div>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">气质特征</span>
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">流体 · 共生 · 拓扑美学</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept 03 -->
+    <div class="concept-card">
+      <div class="concept-stage">
+        <button class="copy-btn" onclick="copySvg('svg-03')">复制 SVG</button>
+        <svg id="svg-03" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="p3-g" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="50%" stop-color="#E2E8F0"/><stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="p3-star" x1="50" y1="50" x2="88" y2="70" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#38BDF8"/><stop offset="100%" stop-color="#818CF8"/>
+            </linearGradient>
+          </defs>
+          <path d="M86 32 C78 22, 68 18, 56 18 C33 18, 16 37, 16 60 C16 83, 33 102, 56 102 C68 102, 78 98, 86 88 L76 77 C71 83, 64 87, 56 87 C41 87, 31 75, 31 60 C31 45, 41 33, 56 33 C64 33, 71 37, 76 43 Z" fill="url(#p3-g)"/>
+          <path d="M68 40 L71 55 L86 58 L71 61 L68 76 L65 61 L50 58 L65 55 Z" fill="url(#p3-star)"/>
+          <circle cx="68" cy="58" r="2.5" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <div class="concept-info">
+        <div>
+          <div class="concept-meta">
+            <span class="concept-num">CONCEPT 03</span>
+            <h2 class="concept-title">引力字标 · Monogram C-Crux</h2>
+          </div>
+          <p class="concept-desc">将品牌首字母「C」的宏阔张力与中心定向十字星（Crux Star）融为一体。左侧呈现包容宏大的几何圆弧，右侧开口中心锚定核心聚焦点。在超微小视距（16px~24px）下具备极高的品牌穿透力与第一眼辨识度。</p>
+        </div>
+        <div class="application-matrix">
+          <div class="app-item">
+            <span class="label">App Icon 磁贴</span>
+            <div class="tile-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-03"/></svg>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">字标组合 Lockup</span>
+            <div class="lockup-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-03"/></svg>
+              <span class="wordmark">CRUX</span>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">小尺寸托盘/Favicon</span>
+            <div class="small-sizes">
+              <div class="icon-16"><svg viewBox="0 0 120 120"><use href="#svg-03"/></svg></div>
+              <div class="icon-24"><svg viewBox="0 0 120 120"><use href="#svg-03"/></svg></div>
+              <div class="icon-32"><svg viewBox="0 0 120 120"><use href="#svg-03"/></svg></div>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">气质特征</span>
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">字标 · 极简 · 穿透力强</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept 04 -->
+    <div class="concept-card">
+      <div class="concept-stage">
+        <button class="copy-btn" onclick="copySvg('svg-04')">复制 SVG</button>
+        <svg id="svg-04" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="p4-tl" x1="20" y1="20" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#CBD5E1"/><stop offset="100%" stop-color="#64748B"/>
+            </linearGradient>
+            <linearGradient id="p4-tr" x1="100" y1="20" x2="64" y2="56" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#F1F5F9"/><stop offset="60%" stop-color="#94A3B8"/><stop offset="100%" stop-color="#475569"/>
+            </linearGradient>
+            <linearGradient id="p4-br" x1="100" y1="100" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#CBD5E1"/><stop offset="60%" stop-color="#64748B"/><stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+            <linearGradient id="p4-bl" x1="20" y1="100" x2="56" y2="64" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#E2E8F0"/><stop offset="60%" stop-color="#94A3B8"/><stop offset="100%" stop-color="#475569"/>
+            </linearGradient>
+          </defs>
+          <path d="M30 18 H54 C54 39, 39 54, 18 54 V30 C18 23.4, 23.4 18, 30 18 Z" fill="url(#p4-tl)"/>
+          <path d="M66 54 C87 54, 102 39, 102 18 H78 C71.4 18, 66 23.4, 66 30 V54 Z" fill="url(#p4-tr)"/>
+          <path d="M90 102 H66 V78 C66 71.4, 71.4 66, 78 66 H102 C102 87, 87 102, 66 102 Z" fill="url(#p4-br)"/>
+          <path d="M54 66 V90 C54 96.6, 48.6 102, 42 102 H18 C18 81, 33 66, 54 66 Z" fill="url(#p4-bl)"/>
+          <circle cx="60" cy="60" r="3.2" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <div class="concept-info">
+        <div>
+          <div class="concept-meta">
+            <span class="concept-num">CONCEPT 04</span>
+            <h2 class="concept-title">量子晶格 · The Trellis Constellation</h2>
+          </div>
+          <p class="concept-desc">致敬底层框架 Trellis（棚架/晶格）与 Crux 的升维跃迁。运用国际主义最高阶的「负空间 (Negative Space)」雕刻技法：四个严密守序的模块化方圆，向心留白出一颗极度璀璨的南十字星。外显秩序，内生星辰。</p>
+        </div>
+        <div class="application-matrix">
+          <div class="app-item">
+            <span class="label">App Icon 磁贴</span>
+            <div class="tile-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-04"/></svg>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">字标组合 Lockup</span>
+            <div class="lockup-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-04"/></svg>
+              <span class="wordmark">CRUX</span>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">小尺寸托盘/Favicon</span>
+            <div class="small-sizes">
+              <div class="icon-16"><svg viewBox="0 0 120 120"><use href="#svg-04"/></svg></div>
+              <div class="icon-24"><svg viewBox="0 0 120 120"><use href="#svg-04"/></svg></div>
+              <div class="icon-32"><svg viewBox="0 0 120 120"><use href="#svg-04"/></svg></div>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">气质特征</span>
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">负空间 · 晶格秩序 · 纯粹</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept 05 -->
+    <div class="concept-card">
+      <div class="concept-stage">
+        <button class="copy-btn" onclick="copySvg('svg-05')">复制 SVG</button>
+        <svg id="svg-05" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="p5-0" x1="60" y1="14" x2="82" y2="56" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="50%" stop-color="#93C5FD"/><stop offset="100%" stop-color="#3B82F6"/>
+            </linearGradient>
+            <linearGradient id="p5-90" x1="106" y1="60" x2="64" y2="82" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#E2E8F0"/><stop offset="50%" stop-color="#60A5FA"/><stop offset="100%" stop-color="#2563EB"/>
+            </linearGradient>
+            <linearGradient id="p5-180" x1="60" y1="106" x2="38" y2="64" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#CBD5E1"/><stop offset="50%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#1D4ED8"/>
+            </linearGradient>
+            <linearGradient id="p5-270" x1="14" y1="60" x2="56" y2="38" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#F8FAFC"/><stop offset="50%" stop-color="#93C5FD"/><stop offset="100%" stop-color="#3B82F6"/>
+            </linearGradient>
+          </defs>
+          <g transform="translate(60 60)">
+            <path d="M 0 -48 C 14 -48, 26 -38, 26 -24 C 26 -10, 14 0, 0 -3 C 6 -10, 8 -22, 6 -32 C 4 -40, 2 -45, 0 -48 Z" fill="url(#p5-0)"/>
+            <path d="M 48 0 C 48 14, 38 26, 24 26 C 10 26, 0 14, 3 0 C 10 6, 22 8, 32 6 C 40 4, 45 2, 48 0 Z" fill="url(#p5-90)"/>
+            <path d="M 0 48 C -14 48, -26 38, -26 24 C -26 10, -14 0, 0 3 C -6 10, -8 22, -6 32 C -4 40, -2 45, 0 48 Z" fill="url(#p5-180)"/>
+            <path d="M -48 0 C -48 -14, -38 -26, -24 -26 C -10 -26, 0 -14, -3 0 C -10 -6, -22 -8, -32 -6 C -40 -4, -45 -2, -48 0 Z" fill="url(#p5-270)"/>
+            <circle cx="0" cy="0" r="3.2" fill="#FFFFFF"/>
+          </g>
+        </svg>
+      </div>
+      <div class="concept-info">
+        <div>
+          <div class="concept-meta">
+            <span class="concept-num">CONCEPT 05</span>
+            <h2 class="concept-title">引力聚核 · The Singularity Core</h2>
+          </div>
+          <p class="concept-desc">4 个具备空气动力学流线的锋利叶片，以斐波那契螺旋力场高速收敛至中心奇点。象征无论输入多少海量混乱的代码库、需求单与上下文，在 Crux 的统一调度下，均能以势不可挡的引力收拢为确定性的任务产出。</p>
+        </div>
+        <div class="application-matrix">
+          <div class="app-item">
+            <span class="label">App Icon 磁贴</span>
+            <div class="tile-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-05"/></svg>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">字标组合 Lockup</span>
+            <div class="lockup-preview">
+              <svg viewBox="0 0 120 120"><use href="#svg-05"/></svg>
+              <span class="wordmark">CRUX</span>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">小尺寸托盘/Favicon</span>
+            <div class="small-sizes">
+              <div class="icon-16"><svg viewBox="0 0 120 120"><use href="#svg-05"/></svg></div>
+              <div class="icon-24"><svg viewBox="0 0 120 120"><use href="#svg-05"/></svg></div>
+              <div class="icon-32"><svg viewBox="0 0 120 120"><use href="#svg-05"/></svg></div>
+            </div>
+          </div>
+          <div class="app-item">
+            <span class="label">气质特征</span>
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">动势 · 聚能 · 极速收敛</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    CRUX Brand System Concepts &copy; 2026 · Designed for Trellis Panel Ecosystem · Linear &amp; Apple Design Standards
+  </footer>
+
+</div>
+
+<script>
+  function toggleTheme() {
+    const isLight = document.body.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      document.body.removeAttribute('data-theme');
+      document.getElementById('theme-text').textContent = '切换明色主题';
+    } else {
+      document.body.setAttribute('data-theme', 'light');
+      document.getElementById('theme-text').textContent = '切换暗色主题';
+    }
+  }
+
+  function copySvg(svgId) {
+    const svgEl = document.getElementById(svgId);
+    if (!svgEl) return;
+    const serializer = new XMLSerializer();
+    const str = serializer.serializeToString(svgEl);
+    navigator.clipboard.writeText(str).then(() => {
+      alert('SVG 代码已复制到剪贴板！');
+    }).catch(() => {
+      prompt('按 Ctrl+C 复制 SVG 代码：', str);
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="268.16667" height="79.83333" viewBox="0 0 268.16666666666663 79.83333333333334" fill="none" color="#242725" role="img" aria-labelledby="title desc"><title id="title">Crux — Context</title><desc id="desc">把材料和工作依据约束为一个可用上下文，保留人的操作与判断入口。</desc><g transform="translate(-0.833333 -0.833333) "><g transform="translate(0.000000 0.000000) scale(2.55)"><g fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+<path d="M23 6H11a5 5 0 0 0-5 5v10a5 5 0 0 0 5 5h7"/>
+<path d="M15 26V16h8v5"/>
+</g></g><g transform="translate(93.000000 18.000000) "><g fill="currentColor">
+<path d="M33 8c-4-5-9-7-15-7C7 1 0 9 0 22s7 21 18 21c6 0 11-2 15-7l-5-5c-3 3-6 5-10 5-7 0-11-5-11-14S11 8 18 8c4 0 7 2 10 5l5-5Z"/>
+<path d="M45 42V2h7v7c4-5 8-8 15-8h4v8h-4c-10 0-15 6-15 16v17h-7Z"/>
+<path d="M83 2h7v23c0 8 3 11 9 11 7 0 11-4 11-13V2h7v40h-7v-6c-3 5-8 7-13 7-10 0-14-6-14-17V2Z"/>
+<path d="M130 2h9l27 40h-9L130 2ZM157 2h9l-27 40h-9l27-40Z"/>
+</g></g></g></svg>

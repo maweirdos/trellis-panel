@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" fill="none">
+  <title>Crux character lockups</title>
+  <desc>Three distinctive Crux icon and lowercase wordmark directions.</desc>
+  <rect width="1200" height="720" fill="#111216"/>
+  <text x="64" y="70" fill="#F5F4F0" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="600" letter-spacing="2">CRUX / CHARACTER LOCKUPS</text>
+  <text x="64" y="106" fill="#9D9BA1" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17">A complete silhouette first, then a lowercase wordmark.</text>
+
+  <g transform="translate(64 160)">
+    <rect width="1072" height="140" rx="24" fill="#F7F7F6"/>
+    <text x="36" y="40" fill="#4B74FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">01 / FOUR-WING KITE</text>
+    <text x="36" y="66" fill="#6D6B72" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">四股工作流进入共享核心，再向结果飞行</text>
+    <g transform="translate(420 37) scale(1.15)">
+      <path fill="#4B74FF" fill-rule="evenodd" d="M37 8c6 0 12 3 16 8l7 9 7-9c4-5 10-8 16-8l-4 17 10 3c7 2 13 6 18 12l-17 2 7 16-20-7-7 18-10-12-10 12-7-18-20 7 7-16-17-2c5-6 11-10 18-12l10-3-4-17ZM60 29l12 7-12 7-12-7 12-7Z"/>
+      <path d="M60 45v17" stroke="#4B74FF" stroke-width="5" stroke-linecap="round"/>
+      <text x="106" y="50" fill="#4B74FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+    </g>
+  </g>
+
+  <g transform="translate(64 330)">
+    <rect width="1072" height="140" rx="24" fill="#F7F7F6"/>
+    <text x="36" y="40" fill="#5B5BF7" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">02 / INTERSECTION KNOT</text>
+    <text x="36" y="66" fill="#6D6B72" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">不同角色交错，形成一个可以继续协作的结</text>
+    <g transform="translate(420 37) scale(1.15)">
+      <path fill="#5B5BF7" fill-rule="evenodd" d="M10 28c8-12 22-15 34-7l16 11 16-11c12-8 26-5 34 7l-10 7c-4-6-11-7-17-3L69 36l14 10c6 4 13 3 17-3l10 7c-8 12-22 15-34 7L60 46 44 57c-12 8-26 5-34-7l10-7c4 6 11 7 17 3l14-10-14-10c-6-4-13-3-17 3l-10-7ZM60 28l11 8-11 8-11-8 11-8Z"/>
+      <circle cx="60" cy="36" r="3.5" fill="#F7F7F6"/>
+      <text x="108" y="50" fill="#5B5BF7" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+    </g>
+  </g>
+
+  <g transform="translate(64 500)">
+    <rect width="1072" height="140" rx="24" fill="#F7F7F6"/>
+    <text x="36" y="40" fill="#2869E8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">03 / FLIGHT CORE</text>
+    <text x="36" y="66" fill="#6D6B72" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">多方输入被收束，形成一个向前的共同方向</text>
+    <g transform="translate(420 37) scale(1.15)">
+      <path fill="#2869E8" fill-rule="evenodd" d="M6 36c11-15 26-24 42-23l12 13 12-13c16-1 31 8 42 23-13-1-23 4-30 16l-12-6-12 16-12-16-12 6C29 40 19 35 6 36ZM60 29l8 7-8 7-8-7 8-7Z"/>
+      <path d="M60 46v13" stroke="#2869E8" stroke-width="5" stroke-linecap="round"/>
+      <text x="116" y="50" fill="#2869E8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+    </g>
+  </g>
+</svg>
+

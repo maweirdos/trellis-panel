@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none" color="#1B1D21">
+  <title>Crux Crossed C</title>
+  <desc>A custom C crosses at the decisive point where work becomes shared.</desc>
+  <g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 17c-6-6-14-10-23-10C13 7 2 20 2 36s11 29 27 29c9 0 17-3 23-10" stroke-width="8"/>
+    <path d="m37 25 20 22M57 25 37 47" stroke-width="8"/>
+  </g>
+  <circle cx="47" cy="36" r="4" fill="currentColor"/>
+  <text x="88" y="50" fill="currentColor" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="650" letter-spacing="-1.8">crux</text>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 980" fill="none">
+  <title>Crux logo SVG variants</title>
+  <desc>Six monochrome Crux logo directions for selection.</desc>
+  <rect width="1440" height="980" fill="#EEECE7"/>
+  <text x="80" y="82" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="600" letter-spacing="3">CRUX / SVG DIRECTIONS</text>
+  <text x="80" y="120" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18">Choose one direction first; raster exports follow after approval.</text>
+
+  <g transform="translate(80 170)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">01 / APERTURE</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">开口 · 聚焦</text>
+    <g transform="translate(145 96) scale(0.92)" fill="none">
+      <path d="M22 42V22h20M98 42V22H78M22 78v20h20M98 78v20H78" stroke="#1B1D21" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M60 26v20M60 74v20M26 60h20M74 60h20" stroke="#1B1D21" stroke-width="9" stroke-linecap="round"/>
+      <path d="m60 45 15 15-15 15-15-15 15-15Z" fill="#1B1D21"/>
+    </g>
+  </g>
+
+  <g transform="translate(520 170)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">02 / ORBIT</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">轨道 · 轴心</text>
+    <g transform="translate(145 96) scale(0.92)">
+      <path d="M60 18a42 42 0 1 1 0 84 42 42 0 0 1 0-84Z" stroke="#1B1D21" stroke-width="8"/>
+      <path d="M60 18v20M102 60H82M60 102V82M18 60h20" stroke="#1B1D21" stroke-width="8" stroke-linecap="round"/>
+      <path d="m60 45 15 15-15 15-15-15 15-15Z" fill="#1B1D21"/>
+    </g>
+  </g>
+
+  <g transform="translate(960 170)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">03 / MONOGRAM C</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">字母 · 核心</text>
+    <g transform="translate(145 96) scale(0.92)">
+      <path d="M91 37c-7.3-10.6-19.4-17-31-17-22.1 0-40 17.9-40 40s17.9 40 40 40c11.6 0 23.7-6.4 31-17" stroke="#1B1D21" stroke-width="10" stroke-linecap="round"/>
+      <path d="m60 42 18 18-18 18-18-18 18-18Z" fill="#1B1D21"/>
+    </g>
+  </g>
+
+  <g transform="translate(80 560)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">04 / FOLDED KNOT</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">折叠 · 连接</text>
+    <g transform="translate(145 96) scale(0.92)" fill="#1B1D21" fill-rule="evenodd">
+      <path d="M22 18h26l12 12 12-12h26v26L86 56l12 12v26H72L60 82 48 94H22V68l12-12-12-12V18Zm38 27 15 15-15 15-15-15 15-15Z"/>
+    </g>
+  </g>
+
+  <g transform="translate(520 560)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">05 / DIAMOND GRID</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">菱形 · 对齐</text>
+    <g transform="translate(145 96) scale(0.92)">
+      <path d="m60 15 45 45-45 45-45-45 45-45Z" stroke="#1B1D21" stroke-width="8" stroke-linejoin="round"/>
+      <path d="m60 35 25 25-25 25-25-25 25-25Z" stroke="#1B1D21" stroke-width="8" stroke-linejoin="round"/>
+      <path d="m60 49 11 11-11 11-11-11 11-11Z" fill="#1B1D21"/>
+    </g>
+  </g>
+
+  <g transform="translate(960 560)">
+    <rect width="400" height="330" rx="18" fill="#FFF"/>
+    <text x="32" y="46" fill="#1B1D21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">06 / CORNER POINT</text>
+    <text x="32" y="72" fill="#69655E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">建筑 · 定点</text>
+    <g transform="translate(145 96) scale(0.92)">
+      <path d="M24 45V24h21M96 45V24H75M24 75v21h21M96 75v21H75" stroke="#1B1D21" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M60 39v42M39 60h42" stroke="#1B1D21" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="60" cy="60" r="10" fill="#1B1D21"/>
+    </g>
+  </g>
+</svg>

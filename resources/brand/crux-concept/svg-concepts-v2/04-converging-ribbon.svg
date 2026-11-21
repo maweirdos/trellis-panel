@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Converging Ribbon</title>
+  <desc>Four routes fold into a single center and leave as a shared outcome.</desc>
+  <path fill="currentColor" fill-rule="evenodd" d="M18 20h28l14 14 14-14h28v28L88 60l14 14v28H74L60 88 46 102H18V74l14-14-14-14V20Zm42 27 13 13-13 13-13-13 13-13Z"/>
+  <path d="M60 15v13M60 92v13M15 60h13M92 60h13" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+</svg>

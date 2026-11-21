@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100.00" height="100.00" viewBox="0 0 100.00 100.00" fill="none" color="#514C46" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Crux — DIALOGUE symbol</title>
+  <desc id="logo-desc">相向的引号，让人的想法与 Agent 的回应相遇</desc>
+<path fill="currentColor" d="M12 37C12 20 25 9 43 9h9v21h-9c-7 0-11 4-11 10v7H12V37ZM12 47h20L22 65H12V47Z"/><path fill="currentColor" transform="rotate(180 50 50)" d="M12 37C12 20 25 9 43 9h9v21h-9c-7 0-11 4-11 10v7H12V37ZM12 47h20L22 65H12V47Z"/>
+</svg>

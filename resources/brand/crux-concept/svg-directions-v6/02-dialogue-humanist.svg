@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="285.44" height="88.00" viewBox="0 0 285.44 88.00" fill="none" color="#514C46" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Crux — DIALOGUE</title>
+  <desc id="logo-desc">相向的引号，让人的想法与 Agent 的回应相遇</desc>
+<g transform="translate(8 8)"><g transform="translate(0 0.0000) scale(0.72000)"><path fill="currentColor" d="M12 37C12 20 25 9 43 9h9v21h-9c-7 0-11 4-11 10v7H12V37ZM12 47h20L22 65H12V47Z"/><path fill="currentColor" transform="rotate(180 50 50)" d="M12 37C12 20 25 9 43 9h9v21h-9c-7 0-11 4-11 10v7H12V37ZM12 47h20L22 65H12V47Z"/></g><g transform="translate(94.0000 11.4900) scale(0.86)">
+      <g fill="none" stroke="currentColor" stroke-width="8.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M39 9C35 3 29 0 22 0 9 0 1 10 1 24s8 24 21 24c7 0 13-3 17-9"/>
+        <path d="M60 48V2m0 17C62 8 69 1 81 1"/>
+        <path d="M101 2v28c0 12 6 18 17 18s17-6 17-18V2"/>
+        <path d="M157 2c8 10 11 18 19 23 8 5 12 12 19 23m0-46c-7 10-11 18-19 23-8 5-11 13-19 23"/>
+      </g>
+    </g></g>
+</svg>

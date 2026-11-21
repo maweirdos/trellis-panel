@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux - 03 Monogram C-Crux</title>
+  <desc>Harmonic synthesis of lettermark C and the orienting Southern Cross star.</desc>
+  <defs>
+    <linearGradient id="mono-glow" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="star-accent" x1="50" y1="50" x2="88" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sculpted Monogram C Arch -->
+  <path d="M86 32 C78 22, 68 18, 56 18 C33 18, 16 37, 16 60 C16 83, 33 102, 56 102 C68 102, 78 98, 86 88 L76 77 C71 83, 64 87, 56 87 C41 87, 31 75, 31 60 C31 45, 41 33, 56 33 C64 33, 71 37, 76 43 Z" 
+        fill="url(#mono-glow)"/>
+
+  <!-- The Crux Star Anchor (Centered at the Aperture Core) -->
+  <!-- Four-Pointed Precision Star -->
+  <path d="M68 40 L71 55 L86 58 L71 61 L68 76 L65 61 L50 58 L65 55 Z" 
+        fill="url(#star-accent)"/>
+
+  <!-- Delicate Focus Rings (Negative Space Guiding Dots) -->
+  <circle cx="68" cy="58" r="2.5" fill="#FFFFFF"/>
+</svg>

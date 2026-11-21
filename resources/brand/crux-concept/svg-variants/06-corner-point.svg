@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <title>Crux Corner Point</title>
+  <desc>Four architectural corners frame the point where choices meet.</desc>
+  <path d="M24 45V24h21M96 45V24H75M24 75v21h21M96 75v21H75" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M60 39v42M39 60h42" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="60" cy="60" r="10" fill="currentColor"/>
+</svg>
