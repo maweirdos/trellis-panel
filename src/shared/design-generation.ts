@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const DESIGN_GENERATION_VERSION = 1
 export const DESIGN_GENERATION_DIRECTORY = '.tpanel-design'
+export const DESIGN_GENERATION_INPUT_DIRECTORY = '.tpanel-design-input'
 export const DESIGN_GENERATION_MAX_PAGES = 8
 export const DESIGN_GENERATION_PAGE_MAX_BYTES = 128 * 1024
 export const DESIGN_GENERATION_TOTAL_MAX_BYTES = 512 * 1024
@@ -17,6 +18,9 @@ export const DESIGN_PLACEHOLDER_BASE_REVISION = '0'.repeat(64)
 export const designGenerationPageIdSchema = z.string().max(DESIGN_GENERATION_PAGE_ID_MAX_LENGTH).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
   .refine(value => !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(value), 'Reserved page ID')
 export const designGenerationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/)
+export const designGenerationSourcePathSchema = z.string().max(256)
+  .regex(/^\.tpanel-design-input\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.html$/)
+  .refine(value => !/\/(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\.html$/i.test(value), 'Reserved source filename')
 const uuidSchema = z.string().uuid()
 const titleSchema = z.string().trim().min(1).max(200)
 export const designGenerationDimensionSchema = z.number().int().min(DESIGN_GENERATION_DIMENSION_MIN).max(DESIGN_GENERATION_DIMENSION_MAX)
@@ -88,6 +92,7 @@ export function readDesignGenerationOutput(value: unknown): DesignGenerationOutp
 
 /** Tool discovery for ordinary Pi sessions; full design context is supplied by the host on explicit design actions. */
 export const DESIGN_GENERATION_TOOL_INSTRUCTIONS = `When the user requests an HTML interface design or prototype on the design canvas, use design_open to deliver the actual complete pages. This tool writes a new immutable revision and returns a manifest; prose, a screenshot or preview_web alone does not create a design document. Other interactive static deliverables may still use the normal file tools and preview_web.
+Prefer writing each complete page with the permission-gated file tools to .tpanel-design-input/<stable-page-id>.html, then call design_open with sourcePath and html:null for each page. Supply exactly one nonempty source. For a new design set operation:"create", documentId:null and baseRevision:null; never invent an identity or revision. For an edit set operation:"edit" and reuse the exact supplied identities. This keeps registration arguments short and avoids truncating a large HTML tool call. Start with a small complete working page and use bounded edits if more content is needed. Never repeat an oversized inline call after an output-limit error; switch to sourcePath and reduce the page size. Missing API documents must be requested or clearly identified as missing; do not claim to have read them.
 New designs omit documentId and baseRevision. When the application supplies an existing design, reuse its exact documentId, baseRevision and stable page IDs; never identify a design by its title or edit its saved revision files in place. Use at most 8 self-contained HTML pages per call, at most 128 KiB UTF-8 per page and 512 KiB combined. Keep CSS, scripts and assets inline; no CDN, remote resources, local dependencies or privileged desktop APIs.
 The canvas does not support iframe, object or embed elements, including data sources and inline srcdoc. Compose that content directly into the page instead.
 Cross-page navigation uses data-design-page="target-page-id-or-unique-title" on semantic links or buttons, or a correct relative link to <page-id>.html. Assign stable safe page IDs such as home and article when creating linked pages; preserve those IDs in every later revision. Use history.back() for prototype Back controls. Only link to pages in the same design.

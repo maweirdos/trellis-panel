@@ -13,8 +13,8 @@ it does not create an ACP adapter, a second model loop or a team conversation.
 The public Pi extension registers:
 
 ```ts
-design_open({ title, pages, documentId?, baseRevision? })
-// pages: { id?, title, html, width, height }[]
+design_open({ title, operation?: 'create' | 'edit', pages, documentId?, baseRevision? })
+// pages: { id?, title, html?: string | null, sourcePath?: string | null, width, height }[]
 // result.details.designOutput:
 // { version: 1, documentId, revisionId, manifestPath, title }
 ```
@@ -51,6 +51,22 @@ authorization. Every page has exactly one frame with `id`, `pageId`, `x`, `y`,
   device names are rejected. Titles are at most200 characters.
 - A result has1–8 pages, at most128 KiB UTF-8 per page and512 KiB combined.
   Dimensions are integers240–4096. Validate every page before writing any page.
+- Each page has exactly one nonempty source: complete inline HTML or
+  `.tpanel-design-input/<safe-page-id>.html`. Source files require bounded
+  regular-file reads, one link, stable physical identity, valid UTF-8 and
+  self-contained HTML. Recheck read and output paths after permission. Reject
+  absolute/UNC paths, traversal, reserved names, redirection and oversized sources
+  before creating a revision. Null or whitespace-only inline content is absent.
+- Strict-provider create calls use `operation:'create'`, `documentId:null`,
+  `baseRevision:null`, and `html:null` for file input. Create never reuses a
+  non-placeholder document ID; provider-filled revisions cannot authorize edits.
+  Explicit edit requires both exact non-placeholder application identities.
+  Legacy inline calls and the paired all-zero create placeholder remain compatible.
+- Observe synthetic truncated-tool results through public session events, which
+  can precede extension turn boundaries. Correlate with an assistant length stop,
+  permit one smaller-input/file-registration repair, then abort through the public
+  session API and settle as failed. User cancellation remains cancelled. Two
+  identical design validation failures also terminate without a success receipt.
 - The tool creates an immutable `.tpanel-design/<revisionId>/` directory in the
   admitted physical conversation root. It writes exclusive page files and
   publishes `manifest.json` last. Fsync, physical identity and content digest
@@ -83,6 +99,13 @@ authorization. Every page has exactly one frame with `id`, `pageId`, `x`, `y`,
   conversation owner or completed sync. Missing source proof keeps the verified
   snapshot visible as read-only with an error; `get` loads the full document only
   when the user opens the canvas.
+- Coalesce concurrent summary and sync reads for the exact conversation owner.
+  Sync follows initial loaded history, completed design receipts and explicit
+  refresh; transient session-status changes alone do not rescan history. Retain
+  verified designs on read failure. “核对设计” only reads/imports original output,
+  never resends or regenerates; disable it during the shared read and report the
+  actual result. Localize queue-full as temporary read pressure without claiming
+  the design or conversation was lost.
 - Library synchronization reports `incomplete: true` when a relevant conversation
   or retained document cannot be checked. Keep verified items visible and offer a
   retry; a failed scan must not appear as a successfully empty library.
@@ -173,8 +196,11 @@ packages to the independent Node SDK process.
 | Condition | Required behavior |
 | --- | --- |
 | Invalid page, total size, duplicate ID or declared dependency | reject before generation; no completed design event |
+| Two nonempty sources, linked/changed file or invalid UTF-8 | reject before revision publication |
+| Null fields for create/file input | normalize absent values; register verified file bytes |
+| Repeated length-truncated tool response | one changed-strategy repair, then failed settlement |
 | Tool denied, cancelled, partial write or changed file | retain prior data; no success projection or import |
-| One placeholder identity field, or placeholders for an edit | reject; retain generated source and existing document |
+| Legacy call with one placeholder, or placeholders for an explicit edit | reject; retain generated source and existing document |
 | Original request or native user event temporarily unavailable | preserve the scan for retry; do not invent provenance |
 | Saved conversation summary is readable while history sync is blocked | show the verified card immediately; continue sync in the background |
 | Relevant source scan is incomplete | retain verified library items and show retry; do not report a confirmed empty library |
@@ -217,6 +243,9 @@ owner/source changes fence writes, same-UUID retries reconcile, interrupted
 storage publication can reopen safely, and read-only state can recover. Verify
 old rejected placeholder events against the original request and source, including
 repeat scans, changed source bytes, wrong turns and a genuine edit request.
+Exercise the public SDK loop with synthetic length stops, including truncated
+file writes and nullable create/edit input. Schema-only checks do not prove
+automatic continuation stops. Verify new and restored real-provider delivery.
 
 Exercise real canvas DOM/parent selection, text save, frame movement/resize,
 candidate comparison/adoption, dirty-buffer recovery, theme/density/focus,

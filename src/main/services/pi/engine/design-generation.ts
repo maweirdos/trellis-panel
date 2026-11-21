@@ -7,11 +7,11 @@ import { isAbsolute, join, parse, relative, sep } from 'node:path'
 import { Type } from '@earendil-works/pi-ai'
 import { defineTool, type ExtensionFactory } from '@earendil-works/pi-coding-agent'
 import {
-  DESIGN_GENERATION_DIRECTORY, DESIGN_GENERATION_DIMENSION_MIN, DESIGN_GENERATION_DIMENSION_MAX,
+  DESIGN_GENERATION_DIRECTORY, DESIGN_GENERATION_INPUT_DIRECTORY, DESIGN_GENERATION_DIMENSION_MIN, DESIGN_GENERATION_DIMENSION_MAX,
   DESIGN_GENERATION_MANIFEST_MAX_BYTES, DESIGN_GENERATION_MAX_PAGES, DESIGN_GENERATION_PAGE_ID_MAX_LENGTH,
   DESIGN_GENERATION_PAGE_MAX_BYTES, DESIGN_GENERATION_TOTAL_MAX_BYTES, DESIGN_GENERATION_VERSION,
   DESIGN_PLACEHOLDER_DOCUMENT_ID, DESIGN_PLACEHOLDER_BASE_REVISION,
-  designGenerationInputSchema, designGenerationManifestSchema, designGenerationOutputSchema,
+  designGenerationInputSchema, designGenerationSourcePathSchema, designGenerationManifestSchema, designGenerationOutputSchema,
   type DesignGenerationManifestPage
 } from '../../../../shared/design-generation'
 import { assertDesignHtmlSelfContained } from '../../../../shared/design-html-policy'
@@ -59,7 +59,7 @@ function unchangedFile(before: Stats, after: Stats): boolean {
 }
 
 /** Bounded, identity-checked disk read. Hashes are derived from these bytes, never just from tool arguments. */
-function readWrittenFile(directories: Directory[], file: string, maxBytes: number, expected: Buffer): Buffer {
+function readWrittenFile(directories: Directory[], file: string, maxBytes: number, expected?: Buffer): Buffer {
   for (const directory of directories) assertDirectory(directory)
   const initial = lstatSync(file)
   if (!initial.isFile() || initial.isSymbolicLink() || initial.nlink !== 1 || initial.size < 1 || initial.size > maxBytes) {
@@ -83,7 +83,7 @@ function readWrittenFile(directories: Directory[], file: string, maxBytes: numbe
       throw new Error('design_open output changed while reading')
     }
     const bytes = buffer.subarray(0, length)
-    if (!bytes.equals(expected)) throw new Error('design_open saved bytes differ from the requested content')
+    if (expected && !bytes.equals(expected)) throw new Error('design_open saved bytes differ from the requested content')
     return bytes
   } finally { closeSync(fd) }
 }
@@ -126,28 +126,46 @@ export function designGenerationExtension(root: string): ExtensionFactory {
     description: 'Save complete self-contained HTML pages to a new immutable design revision beside this conversation. Writes at most 8 pages, 128 KiB UTF-8 each and 512 KiB combined. Inline CSS, scripts and assets; no external resources. No iframe, object or embed elements, including data sources and srcdoc; compose their content directly into the page. Assign stable safe page IDs for linked pages. For updates reuse the application-provided documentId, baseRevision and page IDs; send changed pages only. Cross-page controls use data-design-page="page-id-or-unique-title" or relative <page-id>.html links. Returns details.designOutput only after real saved files and a manifest are read and checked. Does not verify browser rendering or adopt an edit candidate.',
     parameters: Type.Object({
       title: Type.String({ minLength: 1, maxLength: 200 }),
+      operation: Type.Optional(Type.Union([Type.Literal('create'), Type.Literal('edit')], { description: 'Use create for a new design and edit only with the exact application-provided identities.' })),
       pages: Type.Array(Type.Object({
         id: Type.Optional(Type.String({ minLength: 1, maxLength: DESIGN_GENERATION_PAGE_ID_MAX_LENGTH, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]*$', description: 'Stable safe page ID; preserve existing IDs on updates. Omit to create a UUID.' })),
         title: Type.String({ minLength: 1, maxLength: 200 }),
-        html: Type.String({ minLength: 1, maxLength: DESIGN_GENERATION_PAGE_MAX_BYTES, description: 'Complete standalone HTML document; all assets inline.' }),
+        html: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: DESIGN_GENERATION_PAGE_MAX_BYTES }), Type.Null()], { description: 'Complete standalone HTML, or null when using sourcePath.' })),
+        sourcePath: Type.Optional(Type.Union([Type.String({ maxLength: 256 }), Type.Null()], { description: 'Preferred: .tpanel-design-input/<page-id>.html previously saved with file tools. Use null for inline HTML.' })),
         width: Type.Integer({ minimum: DESIGN_GENERATION_DIMENSION_MIN, maximum: DESIGN_GENERATION_DIMENSION_MAX }),
         height: Type.Integer({ minimum: DESIGN_GENERATION_DIMENSION_MIN, maximum: DESIGN_GENERATION_DIMENSION_MAX })
       }, { additionalProperties: false }), { minItems: 1, maxItems: DESIGN_GENERATION_MAX_PAGES }),
-      documentId: Type.Optional(Type.String({ format: 'uuid', description: 'Existing document identity supplied by the application; pair with baseRevision.' })),
-      baseRevision: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Exact current content revision supplied by the application; pair with documentId.' }))
+      documentId: Type.Optional(Type.Union([Type.String({ format: 'uuid' }), Type.Null()], { description: 'Null for create; exact application-provided document ID for edit.' })),
+      baseRevision: Type.Optional(Type.Union([Type.String({ pattern: '^[a-f0-9]{64}$' }), Type.Null()], { description: 'Null for create; exact application-provided current revision for edit.' }))
     }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     async execute(toolCallId, params, signal) {
       signal?.throwIfAborted()
+      const creating = params.operation === 'create'
+      if (creating && params.documentId && params.documentId !== DESIGN_PLACEHOLDER_DOCUMENT_ID) throw new Error('Creating a design cannot reuse an existing document identity')
       const placeholderDocument = params.documentId === DESIGN_PLACEHOLDER_DOCUMENT_ID
       const placeholderRevision = params.baseRevision === DESIGN_PLACEHOLDER_BASE_REVISION
-      if (placeholderDocument !== placeholderRevision) {
+      if (params.operation === 'edit' && (!params.documentId || !params.baseRevision || placeholderDocument || placeholderRevision)) throw new Error('Editing requires the exact application-provided document identity and revision')
+      if (!creating && placeholderDocument !== placeholderRevision) {
         throw new Error('design_open received an incomplete placeholder identity. Omit both identity fields for a new design, or provide the exact application-supplied identity for an edit.')
       }
       const placeholderIdentity = placeholderDocument && placeholderRevision
-      const input = designGenerationInputSchema.parse(placeholderIdentity
-        ? { ...params, documentId: undefined, baseRevision: undefined }
-        : params)
+      const resolvedPages = params.pages.map(page => {
+        const hasHtml = typeof page.html === 'string' && Boolean(page.html.trim())
+        const hasPath = typeof page.sourcePath === 'string' && Boolean(page.sourcePath.trim())
+        if (hasHtml === hasPath) throw new Error('Supply exactly one of html or sourcePath per design page')
+        const { sourcePath, ...inline } = page
+        if (!hasPath) return inline
+        const path = designGenerationSourcePathSchema.parse(sourcePath)
+        assertDirectory(owner)
+        const prepared = inspectDirectory(join(root, DESIGN_GENERATION_INPUT_DIRECTORY))
+        const bytes = readWrittenFile([owner, prepared], join(root, path), DESIGN_GENERATION_PAGE_MAX_BYTES)
+        return { ...inline, html: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
+      })
+      const { operation: _operation, ...identity } = params
+      const input = designGenerationInputSchema.parse({ ...identity, pages: resolvedPages,
+        documentId: creating || placeholderIdentity ? undefined : params.documentId ?? undefined,
+        baseRevision: creating || placeholderIdentity ? undefined : params.baseRevision ?? undefined })
       const pages = input.pages.map(page => ({ ...page, id: page.id ?? randomUUID(), bytes: htmlBytes(page.html) }))
       if (pages.reduce((total, page) => total + page.bytes.length, 0) > DESIGN_GENERATION_TOTAL_MAX_BYTES) {
         throw new Error('design_open combined HTML exceeds 512 KiB')
