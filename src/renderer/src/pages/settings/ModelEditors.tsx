@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Eye, EyeOff, Loader2, X, Zap } from 'lucide-react'
-import type { AiApiFormat, ModelItem, ModelProvider } from '../../../../shared/types'
+import type { AiApiFormat, ModelItem, ModelProvider, TrellisApi } from '../../../../shared/types'
 import { errorMessage } from '../../../../shared/errors'
+import { api } from '../../api'
 import { Select } from '../../components/Select'
 import { CopyableError } from '../../components/CopyableError'
-import { Button, Modal, Switch } from '../../my/ui'
+import { Button, Modal, Switch, Tooltip } from '../../my/ui'
 import { modelErrorSummary } from './model-errors'
+import { getProviderVisual } from './model-brands'
 
 export type ModelSecretAction = 'keep' | 'replace' | 'clear'
 
 export function ProviderIdentity({ name, local = false }: { name: string; local?: boolean }): JSX.Element {
-  const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toLocaleUpperCase() || '+'
-  return <span className="model-provider-identity" aria-hidden="true">{local ? <span className="text-my-xs">本地</span> : initial}</span>
+  const visual = getProviderVisual(name, local)
+  return <span className={`model-provider-avatar ${visual.iconBg}`} aria-hidden="true">{visual.icon}</span>
 }
 
-export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTest }: {
+export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTestConnection }: {
   provider: ModelProvider
   isNew: boolean
   onClose(): void
   onSave(draft: ModelProvider, secretAction: ModelSecretAction): Promise<void>
-  onTest(draft: ModelProvider): Promise<{ ok: boolean; error?: string; latencyMs?: number }>
+  onTestConnection?(baseUrl: string): ReturnType<TrellisApi['aiTestConnection']>
 }): JSX.Element {
   const [draft, setDraft] = useState(provider)
   const [secret, setSecret] = useState(provider.apiKeyEncrypted ? '' : provider.apiKey)
@@ -28,7 +30,7 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTest }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string; latencyMs?: number } | null>(null)
+  const [testResult, setTestResult] = useState<Awaited<ReturnType<TrellisApi['aiTestConnection']>> | null>(null)
   const testVersion = useRef(0)
   const mounted = useRef(true)
   useEffect(() => {
@@ -55,10 +57,10 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTest }
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await onTest(connectionDraft())
-      if (mounted.current && testVersion.current === version) setTestResult({ ...result, error: result.ok ? undefined : result.error || '模型目录连接失败，请重试' })
+      const result = await (onTestConnection ?? api.aiTestConnection)(draft.baseUrl)
+      if (mounted.current && testVersion.current === version) setTestResult({ ...result, error: result.ok ? undefined : result.error || '地址连接失败，请重试' })
     } catch (err) {
-      if (mounted.current && testVersion.current === version) setTestResult({ ok: false, error: errorMessage(err) || '模型目录连接失败，请重试' })
+      if (mounted.current && testVersion.current === version) setTestResult({ ok: false, error: errorMessage(err) || '地址连接失败，请重试' })
     } finally {
       if (mounted.current && testVersion.current === version) setTesting(false)
     }
@@ -107,10 +109,10 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTest }
         </div>
         <div className="flex items-center justify-between gap-3 pt-1"><span className="my-item-title">启用供应商</span><Switch checked={draft.enabled} onChange={(enabled) => patch({ enabled })} label={`启用供应商 ${draft.name}`} disabled={saving} /></div>
       </fieldset>
-      {testResult?.ok && <p role="status" className="mt-4 flex items-center gap-2 text-my-sm text-my-success-text"><CheckCircle2 size={14} />模型目录可用{testResult.latencyMs === undefined ? '' : ` · ${testResult.latencyMs}ms`}</p>}
-      {testResult?.ok === false && testResult.error && <div className="mt-4"><CopyableError message={testResult.error} summary={modelErrorSummary(testResult.error, '模型目录连接失败')} /></div>}
+      {testResult?.ok && <p role="status" className="mt-4 flex items-center gap-2 text-my-sm text-my-success-text"><CheckCircle2 size={14} />地址可达{testResult.latencyMs === undefined ? '' : ` · ${testResult.latencyMs}ms`}</p>}
+      {testResult?.ok === false && testResult.error && <div className="mt-4"><CopyableError message={testResult.error} summary={modelErrorSummary(testResult.error, '地址连接失败')} /></div>}
       {error && <div className="mt-4"><CopyableError message={error} summary="保存失败" /></div>}
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-2"><Button variant="neutral" disabled={saving || testing || !draft.baseUrl.trim()} onClick={() => void test()}>{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}{testing ? '测试中…' : '测试连接'}</Button><Button variant="ghost" disabled={saving} onClick={close}>取消</Button><button type="submit" className="my-control my-button-primary" disabled={saving || !draft.name.trim() || !draft.baseUrl.trim()}>{saving && <Loader2 size={14} className="animate-spin" />}{saving ? '保存中…' : '保存'}</button></div>
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2"><Tooltip label="仅检查地址是否响应，不验证凭据或模型目录" wrap><Button variant="neutral" disabled={saving || testing || !draft.baseUrl.trim()} onClick={() => void test()}>{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}{testing ? '测试中…' : testResult?.ok === false ? '重试连接' : '测试连接'}</Button></Tooltip><Button variant="ghost" disabled={saving} onClick={close}>取消</Button><button type="submit" className="my-control my-button-primary" disabled={saving || !draft.name.trim() || !draft.baseUrl.trim()}>{saving && <Loader2 size={14} className="animate-spin" />}{saving ? '保存中…' : '保存'}</button></div>
     </form>
   </Modal>
 }

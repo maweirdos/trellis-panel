@@ -1,5 +1,5 @@
 import { protectedStorage as safeStorage } from '../daemon/protected-storage'
-import type { AiApiFormat, AiChatResult, AiConfig, ChatImage, ChatMessage, ModelFetchResult, ModelItem, ThinkingLevel } from '../../shared/types'
+import type { AiApiFormat, AiChatResult, AiConfig, AiConnectionTestResult, ChatImage, ChatMessage, ModelFetchResult, ModelItem, ModelTestResult, ThinkingLevel } from '../../shared/types'
 import { errorMessage, isAbortError } from '../../shared/errors'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
 import { proxiedFetch } from './proxy'
@@ -10,16 +10,78 @@ import { proxiedFetch } from './proxy'
  */
 
 const TIMEOUT_MS = 120_000
+const CONNECTION_TEST_TIMEOUT_MS = 10_000
+const MODEL_TEST_TIMEOUT_MS = 20_000
+const MODEL_TEST_RESPONSE_CHARS = 1024 * 1024
+const MODEL_TEST_SSE_DATA_FIELDS = 16_384
+const MODEL_TEST_MAX_ATTEMPTS = 3
+const MODEL_TEST_MAX_TOKENS = 1024
+const MODEL_TEST_PROMPT = 'Reply with one word: OK.'
 const KEY_DECRYPT_ERROR = '无法解密已保存的 API 密钥，请重新启动应用后重试或重新保存密钥。'
 const MODEL_ERROR_BODY_BYTES = 16 * 1024
 
+function decodeJsonErrorText(input: string): { text: string; starts: number[]; ends: number[] } {
+  const chars: string[] = []
+  const starts: number[] = []
+  const ends: number[] = []
+  const escapes: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' }
+  for (let i = 0; i < input.length;) {
+    const start = i
+    let char = input[i]
+    if (char === '\\' && i + 1 < input.length) {
+      const next = input[i + 1]
+      const hex = input.slice(i + 2, i + 6)
+      if (next === 'u' && /^[a-f\d]{4}$/i.test(hex)) {
+        char = String.fromCharCode(parseInt(hex, 16))
+        i += 6
+      } else if (Object.prototype.hasOwnProperty.call(escapes, next)) {
+        char = escapes[next]
+        i += 2
+      } else {
+        i++
+      }
+    } else {
+      i++
+    }
+    chars.push(char)
+    starts.push(start)
+    ends.push(i)
+  }
+  return { text: chars.join(''), starts, ends }
+}
+
+function redactJsonEncodedSecrets(message: string, secrets: readonly string[]): string {
+  if (!message.includes('\\')) return message
+  const decoded = decodeJsonErrorText(message)
+  const ranges: Array<{ start: number; end: number }> = []
+  for (const secret of new Set(secrets.filter(Boolean))) {
+    let from = 0
+    for (;;) {
+      const index = decoded.text.indexOf(secret, from)
+      if (index < 0) break
+      ranges.push({ start: decoded.starts[index], end: decoded.ends[index + secret.length - 1] })
+      from = index + secret.length
+    }
+  }
+  ranges.sort((a, b) => a.start - b.start || b.end - a.end)
+  let safe = ''
+  let end = 0
+  for (const range of ranges) {
+    if (range.start < end) { end = Math.max(end, range.end); continue }
+    safe += `${message.slice(end, range.start)}[redacted]`
+    end = range.end
+  }
+  return ranges.length ? safe + message.slice(end) : message
+}
+
 function redactAiError(message: string, secrets: readonly string[]): string {
   let safe = message
-  for (const secret of new Set(secrets.filter(Boolean))) {
+  for (const secret of [...new Set(secrets.filter(Boolean))].sort((a, b) => b.length - a.length)) {
     safe = safe.split(secret).join('[redacted]')
     const escaped = JSON.stringify(secret).slice(1, -1)
     if (escaped !== secret) safe = safe.split(escaped).join('[redacted]')
   }
+  safe = redactJsonEncodedSecrets(safe, secrets)
   return safe
     .replace(/(["'](?:authorization|proxy-authorization|x-api-key|api[-_]?key)["']\s*:\s*)(["'])(?:\\.|(?!\2)[\s\S])*?(?:\2|$)/gi, (_match, prefix: string, quote: string) => `${prefix}${quote}[redacted]${quote}`)
     .replace(/(\b(?:authorization|proxy-authorization|x-api-key|api[-_]?key)[ \t]*[:=][ \t]*)(["'])(?:\\.|(?!\2)[\s\S])*?(?:\2|$)/gi, (_match, prefix: string, quote: string) => `${prefix}${quote}[redacted]${quote}`)
@@ -28,19 +90,11 @@ function redactAiError(message: string, secrets: readonly string[]): string {
     .replace(/\bBearer[ \t]+(?:\[redacted\]|[^\s"',;}\]]+)/gi, 'Bearer [redacted]')
 }
 
-function redactTruncatedCredentialTail(body: string, secrets: readonly string[]): string {
-  let end = body.length
-  for (const secret of secrets.filter(Boolean)) {
-    for (const value of new Set([secret, JSON.stringify(secret).slice(1, -1)])) {
-      for (let length = Math.min(value.length - 1, body.length); length > 0; length--) {
-        if (body.endsWith(value.slice(0, length))) { end = Math.min(end, body.length - length); break }
-      }
-    }
-  }
-  return end < body.length ? `${body.slice(0, end)}[redacted]` : body
-}
-
-async function modelUpstreamError(response: Response, secrets: readonly string[]): Promise<string> {
+async function modelUpstreamError(
+  response: Response,
+  secrets: readonly string[],
+  inspect?: (body: string) => void
+): Promise<string> {
   const reader = response.body?.getReader()
   const decoder = new TextDecoder()
   let body = ''
@@ -62,9 +116,19 @@ async function modelUpstreamError(response: Response, secrets: readonly string[]
     }
   } catch { interrupted = true } finally { reader?.releaseLock() }
   body += decoder.decode()
-  if (truncated || interrupted) body = redactTruncatedCredentialTail(body, secrets)
-  const status = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
-  return [redactAiError(status, secrets), redactAiError(body, secrets), truncated ? '[响应正文超过 16 KiB，已截断]' : '', interrupted ? '[响应正文读取中断]' : ''].filter(Boolean).join('\n')
+  if (truncated || interrupted) {
+    body = ''
+  } else {
+    let readable = true
+    const looksJson = /^\s*[\[{"]/.test(body)
+    if (body && (/json/i.test(response.headers.get('content-type') ?? '') || looksJson)) {
+      try { JSON.parse(body) } catch { readable = false }
+    }
+    if (readable || !looksJson) inspect?.(body)
+    if (!readable) body = '[响应正文格式无效，已隐藏]'
+  }
+  const status = `HTTP ${response.status}${response.statusText ? ` ${redactAiError(response.statusText, secrets)}` : ''}`
+  return [status, redactAiError(body, secrets), truncated ? '[响应正文超过 16 KiB，已截断]' : '', interrupted ? '[响应正文读取中断]' : ''].filter(Boolean).join('\n')
 }
 
 /** 保守收窄：仅当值为普通对象时返回 Record 视图，其余返回 null */
@@ -407,6 +471,425 @@ export async function fetchModelsFromProvider(cfg: {
   }
 }
 
+export async function testConnection(baseUrl: string): Promise<AiConnectionTestResult> {
+  let url = typeof baseUrl === 'string' ? baseUrl.trim().replace(/\s+/g, '') : ''
+  if (!url) return ipcFail(IpcErrorCode.InvalidArg, 'Base URL 不能为空')
+  if (url.endsWith('#')) url = url.slice(0, -1)
+  if (!/^https?:\/\//i.test(url)) {
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(url)) return ipcFail(IpcErrorCode.InvalidArg, 'Base URL 无效')
+    url = `http://${url}`
+  }
+  try {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+      return ipcFail(IpcErrorCode.InvalidArg, 'Base URL 无效')
+    }
+    url = parsed.href
+  } catch {
+    return ipcFail(IpcErrorCode.InvalidArg, 'Base URL 无效')
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CONNECTION_TEST_TIMEOUT_MS)
+  const start = performance.now()
+  try {
+    const response = await proxiedFetch(url, { method: 'GET', redirect: 'manual', signal: controller.signal })
+    const latencyMs = Math.round(performance.now() - start)
+    if (controller.signal.aborted) return ipcFail(IpcErrorCode.Timeout, '连接超时 (10s)')
+    void response.body?.cancel().catch(() => undefined)
+    return { ok: true, latencyMs, httpStatus: response.status }
+  } catch {
+    return controller.signal.aborted
+      ? ipcFail(IpcErrorCode.Timeout, '连接超时 (10s)')
+      : ipcFail(IpcErrorCode.Upstream, '连接失败')
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+  }
+}
+
+function hasModelText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isModelFailureStatus(status: unknown): boolean {
+  return typeof status === 'string' && ['failed', 'failure', 'error', 'incomplete', 'cancelled', 'canceled', 'aborted', 'timeout', 'timed_out'].includes(status.toLowerCase())
+}
+
+function messageHasText(message: Record<string, unknown> | null, partType: string): boolean {
+  if (!message || (message.role !== undefined && message.role !== 'assistant')) return false
+  if (isModelFailureStatus(message.status)) return false
+  if (hasModelText(message.content)) return true
+  return Array.isArray(message.content) && message.content.some((part: unknown) => {
+    const item = asRecord(part)
+    return item?.type === partType && hasModelText(item.text)
+  })
+}
+
+function modelTestSecrets(baseUrl: string, endpoint: string, key: string, encryptedKey: string): string[] {
+  const secrets = new Set([baseUrl, endpoint, key, encryptedKey])
+  const addValue = (raw: string): void => {
+    if (!raw) return
+    secrets.add(raw)
+    let decoded = raw.replace(/\+/g, ' ')
+    try { decoded = decodeURIComponent(decoded) } catch { /* retain the original malformed value */ }
+    secrets.add(decoded)
+    secrets.add(new URLSearchParams([['value', decoded]]).toString().slice(6))
+    try {
+      secrets.add(encodeURIComponent(decoded))
+      secrets.add(encodeURIComponent(raw))
+    } catch { /* malformed UTF-16 cannot be URI encoded */ }
+    secrets.add(raw.replace(/%[a-f\d]{2}/gi, (part) => part.toLowerCase()))
+    secrets.add(raw.replace(/%[a-f\d]{2}/gi, (part) => part.toUpperCase()))
+  }
+  for (const url of [baseUrl, endpoint]) {
+    const authority = /^(?:[a-z][a-z\d+.-]*:\/\/)?([^/?#]*)/i.exec(url.trim())?.[1] ?? ''
+    const at = authority.lastIndexOf('@')
+    if (at >= 0) {
+      const userinfo = authority.slice(0, at)
+      addValue(userinfo)
+      for (const part of userinfo.split(':')) addValue(part)
+    }
+    const query = /\?([^#]*)/.exec(url)?.[1]
+    if (query) {
+      for (const part of query.split(/[&;]/)) {
+        const separator = part.indexOf('=')
+        if (separator >= 0) addValue(part.slice(separator + 1))
+      }
+    }
+  }
+  return [...secrets].filter(Boolean)
+}
+
+function modelTestError(detail: unknown, secrets: readonly string[], fallback = '模型服务返回错误'): Error {
+  let text = ''
+  if (typeof detail === 'string') text = detail
+  else if (detail !== undefined && detail !== null) text = JSON.stringify(detail) ?? ''
+  const safe = redactAiError(text, secrets)
+  return new Error(safe ? `${fallback}: ${safe.slice(0, MODEL_ERROR_BODY_BYTES)}` : fallback)
+}
+
+function checkModelFailure(obj: Record<string, unknown>, secrets: readonly string[]): void {
+  const reason = asRecord(obj.incomplete_details)?.reason
+  if (obj.status === 'incomplete' && typeof reason === 'string' && /(?:max.*tokens?|token.*limit|length)/i.test(reason)) {
+    throw modelTestError(obj, secrets, '模型输出达到 token 上限')
+  }
+  if (obj.error !== undefined && obj.error !== null && obj.error !== false) {
+    throw modelTestError(obj.error, secrets)
+  }
+  if (isModelFailureStatus(obj.status)) {
+    const detail = obj.incomplete_details ?? obj
+    throw modelTestError(detail, secrets, '模型响应未成功完成')
+  }
+}
+
+function checkFinishReason(reason: unknown, accepted: readonly string[], secrets: readonly string[]): boolean {
+  if (reason === undefined || reason === null) return false
+  if (typeof reason !== 'string' || !reason) throw new Error('模型结束原因无效')
+  if (/(?:^length$|max.*tokens?|token.*limit)/i.test(reason)) {
+    throw modelTestError(reason, secrets, '模型输出达到 token 上限')
+  }
+  if (!accepted.includes(reason)) throw modelTestError(reason, secrets, '模型响应未成功完成')
+  return true
+}
+
+function completeModelHasText(data: unknown, format: string, secrets: readonly string[]): boolean {
+  const obj = asRecord(data)
+  if (!obj) throw new Error('模型响应格式无效')
+  checkModelFailure(obj, secrets)
+  if (format === 'anthropic') {
+    if (!checkFinishReason(obj.stop_reason, ['end_turn', 'stop_sequence'], secrets)) {
+      throw new Error('模型响应尚未结束')
+    }
+    return Array.isArray(obj.content) && messageHasText(obj, 'text')
+  }
+  if (format === 'ollama') {
+    if (obj.done !== true) throw new Error('模型响应尚未结束')
+    if ('done_reason' in obj && !checkFinishReason(obj.done_reason, ['stop'], secrets)) {
+      throw new Error('模型响应尚未结束')
+    }
+    const message = asRecord(obj.message)
+    if (message) checkModelFailure(message, secrets)
+    return messageHasText(message, 'text')
+  }
+  if (format === 'response') {
+    if (obj.status !== 'completed') throw new Error('模型响应尚未结束')
+    if (obj.incomplete_details !== undefined && obj.incomplete_details !== null) {
+      throw modelTestError(obj.incomplete_details, secrets, '模型响应未成功完成')
+    }
+    if (Array.isArray(obj.output)) {
+      for (const item of obj.output) {
+        const output = asRecord(item)
+        if (output) {
+          checkModelFailure(output, secrets)
+          if (output.type === 'message' && output.status !== undefined && output.status !== 'completed') {
+            throw new Error('模型响应尚未结束')
+          }
+        }
+      }
+    }
+    if (hasModelText(obj.output_text)) return true
+    return Array.isArray(obj.output) && obj.output.some((item: unknown) => {
+      const message = asRecord(item)
+      return message?.type === 'message' && Array.isArray(message.content) && (message.status === undefined || message.status === 'completed')
+        && messageHasText(message, 'output_text')
+    })
+  }
+  const choice = Array.isArray(obj.choices) ? asRecord(obj.choices[0]) : null
+  if (choice) checkModelFailure(choice, secrets)
+  if (!choice || !checkFinishReason(choice.finish_reason, ['stop'], secrets)) {
+    throw new Error('模型响应尚未结束')
+  }
+  const message = asRecord(choice?.message)
+  if (message) checkModelFailure(message, secrets)
+  return messageHasText(message, 'text')
+}
+
+type ModelTestStreamState = { firstOutputAt?: number; completed: boolean }
+
+function processModelTestEvent(
+  payload: string,
+  eventName: string,
+  format: string,
+  state: ModelTestStreamState,
+  secrets: readonly string[]
+): void {
+  if (payload.trim() === '[DONE]') {
+    if (['error', 'response.failed', 'response.incomplete', 'response.cancelled', 'response.canceled'].includes(eventName)) {
+      throw new Error('模型服务返回错误')
+    }
+    if (format === 'anthropic' || format === 'response') {
+      if (state.completed) return
+      throw new Error('模型响应结束标记无效')
+    }
+    if (format === 'ollama') throw new Error('模型响应结束标记无效')
+    if (state.firstOutputAt === undefined) throw new Error('模型响应结束，但未返回有效文本')
+    state.completed = true
+    return
+  }
+  let data: unknown
+  try { data = JSON.parse(payload) as unknown } catch {
+    if (eventName === 'error') throw new Error('模型服务返回错误（响应格式无效）')
+    throw new Error('模型响应格式无效')
+  }
+  const obj = asRecord(data)
+  if (!obj) throw new Error('模型响应格式无效')
+  const type = typeof obj.type === 'string' ? obj.type : eventName
+  const failedEvents = ['error', 'response.failed', 'response.incomplete', 'response.cancelled', 'response.canceled']
+  const nestedResponse = asRecord(obj.response)
+  checkModelFailure(obj, secrets)
+  if (nestedResponse) checkModelFailure(nestedResponse, secrets)
+  if (failedEvents.includes(eventName) || failedEvents.includes(type)) {
+    throw modelTestError(obj.error ?? nestedResponse?.error ?? nestedResponse?.incomplete_details ?? obj, secrets)
+  }
+  const markOutput = (hasText: boolean): void => {
+    if (hasText && state.firstOutputAt === undefined) state.firstOutputAt = performance.now()
+  }
+  const finish = (): void => {
+    if (state.firstOutputAt === undefined) throw new Error('模型响应结束，但未返回有效文本')
+    state.completed = true
+  }
+
+  if (format === 'ollama') {
+    const message = asRecord(obj.message)
+    if (message) checkModelFailure(message, secrets)
+    markOutput(messageHasText(message, 'text'))
+    if (obj.done === true) {
+      checkFinishReason(obj.done_reason, ['stop'], secrets)
+      finish()
+    }
+    return
+  }
+  if (format === 'anthropic') {
+    if (type === 'content_block_start') {
+      const block = asRecord(obj.content_block)
+      if (block) checkModelFailure(block, secrets)
+      markOutput(block?.type === 'text' && hasModelText(block.text))
+    } else if (type === 'content_block_delta') {
+      const delta = asRecord(obj.delta)
+      if (delta) checkModelFailure(delta, secrets)
+      markOutput(delta?.type === 'text_delta' && hasModelText(delta.text))
+    } else if (type === 'message_delta') {
+      checkFinishReason(asRecord(obj.delta)?.stop_reason, ['end_turn', 'stop_sequence'], secrets)
+    } else if (type === 'message_stop') {
+      checkFinishReason(obj.stop_reason, ['end_turn', 'stop_sequence'], secrets)
+      finish()
+    }
+    return
+  }
+  if (format === 'response') {
+    if (type === 'response.output_text.delta') markOutput(hasModelText(obj.delta))
+    else if (type === 'response.output_text.done') markOutput(hasModelText(obj.text))
+    else if (type === 'response.completed') {
+      if (nestedResponse) {
+        if (nestedResponse.status !== undefined && nestedResponse.status !== 'completed') throw new Error('模型响应尚未结束')
+        if (nestedResponse.incomplete_details !== undefined && nestedResponse.incomplete_details !== null) {
+          throw modelTestError(nestedResponse.incomplete_details, secrets, '模型响应未成功完成')
+        }
+        markOutput(completeModelHasText({ ...nestedResponse, status: 'completed' }, format, secrets))
+      }
+      finish()
+    }
+    return
+  }
+  const choices = obj.choices
+  if (!Array.isArray(choices)) return
+  const choice = asRecord(choices[0])
+  if (!choice) return
+  checkModelFailure(choice, secrets)
+  const delta = asRecord(choice.delta)
+  if (delta) checkModelFailure(delta, secrets)
+  markOutput(messageHasText(delta, 'text'))
+  if (checkFinishReason(choice.finish_reason, ['stop'], secrets)) finish()
+}
+
+type ModelTestOutput = { latencyKind: 'first_output' | 'response'; latencyMs: number }
+
+async function readModelTestOutput(
+  response: Response,
+  format: string,
+  start: number,
+  secrets: readonly string[],
+  requireJson: boolean
+): Promise<ModelTestOutput> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('模型响应为空')
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  let mode: 'detect' | 'json' | 'ollama-json' | 'sse' | 'ndjson' = requireJson ? 'json' : 'detect'
+  let buffer = ''
+  let eventName = ''
+  let eventData = ''
+  let hasEventData = false
+  let totalDataSize = 0
+  let totalDataFields = 0
+  const state: ModelTestStreamState = { completed: false }
+
+  const dispatchSse = (): void => {
+    const name = eventName
+    const data = eventData
+    const hadData = hasEventData
+    eventName = ''
+    eventData = ''
+    hasEventData = false
+    if (name === 'error' && !data) throw new Error('模型服务返回错误')
+    if (hadData && data) processModelTestEvent(data, name, format, state, secrets)
+  }
+  const consumeLine = (line: string): void => {
+    if (mode === 'ndjson') {
+      if (line.trim()) processModelTestEvent(line, '', format, state, secrets)
+      return
+    }
+    if (!line) { dispatchSse(); return }
+    if (line.startsWith(':')) return
+    const separator = line.indexOf(':')
+    const field = separator < 0 ? line : line.slice(0, separator)
+    let value = separator < 0 ? '' : line.slice(separator + 1)
+    if (value.startsWith(' ')) value = value.slice(1)
+    if (field === 'event') eventName = value
+    if (field === 'data') {
+      totalDataSize += value.length + 1
+      totalDataFields++
+      if (totalDataSize > MODEL_TEST_RESPONSE_CHARS || totalDataFields > MODEL_TEST_SSE_DATA_FIELDS) {
+        throw new Error('模型响应过大')
+      }
+      eventData += `${hasEventData ? '\n' : ''}${value}`
+      hasEventData = true
+    }
+  }
+  const consumeLines = (ended: boolean): void => {
+    for (;;) {
+      const index = buffer.search(/[\r\n]/)
+      if (index < 0 || (!ended && buffer[index] === '\r' && index === buffer.length - 1)) break
+      const line = buffer.slice(0, index)
+      const length = buffer[index] === '\r' && buffer[index + 1] === '\n' ? 2 : 1
+      buffer = buffer.slice(index + length)
+      consumeLine(line)
+    }
+    if (ended && mode === 'ndjson' && buffer.trim()) {
+      const line = buffer
+      buffer = ''
+      consumeLine(line)
+    }
+  }
+  const consume = (text: string, ended: boolean): ModelTestOutput | undefined => {
+    buffer += text
+    if (buffer.length > MODEL_TEST_RESPONSE_CHARS) throw new Error('模型响应过大')
+    if (mode === 'detect') {
+      const first = buffer.trimStart()[0]
+      if (!first) {
+        if (ended) throw new Error('模型响应为空')
+        return undefined
+      }
+      if (first === '{' || first === '[') {
+        mode = format === 'ollama'
+          ? (/ndjson|jsonl/.test(contentType) ? 'ndjson' : 'ollama-json')
+          : 'json'
+      } else {
+        mode = 'sse'
+      }
+    }
+    if (mode === 'ollama-json') {
+      const lineEnd = buffer.search(/[\r\n]/)
+      if (lineEnd >= 0) {
+        let firstRecord: Record<string, unknown> | null = null
+        try { firstRecord = asRecord(JSON.parse(buffer.slice(0, lineEnd)) as unknown) } catch { /* complete JSON may be pretty-printed */ }
+        mode = firstRecord?.done === false ? 'ndjson' : 'json'
+      } else if (ended) {
+        mode = 'json'
+      }
+    }
+    if (mode === 'sse' || mode === 'ndjson') {
+      consumeLines(ended)
+      if (state.completed && state.firstOutputAt !== undefined) {
+        return { latencyKind: 'first_output', latencyMs: Math.round(state.firstOutputAt - start) }
+      }
+      if (ended) throw new Error('模型流在成功结束前中断')
+    } else if (mode === 'json' && ended) {
+      let data: unknown
+      try { data = JSON.parse(buffer) as unknown } catch { throw new Error('模型响应格式无效') }
+      if (!completeModelHasText(data, format, secrets)) throw new Error('模型响应缺少有效文本内容')
+      return { latencyKind: 'response', latencyMs: Math.round(performance.now() - start) }
+    }
+    return undefined
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      const result = consume(done ? decoder.decode() : decoder.decode(value, { stream: true }), done)
+      if (result) return result
+      if (done) throw new Error('模型响应为空')
+    }
+  } finally {
+    void reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}
+
+function streamingUnsupported(body: string): boolean {
+  try {
+    const error = asRecord(asRecord(JSON.parse(body) as unknown)?.error)
+    if (error?.param === 'stream' && error.code === 'unsupported_value') return true
+  } catch { /* plain text errors can still explicitly reject streaming */ }
+  return /\bstream["']?\s+does\s+not\s+support\s+["']?true\b/i.test(body)
+    || /\bstream(?:ing)?\b(?:["']?\s*[:=]\s*true\b)?(?:\s+(?:requests?|responses?|mode|feature))?\s+(?:(?:is|are)\s+)?(?:currently\s+)?(?:not\s+supported|unsupported|disabled|not\s+available)\b/i.test(body)
+    || /\b(?:does\s+not|doesn't|do\s+not|cannot|can't)\s+(?:currently\s+)?(?:support|allow|accept)\s+(?:the\s+)?stream(?:ing)?\b/i.test(body)
+    || /\bunsupported\s+stream(?:ing)?\b/i.test(body)
+    || /\bstream\b.{0,35}\bmust\s+(?:be|equal)\s+false\b/i.test(body)
+}
+
+function unsupportedMaxCompletionTokens(body: string): boolean {
+  try {
+    const error = asRecord(asRecord(JSON.parse(body) as unknown)?.error)
+    if (error?.param === 'max_completion_tokens' && typeof error.code === 'string'
+      && ['unsupported_parameter', 'unknown_parameter', 'unrecognized_parameter', 'unexpected_parameter'].includes(error.code)) return true
+  } catch { /* plain text errors can still explicitly identify the unsupported field */ }
+  return /\bmax_completion_tokens\b["']?\s+(?:(?:is|are)\s+)?(?:not\s+supported|unsupported|not\s+allowed|unrecognized|unknown)\b/i.test(body)
+    || /\b(?:unsupported|unrecognized|unknown|unexpected)\s+(?:request\s+)?(?:parameter|argument(?:\s+supplied)?|field|keyword(?:\s+argument)?)\s*[:'"\s]+\bmax_completion_tokens\b/i.test(body)
+    || /\b(?:does\s+not|doesn't|do\s+not|cannot|can't)\s+(?:support|recognize|accept)\s+(?:the\s+)?(?:parameter\s+)?["']?max_completion_tokens\b/i.test(body)
+}
+
 export async function testSingleModel(
   provider: {
     baseUrl: string
@@ -416,102 +899,120 @@ export async function testSingleModel(
     model?: string
   },
   modelId?: string
-): Promise<{ ok: boolean; error?: string; latencyMs?: number; model?: string; message?: string }> {
-  const targetModel = modelId || provider.model || ''
-  if (!targetModel) return { ok: false, error: '未指定测试模型' }
-  const start = Date.now()
-  let u = provider.baseUrl.trim().replace(/\s+/g, '')
-  if (!u) return { ok: false, error: 'Base URL 不能为空' }
-  if (!/^https?:\/\//i.test(u)) u = `http://${u}`
-  u = u.replace(/\/+$/, '')
+): Promise<ModelTestResult> {
+  const targetModel = modelId !== undefined ? modelId : provider?.model ?? ''
+  if (typeof targetModel !== 'string' || !targetModel) return ipcFail(IpcErrorCode.InvalidArg, '未指定测试模型')
+  if (typeof provider?.baseUrl !== 'string' || !provider.baseUrl.trim()) return ipcFail(IpcErrorCode.InvalidArg, 'Base URL 不能为空')
+  const endpoint = resolveEndpoint(provider.baseUrl, provider.apiFormat)
 
   const resolvedKey = requestKey(provider)
   if (!resolvedKey.ok) return resolvedKey
   const key = resolvedKey.key
+  const secrets = modelTestSecrets(provider.baseUrl, endpoint, key, provider.apiKey ?? '')
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 20_000)
+  const timer = setTimeout(() => controller.abort(), MODEL_TEST_TIMEOUT_MS)
 
   try {
-    let endpoint = ''
-    let body: Record<string, unknown> | null = null
+    let body: Record<string, unknown>
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     }
 
     if (provider.apiFormat === 'anthropic') {
-      endpoint = u.endsWith('/v1') ? `${u}/messages` : `${u}/v1/messages`
       if (key) {
         headers['x-api-key'] = key
         headers['anthropic-version'] = '2023-06-01'
       }
       body = {
         model: targetModel,
-        max_tokens: 5,
-        messages: [{ role: 'user', content: 'hi' }]
+        max_tokens: MODEL_TEST_MAX_TOKENS,
+        messages: [{ role: 'user', content: MODEL_TEST_PROMPT }],
+        stream: true
       }
     } else if (provider.apiFormat === 'ollama') {
-      endpoint = `${u}/api/chat`
       body = {
         model: targetModel,
-        messages: [{ role: 'user', content: 'hi' }],
-        stream: false
+        messages: [{ role: 'user', content: MODEL_TEST_PROMPT }],
+        options: { num_predict: MODEL_TEST_MAX_TOKENS },
+        stream: true
       }
     } else if (provider.apiFormat === 'response') {
-      if (u.endsWith('/v1')) {
-        endpoint = `${u}/responses`
-      } else if (/\/responses$/.test(u)) {
-        endpoint = u
-      } else {
-        endpoint = `${u}/v1/responses`
-      }
       if (key) {
         headers['Authorization'] = `Bearer ${key}`
       }
       body = {
         model: targetModel,
-        input: 'hi'
+        input: MODEL_TEST_PROMPT,
+        max_output_tokens: MODEL_TEST_MAX_TOKENS,
+        stream: true
       }
     } else {
-      if (u.endsWith('/v1')) {
-        endpoint = `${u}/chat/completions`
-      } else if (/\/chat\/completions$/.test(u)) {
-        endpoint = u
-      } else {
-        endpoint = `${u}/v1/chat/completions`
-      }
       if (key) {
         headers['Authorization'] = `Bearer ${key}`
       }
       body = {
         model: targetModel,
-        messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 5
+        messages: [{ role: 'user', content: MODEL_TEST_PROMPT }],
+        max_completion_tokens: MODEL_TEST_MAX_TOKENS,
+        stream: true
       }
     }
 
-    const res = await proxiedFetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal
-    })
+    let requireJson = false
+    let useLegacyTokens = false
+    let attempts = 0
+    for (;;) {
+      attempts++
+      const start = performance.now()
+      const res = await proxiedFetch(endpoint, {
+        method: 'POST',
+        redirect: 'manual',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      })
 
-    const latencyMs = Date.now() - start
-
-    if (!res.ok) {
-      return { ok: false, error: await modelUpstreamError(res, [key, provider.apiKey ?? '']), latencyMs }
+      if (!res.ok) {
+        let unsupportedStream = false
+        let unsupportedModernLimit = false
+        const error = await modelUpstreamError(res, secrets, (responseBody) => {
+          if (res.status === 400 || res.status === 422) {
+            const rawStreamRejection = streamingUnsupported(responseBody)
+            const rawLimitRejection = unsupportedMaxCompletionTokens(responseBody)
+            const diagnostic = redactAiError(responseBody, secrets)
+            unsupportedStream = rawStreamRejection && streamingUnsupported(diagnostic)
+            unsupportedModernLimit = provider.apiFormat !== 'anthropic' && provider.apiFormat !== 'ollama'
+              && provider.apiFormat !== 'response' && rawLimitRejection && unsupportedMaxCompletionTokens(diagnostic)
+          }
+        })
+        if (controller.signal.aborted) return ipcFail(IpcErrorCode.Timeout, '连接超时 (20s)')
+        const retryWithoutStreaming = !requireJson && unsupportedStream
+        const retryWithLegacyTokens = !useLegacyTokens && unsupportedModernLimit
+        if (attempts < MODEL_TEST_MAX_ATTEMPTS && (retryWithoutStreaming || retryWithLegacyTokens)) {
+          if (retryWithoutStreaming) {
+            requireJson = true
+            body = { ...body, stream: false }
+          }
+          if (retryWithLegacyTokens) {
+            useLegacyTokens = true
+            const { max_completion_tokens: _maxCompletionTokens, ...rest } = body
+            body = { ...rest, max_tokens: MODEL_TEST_MAX_TOKENS }
+          }
+          continue
+        }
+        return ipcFail(IpcErrorCode.Upstream, error)
+      }
+      const result = await readModelTestOutput(res, provider.apiFormat, start, secrets, requireJson)
+      if (controller.signal.aborted) return ipcFail(IpcErrorCode.Timeout, '连接超时 (20s)')
+      return { ok: true, ...result, model: targetModel, message: `连接正常 (${result.latencyMs}ms)` }
     }
-
-    return { ok: true, latencyMs, model: targetModel, message: `连接正常 (${latencyMs}ms)` }
   } catch (e) {
-    const latencyMs = Date.now() - start
-    return {
-      ok: false,
-      error: isAbortError(e) ? '连接超时 (20s)' : redactAiError(errorMessage(e) || '连接失败', [key, provider.apiKey ?? '']),
-      latencyMs
-    }
+    return controller.signal.aborted || isAbortError(e)
+      ? ipcFail(IpcErrorCode.Timeout, '连接超时 (20s)')
+      : ipcFail(IpcErrorCode.Upstream, redactAiError(errorMessage(e) || '连接失败', secrets))
   } finally {
     clearTimeout(timer)
+    controller.abort()
   }
 }
 

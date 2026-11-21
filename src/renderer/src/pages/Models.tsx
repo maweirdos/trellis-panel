@@ -10,20 +10,21 @@ import {
   Trash2,
   Pencil,
   Power,
-  SlidersHorizontal,
   MoreHorizontal,
   Loader2,
   Server,
-  X
+  X,
+  Search
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
-import { Button, Dropdown, DropdownItem, Modal, Switch } from '../my/ui'
-import type { ModelItem, ModelProvider, AiApiFormat, AiConfig } from '../../../shared/types'
+import { Button, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
+import type { ModelItem, ModelProvider, ModelTestResult, AiApiFormat, AiConfig } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
 import { CopyableError } from '../components/CopyableError'
-import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
-import { ModelItemEditor, ModelProviderEditor, ProviderIdentity } from './settings/ModelEditors'
+import { clsx } from 'clsx'
+import { ModelItemEditor, ModelProviderEditor } from './settings/ModelEditors'
+import { getModelBrand, getProviderVisual } from './settings/model-brands'
 import type { ModelSecretAction } from './settings/ModelEditors'
 import { modelErrorSummary } from './settings/model-errors'
 import './settings/models.css'
@@ -80,7 +81,28 @@ export const OFFICIAL_TEMPLATES: ProviderTemplate[] = [
   }
 ]
 
-function getProviderStatus(p: ModelProvider, isTesting: boolean) {
+function getProviderStatus(p: ModelProvider, isTesting: boolean, result?: ConnectionResult) {
+  if (isTesting) {
+    return {
+      dotClass: 'bg-my-info animate-pulse',
+      label: '测试中…',
+      tooltip: '正在测试地址是否可达'
+    }
+  }
+  if (result?.ok) {
+    return {
+      dotClass: 'bg-my-success',
+      label: `${p.enabled ? '' : '已停用 · '}地址可达${result.latencyMs === undefined ? '' : ` ${result.latencyMs}ms`}`,
+      tooltip: '地址可达不代表凭据有效或模型、目录可用'
+    }
+  }
+  if (result?.ok === false) {
+    return {
+      dotClass: 'bg-my-danger',
+      label: `${p.enabled ? '' : '已停用 · '}地址不可达`,
+      tooltip: '地址连通性测试失败，请查看错误详情'
+    }
+  }
   if (!p.enabled) {
     return {
       dotClass: 'bg-my-layer-3',
@@ -88,32 +110,11 @@ function getProviderStatus(p: ModelProvider, isTesting: boolean) {
       tooltip: '该供应商已停用'
     }
   }
-  if (isTesting) {
-    return {
-      dotClass: 'bg-my-info animate-pulse',
-      label: '测试中…',
-      tooltip: '正在测试接口连通性…'
-    }
-  }
-  if (!p.apiKey?.trim() && !p.apiKeyEncrypted && p.apiFormat !== 'ollama' && p.status !== 'connected' && p.status !== 'error') {
+  if (!p.baseUrl.trim()) {
     return {
       dotClass: 'border border-my-line-strong bg-transparent',
-      label: '未配置密钥',
-      tooltip: '尚未填写 API 密钥'
-    }
-  }
-  if (p.status === 'connected') {
-    return {
-      dotClass: 'bg-my-success',
-      label: p.latencyMs ? `目录可用 ${p.latencyMs}ms` : '目录可用',
-      tooltip: `模型目录接口可用${p.latencyMs ? `，耗时 ${p.latencyMs}ms` : ''}；模型推理需单独测试`
-    }
-  }
-  if (p.status === 'error') {
-    return {
-      dotClass: 'bg-my-danger',
-      label: '连接异常',
-      tooltip: '无法连接到供应商服务器，请检查接口地址与密钥'
+      label: '未配置地址',
+      tooltip: '尚未填写接口地址'
     }
   }
   return {
@@ -133,6 +134,15 @@ export const DEFAULT_INITIAL_PROVIDER: ModelProvider = {
   enabled: true,
   models: [],
   status: 'untested'
+}
+
+export function isUnconfiguredDeepseek(provider: ModelProvider): boolean {
+  return (
+    provider.id === 'deepseek' &&
+    !provider.apiKey?.trim() &&
+    !provider.apiKeyEncrypted &&
+    (!provider.models || provider.models.length === 0)
+  )
 }
 
 function reconcileProviders(saved: ModelProvider[]): ModelProvider[] {
@@ -165,10 +175,12 @@ function legacyProviderDraft(ai: AiConfig | undefined): ModelProvider | null {
 
 
 function readProviders(ai: AiConfig | undefined): ModelProvider[] {
-  if (ai?.providers?.length) return reconcileProviders(ai.providers)
+  if (ai?.providers?.length) {
+    return reconcileProviders(ai.providers).filter((p) => !isUnconfiguredDeepseek(p))
+  }
   const legacy = legacyProviderDraft(ai)
   if (legacy) return [legacy]
-  return ai?.providers ? [] : [DEFAULT_INITIAL_PROVIDER]
+  return []
 }
 
 // Used only in memory to retain request ownership; never rendered or logged.
@@ -177,7 +189,11 @@ function connectionSource(provider: ModelProvider): string {
 }
 
 type ProviderSource = { id: string; source: string; generation: number }
-type TestResult = { ok: boolean; latencyMs?: number; error?: string }
+type ConnectionResult = Awaited<ReturnType<typeof api.aiTestConnection>>
+type ProviderRequestMode = 'test' | 'fetch'
+type CatalogResult = { models?: ModelItem[] }
+type ProviderError = { mode: ProviderRequestMode; message: string; catalog?: CatalogResult }
+type RequestTicket = { id: symbol; viewGeneration: number }
 type ModelInstance = { generation: number; present: boolean; testKeys: Set<string> }
 
 function endpointLabel(value: string): string {
@@ -188,148 +204,81 @@ function endpointLabel(value: string): string {
   } catch { return '自定义接口地址' }
 }
 
-function ModelRelationship({ provider, selectedModelId, onSelectProvider, layoutKey, children }: {
-  provider: ModelProvider
-  selectedModelId: string | null
-  onSelectProvider: () => void
-  layoutKey: string
-  children: ReactNode
-}): JSX.Element {
-  const graphRef = useRef<HTMLDivElement>(null)
-  const pathRef = useRef<SVGPathElement>(null)
-  const measureRef = useRef<(() => void) | null>(null)
-  const [hovered, setHovered] = useState<string | null>(null)
-  const [focused, setFocused] = useState<string | null>(null)
-  const [inputMode, setInputMode] = useState<'pointer' | 'keyboard'>('pointer')
-  const activeId = inputMode === 'keyboard' ? focused ?? selectedModelId : hovered ?? focused ?? selectedModelId
-  const kind = activeId && activeId === selectedModelId ? 'selected' : 'preview'
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) setInputMode('keyboard')
-    }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [])
-
-  useLayoutEffect(() => {
-    const graph = graphRef.current
-    const path = pathRef.current
-    if (!graph || !path) return
-    const source = graph.querySelector<HTMLElement>('.model-graph-source')
-    const scrollRoot = graph.closest<HTMLElement>('.model-provider-detail')
-    const toolbar = graph.parentElement?.querySelector<HTMLElement>('.model-list-sticky')
-    const node = [...graph.querySelectorAll<HTMLElement>('.model-graph-node')].find((item) => item.dataset.modelId === activeId)
-    if (!source || !scrollRoot) return
-    const measure = (): void => {
-      if (!node || !node.isConnected) { path.setAttribute('visibility', 'hidden'); return }
-      const bounds = graph.getBoundingClientRect()
-      const start = source.getBoundingClientRect()
-      const end = node.getBoundingClientRect()
-      const viewport = scrollRoot.getBoundingClientRect()
-      const top = Math.max(0, viewport.top + scrollRoot.clientTop, toolbar?.getBoundingClientRect().bottom ?? 0)
-      const bottom = Math.min(window.innerHeight, viewport.top + scrollRoot.clientTop + scrollRoot.clientHeight)
-      const endCenter = end.top + end.height / 2
-      const startCenter = start.top + start.height / 2
-      if (endCenter < top || endCenter > bottom || startCenter < top || startCenter > bottom) {
-        path.setAttribute('visibility', 'hidden')
-        return
-      }
-      const x = start.right - bounds.left
-      const y = startCenter - bounds.top
-      const endX = end.left - bounds.left
-      const endY = endCenter - bounds.top
-      const middle = x + (endX - x) / 2
-      path.setAttribute('d', `M ${x} ${y} C ${middle} ${y}, ${middle} ${endY}, ${endX} ${endY}`)
-      path.setAttribute('visibility', 'visible')
-    }
-    measure()
-    let frame = 0
-    const schedule = (): void => {
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure() })
-    }
-    measureRef.current = schedule
-    const observer = new ResizeObserver(schedule)
-    observer.observe(graph)
-    observer.observe(source)
-    observer.observe(scrollRoot)
-    if (toolbar) observer.observe(toolbar)
-    if (node) { observer.observe(node); if (node.parentElement) observer.observe(node.parentElement) }
-    window.addEventListener('scroll', schedule, true)
-    window.addEventListener('resize', schedule)
-    return () => {
-      measureRef.current = null
-      observer.disconnect()
-      window.removeEventListener('scroll', schedule, true)
-      window.removeEventListener('resize', schedule)
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [layoutKey, activeId, kind])
-
-  useLayoutEffect(() => {
-    const graph = graphRef.current
-    if (!graph) return
-    const nodes = [...graph.querySelectorAll<HTMLElement>('.model-graph-node')]
-    setHovered((id) => id && nodes.some((node) => node.dataset.modelId === id && node.matches(':hover')) ? id : null)
-    const active = document.activeElement
-    const row = active instanceof HTMLElement && graph.contains(active) ? active.closest<HTMLElement>('.model-item-row') : null
-    setFocused(row?.dataset.modelId ?? null)
-  }, [layoutKey])
-
-  useLayoutEffect(() => { measureRef.current?.() })
-
-  return <div className="model-graph" ref={graphRef} onPointerMove={() => setInputMode('pointer')} onPointerDown={() => setInputMode('pointer')} onWheelCapture={() => setInputMode('pointer')} onMouseLeave={() => setHovered(null)} onFocus={(event) => { const target = event.target as HTMLElement; if (target.matches(':focus-visible')) setInputMode('keyboard'); setFocused(target.closest<HTMLElement>('.model-item-row')?.dataset.modelId ?? null) }} onBlur={(event) => { const next = event.relatedTarget; setFocused(next instanceof HTMLElement && event.currentTarget.contains(next) ? next.closest<HTMLElement>('.model-item-row')?.dataset.modelId ?? null : null) }}>
-    <svg className="model-graph-lines" aria-hidden="true">
-      <path key={`${activeId}:${kind}`} ref={pathRef} pathLength={1} className="model-graph-path" data-model-id={activeId ?? undefined} data-kind={kind} visibility="hidden" />
-    </svg>
-    <button type="button" className="model-graph-source" aria-pressed={selectedModelId === null} onClick={onSelectProvider} title={provider.name || '未命名供应商'}>
-      <ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} />
-      <span className="my-item-title">{provider.name || '未命名供应商'}</span>
-      <span className="my-item-description">供应商</span>
-    </button>
-    <div className="model-graph-nodes" onMouseOver={(event) => setHovered((event.target as Element).closest<HTMLElement>('.model-graph-node')?.dataset.modelId ?? null)} onMouseOut={(event) => { const next = event.relatedTarget; setHovered(next instanceof Element && event.currentTarget.contains(next) ? next.closest<HTMLElement>('.model-graph-node')?.dataset.modelId ?? null : null) }}>{children}</div>
-  </div>
-}
-
 export function ModelsPage(): JSX.Element {
   const settings = useApp((state) => state.settings)
   const saveSettings = useApp((state) => state.saveSettings)
   const pushToast = useApp((state) => state.pushToast)
   const providers = useMemo(() => readProviders(settings?.ai), [settings?.ai])
-  const activeProviderId = settings?.ai?.activeProviderId || (settings?.ai?.providers?.find((provider) => provider.enabled)?.id ?? legacyProviderDraft(settings?.ai)?.id ?? '')
+  const activeProviderId = useMemo(() => {
+    const configuredId = settings?.ai?.activeProviderId
+    if (configuredId && providers.some((provider) => provider.id === configuredId)) {
+      return configuredId
+    }
+    return providers.find((provider) => provider.enabled)?.id ?? providers[0]?.id ?? ''
+  }, [settings?.ai?.activeProviderId, providers])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [openErrorModelId, setOpenErrorModelId] = useState<string | null>(null)
+  const toggleGroup = (groupName: string): void => {
+    setCollapsedGroups((prev) => ({ ...prev, [groupName]: !prev[groupName] }))
+  }
   const [selectedModel, setSelectedModel] = useState<{ providerId: string; modelId: string } | null>(null)
+  type ModelCategory = 'all' | 'enabled' | 'chat' | 'code'
+  const [categoryFilter, setCategoryFilter] = useState<ModelCategory>('all')
   const modelSearchRef = useRef<HTMLInputElement>(null)
   const modelToolbarRef = useRef<HTMLDivElement>(null)
   const selectedProvider = providers.find((provider) => provider.id === selectedId)
     ?? providers.find((provider) => provider.id === activeProviderId)
     ?? providers[0]
+  const viewOwner = useRef<{ id: string | undefined; generation: number }>({ id: selectedProvider?.id, generation: 0 })
+  if (viewOwner.current.id !== selectedProvider?.id) {
+    viewOwner.current = { id: selectedProvider?.id, generation: viewOwner.current.generation + 1 }
+  }
   const modelViewRef = useRef({ providerId: selectedProvider?.id, search: modelSearch })
   modelViewRef.current = { providerId: selectedProvider?.id, search: modelSearch }
   const filteredModels = useMemo(() => {
     const terms = modelSearch.normalize('NFKC').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
     return (selectedProvider?.models ?? []).filter((model) => {
+      if (categoryFilter === 'enabled' && !model.enabled) return false
+      if (categoryFilter === 'chat') {
+        const isChat = !model.tags?.includes('代码') || model.tags?.includes('对话') || model.id.includes('chat') || model.id.includes('gpt')
+        if (!isChat) return false
+      }
+      if (categoryFilter === 'code') {
+        const isCode = model.tags?.includes('代码') || model.id.includes('code') || model.id.includes('coder')
+        if (!isCode) return false
+      }
       const text = [model.name, model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase()
       return terms.every((term) => text.includes(term))
     })
-  }, [selectedProvider, modelSearch])
+  }, [selectedProvider, modelSearch, categoryFilter])
+
+  const groupedModels = useMemo(() => {
+    const map = new Map<string, ModelItem[]>()
+    for (const model of filteredModels) {
+      const brand = getModelBrand(model.id, model.name)
+      const group = brand.groupName || '其他模型'
+      const list = map.get(group) || []
+      list.push(model)
+      map.set(group, list)
+    }
+    return Array.from(map.entries()).map(([name, items]) => ({ name, models: items }))
+  }, [filteredModels])
   const [showTemplates, setShowTemplates] = useState(false)
   const [providerEditor, setProviderEditor] = useState<{ provider: ModelProvider; source: ProviderSource | null } | null>(null)
   const [modelEditor, setModelEditor] = useState<{ provider: ModelProvider; source: ProviderSource; model: ModelItem; isNew: boolean } | null>(null)
   const [pendingWrites, setPendingWrites] = useState(0)
-  const [providerRequests, setProviderRequests] = useState<Record<string, 'test' | 'fetch'>>({})
-  const [modelRequests, setModelRequests] = useState<Record<string, boolean>>({})
-  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
-  const [providerResults, setProviderResults] = useState<Record<string, TestResult>>({})
-  const [providerErrors, setProviderErrors] = useState<Record<string, string>>({})
-  const [temperature, setTemperature] = useState(settings?.ai?.temperature ?? 0.3)
-  const [savingTemperature, setSavingTemperature] = useState(false)
+  const [providerRequests, setProviderRequests] = useState<Record<string, RequestTicket & { mode: ProviderRequestMode }>>({})
+  const [modelRequests, setModelRequests] = useState<Record<string, RequestTicket>>({})
+  const [testResults, setTestResults] = useState<Record<string, ModelTestResult>>({})
+  const [providerResults, setProviderResults] = useState<Record<string, ConnectionResult>>({})
+  const [providerErrors, setProviderErrors] = useState<Record<string, ProviderError>>({})
   const writeQueue = useRef<Promise<unknown>>(Promise.resolve())
   const mounted = useRef(true)
   const sources = useRef(new Map<string, { source: string; generation: number }>())
   const modelInstances = useRef(new Map<string, ModelInstance>())
-  const requests = useRef(new Set<string>())
+  const requests = useRef(new Map<string, RequestTicket>())
   const saving = pendingWrites > 0
 
   useLayoutEffect(() => {
@@ -347,7 +296,29 @@ export function ModelsPage(): JSX.Element {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-  useEffect(() => { setTemperature(settings?.ai?.temperature ?? 0.3) }, [settings?.ai?.temperature])
+  // 自动清理持久化存储中历史遗留的未配置 DeepSeek 幽灵占位符，避免在仅有自定义供应商时干扰显示
+  useEffect(() => {
+    const rawProviders = settings?.ai?.providers
+    if (!rawProviders || !rawProviders.length) return
+    const ghost = rawProviders.some(isUnconfiguredDeepseek)
+    const activeIsGhost = settings?.ai?.activeProviderId === 'deepseek' && ghost
+    if (ghost || activeIsGhost) {
+      const cleaned = rawProviders.filter((p) => !isUnconfiguredDeepseek(p))
+      const fallbackActive = cleaned.find((p) => p.enabled)?.id ?? cleaned[0]?.id ?? ''
+      const nextActive = activeIsGhost ? fallbackActive : (settings.ai?.activeProviderId || fallbackActive)
+      void saveSettings({
+        ai: {
+          ...settings.ai,
+          providers: cleaned,
+          activeProviderId: nextActive,
+          model: settings.ai?.model ?? '',
+          baseUrl: settings.ai?.baseUrl ?? '',
+          apiKey: settings.ai?.apiKey ?? '',
+          temperature: settings.ai?.temperature ?? 0.3
+        }
+      })
+    }
+  }, [settings?.ai, saveSettings])
   useEffect(() => {
     setSelectedModel((selection) => selection && !providers.some((provider) => provider.id === selection.providerId && provider.models.some((model) => model.id === selection.modelId)) ? null : selection)
   }, [providers])
@@ -388,13 +359,6 @@ export function ModelsPage(): JSX.Element {
     }
     if (mounted.current) setSelectedModel((selection) => selection && !present.has(modelInstanceKey(selection.providerId, selection.modelId)) ? null : selection)
   }
-  // Observe every committed inventory, even removal/re-addition batched into one render.
-  useEffect(() => {
-    observeModelInstances(latestProviders())
-    return useApp.subscribe((state, previous) => {
-      if (state.settings?.ai !== previous.settings?.ai) observeModelInstances(readProviders(state.settings?.ai))
-    })
-  }, [])
   const captureSource = (provider: ModelProvider): ProviderSource => {
     const source = connectionSource(provider)
     const previous = sources.current.get(provider.id)
@@ -402,16 +366,28 @@ export function ModelsPage(): JSX.Element {
     sources.current.set(provider.id, { source, generation })
     return { id: provider.id, source, generation }
   }
-  // Observe committed changes, including a switch away and back to identical credentials.
-  const sourceRevision = providers.map((provider) => connectionSource(provider)).join('\n')
-  useEffect(() => {
-    for (const provider of providers) captureSource(provider)
+  const observeSources = (current: ModelProvider[]): void => {
+    for (const provider of current) captureSource(provider)
     for (const [id, value] of sources.current) {
-      if (!providers.some((provider) => provider.id === id) && value.source) {
+      if (!current.some((provider) => provider.id === id) && value.source) {
         sources.current.set(id, { source: '', generation: value.generation + 1 })
       }
     }
-  }, [sourceRevision])
+  }
+  // Observe each committed inventory so an edit or removal followed by a
+  // re-addition cannot be hidden by React batching.
+  useEffect(() => {
+    const observe = (current: ModelProvider[]): void => {
+      observeSources(current)
+      observeModelInstances(current)
+    }
+    observe(latestProviders())
+    return useApp.subscribe((state, previous) => {
+      if (state.settings?.ai !== previous.settings?.ai) {
+        observe(readProviders(state.settings?.ai))
+      }
+    })
+  }, [])
 
   const ownsSource = (owner: ProviderSource): boolean => {
     if (!mounted.current) return false
@@ -422,6 +398,25 @@ export function ModelsPage(): JSX.Element {
   }
   const modelResultKey = (owner: ProviderSource, modelId: string): string => JSON.stringify(['model', owner.id, owner.generation, modelId, getModelInstance(owner.id, modelId).generation])
   const providerResultKey = (owner: ProviderSource): string => JSON.stringify(['provider', owner.id, owner.generation])
+  const providerErrorKey = (key: string, mode: ProviderRequestMode): string => JSON.stringify([key, mode])
+  const ownsView = (providerId: string, generation: number): boolean =>
+    mounted.current && viewOwner.current.id === providerId && viewOwner.current.generation === generation
+  const beginRequest = (key: string): RequestTicket | null => {
+    const generation = viewOwner.current.generation
+    if (requests.current.get(key)?.viewGeneration === generation) return null
+    const ticket = { id: Symbol(), viewGeneration: generation }
+    requests.current.set(key, ticket)
+    return ticket
+  }
+  const ownsRequest = (key: string, ticket: RequestTicket): boolean => requests.current.get(key)?.id === ticket.id
+  const selectProvider = (id: string): void => {
+    if (viewOwner.current.id !== id) {
+      viewOwner.current = { id, generation: viewOwner.current.generation + 1 }
+    }
+    setSelectedId(id)
+    setModelSearch('')
+    setOpenErrorModelId(null)
+  }
 
   // Serialize functional updates against the latest encrypted settings returned by IPC.
   // Failed writes leave the saved overview and all open drafts intact.
@@ -449,9 +444,11 @@ export function ModelsPage(): JSX.Element {
     for (const provider of latestProviders()) {
       const submitted = next.find((item) => item.id === provider.id)
       const previous = previousSources.get(provider.id)
+      const observed = sources.current.get(provider.id)
       // IPC may encrypt an unchanged plaintext key on its first write. This is
       // the same connection, so retain request/draft ownership and test feedback.
       if (submitted && previous?.source === connectionSource(submitted) &&
+        observed?.source === connectionSource(provider) && observed.generation === previous.generation + 1 &&
         !submitted.apiKeyEncrypted && provider.apiKeyEncrypted &&
         submitted.baseUrl === provider.baseUrl && submitted.apiFormat === provider.apiFormat) {
         sources.current.set(provider.id, { source: connectionSource(provider), generation: previous.generation })
@@ -483,7 +480,7 @@ export function ModelsPage(): JSX.Element {
         if (!mounted.current || modelViewRef.current.providerId !== owner.id || modelViewRef.current.search !== search) return
         const active = document.activeElement
         if (active !== origin && active !== document.body && active !== document.documentElement) return
-        const node = [...document.querySelectorAll<HTMLElement>('.model-provider-detail .model-graph-node')].find((item) => item.dataset.modelId === id)
+        const node = [...document.querySelectorAll<HTMLButtonElement>('.model-provider-detail .model-row-left')].find((item) => item.dataset.modelId === id)
         ;(node ?? modelSearchRef.current)?.focus()
       })
     }
@@ -529,31 +526,42 @@ export function ModelsPage(): JSX.Element {
   }
 
   const handleDeleteProvider = async (provider: ModelProvider): Promise<void> => {
+    const owner = captureSource(provider)
+    sources.current.set(owner.id, { source: owner.source, generation: owner.generation + 1 })
     await persistProviders((current) => current.filter((item) => item.id !== provider.id))
     if (selectedId === provider.id) { setSelectedId(null); setModelSearch('') }
     pushToast({ kind: 'info', title: '已删除供应商', body: provider.name })
   }
 
-  const handleProviderRequest = async (provider: ModelProvider, mode: 'fetch' | 'test'): Promise<void> => {
+  const handleProviderRequest = async (provider: ModelProvider, mode: ProviderRequestMode, catalog?: CatalogResult): Promise<void> => {
     const owner = captureSource(provider)
     const key = providerResultKey(owner)
-    if (!provider.baseUrl.trim() || requests.current.has(key)) return
-    requests.current.add(key)
-    setProviderRequests((current) => ({ ...current, [key]: mode }))
-    setProviderErrors((current) => { const next = { ...current }; delete next[key]; return next })
-    const start = performance.now()
-    let connected = false
+    if (!provider.baseUrl.trim() || viewOwner.current.id !== owner.id) return
+    const ticket = beginRequest(key)
+    if (!ticket) return
+    const ownsOperation = (): boolean => ownsRequest(key, ticket) && ownsSource(owner) && ownsView(owner.id, ticket.viewGeneration)
+    const errorKey = providerErrorKey(key, mode)
+    setProviderRequests((current) => ({ ...current, [key]: { ...ticket, mode } }))
+    setProviderErrors((current) => { const next = { ...current }; delete next[errorKey]; return next })
+    if (mode === 'test') setProviderResults((current) => { const next = { ...current }; delete next[key]; return next })
+    let catalogToSave = catalog
     try {
-      const result = await api.aiFetchModels(provider)
-      if (!ownsSource(owner)) return
-      const latencyMs = Math.round(performance.now() - start)
-      if (!result.ok) throw new Error(result.error || '接口未响应或凭证无效')
-      connected = true
-      setProviderResults((current) => ({ ...current, [key]: { ok: true, latencyMs } }))
-      const fetched = result.models
-      if (mode === 'fetch') {
+      if (mode === 'test') {
+        const result = await api.aiTestConnection(provider.baseUrl)
+        if (!ownsOperation()) return
+        if (!result.ok) throw new Error(result.error || '地址连接失败，请重试')
+        setProviderResults((current) => ({ ...current, [key]: result }))
+        pushToast({ kind: 'info', title: `${provider.name} 地址可达` })
+      } else {
+        if (!catalogToSave) {
+          const result = await api.aiFetchModels(provider)
+          if (!ownsOperation()) return
+          if (!result.ok) throw new Error(result.error || '获取模型目录失败，请重试')
+          catalogToSave = { models: result.models }
+        }
+        const fetched = catalogToSave.models
         await persistProviders((current) => {
-          if (!ownsSource(owner)) return null
+          if (!ownsOperation()) return null
           return current.map((item) => {
             if (item.id !== provider.id) return item
             const existing = new Map(item.models.map((entry) => [entry.id, entry]))
@@ -561,21 +569,29 @@ export function ModelsPage(): JSX.Element {
               ...fetched.map((entry) => ({ ...entry, ...existing.get(entry.id) })),
               ...item.models.filter((entry) => !fetched.some((remote) => remote.id === entry.id))
             ] : item.models
-            return { ...item, status: 'connected', latencyMs, lastTestedAt: new Date().toISOString(), models: merged }
+            return { ...item, models: merged }
           })
         })
+        if (ownsOperation()) pushToast({ kind: 'info', title: `已获取 ${fetched?.length ?? 0} 个模型` })
       }
-      if (ownsSource(owner)) pushToast({ kind: 'info', title: mode === 'fetch' ? `已获取 ${fetched?.length ?? 0} 个模型` : `${provider.name} 模型目录可用` })
     } catch (err) {
-      if (!ownsSource(owner)) return
-      if (connected) { reportFailure('连接结果保存失败', err); return }
-      const message = errorMessage(err) || '无法连接，请重试'
-      setProviderErrors((current) => ({ ...current, [key]: message }))
-      setProviderResults((current) => ({ ...current, [key]: { ok: false, error: message } }))
-      if (ownsSource(owner)) pushToast({ kind: 'error', title: mode === 'fetch' ? '获取模型失败' : `${provider.name} 连接失败`, body: modelErrorSummary(message, '模型目录连接失败') })
+      if (!ownsOperation()) return
+      const message = errorMessage(err) || (mode === 'fetch' ? '获取模型失败，请重试' : '地址连接失败，请重试')
+      setProviderErrors((current) => ({ ...current, [errorKey]: { mode, message, catalog: catalogToSave } }))
+      if (mode === 'test') setProviderResults((current) => ({ ...current, [key]: { ok: false, error: message } }))
+      pushToast({
+        kind: 'error',
+        title: catalogToSave ? '保存模型目录失败' : mode === 'fetch' ? '获取模型失败' : `${provider.name} 连接失败`,
+        body: modelErrorSummary(message, catalogToSave ? '保存模型目录失败' : mode === 'fetch' ? '获取模型目录失败' : '地址连接失败')
+      })
     } finally {
-      requests.current.delete(key)
-      if (mounted.current) setProviderRequests((current) => { const next = { ...current }; delete next[key]; return next })
+      if (ownsRequest(key, ticket)) {
+        requests.current.delete(key)
+        if (mounted.current) setProviderRequests((current) => {
+          if (current[key]?.id !== ticket.id) return current
+          const next = { ...current }; delete next[key]; return next
+        })
+      }
     }
   }
 
@@ -584,40 +600,34 @@ export function ModelsPage(): JSX.Element {
     observeModelInstances(latestProviders())
     const instance = getModelInstance(provider.id, model.id)
     const generation = instance.generation
-    const ownsModel = (): boolean => ownsSource(owner) && instance.present && instance.generation === generation
-    if (!ownsModel()) return
+    if (!ownsSource(owner) || !instance.present || viewOwner.current.id !== owner.id) return
     const key = modelResultKey(owner, model.id)
-    if (requests.current.has(key)) return
-    requests.current.add(key)
+    const ticket = beginRequest(key)
+    if (!ticket) return
+    const ownsModel = (): boolean => ownsRequest(key, ticket) && ownsSource(owner) &&
+      ownsView(owner.id, ticket.viewGeneration) && instance.present && instance.generation === generation
     instance.testKeys.add(key)
-    setModelRequests((current) => ({ ...current, [key]: true }))
+    setModelRequests((current) => ({ ...current, [key]: ticket }))
     setTestResults((current) => { const next = { ...current }; delete next[key]; return next })
     try {
       const result = await api.aiTestModel(provider, model.id)
       if (!ownsModel()) return
-      setTestResults((current) => ({ ...current, [key]: result }))
-      if (!result.ok) pushToast({ kind: 'error', title: `模型 ${model.name || model.id} 测试失败`, body: modelErrorSummary(result.error || '') })
+      const normalized = result.ok ? result : { ...result, error: result.error || '模型测试失败，请重试' }
+      setTestResults((current) => ({ ...current, [key]: normalized }))
+      if (!normalized.ok) pushToast({ kind: 'error', title: `模型 ${model.name || model.id} 测试失败`, body: modelErrorSummary(normalized.error || '') })
     } catch (err) {
       if (ownsModel()) {
         setTestResults((current) => ({ ...current, [key]: { ok: false, error: errorMessage(err) || '模型测试失败，请重试' } }))
       }
     } finally {
-      requests.current.delete(key)
-      if (mounted.current) setModelRequests((current) => { const next = { ...current }; delete next[key]; return next })
+      if (ownsRequest(key, ticket)) {
+        requests.current.delete(key)
+        if (mounted.current) setModelRequests((current) => {
+          if (current[key]?.id !== ticket.id) return current
+          const next = { ...current }; delete next[key]; return next
+        })
+      }
     }
-  }
-
-  const handleSaveTemperature = async (): Promise<void> => {
-    if (savingTemperature || !Number.isFinite(temperature) || temperature < 0 || temperature > 1) return
-    setSavingTemperature(true)
-    try {
-      await write(async () => {
-        const ai = useApp.getState().settings?.ai
-        if (!ai) throw new Error('设置尚未加载')
-        await saveSettings({ ai: { ...ai, temperature } })
-      })
-      pushToast({ kind: 'info', title: '已保存生成参数' })
-    } catch (err) { reportFailure('生成参数保存失败', err) } finally { setSavingTemperature(false) }
   }
 
   const openModelEditor = (provider: ModelProvider, model?: ModelItem): void => setModelEditor({
@@ -625,105 +635,665 @@ export function ModelsPage(): JSX.Element {
     model: model ? { ...model } : { id: '', name: '', contextWindow: '128k', tags: ['代码'], enabled: true }
   })
 
-  return <div className="preferences-page models-page">
-    <PreferenceSection id="models-providers" title="供应商" action={<div className="flex items-center gap-2">
-      <Button variant="ghost" disabled={saving || !settings} onClick={() => runAction(persistProviders((current) => current), '同步配置失败')} aria-label="同步配置" title="同步配置"><RotateCw size={15} className={saving ? 'animate-spin' : ''} /></Button>
-      <Button variant="primary" disabled={saving || !settings} onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button>
-    </div>}>
-      {legacyProviderDraft(settings?.ai) && <div className="model-legacy-row"><span className="my-item-title">现有配置</span><Button variant="neutral" disabled={saving} onClick={() => runAction(persistProviders((current) => current).then(() => { pushToast({ kind: 'info', title: '已导入现有配置' }) }), '导入失败')}>导入供应商</Button></div>}
-      {!settings ? <div className="model-provider-empty" role="status">{hasIpc ? <><Loader2 size={16} className="animate-spin" />正在加载供应商…</> : <><Server size={24} aria-hidden="true" /><p>连接桌面应用后可管理模型供应商。</p></>}</div> : !providers.length ? <div className="model-provider-empty"><Server size={24} className="text-my-tertiary" /><p className="my-item-description">暂无供应商</p><Button variant="neutral" onClick={() => setShowTemplates(true)}><Plus size={14} />添加供应商</Button></div> : <div className="model-workspace">
-        <nav className="model-provider-list my-scrollbar" aria-label="选择供应商">
-          {providers.map((provider) => {
+  return (
+    <div className="models-workspace-page">
+      {/* 旧版配置迁移轻提示 */}
+      {legacyProviderDraft(settings?.ai) && (
+        <div className="model-legacy-row">
+          <span className="my-item-title">检测到旧版配置数据</span>
+          <Button
+            variant="neutral"
+            size="sm"
+            disabled={saving}
+            onClick={() =>
+              runAction(
+                persistProviders((current) => current).then(() => {
+                  pushToast({ kind: 'info', title: '已导入现有配置' })
+                }),
+                '导入失败'
+              )
+            }
+          >
+            导入为供应商
+          </Button>
+        </div>
+      )}
+
+      {!settings ? (
+        <div className="model-provider-empty" role="status">
+          {hasIpc ? (
+            <>
+              <Loader2 size={16} className="animate-spin text-my-primary" />
+              <span>正在加载供应商…</span>
+            </>
+          ) : (
+            <>
+              <Server size={24} aria-hidden="true" />
+              <p>连接桌面应用后可管理模型供应商。</p>
+            </>
+          )}
+        </div>
+      ) : !providers.length ? (
+        <div className="model-provider-empty">
+          <Server size={28} className="text-my-tertiary" />
+          <p className="my-item-description">暂无配置的模型供应商，可从官方模板添加或自定义接入</p>
+          <Button variant="neutral" onClick={() => setShowTemplates(true)}>
+            <Plus size={14} />添加供应商
+          </Button>
+        </div>
+      ) : (
+        <div className="model-workspace">
+          {/* 左侧供应商紧凑导航栏 */}
+          <aside className="model-provider-sidebar" aria-label="供应商列表">
+            <div className="model-provider-sidebar-header">
+              <span>拖动排序</span>
+            </div>
+
+            <nav className="model-provider-list my-scrollbar">
+              {providers.map((provider) => {
+                const active = activeProviderId === provider.id
+                const isSelected = selectedProvider?.id === provider.id
+                const source = captureSource(provider)
+                const providerKey = providerResultKey(source)
+                const pending = providerRequests[providerKey]
+                const request = isSelected && pending?.viewGeneration === viewOwner.current.generation ? pending.mode : undefined
+                const result = providerResults[providerKey]
+                const status = getProviderStatus(provider, request === 'test', result)
+                const visual = getProviderVisual(provider.name, provider.apiFormat === 'ollama')
+                const enabledCount = provider.models.filter((m) => m.enabled).length
+
+                return (
+                  <button
+                    type="button"
+                    className="model-provider-select"
+                    key={provider.id}
+                    aria-current={isSelected ? 'true' : undefined}
+                    onClick={() => selectProvider(provider.id)}
+                    title={`${provider.name} (${status.label})`}
+                  >
+                    <span className={clsx('model-provider-avatar', visual.iconBg)}>
+                      {visual.icon}
+                    </span>
+                    <span className="model-provider-meta">
+                      <span className="model-provider-name-row">
+                        <span className="my-item-title truncate font-medium">{provider.name || '未命名供应商'}</span>
+                      </span>
+                      <span className="model-provider-count-text">
+                        {provider.models.length} 个模型
+                      </span>
+                    </span>
+                    <span
+                      className={clsx('model-provider-status-dot', status.dotClass)}
+                      title={status.tooltip}
+                      aria-hidden="true"
+                    />
+                  </button>
+                )
+              })}
+            </nav>
+
+            <div className="model-provider-sidebar-footer">
+              <Button
+                variant="neutral"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => setShowTemplates(true)}
+              >
+                <Plus size={13} />添加供应商
+              </Button>
+            </div>
+          </aside>
+
+          {/* 右侧选中的供应商详情与模型列表 */}
+          {selectedProvider && (() => {
+            const provider = selectedProvider
             const active = activeProviderId === provider.id
             const source = captureSource(provider)
             const providerKey = providerResultKey(source)
-            const request = providerRequests[providerKey]
+            const pending = providerRequests[providerKey]
+            const request = pending?.viewGeneration === viewOwner.current.generation ? pending.mode : undefined
             const result = providerResults[providerKey]
-            const status = getProviderStatus(result ? { ...provider, status: result.ok ? 'connected' : 'error', latencyMs: result.latencyMs } : provider, request === 'test')
-            return <button type="button" className="model-provider-select" key={provider.id} title={provider.name || '未命名供应商'} aria-current={selectedProvider?.id === provider.id ? 'true' : undefined} onClick={() => { setSelectedId(provider.id); setModelSearch('') }}>
-              <ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} />
-              <span className="model-provider-copy"><span className="model-provider-name"><span className="my-item-title truncate">{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-status" title={status.tooltip}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`} aria-hidden="true" />{request === 'fetch' ? '获取中…' : status.label}</span></span>
-            </button>
-          })}
-        </nav>
-        {selectedProvider && (() => {
-          const provider = selectedProvider
-          const active = activeProviderId === provider.id
-          const source = captureSource(provider)
-          const providerKey = providerResultKey(source)
-          const request = providerRequests[providerKey]
-          const selectedModelId = selectedModel?.providerId === provider.id && provider.models.some((model) => model.id === selectedModel.modelId) ? selectedModel.modelId : null
-          const visibleSelectedModelId = selectedModelId && filteredModels.some((model) => model.id === selectedModelId) ? selectedModelId : null
-          return <section key={provider.id} className="model-provider-detail my-scrollbar" tabIndex={0} aria-label={`${provider.name || '未命名供应商'}的模型`}>
-            <div className="model-provider-detail-header">
-              <div className="model-provider-detail-identity"><ProviderIdentity name={provider.name} local={provider.apiFormat === 'ollama'} /><span className="model-provider-copy"><span className="model-provider-name"><span className="my-item-title truncate" title={provider.name || '未命名供应商'}>{provider.name || '未命名供应商'}</span>{active && <span className="model-active-badge"><Check size={11} />当前</span>}</span><span className="model-provider-endpoint" title={endpointLabel(provider.baseUrl)}>{endpointLabel(provider.baseUrl)}</span></span></div>
-              <div className="model-provider-actions">
-                {!active && <Button variant="neutral" size="sm" aria-label={`使用供应商 ${provider.name}`} disabled={saving || !provider.enabled || !provider.baseUrl.trim()} onClick={() => runAction(persistProviders((current) => current, provider.id))}>使用</Button>}
-                <Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'test')} aria-label={`测试供应商 ${provider.name}`} title={provider.status === 'error' ? '重试连接' : '测试连接'}>{request === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}</Button>
-                <Button variant="ghost" size="sm" disabled={saving} onClick={() => setProviderEditor({ provider: { ...provider }, source: captureSource(provider) })} aria-label={`编辑供应商 ${provider.name}`} title="编辑供应商"><Pencil size={14} /></Button>
-                <Dropdown align="right" width={160} trigger={({ toggle }) => <Button variant="ghost" size="sm" onClick={toggle} disabled={saving} aria-label={`${provider.name} 更多操作`} title="更多操作"><MoreHorizontal size={16} /></Button>}>
-                  {(close) => <>
-                    <DropdownItem selected={active} disabled={active || !provider.enabled || !provider.baseUrl.trim()} icon={<Check size={14} />} onClick={() => { close(); runAction(persistProviders((current) => current, provider.id)) }}>设为当前</DropdownItem>
-                    <DropdownItem icon={<Power size={14} />} onClick={() => { close(); runAction(patchProvider(provider.id, { enabled: !provider.enabled })) }}>{provider.enabled ? '停用供应商' : '启用供应商'}</DropdownItem>
-                    <DropdownItem icon={<Trash2 size={14} />} danger onClick={() => { close(); runAction(handleDeleteProvider(provider), '删除失败') }}>删除供应商</DropdownItem>
-                  </>}
-                </Dropdown>
-              </div>
-            </div>
-            {providerErrors[providerKey] && <div className="model-provider-error"><CopyableError message={providerErrors[providerKey]} summary={modelErrorSummary(providerErrors[providerKey], '模型目录连接失败')} /><Button variant="ghost" size="sm" disabled={Boolean(request) || saving} onClick={() => void handleProviderRequest(provider, 'test')}>重试</Button></div>}
-            <div className="model-provider-models">
-              <div className="model-list-sticky" ref={modelToolbarRef}>
-              <div className="model-list-toolbar"><span className="my-item-title">模型 <span className="my-item-description ml-1">{provider.models.filter((model) => model.enabled).length} / {provider.models.length} 已启用</span></span><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>{request === 'fetch' ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}{request === 'fetch' ? '获取中…' : '获取模型'}</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider)}><Plus size={13} />添加模型</Button></div></div>
-              <input ref={modelSearchRef} className="my-input model-search" type="search" aria-label={`搜索 ${provider.name || '供应商'}的模型`} placeholder="搜索模型名称或 ID" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />
-              </div>
-            {filteredModels.length ? <ModelRelationship provider={provider} selectedModelId={visibleSelectedModelId} onSelectProvider={() => { if (visibleSelectedModelId) setSelectedModel(null) }} layoutKey={JSON.stringify([provider.id, filteredModels.map((model) => model.id), visibleSelectedModelId])}>{filteredModels.map((model) => {
-              const key = modelResultKey(source, model.id)
-              const result = testResults[key]
-              const testing = modelRequests[key]
-              const selected = selectedModelId === model.id
-              const isConfigured = settings.ai.model === model.id && (settings.ai.providers?.length ? settings.ai.activeProviderId === provider.id : Boolean(legacyProviderDraft(settings.ai)))
-              return <div key={model.id} className="model-item-row" data-model-id={model.id} data-selected={selected || undefined}>
-                <button type="button" className="model-graph-node" data-model-id={model.id} aria-expanded={selected} onClick={() => setSelectedModel(selected ? null : { providerId: provider.id, modelId: model.id })}>
-                  <span className="model-item-icon" aria-hidden="true"><Server size={15} /></span>
-                  <span className="model-item-copy"><span className="my-item-title block truncate" title={model.name || model.id}>{model.name || model.id}</span><span className="my-item-description block truncate" title={[model.id, model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ')}>{[model.name !== model.id ? model.id : '', model.contextWindow, ...(model.tags || [])].filter(Boolean).join(' · ') || model.id}</span></span>
-                  <span className="model-node-state">{isConfigured && <span>配置模型</span>}<span>{model.enabled ? '已启用' : '已停用'}</span>{testing ? <span>测试中…</span> : result && <span className={result.ok ? 'text-my-success-text' : 'text-my-danger-text'}>{result.ok ? '推理成功' : '测试失败'}</span>}</span>
+            const status = getProviderStatus(provider, request === 'test', result)
+            const visual = getProviderVisual(provider.name, provider.apiFormat === 'ollama')
+            const enabledModelsCount = provider.models.filter((m) => m.enabled).length
+
+            return (
+              <section
+                key={provider.id}
+                className="model-provider-detail my-scrollbar"
+                tabIndex={0}
+                aria-label={`${provider.name} 的模型`}
+              >
+                {/* 顶部 Header 卡片（从容舒展的独立信息卡，上下分层） */}
+                <header className="model-provider-header-card">
+                  <div className="model-provider-header-left">
+                    <span className={clsx('model-provider-header-avatar', visual.iconBg)}>
+                      {visual.icon}
+                    </span>
+                    <div className="model-provider-header-info">
+                      <div className="model-provider-header-title">
+                        <span>{provider.name || '未命名供应商'}</span>
+                        {active && (
+                          <span className="model-badge-quiet" title="当前用于 AI 任务调用的主供应商">
+                            主用
+                          </span>
+                        )}
+                      </div>
+                      <div className="model-provider-header-endpoint" title={endpointLabel(provider.baseUrl)}>
+                        <span>{endpointLabel(provider.baseUrl)}</span>
+                        <span className="model-endpoint-sep">·</span>
+                        <span>{provider.apiFormat === 'ollama' ? 'Ollama 协议' : 'OpenAI 协议'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="model-provider-header-actions">
+                    <div className="model-header-status" title={status.tooltip}>
+                      <span className={clsx('model-status-dot-sm', status.dotClass)} />
+                      <span>{request === 'fetch' ? '获取中…' : status.label}</span>
+                    </div>
+
+                    {!active && (
+                      <Button
+                        variant="neutral"
+                        size="sm"
+                        disabled={saving || !provider.enabled || !provider.baseUrl.trim()}
+                        onClick={() => runAction(persistProviders((current) => current, provider.id))}
+                      >
+                        设为主用
+                      </Button>
+                    )}
+
+                    <Tooltip label="仅检查地址是否响应，不验证凭据或模型目录" wrap>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={saving || Boolean(request) || !provider.baseUrl.trim()}
+                        onClick={() => void handleProviderRequest(provider, 'test')}
+                      >
+                        {request === 'test' ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                        测试连接
+                      </Button>
+                    </Tooltip>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={saving}
+                      onClick={() => setProviderEditor({ provider: { ...provider }, source: captureSource(provider) })}
+                      title="编辑供应商配置"
+                    >
+                      <Pencil size={13} />
+                      编辑
+                    </Button>
+
+                    <Dropdown
+                      align="right"
+                      width={160}
+                      trigger={({ toggle }) => (
+                        <Button variant="ghost" size="sm" onClick={toggle} disabled={saving} aria-label="更多操作" title="更多操作">
+                          <MoreHorizontal size={15} />
+                        </Button>
+                      )}
+                    >
+                      {(close) => (
+                        <>
+                          <DropdownItem
+                            selected={active}
+                            disabled={active || !provider.enabled || !provider.baseUrl.trim()}
+                            icon={<Check size={14} />}
+                            onClick={() => {
+                              close()
+                              runAction(persistProviders((current) => current, provider.id))
+                            }}
+                          >
+                            设为主用
+                          </DropdownItem>
+                          <DropdownItem
+                            icon={<Power size={14} />}
+                            onClick={() => {
+                              close()
+                              runAction(patchProvider(provider.id, { enabled: !provider.enabled }))
+                            }}
+                          >
+                            {provider.enabled ? '停用供应商' : '启用供应商'}
+                          </DropdownItem>
+                          <DropdownItem
+                            icon={<Trash2 size={14} />}
+                            danger
+                            onClick={() => {
+                              close()
+                              runAction(handleDeleteProvider(provider), '删除失败')
+                            }}
+                          >
+                            删除供应商
+                          </DropdownItem>
+                        </>
+                      )}
+                    </Dropdown>
+                  </div>
+                </header>
+
+                {/* 错误提示横幅 */}
+                {(['test', 'fetch'] as const).map((mode) => {
+                  const failure = providerErrors[providerErrorKey(providerKey, mode)]
+                  if (!failure) return null
+                  const summary = failure.catalog ? '保存模型目录失败' : mode === 'fetch' ? '获取模型目录失败' : '地址连接失败'
+                  return (
+                    <div className="model-provider-error" key={mode}>
+                      <CopyableError message={failure.message} summary={modelErrorSummary(failure.message, summary)} />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={Boolean(request) || saving}
+                        onClick={() => void handleProviderRequest(provider, failure.mode, failure.catalog)}
+                      >
+                        重试
+                      </Button>
+                    </div>
+                  )
+                })}
+
+                {/* 模型管理核心区 */}
+                <div className="model-management-section">
+                  {/* 吸顶工具条：标题、统计、刷新/添加按钮、全宽搜索框 */}
+                  <div className="model-toolbar-container">
+                    <div className="model-toolbar-row">
+                      <div className="model-toolbar-heading">
+                        <div className="model-toolbar-title-line">
+                          <span className="model-toolbar-title">模型</span>
+                          <span className="model-toolbar-counter">已选 {enabledModelsCount} 个</span>
+                        </div>
+                        <span className="model-toolbar-subtitle">用开关选择常用的对话模型。</span>
+                      </div>
+
+                      <div className="model-toolbar-actions">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={saving || Boolean(request) || !provider.baseUrl.trim()}
+                          onClick={() => void handleProviderRequest(provider, 'fetch')}
+                        >
+                          {request === 'fetch' ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
+                          {request === 'fetch' ? '获取中…' : '获取模型'}
+                        </Button>
+                        <Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider)}>
+                          <Plus size={13} />添加模型
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="model-filter-bar">
+                      <div className="model-category-tabs" role="tablist" aria-label="模型分类筛选">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={categoryFilter === 'all'}
+                          className={clsx('model-category-tab', categoryFilter === 'all' && 'is-active')}
+                          onClick={() => setCategoryFilter('all')}
+                        >
+                          全部
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={categoryFilter === 'enabled'}
+                          className={clsx('model-category-tab', categoryFilter === 'enabled' && 'is-active')}
+                          onClick={() => setCategoryFilter('enabled')}
+                        >
+                          已启用
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={categoryFilter === 'chat'}
+                          className={clsx('model-category-tab', categoryFilter === 'chat' && 'is-active')}
+                          onClick={() => setCategoryFilter('chat')}
+                        >
+                          对话
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={categoryFilter === 'code'}
+                          className={clsx('model-category-tab', categoryFilter === 'code' && 'is-active')}
+                          onClick={() => setCategoryFilter('code')}
+                        >
+                          代码
+                        </button>
+                      </div>
+
+                      <div className="model-search-box">
+                        <Search size={14} aria-hidden="true" />
+                        <input
+                          type="search"
+                          className="model-search-input"
+                          ref={modelSearchRef}
+                          placeholder="搜索模型名称或 ID..."
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                        />
+                        {modelSearch && (
+                          <button
+                            type="button"
+                            className="model-search-clear"
+                            aria-label="清除搜索"
+                            onClick={() => setModelSearch('')}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 模型列表分组手风琴（对标 Cherry Studio 质感） */}
+                  {groupedModels.length ? (
+                    <div className="model-group-accordion">
+                      {groupedModels.map((group) => {
+                        const isCollapsed = Boolean(collapsedGroups[group.name]) && !modelSearch
+                        const groupEnabledCount = group.models.filter((m) => m.enabled).length
+
+                        return (
+                          <section key={group.name} className="model-group-section" aria-label={group.name}>
+                            <div
+                              className="model-group-header"
+                              onClick={() => toggleGroup(group.name)}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  toggleGroup(group.name)
+                                }
+                              }}
+                            >
+                              <div className="model-group-header-left">
+                                <ChevronDown size={13} className={clsx('model-group-chevron', isCollapsed && 'is-collapsed')} />
+                                <span className="model-group-name">{group.name} {group.models.length}</span>
+                              </div>
+                              <span className="model-group-meta">
+                                {groupEnabledCount} 已启用
+                              </span>
+                            </div>
+
+                            {!isCollapsed && (
+                              <div className="model-card-list">
+                                {group.models.map((model) => {
+                                  const brandMeta = getModelBrand(model.id, model.name)
+                                  const key = modelResultKey(source, model.id)
+                                  const result = testResults[key]
+                                  const testing = modelRequests[key]?.viewGeneration === viewOwner.current.generation
+                                  const isConfiguredChat =
+                                    settings?.ai?.model === model.id &&
+                                    (active || Boolean(legacyProviderDraft(settings?.ai)))
+                                  const hasError = result && !result.ok && result.error
+                                  const showErrorDrawer = openErrorModelId === model.id && hasError
+                                  const timing = result?.ok && typeof result.latencyMs === 'number' && Number.isFinite(result.latencyMs) &&
+                                    (result.latencyKind === 'first_output' || result.latencyKind === 'response')
+                                    ? `${result.latencyKind === 'first_output' ? '首字' : '响应'} ${result.latencyMs}ms`
+                                    : null
+
+                                  const secondaryText = [
+                                    model.contextWindow ? String(model.contextWindow) : '',
+                                    ...(model.tags || [])
+                                  ].filter(Boolean).join(' · ')
+
+                                  return (
+                                    <div key={model.id} className="flex flex-col gap-1" data-model-id={model.id}>
+                                      <div
+                                        className="model-row-item"
+                                        data-active-model={isConfiguredChat ? 'true' : undefined}
+                                      >
+                                        <button
+                                          type="button"
+                                          className="model-row-left"
+                                          data-model-id={model.id}
+                                          aria-label={`编辑模型 ${model.name || model.id}`}
+                                          onClick={() => openModelEditor(provider, model)}
+                                        >
+                                          <span className="model-brand-icon-wrap" title={brandMeta.brand} aria-hidden="true">
+                                            {brandMeta.icon}
+                                          </span>
+                                          <span className="model-row-info">
+                                            <span className="model-row-title-row">
+                                              <span className="model-row-name my-item-title" title={model.name || model.id}>
+                                                {model.name || model.id}
+                                              </span>
+                                              {secondaryText && (
+                                                <span className="model-row-tags my-item-description">
+                                                  {secondaryText}
+                                                </span>
+                                              )}
+                                              {isConfiguredChat && (
+                                                <span className="model-chip-active" title="当前用于 AI 对话的主模型">
+                                                  当前对话
+                                                </span>
+                                              )}
+                                            </span>
+                                          </span>
+                                        </button>
+
+                                        <div className="model-row-right">
+                                          <div className="model-row-result">
+                                            {testing ? (
+                                              <span role="status" className="model-test-pill bg-my-layer-2 text-my-secondary">
+                                                <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+                                                测试中…
+                                              </span>
+                                            ) : result?.ok ? (
+                                              <span role="status" className="model-test-pill bg-my-success-subtle text-my-success-text" title={timing || '测试通过'}>
+                                                <CheckCircle2 size={11} aria-hidden="true" />
+                                                {timing || '测试通过'}
+                                              </span>
+                                            ) : result ? (
+                                              <button
+                                                type="button"
+                                                className="model-test-pill bg-my-danger-subtle text-my-danger-text"
+                                                aria-expanded={Boolean(showErrorDrawer)}
+                                                aria-label={`查看模型 ${model.name || model.id} 测试错误`}
+                                                onClick={() => setOpenErrorModelId(showErrorDrawer ? null : model.id)}
+                                              >
+                                                <XCircle size={11} aria-hidden="true" />
+                                                测试失败
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                          <div className="model-row-actions">
+                                            <button
+                                              type="button"
+                                              className="my-icon-control"
+                                              disabled={testing || saving || !provider.baseUrl.trim()}
+                                              onClick={() => void handleTestModel(provider, model)}
+                                              title="测试文本生成"
+                                              aria-label={`测试模型 ${model.name || model.id} 的文本生成`}
+                                            >
+                                              <Zap size={15} aria-hidden="true" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="my-icon-control"
+                                              disabled={saving}
+                                              onClick={() => openModelEditor(provider, model)}
+                                              title="编辑模型参数"
+                                              aria-label={`编辑模型参数 ${model.name || model.id}`}
+                                            >
+                                              <Pencil size={15} aria-hidden="true" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="my-icon-control model-row-delete"
+                                              disabled={saving}
+                                              onClick={(e) => deleteModelWithFocus(source, model.id, e.currentTarget)}
+                                              title="删除此模型"
+                                              aria-label={`删除模型 ${model.name || model.id}`}
+                                            >
+                                              <Trash2 size={15} aria-hidden="true" />
+                                            </button>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            role="switch"
+                                            aria-checked={model.enabled}
+                                            aria-label={(model.name || model.id) + ' 启用开关'}
+                                            disabled={saving}
+                                            onClick={() => {
+                                              runAction(
+                                                patchModels(source, (models) =>
+                                                  models.map((item) =>
+                                                    item.id === model.id ? { ...item, enabled: !model.enabled } : item
+                                                  )
+                                                )
+                                              )
+                                            }}
+                                            className="my-icon-control model-row-switch"
+                                          >
+                                            <span className="model-row-switch-track" aria-hidden="true"><span /></span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {showErrorDrawer && result && result.error && (
+                                        <div className="px-3 py-2 bg-my-layer-2 rounded-md border border-my-border-subtle">
+                                          <CopyableError message={result.error} summary={modelErrorSummary(result.error)} />
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </section>
+                        )
+                      })}
+                    </div>
+                  ) : provider.models.length ? (
+                    <div className="model-list-empty">
+                      <span>没有匹配的模型</span>
+                      <Button variant="ghost" size="sm" onClick={() => setModelSearch('')}>
+                        清除搜索
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="model-list-empty">
+                      <Server size={22} className="text-my-tertiary" />
+                      <span>暂未获取或添加模型</span>
+                      <Button
+                        variant="neutral"
+                        size="sm"
+                        disabled={saving || Boolean(request) || !provider.baseUrl.trim()}
+                        onClick={() => void handleProviderRequest(provider, 'fetch')}
+                      >
+                        从远端获取模型
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                </section>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* 添加供应商官方模板弹窗 */}
+      <Modal open={showTemplates} onClose={() => setShowTemplates(false)} ariaLabel="选择供应商模板">
+        <div className="my-modal-content">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-my-lg font-semibold text-my-primary">添加模型供应商</h2>
+            <Button variant="ghost" onClick={() => setShowTemplates(false)} aria-label="关闭">
+              <X size={16} />
+            </Button>
+          </div>
+          <div className="model-template-list">
+            {OFFICIAL_TEMPLATES.map((template) => {
+              const visual = getProviderVisual(template.name, template.apiFormat === 'ollama')
+              return (
+                <button
+                  type="button"
+                  className="model-template-row"
+                  key={template.id}
+                  onClick={() => handleSelectTemplate(template)}
+                >
+                  <span className={clsx('model-provider-avatar', visual.iconBg)}>
+                    {visual.icon}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="my-item-title block font-medium">{template.name}</span>
+                    <span className="my-item-description block truncate">{template.description}</span>
+                  </span>
+                  <Plus size={14} className="text-my-tertiary" />
                 </button>
-                {selected && <div className="model-item-detail">
-                  {result && <span className={`model-test-result ${result.ok ? 'text-my-success-text' : 'text-my-danger-text'}`} role="status" title={result.error ? modelErrorSummary(result.error) : '模型推理请求成功'}>{result.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}{result.ok ? result.latencyMs === undefined ? '推理成功' : `推理成功 ${result.latencyMs}ms` : '测试失败'}</span>}
-                  <div className="model-item-actions"><Button variant="ghost" size="sm" disabled={saving || testing || !provider.baseUrl.trim()} onClick={() => void handleTestModel(provider, model)} aria-label={`测试模型 ${model.name || model.id}`} title="测试模型推理（将调用 API）">{testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}测试</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => openModelEditor(provider, model)} aria-label={`编辑模型 ${model.name || model.id}`} title="编辑模型"><Pencil size={14} /></Button><Button variant="ghost" size="sm" disabled={saving} onClick={(event) => deleteModelWithFocus(source, model.id, event.currentTarget)} aria-label={`删除模型 ${model.name || model.id}`} title="删除模型"><Trash2 size={14} /></Button><Switch checked={model.enabled} disabled={saving} onChange={(enabled) => runAction(patchModels(source, (models) => models.map((item) => item.id === model.id ? { ...item, enabled } : item)))} label={`启用模型 ${model.name || model.id}`} /></div>
-                  {result?.ok === false && result.error && <div className="model-test-error"><CopyableError message={result.error} summary={modelErrorSummary(result.error)} /></div>}
-                </div>}
-              </div>
-            })}</ModelRelationship> : provider.models.length ? <div className="model-list-empty"><span>没有匹配的模型</span><Button variant="ghost" size="sm" onClick={() => { setModelSearch(''); modelSearchRef.current?.focus() }}>清除搜索</Button></div> : <div className="model-list-empty"><Server size={20} className="text-my-tertiary" /><span>暂无模型</span><Button variant="neutral" size="sm" disabled={saving || Boolean(request) || !provider.baseUrl.trim()} onClick={() => void handleProviderRequest(provider, 'fetch')}>获取模型</Button></div>}
-            </div>
-          </section>
-        })()}
-      </div>}
-    </PreferenceSection>
+              )
+            })}
+            <button
+              type="button"
+              className="model-template-row"
+              onClick={() => handleSelectTemplate('custom')}
+            >
+              <span className="model-provider-avatar bg-my-layer-2 text-my-txt-primary">
+                <Plus size={16} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="my-item-title block font-medium">自定义供应商</span>
+                <span className="my-item-description block truncate">输入任意兼容 OpenAI 或 Ollama 的服务地址与 API Key</span>
+              </span>
+              <Plus size={14} className="text-my-tertiary" />
+            </button>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button variant="ghost" onClick={() => setShowTemplates(false)}>取消</Button>
+          </div>
+        </div>
+      </Modal>
 
-    <details className="model-advanced"><summary><SlidersHorizontal size={15} /><span>高级参数</span><ChevronDown size={14} /></summary><PreferenceRow label="温度" htmlFor="models-temperature"><input id="models-temperature" type="range" min={0} max={1} step={0.1} value={temperature} onChange={(event) => setTemperature(Number(event.target.value))} disabled={savingTemperature || !settings} className="min-w-0 flex-1" /><output htmlFor="models-temperature" className="text-my-sm text-my-secondary">{temperature}</output></PreferenceRow><div className="flex justify-end pb-4"><Button variant="neutral" disabled={saving || savingTemperature || !settings || temperature === (settings.ai.temperature ?? 0.3)} onClick={() => void handleSaveTemperature()}>{savingTemperature && <Loader2 size={13} className="animate-spin" />}{savingTemperature ? '保存中…' : '保存参数'}</Button></div></details>
+      {/* 供应商编辑/新建弹窗 */}
+      {providerEditor && (
+        <ModelProviderEditor
+          key={providerEditor.provider.id}
+          provider={providerEditor.provider}
+          isNew={!providerEditor.source}
+          onClose={() => setProviderEditor(null)}
+          onSave={handleSaveProvider}
+          onTestConnection={async (baseUrl) => {
+            const editor = providerEditor
+            const viewGeneration = viewOwner.current.generation
+            const ownsEditor = (): boolean =>
+              mounted.current && viewOwner.current.generation === viewGeneration &&
+              (editor.source ? ownsSource(editor.source) : !latestProviders().some((item) => item.id === editor.provider.id))
+            if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
+            const result = await api.aiTestConnection(baseUrl)
+            if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
+            return result
+          }}
+        />
+      )}
 
-    <Modal open={showTemplates} onClose={() => setShowTemplates(false)} ariaLabel="选择供应商">
-      <div className="my-modal-content"><div className="mb-4 flex items-center justify-between"><h2 className="text-my-lg font-semibold text-my-primary">添加供应商</h2><Button variant="ghost" onClick={() => setShowTemplates(false)} aria-label="关闭供应商模板"><X size={17} /></Button></div><div className="model-template-list">{OFFICIAL_TEMPLATES.map((template) => <button type="button" className="model-template-row" key={template.id} onClick={() => handleSelectTemplate(template)}><ProviderIdentity name={template.name} local={template.apiFormat === 'ollama'} /><span className="min-w-0 flex-1"><span className="my-item-title block">{template.name}</span><span className="my-item-description block truncate">{endpointLabel(template.baseUrl)}</span></span><Plus size={15} className="text-my-tertiary" /></button>)}<button type="button" className="model-template-row" onClick={() => handleSelectTemplate('custom')}><ProviderIdentity name="+" /><span className="my-item-title flex-1 text-left">自定义供应商</span><Plus size={15} className="text-my-tertiary" /></button></div><div className="mt-4 flex justify-end"><Button variant="ghost" onClick={() => setShowTemplates(false)}>取消</Button></div></div>
-    </Modal>
-    {providerEditor && <ModelProviderEditor key={providerEditor.provider.id} provider={providerEditor.provider} isNew={!providerEditor.source} onClose={() => setProviderEditor(null)} onSave={handleSaveProvider} onTest={async (draft) => {
-      const editor = providerEditor
-      const ownsEditor = (): boolean => editor.source ? ownsSource(editor.source) : mounted.current && !latestProviders().some((item) => item.id === draft.id)
-      if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
-      const startedAt = performance.now()
-      const result = await api.aiFetchModels(draft)
-      if (!ownsEditor()) throw new Error('供应商连接配置已更改，请重新打开配置窗口')
-      return { ok: result.ok, error: result.error, latencyMs: Math.round(performance.now() - startedAt) }
-    }} />}
-    {modelEditor && <ModelItemEditor key={JSON.stringify([modelEditor.provider.id, modelEditor.model.id, modelEditor.isNew])} providerName={modelEditor.provider.name} model={modelEditor.model} isNew={modelEditor.isNew} onClose={() => setModelEditor(null)} onSave={async (model) => {
-      await patchModels(modelEditor.source, (models) => {
-        if (modelEditor.isNew) {
-          if (models.some((item) => item.id === model.id)) throw new Error('该模型 ID 已存在')
-          return [...models, model]
-        }
-        if (!models.some((item) => item.id === model.id)) throw new Error('该模型已被删除，请重新添加')
-        return models.map((item) => item.id === model.id ? { ...item, name: model.name, contextWindow: model.contextWindow, tags: model.tags } : item)
-      })
-    }} />}
-  </div>
+      {/* 单个模型编辑/新建弹窗 */}
+      {modelEditor && (
+        <ModelItemEditor
+          key={JSON.stringify([modelEditor.provider.id, modelEditor.model.id, modelEditor.isNew])}
+          providerName={modelEditor.provider.name}
+          model={modelEditor.model}
+          isNew={modelEditor.isNew}
+          onClose={() => setModelEditor(null)}
+          onSave={async (model) => {
+            await patchModels(modelEditor.source, (models) => {
+              if (modelEditor.isNew) {
+                if (models.some((item) => item.id === model.id)) throw new Error('该模型 ID 已存在')
+                return [...models, model]
+              }
+              if (!models.some((item) => item.id === model.id)) throw new Error('该模型已被删除，请重新添加')
+              return models.map((item) =>
+                item.id === model.id
+                  ? { ...item, name: model.name, contextWindow: model.contextWindow, tags: model.tags }
+                  : item
+              )
+            })
+          }}
+        />
+      )}
+    </div>
+  )
 }

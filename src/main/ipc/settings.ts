@@ -15,12 +15,31 @@ import { explorerMenuSupported, setExplorerMenu } from '../services/explorer-men
 import { applyMainWindowAppearance } from '../services/window-appearance'
 import { handle } from './registry'
 import { scanStorage, cleanStorage, openDataDirectory } from '../services/storage'
+import { z } from 'zod'
+import { defaultConfiguredModelId, modelIdWithinLimit } from '../../shared/model-selection'
 
 export function registerSettingsIpc(): void {
   handle(ipcInvoke.storage.scan, () => scanStorage())
   handle(ipcInvoke.storage.clean, (_e, input: unknown) => cleanStorage(input))
   handle(ipcInvoke.storage.openDataDirectory, () => openDataDirectory())
   handle(ipcInvoke.settings.get, () => getSettings())
+  handle(ipcInvoke.settings.setDefaultConversationModel, async (event, raw: unknown) => {
+    const window = getMainWindow()
+    if (!window || event.sender !== window.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('默认模型只能在应用主窗口设置')
+    const input = z.object({ modelId: z.string().min(1).refine(modelIdWithinLimit), expectedDefaultId: z.string().refine(modelIdWithinLimit).optional() }).strict().parse(raw)
+    await writeNativeSettings(current => {
+      if (input.expectedDefaultId && defaultConfiguredModelId(current.ai) !== input.expectedDefaultId) throw new Error('默认模型已被修改，请重新选择')
+      const provider = current.ai.providers?.find(item => item.enabled && item.models.some(model => model.enabled && `${item.id}:${model.id}` === input.modelId))
+      const model = provider?.models.find(item => item.enabled && `${provider.id}:${item.id}` === input.modelId)
+      if (!provider || !model) {
+        if (!current.ai.providers?.length && current.ai.enabled && input.modelId === `default:${current.ai.model}`) return {}
+        throw new Error('所选模型未启用，默认值未改变')
+      }
+      return { ai: { ...current.ai, activeProviderId: provider.id, model: model.id } }
+    })
+    broadcastToWindows(ipcEvent.conversationDefaultsChanged, {})
+    return { modelId: input.modelId }
+  })
 
   handle(ipcInvoke.settings.set, async (_e, patch: Partial<Settings>) => {
     const prevJira = getSettings().jira
@@ -82,7 +101,7 @@ export function registerSettingsIpc(): void {
     return next
   })
 
-  /** T1：资源管理器右键"用 Trellis Panel 阅读"（仅打包态 Windows；写 HKCU，幂等可撤销） */
+  /** T1：资源管理器右键"用 Crux 阅读"（仅打包态 Windows；写 HKCU，幂等可撤销） */
   handle(ipcInvoke.desktop.setExplorerMenu, async (_e, on: boolean) => {
     if (!explorerMenuSupported()) {
       return { ok: false as const, supported: false, reason: '仅打包版 Windows 支持资源管理器右键集成' }

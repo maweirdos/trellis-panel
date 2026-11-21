@@ -1,4 +1,16 @@
 import { z } from 'zod'
+import type { AiConfig } from './types'
+
+/** Default selection is catalog metadata; it must not require decrypting credentials. */
+export function defaultConfiguredModelId(ai: Pick<AiConfig, 'providers' | 'activeProviderId' | 'enabled' | 'model'>): string | undefined {
+  if (ai.providers?.length) {
+    const candidates = ai.providers.filter(provider => provider.enabled).flatMap(provider => provider.models.filter(model => model.enabled).map(model => ({ provider, model })))
+    const selected = candidates.find(item => item.provider.id === ai.activeProviderId && item.model.id === ai.model)
+      ?? candidates.find(item => item.provider.id === ai.activeProviderId) ?? candidates[0]
+    return selected ? `${selected.provider.id}:${selected.model.id}` : undefined
+  }
+  return ai.enabled && ai.model ? `default:${ai.model}` : undefined
+}
 
 export const MODEL_ID_MAX_BYTES = 8192
 export function modelIdWithinLimit(value: string): boolean {

@@ -1,7 +1,7 @@
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import type { AiConfig, ChatMessage, ModelProvider } from '../../shared/types'
-import { aiChat, aiTest, aiTaskPrompt, fetchModelsFromProvider, testSingleModel, enrichModelsWithCatalog } from '../services/ai'
+import { aiChat, aiTest, aiTaskPrompt, fetchModelsFromProvider, testConnection, testSingleModel, enrichModelsWithCatalog } from '../services/ai'
 import { aiCommitMsg, aiPrDesc } from '../services/plan'
 import { getSettings } from '../services/store'
 import { isGitRepo, taskGitInfo } from '../services/git'
@@ -20,6 +20,7 @@ export function registerAiIpc(): void {
   })
 
   handle(ipcInvoke.ai.test, (_e, cfg: AiConfig) => aiTest(cfg))
+  handle(ipcInvoke.ai['test-connection'], (_e, baseUrl: string) => testConnection(baseUrl))
   // 发现优先 + models.dev 富化（TPD-012）：缓存 24h，离线自动回退旧缓存
   handle(ipcInvoke.ai['fetch-models'], async (_e, provider: ModelProvider) => {
     const res = await fetchModelsFromProvider(provider)
