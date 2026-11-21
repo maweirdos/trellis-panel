@@ -74,9 +74,9 @@ export class TeamJiraOAuthRelay {
     if (!principal.deviceId || !principal.projectId || principal.actor.kind !== 'device') throw new TeamServiceError('FORBIDDEN', 'Jira authorization requires a paired desktop device', 403)
     const redirectUri = jiraRelayRedirect(input.publicOrigin)
     const base = new URL(input.body.baseUrl)
-    if (input.body.redirectUri !== redirectUri || base.protocol !== 'https:' || base.username || base.password || base.search || base.hash
+    if (input.body.redirectUri !== redirectUri || !['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash
       || /[\s\u007f]/.test(input.body.baseUrl) || /[\u0000-\u001f\u007f]/.test(input.body.clientId) || !input.body.clientId.trim()) {
-      throw new TeamServiceError('INVALID_INPUT', 'Jira HTTPS instance, client identity and exact registered callback are required')
+      throw new TeamServiceError('INVALID_INPUT', 'Jira HTTP(S) instance, client identity and exact registered HTTPS callback are required')
     }
     const attempts = [...this.attempts.values()]
     const replaced = attempts.filter(attempt => attempt.deviceId === principal.deviceId && attempt.personId === principal.person.userId && attempt.authorization.connectionId === input.body.connectionId)

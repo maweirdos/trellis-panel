@@ -109,7 +109,7 @@ function browserCallback(authorizationUrl: URL, expectedState: string, signal: A
       }
       if (settled || received) { response.writeHead(409).end('Authorization already received'); return }
       received = true
-      response.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Trellis Panel</title><h1>已收到授权回调</h1><p>请返回 Trellis Panel 查看登录结果。可以关闭此页面。</p></html>', () => finish(undefined, callback))
+      response.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Crux</title><h1>已收到授权回调</h1><p>请返回 Crux 查看登录结果。可以关闭此页面。</p></html>', () => finish(undefined, callback))
     })
     server.headersTimeout = 10000
     server.requestTimeout = 10000

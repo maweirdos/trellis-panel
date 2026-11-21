@@ -118,8 +118,13 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
         if (plan?.platformSpaceId && this.businessHooks) {
           const hooks = this.businessHooks
           const platformReceipt = this.intent(context, identity + ':platform-create', 'platform-create', issue, after)
-          const platformTask = await this.effect(context, platformReceipt, () => hooks.create({ spaceId: plan.platformSpaceId as string, title: issue.fields.title, description: issue.fields.description,
-            issue: { instanceId: issue.instanceId, issueId: issue.issueId, issueKey: issue.key, remoteProjectId: issue.projectId }, providerJobId: context.job.id, providerCommandId: context.job.commandId, payloadDigest: digest({ issue, mapping }), effectId: platformReceipt.receipt.id }), task => this.settle(platformReceipt.receipt.id, 'applied', 'Platform task created through the current desktop team business Hook.', { platformTask: task }))
+          const platformTask = await this.effect(context, platformReceipt, async () => {
+            const task = await hooks.create({ spaceId: plan.platformSpaceId as string, title: issue.fields.title, assigneeId: mapping.fields.includes('assignee') ? mapping.members[issue.fields.assignee] : undefined, description: mapping.fields.includes('description') ? issue.fields.description : null,
+              issue: { instanceId: issue.instanceId, issueId: issue.issueId, issueKey: issue.key, remoteProjectId: issue.projectId }, providerJobId: context.job.id, providerCommandId: context.job.commandId, payloadDigest: digest({ issue, mapping }), effectId: platformReceipt.receipt.id })
+            this.retainPlatformTask(platformReceipt.receipt.id, task)
+            try { await hooks.shareSource(task, issue, mapping) } catch { throw new JiraWorkspaceError('E_UNKNOWN', 'Task created. Original Jira source publication needs reconciliation.') }
+            return task
+          }, task => this.settle(platformReceipt.receipt.id, 'applied', 'Platform task and Jira source confirmed.', { platformTask: task }))
           this.settle(receipt.receipt.id, 'applied', 'Created, mapped and linked to the platform task.', { after, platformTask }, true)
         }
         if (plan) this.base(plan, issue, after)
@@ -155,7 +160,7 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
     let platformTask = this.repository.read().receipts
       .filter(entry => entry.receipt.issueId === issue.issueId && entry.source.instanceId === issue.instanceId && entry.source.remoteProjectId === issue.projectId && entry.platformTask)
       .at(-1)?.platformTask
-    if (!platformTask && plan.platformSpaceId && this.businessHooks && statusChanged) {
+    if (!platformTask && plan.platformSpaceId && this.businessHooks && plan.rules.inboundUpdate) {
       const evidence = await this.businessHooks.lookup({ instanceId: issue.instanceId, issueId: issue.issueId })
       if (evidence) {
         if (evidence.task.spaceId !== plan.platformSpaceId) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue is canonically linked to a different platform Space.')
@@ -182,6 +187,9 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
         await this.effect(context, platformReceipt, () => hooks.update({ task: platformTask as NonNullable<typeof platformTask>, patch: { statusId: mapped.status as string },
           issue: { instanceId: issue.instanceId, issueId: issue.issueId, issueKey: issue.key, remoteProjectId: issue.projectId }, providerJobId: context.job.id, providerCommandId: context.job.commandId, payloadDigest: digest({ issue, status: mapped.status }), effectId: platformReceipt.receipt.id }), updated => this.settle(platformReceipt.receipt.id, 'applied', 'Platform task status updated through the current desktop team business Hook.', { platformTask: updated }))
       }
+    }
+    if (platformTask && platformTask.spaceId === plan.platformSpaceId && plan.rules.inboundUpdate && this.businessHooks) {
+      await this.businessHooks.shareSource(platformTask, issue, mapping)
     }
     if (!Object.keys(inbound).length && !Object.keys(outbound).length && !keyChanged) { const receipt = this.intent(context, identity, 'local-update', issue, local); this.settle(receipt.receipt.id, 'skipped', 'No authorized mapped field changed.') }
     // Disabled direction must not advance its base past an unapplied edit.
@@ -375,7 +383,8 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
             const platformTask = await this.businessHooks.create({
               spaceId: plan.platformSpaceId,
               title: entry.issue.fields.title,
-              description: entry.issue.fields.description,
+              assigneeId: plan.mapping.fields.includes('assignee') ? plan.mapping.members[entry.issue.fields.assignee] : undefined,
+              description: plan.mapping.fields.includes('description') ? entry.issue.fields.description : null,
               issue: { instanceId: entry.issue.instanceId, issueId: entry.issue.issueId, issueKey: entry.issue.key, remoteProjectId: entry.issue.projectId },
               providerJobId: input.job.id,
               providerCommandId: input.job.commandId,
@@ -386,7 +395,8 @@ export class JiraWorkspaceWorker implements IntegrationWorkPort {
               this.settle(entry.receipt.id, 'conflict', 'Replay returned a different platform task than the retained receipt.', { platformTask })
               continue
             }
-            this.settle(entry.receipt.id, 'applied', 'Original platform create receipt replayed through stable command and canonical mapping evidence.', { platformTask })
+            await this.businessHooks.shareSource(platformTask, entry.issue, plan.mapping)
+            this.settle(entry.receipt.id, 'applied', 'Original platform task and Jira source confirmed.', { platformTask })
             const localCreate = this.repository.read().receipts.find(candidate => candidate.receipt.jobId === input.job.id && candidate.receipt.effect === 'local-create' && candidate.receipt.issueId === entry.receipt.issueId)
             if (localCreate) this.retainPlatformTask(localCreate.receipt.id, platformTask)
             continue

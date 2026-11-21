@@ -1,7 +1,8 @@
 import { shell } from 'electron'
 import { createHash, randomBytes } from 'node:crypto'
+import { createServer } from 'node:http'
 import { z } from 'zod'
-import { JIRA_OAUTH_CALLBACK_PATH, JIRA_OAUTH_SCOPES } from '../../../../shared/integrations'
+import { classifyJiraOAuthRedirectUri, JIRA_OAUTH_REDIRECT_URI, JIRA_OAUTH_SCOPES } from '../../../../shared/integrations'
 import { jiraOAuthRelaySchema, jiraOAuthRelayPollSchema, type JiraOAuthRelay } from '../../../../shared/jira-auth'
 import { protectSecret, revealSecret } from '../credentials'
 import { legacyConnections } from '../legacy'
@@ -37,11 +38,13 @@ export function assertJiraCurrent(c: ResolvedConnection): StoredConnection | und
 }
 export function jiraOAuthMetadata(c: ResolvedConnection): { baseUrl: string; clientId: string; redirectUri: string; clientSecret: string } {
   const { baseUrl, clientId, redirectUri } = c.public.config
-  let base: URL, redirect: URL
-  try { base = new URL(baseUrl); redirect = new URL(redirectUri) } catch { throw new IntegrationError('请配置 Jira HTTPS 实例、Client ID、Client Secret 和团队服务 HTTPS 回调地址') }
-  if (c.public.legacy || c.public.config.authMethod !== 'oauth2' || !clientId || !c.secrets.clientSecret) throw new IntegrationError('请先保存完整的 Jira OAuth 客户端配置', 'denied')
-  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || redirect.protocol !== 'https:' || redirect.username || redirect.password || redirect.search || redirect.hash || redirect.pathname !== JIRA_OAUTH_CALLBACK_PATH) throw new IntegrationError('Jira OAuth 需要 HTTPS 实例和已配对团队服务的 /auth/jira/callback HTTPS 回调地址')
-  return { baseUrl, clientId, redirectUri, clientSecret: c.secrets.clientSecret }
+  if (c.public.legacy || c.public.config.authMethod !== 'oauth2' || !clientId?.trim() || !c.secrets.clientSecret) throw new IntegrationError('请先保存完整的 Jira OAuth 客户端配置', 'denied')
+  let base: URL
+  try { base = new URL(baseUrl) } catch { throw new IntegrationError('请配置有效的 Jira HTTP(S) 实例地址') }
+  if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash
+    || /[\s\\?#\u0000-\u001f\u007f]/.test(baseUrl) || /^https?:\/\/[^/]*@/i.test(baseUrl)) throw new IntegrationError('Jira 实例地址只能包含 HTTP(S) 协议、主机和路径')
+  if (!classifyJiraOAuthRedirectUri(redirectUri ?? '')) throw new IntegrationError('Jira 回调必须使用固定本机地址或团队服务的 /auth/jira/callback HTTPS 地址')
+  return { baseUrl: base.href.replace(/\/+$/, ''), clientId, redirectUri, clientSecret: c.secrets.clientSecret }
 }
 export function validateJiraConnection(c: ResolvedConnection): void {
   if (c.public.config.authMethod === 'oauth2') jiraOAuthMetadata(c)
@@ -179,45 +182,120 @@ function pause(signal: AbortSignal): Promise<void> {
     if (signal.aborted) stop()
   })
 }
+/** Jira's fixed loopback receiver is armed before the system browser is opened. */
+function receiveJiraCallback(expectedState: string, signal: AbortSignal, openBrowser: () => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const redirect = new URL(JIRA_OAUTH_REDIRECT_URI)
+    let settled = false
+    const finish = (error?: IntegrationError, code?: string): void => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', abort)
+      server.close()
+      server.closeAllConnections()
+      if (error) reject(error)
+      else if (code) resolve(code)
+    }
+    const abort = (): void => finish(new IntegrationError('Jira 授权已取消或超时，请重新登录', 'denied'))
+    const server = createServer({ maxHeaderSize: 8192 }, (request, response) => {
+      response.setHeader('Cache-Control', 'no-store')
+      response.setHeader('Referrer-Policy', 'no-referrer')
+      response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+      response.setHeader('Content-Type', 'text/html; charset=utf-8')
+      response.setHeader('Connection', 'close')
+      let callback: URL
+      try { callback = new URL(request.url || '/', redirect.origin) }
+      catch { response.writeHead(400).end('Invalid callback'); return }
+      const hostCount = request.rawHeaders.filter((_, index) => index % 2 === 0 && request.rawHeaders[index].toLowerCase() === 'host').length
+      if (request.method !== 'GET' || hostCount !== 1 || request.headers.host !== redirect.host
+        || callback.origin !== redirect.origin || callback.pathname !== redirect.pathname || callback.hash || request.url?.split('?')[0] !== redirect.pathname) {
+        response.writeHead(404).end('Not found'); return
+      }
+      if (settled) { response.writeHead(409).end('Authorization already received'); return }
+      if (callback.searchParams.getAll('state').length !== 1 || callback.searchParams.get('state') !== expectedState
+        || [...callback.searchParams.keys()].some(key => callback.searchParams.getAll(key).length !== 1)) {
+        response.writeHead(400).end('Invalid authorization state or parameters'); return
+      }
+      const code = callback.searchParams.get('code'), error = callback.searchParams.get('error')
+      if ((code !== null) === (error !== null) || (code !== null && (!code || code.length > 8192 || /[\u0000-\u0020\u007f]/.test(code)))
+        || (error !== null && (!error || error.length > 2000 || /[\u0000-\u0020\u007f]/.test(error)))) {
+        response.writeHead(400).end('Invalid authorization result'); return
+      }
+      response.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Crux</title><h1>已收到授权回调</h1><p>请返回 Crux 查看结果。可以关闭此页面。</p></html>')
+      // Resolve immediately: a slow browser acknowledgement must not exhaust Jira's code lifetime.
+      if (error !== null) finish(new IntegrationError('浏览器拒绝了 Jira 授权，请重新登录', 'denied'))
+      else if (code) finish(undefined, code)
+    })
+    server.headersTimeout = 10000
+    server.requestTimeout = 10000
+    server.maxConnections = 16
+    server.setTimeout(10000, socket => socket.destroy())
+    server.once('error', () => finish(new IntegrationError('无法监听本机授权端口 17654，请关闭其他授权窗口或检查端口占用', 'io')))
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    server.listen(Number(redirect.port), '127.0.0.1', () => {
+      server.unref()
+      if (signal.aborted || settled) { server.close(); server.closeAllConnections(); return }
+      openBrowser()
+    })
+  })
+}
 export async function authorizeJira(c: ResolvedConnection, signal: AbortSignal, rawRelay?: JiraOAuthRelay): ReturnType<AuthorizationPort['authorize']> {
-  const metadata = jiraOAuthMetadata(c), relay = jiraOAuthRelaySchema.safeParse(rawRelay)
-  if (!relay.success || relay.data.redirectUri !== metadata.redirectUri || relay.data.expiresAt <= Date.now() || relay.data.expiresAt > Date.now() + 5 * 60_000 + 10000) throw new IntegrationError('请先连接此 HTTPS 团队服务的配对设备，再重新发起 Jira 授权', 'denied')
+  const metadata = jiraOAuthMetadata(c), mode = classifyJiraOAuthRedirectUri(metadata.redirectUri)
+  let relay: JiraOAuthRelay | undefined
+  if (mode === 'relay') {
+    const parsed = jiraOAuthRelaySchema.safeParse(rawRelay)
+    if (!parsed.success || parsed.data.redirectUri !== metadata.redirectUri || parsed.data.expiresAt <= Date.now() || parsed.data.expiresAt > Date.now() + 5 * 60_000 + 10000) throw new IntegrationError('请先连接此 HTTPS 团队服务的配对设备，再重新发起 Jira 授权', 'denied')
+    relay = parsed.data
+  } else if (rawRelay) throw new IntegrationError('Jira 本机回调与团队授权请求不匹配，请重新授权', 'conflict')
   assertJiraCurrent(c)
+  const state = relay?.state ?? randomBytes(32).toString('base64url')
   const verifier = randomBytes(32).toString('base64url')
   const url = new URL(metadata.baseUrl + '/rest/oauth2/latest/authorize')
-  url.search = new URLSearchParams({ client_id: metadata.clientId, redirect_uri: metadata.redirectUri, response_type: 'code', scope: JIRA_OAUTH_SCOPES.join(' '), state: relay.data.state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString()
+  url.search = new URLSearchParams({ client_id: metadata.clientId, redirect_uri: metadata.redirectUri, response_type: 'code', scope: JIRA_OAUTH_SCOPES.join(' '), state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString()
   const controller = new AbortController()
-  const timeout = AbortSignal.any([signal, controller.signal, AbortSignal.timeout(Math.min(5 * 60_000, relay.data.expiresAt - Date.now()))])
+  const timeout = AbortSignal.any([signal, controller.signal, AbortSignal.timeout(Math.max(1, Math.min(5 * 60_000, (relay?.expiresAt ?? Date.now() + 5 * 60_000) - Date.now())))])
+  let openBrowser: () => void = () => {}
+  const opening = new Promise<void>((resolve, reject) => {
+    openBrowser = () => { void shell.openExternal(url.href).then(resolve, () => reject(new IntegrationError('无法打开系统浏览器，请检查默认浏览器设置', 'io'))) }
+  })
   const receive = async (): ReturnType<AuthorizationPort['authorize']> => {
-    for (;;) {
-      const poll = jiraOAuthRelayPollSchema.safeParse(await jiraRelayRequest(relay.data, 'poll', timeout))
-      if (!poll.success) throw new IntegrationError('Jira 回调结果无效，请重新登录', 'upstream')
-      if (poll.data.status === 'denied') throw new IntegrationError('浏览器拒绝了 Jira 授权，请重新登录', 'denied')
-      if (poll.data.status === 'complete') {
-        assertJiraCurrent(c)
-        const tokens = await exchange(c, { grant_type: 'authorization_code', code: poll.data.code, code_verifier: verifier }, timeout)
-        const account = await verifyJiraAccount(c, 'Bearer ' + tokens.accessToken, timeout)
-        if (timeout.aborted) throw new IntegrationError('Jira 授权已取消，未保存凭证', 'denied')
-        return { jiraAccount: account, secrets: { oauthTokens: JSON.stringify(tokens) }, detail: '浏览器授权成功 · ' + account.displayName }
+    let code: string
+    if (!relay) code = await receiveJiraCallback(state, timeout, openBrowser)
+    else {
+      for (;;) {
+        const poll = jiraOAuthRelayPollSchema.safeParse(await jiraRelayRequest(relay, 'poll', timeout))
+        if (!poll.success) throw new IntegrationError('Jira 回调结果无效，请重新登录', 'upstream')
+        if (poll.data.status === 'denied') throw new IntegrationError('浏览器拒绝了 Jira 授权，请重新登录', 'denied')
+        if (poll.data.status === 'complete') { code = poll.data.code; break }
+        await pause(timeout)
       }
-      await pause(timeout)
     }
+    assertJiraCurrent(c)
+    const tokens = await exchange(c, { grant_type: 'authorization_code', code, code_verifier: verifier }, timeout)
+    const account = await verifyJiraAccount(c, 'Bearer ' + tokens.accessToken, timeout)
+    if (timeout.aborted) throw new IntegrationError('Jira 授权已取消，未保存凭证', 'denied')
+    return { jiraAccount: account, secrets: { oauthTokens: JSON.stringify(tokens) }, detail: '浏览器授权成功 · ' + account.displayName }
   }
   let receiving: ReturnType<AuthorizationPort['authorize']> | undefined
+  const abort = (): void => rejectAbort?.(new IntegrationError('Jira 授权已取消或超时，请重新登录', 'denied'))
+  let rejectAbort: ((error: IntegrationError) => void) | undefined
+  const aborted = new Promise<never>((_, reject) => { rejectAbort = reject })
   try {
     if (timeout.aborted) throw new IntegrationError('Jira 授权已取消', 'denied')
-    // Arm polling before opening the browser. Jira codes default to a ten-second lifetime;
-    // exchange as soon as the callback arrives, independently of shell-open acknowledgement.
+    timeout.addEventListener('abort', abort, { once: true })
     receiving = receive()
-    const [, grant] = await Promise.all([shell.openExternal(url.href), receiving])
+    if (relay) openBrowser()
+    const [, grant] = await Promise.race([Promise.all([opening, receiving]), aborted])
     return grant
   } catch (error) {
     if (error instanceof IntegrationError) throw error
-    throw new IntegrationError(timeout.aborted ? 'Jira 授权已取消或超时，请重新登录' : 'Jira 浏览器授权失败，请核对 HTTPS 回调、客户端凭据与团队设备连接', 'upstream')
+    throw new IntegrationError(timeout.aborted ? 'Jira 授权已取消或超时，请重新登录' : 'Jira 浏览器授权失败，请核对回调、客户端凭据与网络', 'upstream')
   } finally {
+    timeout.removeEventListener('abort', abort)
     controller.abort()
     await receiving?.catch(() => {})
-    try { await jiraRelayRequest(relay.data, 'cancel', AbortSignal.timeout(3000)) } catch { /* The bounded relay expires without retaining tokens or device credentials. */ }
+    if (relay) { try { await jiraRelayRequest(relay, 'cancel', AbortSignal.timeout(3000)) } catch { /* The bounded relay expires without retaining tokens or device credentials. */ } }
   }
 }
 export async function inspectJiraConnection(c: ResolvedConnection): Promise<string> {

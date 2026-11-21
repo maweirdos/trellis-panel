@@ -384,7 +384,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
     const linked = linkedByKey.get(issue.key.toUpperCase())
     if (!linked?.record) return
     setBusyKey(issue.key)
-    const body = `[Trellis Panel] 任务进度同步\n- Trellis 状态：${statusLabel(linked.record.status)}\n- 目录：${linked.dirName}\n- 分支：${linked.record.branch ?? '—'}\n- 更新时间：${new Date().toLocaleString('zh-CN')}`
+    const body = `[Crux] 任务进度同步\n- Trellis 状态：${statusLabel(linked.record.status)}\n- 目录：${linked.dirName}\n- 分支：${linked.record.branch ?? '—'}\n- 更新时间：${new Date().toLocaleString('zh-CN')}`
     const res = await api.integrations.jiraComment({ ...context, key: issue.key, body }).catch(() => null)
     if (!alive.current || owner.current !== capturedOwner) return
     setBusyKey(null)

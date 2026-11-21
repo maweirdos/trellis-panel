@@ -5,12 +5,14 @@ import { teamTaskRefSchema, type TeamTaskRef } from '../../../../shared/team-tas
 import type { CruxStatusCategory, CruxTask, CruxTaskAction } from '../../../../shared/crux'
 import { getCruxTaskActions, getCruxTaskStageMetadata } from '../../../../shared/crux-domain/workflow'
 import type { JiraBusinessTaskMapping } from '../../../../shared/jira-business-hooks'
+import type { JiraIssueRecord, JiraMapping } from '../../../../shared/jira-integration'
 import { NativeTeamBusinessSender } from '../../crux/task-progress-sender'
 import type { TeamFetch } from '../../team-platform/http'
 import { JiraWorkspaceError } from './types'
 
 export interface JiraBusinessHookPort {
-  create(input: { spaceId: string; title: string; description: string | null; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string; effectId?: string }): Promise<TeamTaskRef>
+  shareSource(task: TeamTaskRef, issue: JiraIssueRecord, mapping: JiraMapping): Promise<void>
+  create(input: { spaceId: string; title: string; description: string | null; assigneeId?: string; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string; effectId?: string }): Promise<TeamTaskRef>
   update(input: { task: TeamTaskRef; patch: { statusId?: string; title?: string; description?: string }; issue: { instanceId: string; issueId: string; issueKey: string | null; remoteProjectId: string }; providerJobId: string; providerCommandId: string; payloadDigest: string; effectId?: string }): Promise<TeamTaskRef>
   lookup(issue: { instanceId: string; issueId: string }): Promise<JiraBusinessTaskMapping | null>
   readTask(task: TeamTaskRef): Promise<CruxTask | null>
@@ -86,6 +88,21 @@ export function currentJiraBusinessSender(dataDir: string, options: { fetcher?: 
 export function createCurrentJiraBusinessHook(dataDir: string, options: { fetcher?: TeamFetch; unseal?: (body: string) => string } = {}): JiraBusinessHookPort {
   const sender = (): NativeTeamBusinessSender => currentJiraBusinessSender(dataDir, options)
   return {
+    async shareSource(ref, issue, mapping) {
+      const native = sender(), snapshot = await native.snapshot()
+      if (snapshot.instanceId !== ref.instanceId || snapshot.projectId !== ref.projectId) throw new JiraWorkspaceError('E_CONFLICT', '任务来源已切换')
+      const binding = await native.businessMapping({ projectId: ref.projectId, instanceId: issue.instanceId, issueId: issue.issueId })
+      if (!binding || !sameTask(binding.task, ref)) throw new JiraWorkspaceError('E_CONFLICT', '请核对 Jira 工单的任务关联')
+      const body = [`Jira ${issue.key} · ${issue.fields.title}`, issue.url,
+        mapping.fields.includes('description') && issue.fields.description,
+        ...(mapping.fields.includes('comments') ? issue.fields.comments.map(comment => `${comment.author}：${comment.body}`) : []),
+        ...issue.references.attachments.map(file => `Jira 附件：${file.name}（${file.id}）`)
+      ].filter(Boolean).join('\n\n')
+      const sourceId = stableUuid(JSON.stringify([issue.instanceId, issue.issueId, issue.updatedAt, body]))
+      if (snapshot.snapshot.comments.some(comment => comment.taskId === ref.taskId && comment.sourceId === sourceId)) return
+      await native.command('addComment', { taskId: ref.taskId, authorId: snapshot.actor.id, sourceId, body },
+        stableUuid(`${ref.taskId}:${sourceId}:record`))
+    },
     async lookup(issue) {
       const native = sender(), snapshot = await native.snapshot()
       return native.businessMapping({ projectId: snapshot.projectId, instanceId: issue.instanceId, issueId: issue.issueId })
@@ -115,7 +132,8 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
         return existing.task
       }
 
-      const result = await native.command('createTask', { spaceId: input.spaceId, title: input.title, ...(input.description ? { description: input.description } : {}), workKind: 'code', assigneeIds: [snapshot.actor.id], triagePending: false }, stableUuid(`${rootEffectId}:platform-create`), { retainUntilEffect: true })
+      const assigned = input.assigneeId && space.memberIds.includes(input.assigneeId) ? [input.assigneeId] : []
+      const result = await native.command('createTask', { spaceId: input.spaceId, title: input.title, ...(input.description ? { description: input.description } : {}), assigneeIds: assigned, triagePending: !assigned.length }, stableUuid(`${rootEffectId}:platform-create`), { retainUntilEffect: true })
       const task = result.result.snapshot.tasks.find(item => item.id === result.result.taskId)
       if (!task || task.spaceId !== input.spaceId) throw new JiraWorkspaceError('E_UNKNOWN', '平台任务创建回执没有返回可核对的任务身份。')
       const ref = taskRef(result.result, task)
