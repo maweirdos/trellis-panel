@@ -7,7 +7,7 @@ import { Select } from '../../components/Select'
 import { CopyableError } from '../../components/CopyableError'
 import { Button, Modal, Switch, Tooltip } from '../../my/ui'
 import { modelErrorSummary } from './model-errors'
-import { getProviderVisual } from './model-brands'
+import { getModelBrand, getProviderVisual } from './model-brands'
 
 export type ModelSecretAction = 'keep' | 'replace' | 'clear'
 
@@ -117,7 +117,13 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTestCo
   </Modal>
 }
 
-export function ModelItemEditor({ model, isNew, providerName, onClose, onSave }: {
+export function ModelItemEditor({
+  model,
+  isNew,
+  providerName,
+  onClose,
+  onSave
+}: {
   model: ModelItem
   isNew: boolean
   providerName: string
@@ -125,30 +131,117 @@ export function ModelItemEditor({ model, isNew, providerName, onClose, onSave }:
   onSave(model: ModelItem): Promise<void>
 }): JSX.Element {
   const [draft, setDraft] = useState(model)
-  const [tags, setTags] = useState(model.tags?.join(', ') || '')
+  const [tags, setTags] = useState(model.tags?.join('，') ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const close = (): void => { if (!saving) onClose() }
+  const saveButtonRef = useRef<HTMLButtonElement>(null)
+  const brandMeta = getModelBrand(draft.id, draft.name)
+
+  useEffect(() => {
+    if (!saving && error && document.activeElement === document.body) {
+      saveButtonRef.current?.focus()
+    }
+  }, [error, saving])
+
+  const close = (): void => {
+    if (!saving) onClose()
+  }
+
   const save = async (): Promise<void> => {
-    if (saving || !draft.id.trim()) return
+    const modelId = draft.id.trim()
+    if (saving || !modelId) return
     setSaving(true)
     setError('')
     try {
-      await onSave({ ...draft, id: draft.id.trim(), name: draft.name.trim() || draft.id.trim(), tags: tags.split(/[,，\s]+/).map((tag) => tag.trim()).filter(Boolean) })
+      const contextWindow = draft.contextWindow?.trim()
+      const nextTags = tags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean)
+      const next: ModelItem = {
+        ...draft,
+        id: modelId,
+        name: draft.name.trim() || modelId,
+        tags: nextTags
+      }
+      if (contextWindow) next.contextWindow = contextWindow
+      else delete next.contextWindow
+      await onSave(next)
       onClose()
-    } catch (err) { setError(errorMessage(err) || '无法保存，请重试') } finally { setSaving(false) }
+    } catch (err) {
+      setError(errorMessage(err) || '无法保存，请重试')
+    } finally {
+      setSaving(false)
+    }
   }
-  return <Modal open onClose={close} ariaLabel={isNew ? '添加模型' : `编辑模型 ${model.name || model.id}`}>
-    <form className="my-modal-content model-config-editor" onSubmit={(event) => { event.preventDefault(); void save() }}>
-      <div className="mb-5 flex items-start justify-between gap-3"><div><h2 className="text-my-lg font-semibold text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2><p className="my-item-description mt-1">{providerName}</p></div><Button variant="ghost" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></Button></div>
-      <fieldset disabled={saving} className="space-y-4">
-        <div><label htmlFor="model-item-id">模型 ID</label><input id="model-item-id" className="my-input" value={draft.id} disabled={!isNew} autoFocus={isNew} onChange={(event) => setDraft({ ...draft, id: event.target.value })} placeholder="如 gpt-4o" required /></div>
-        <div><label htmlFor="model-item-name">显示名称</label><input id="model-item-name" className="my-input" value={draft.name} autoFocus={!isNew} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="留空则与 ID 相同" /></div>
-        <div><label htmlFor="model-item-context">上下文窗口</label><input id="model-item-context" className="my-input" value={draft.contextWindow || ''} onChange={(event) => setDraft({ ...draft, contextWindow: event.target.value })} placeholder="如 128k、1M" /></div>
-        <div><label htmlFor="model-item-tags">标签</label><input id="model-item-tags" className="my-input" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔，如 代码, 推理" /></div>
-      </fieldset>
-      {error && <div className="mt-4"><CopyableError message={error} summary="保存失败" /></div>}
-      <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={saving} onClick={close}>取消</Button><button type="submit" className="my-control my-button-primary" disabled={saving || !draft.id.trim()}>{saving && <Loader2 size={14} className="animate-spin" />}{saving ? '保存中…' : '保存'}</button></div>
-    </form>
-  </Modal>
+
+  return (
+    <Modal open onClose={close} ariaLabel={isNew ? '添加模型' : `编辑模型 ${model.name || model.id}`}>
+      <form className="my-modal-content model-detail-modal" onSubmit={(event) => { event.preventDefault(); void save() }}>
+        <div className="model-detail-header">
+          <span className={`model-brand-badge ${brandMeta.iconBg}`} aria-hidden="true">{brandMeta.icon}</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-my-lg font-semibold text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2>
+            <p className="my-item-description">{providerName}</p>
+          </div>
+          <Button variant="ghost" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></Button>
+        </div>
+
+        <fieldset disabled={saving} className="grid gap-4 sm:grid-cols-2">
+          <label htmlFor="model-item-id" className="grid min-w-0 gap-2">
+            <span className="my-item-title">模型 ID</span>
+            <input
+              id="model-item-id"
+              className="my-input"
+              value={draft.id}
+              readOnly={!isNew}
+              autoFocus={isNew}
+              onChange={(event) => setDraft({ ...draft, id: event.target.value })}
+              placeholder="如 gpt-4o"
+              spellCheck={false}
+              required
+            />
+          </label>
+          <label htmlFor="model-item-name" className="grid min-w-0 gap-2">
+            <span className="my-item-title">显示名称</span>
+            <input
+              id="model-item-name"
+              className="my-input"
+              value={draft.name}
+              autoFocus={!isNew}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              placeholder="留空则与模型 ID 相同"
+            />
+          </label>
+          <label htmlFor="model-item-context" className="grid min-w-0 gap-2">
+            <span className="my-item-title">上下文窗口</span>
+            <input
+              id="model-item-context"
+              className="my-input"
+              value={draft.contextWindow ?? ''}
+              onChange={(event) => setDraft({ ...draft, contextWindow: event.target.value })}
+              placeholder="如 128k、1M；可留空"
+              spellCheck={false}
+            />
+          </label>
+          <label htmlFor="model-item-tags" className="grid min-w-0 gap-2">
+            <span className="my-item-title">标签</span>
+            <input
+              id="model-item-tags"
+              className="my-input"
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="逗号分隔；可留空"
+            />
+          </label>
+        </fieldset>
+
+        {error && <div className="mt-4"><CopyableError message={error} summary="保存失败" /></div>}
+
+        <div className="model-detail-footer">
+          <Button variant="ghost" disabled={saving} onClick={close}>取消</Button>
+          <button ref={saveButtonRef} type="submit" className="my-control my-button-primary" disabled={saving || !draft.id.trim()}>
+            {saving && <Loader2 size={14} className="animate-spin" />}{saving ? '保存中…' : '保存'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
 }

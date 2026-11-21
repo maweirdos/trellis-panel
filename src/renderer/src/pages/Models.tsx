@@ -632,7 +632,7 @@ export function ModelsPage(): JSX.Element {
 
   const openModelEditor = (provider: ModelProvider, model?: ModelItem): void => setModelEditor({
     provider, source: captureSource(provider), isNew: !model,
-    model: model ? { ...model } : { id: '', name: '', contextWindow: '128k', tags: ['代码'], enabled: true }
+    model: model ? { ...model } : { id: '', name: '', enabled: true }
   })
 
   return (
