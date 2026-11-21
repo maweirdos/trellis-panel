@@ -141,7 +141,7 @@ export function kbMcpStatus(root: string | null): KbMcpStatus {
 }
 
 const KB_MCP_SCRIPT = `#!/usr/bin/env node
-/* tpanel-kb-mcp —— Trellis Panel 知识库 MCP stdio 服务器（零依赖，Node >= 16）
+/* tpanel-kb-mcp —— Crux 知识库 MCP stdio 服务器（零依赖，Node >= 16）
  * 用法: node tpanel-kb-mcp.cjs --root <项目根目录>
  * 工具: kb_search / kb_read / kb_context / kb_overview
  */

@@ -1,4 +1,6 @@
-# Trellis Panel
+# Crux
+
+<p align="center"><img src="resources/brand/icon-128.png" width="64" height="64" alt="Crux"></p>
 
 <div align="center">
   <img src="https://img.shields.io/github/license/maweirdos/trellis-panel" alt="License">
@@ -12,7 +14,7 @@
 
 > Trellis 工作流可视化面板 — Windows 桌面客户端（Electron + React + TypeScript）
 
-Trellis Panel 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-first-task)（面向 AI coding 平台的工作流框架）的本地可视化面板。它直接读取项目中的 `.trellis/` 目录，把任务、规范文档、开发者工作区和 AI 会话以图形界面呈现：AI 工具在仓库里的任务操作通过桥接层实时反映到面板；Jira 提供来源导入、手动流转与评论回写，不自动同步任务状态。面板是 .trellis 的可视化浏览器；AI 会话（ACP 控制台 / AI 频道）只能由用户显式启动，面板不自动接管或派发。任务生命周期状态（status/completedAt）由 Trellis 工作流（task.py / AI 会话）管理，面板内提供对应流程命令入口、不直接改写。
+Crux 是 [Trellis](https://docs.trytrellis.app/zh/start/install-and-first-task)（面向 AI coding 平台的工作流框架）的本地可视化面板。它直接读取项目中的 `.trellis/` 目录，把任务、规范文档、开发者工作区和 AI 会话以图形界面呈现：AI 工具在仓库里的任务操作通过桥接层实时反映到面板；Jira 提供来源导入、手动流转与评论回写，不自动同步任务状态。面板是 .trellis 的可视化浏览器；AI 会话（ACP 控制台 / AI 频道）只能由用户显式启动，面板不自动接管或派发。任务生命周期状态（status/completedAt）由 Trellis 工作流（task.py / AI 会话）管理，面板内提供对应流程命令入口、不直接改写。
 
 ## 功能总览
 
@@ -80,13 +82,15 @@ npm install
 npm run dev        # 开发调试
 npm run build      # 生产构建
 npm run dist:dir   # 便携目录版 → release/win-unpacked/
-npm run dist       # NSIS 安装包 → release/TrellisPanel-Setup-<version>.exe
+npm run dist       # NSIS 安装包 → release/Crux-Setup-<version>.exe
 npm run typecheck  # 类型检查
 npm run check:acpx # ACP 依赖与补丁校验
 npm run check:ui   # 静态界面规范检查
 ```
 
 示例项目：`examples/demo-project/`（含 Mermaid/ASCII 产物、Jira 关联任务），可直接用面板打开体验。
+
+本机试用团队协作时，先运行 `npm run team:local`，再在另一个终端运行 `npm run dev`。点桌面左下角头像 → **登录 / 注册**，即可创建账号或用已有账号进入团队。团队服务首次启动自动创建 SQLite 数据库。参阅[本机启动](docs/team-collaboration.md)和[团队部署](docs/team-deployment.md)。
 
 ## 本地验证
 

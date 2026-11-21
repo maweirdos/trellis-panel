@@ -798,7 +798,7 @@ export function syncExtensionToPlatforms(
 
 const WORKFLOW_TEMPLATE = (id: string): string => `# ${id}
 
-由 Trellis Panel 创建的 workflow 变体。请保留解析器契约：
+由 Crux 创建的 workflow 变体。请保留解析器契约：
 "## Phase Index"、"## Phase N: …"、"#### X.Y" 步骤、[workflow-state:*] 配对标签。
 
 ## Phase Index

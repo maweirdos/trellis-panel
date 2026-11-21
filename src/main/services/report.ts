@@ -85,7 +85,7 @@ export function generateWeeklyReport(snap: ProjectSnapshot, input: ReportInput):
   const lines: string[] = []
   lines.push(`# Trellis ${input.scope === 'team' ? '团队' : '个人'}周报 · ${isoWeek(now)}`)
   lines.push('')
-  lines.push(`> 项目 **${input.projectName}** ｜ 区间 ${fromStr} ~ ${toStr} ｜ 生成于 ${fmtDate(now)} ${now.toTimeString().slice(0, 5)} ｜ 由 Trellis Panel 自动生成`)
+  lines.push(`> 项目 **${input.projectName}** ｜ 区间 ${fromStr} ~ ${toStr} ｜ 生成于 ${fmtDate(now)} ${now.toTimeString().slice(0, 5)} ｜ 由 Crux 自动生成`)
   lines.push('')
   lines.push('## 本期概览')
   lines.push('')
@@ -137,7 +137,7 @@ export function generateWeeklyReport(snap: ProjectSnapshot, input: ReportInput):
   }
 
   lines.push('---')
-  lines.push(`*由 Trellis Panel 自动生成 · 数据源 \`.trellis/\` · ${new Date().toISOString()}*`)
+  lines.push(`*由 Crux 自动生成 · 数据源 \`.trellis/\` · ${new Date().toISOString()}*`)
 
   const suggestedFileName = `report-${input.scope === 'team' ? 'team' : input.developer ?? 'me'}-${toStr}.md`
   return { markdown: lines.join('\n'), suggestedFileName }
@@ -170,7 +170,7 @@ export function generateStandup(snap: ProjectSnapshot): { markdown: string; sugg
   const lines: string[] = []
   lines.push(`# 每日站会 · ${snap.meta.name} · ${todayStr}`)
   lines.push('')
-  lines.push(`> 生成于 ${todayStr} ${now.toTimeString().slice(0, 5)} · 数据源 \`.trellis/\` · Trellis Panel`)
+  lines.push(`> 生成于 ${todayStr} ${now.toTimeString().slice(0, 5)} · 数据源 \`.trellis/\` · Crux`)
   lines.push('')
 
   lines.push('## ✅ 今天完成')
@@ -221,7 +221,7 @@ export function generateStandup(snap: ProjectSnapshot): { markdown: string; sugg
   }
 
   lines.push('---')
-  lines.push(`*由 Trellis Panel 自动生成 · ${new Date().toISOString()}*`)
+  lines.push(`*由 Crux 自动生成 · ${new Date().toISOString()}*`)
   return { markdown: lines.join('\n'), suggestedFileName: `standup-${todayStr}.md` }
 }
 

@@ -1,4 +1,6 @@
 import { createServer, type Server } from 'http'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { errorMessage } from '../../shared/errors'
 import type { ProjectSnapshot } from '../../shared/types'
 
@@ -12,6 +14,9 @@ let actualPort: number | null = null
 
 type SnapshotGetter = () => ProjectSnapshot | null
 let getSnap: SnapshotGetter = () => null
+const brandAssets = new Map<string, Buffer>()
+const brandPaths = new Map([['/brand/mark.svg', 'mark.svg'], ['/brand/wordmark.svg', 'wordmark.svg'], ['/favicon.svg', 'favicon.svg']])
+const boardFontFamily = 'Inter, "Source Han Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif'
 
 function esc(s: unknown): string {
   return String(s ?? '')
@@ -51,11 +56,13 @@ function renderBoard(snap: ProjectSnapshot): string {
 
   const platforms = snap.meta.platforms.filter((p) => p.detected).map((p) => p.name).join(' · ')
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="refresh" content="30">
-<title>Trellis Panel — ${esc(snap.meta.name)}（只读看板）</title>
+<title>Crux — ${esc(snap.meta.name)}（只读看板）</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  body{margin:0;background:#0f1115;color:#e6eaf2;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;font-size:13px}
+  body{margin:0;background:#0f1115;color:#e6eaf2;font-family:${boardFontFamily};font-size:13px}
   header{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid #202633;background:#12151c}
-  h1{font-size:15px;margin:0} .meta{color:#6b7691;font-size:11px}
+  h1{display:flex;align-items:center;gap:10px;font-size:15px;margin:0} .meta{color:#6b7691;font-size:11px}
+  .brand-mark,.brand-wordmark{display:inline-block;flex-shrink:0;background:currentColor;mask:var(--brand) center/contain no-repeat;-webkit-mask:var(--brand) center/contain no-repeat}
+  .brand-mark{width:24px;height:24px;--brand:url('/brand/mark.svg')}.brand-wordmark{width:68px;height:22px;--brand:url('/brand/wordmark.svg')}
   .board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 20px}
   .col{background:#12151c;border:1px solid #202633;border-radius:12px;min-height:60vh}
   .col-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #202633;font-weight:600}
@@ -70,7 +77,7 @@ function renderBoard(snap: ProjectSnapshot): string {
   .assignee{margin-right:auto}
   .branch{font-family:Consolas,monospace}
 </style></head><body>
-<header><h1>🍃 Trellis Panel — ${esc(snap.meta.name)} <span class="meta">只读看板 · 每 30 秒刷新</span></h1>
+<header><h1><span class="brand-mark" aria-hidden="true"></span><span class="brand-wordmark" role="img" aria-label="Crux"></span> — ${esc(snap.meta.name)} <span class="meta">只读看板 · 每 30 秒刷新</span></h1>
 <span class="meta">Trellis ${esc(snap.meta.version ?? '')} · 开发者 ${esc(snap.meta.developer ?? '—')}${platforms ? ` · ${esc(platforms)}` : ''}</span></header>
 <div class="board">${colsHtml}</div></body></html>`
 }
@@ -88,11 +95,19 @@ export function startHttpApi(
     server = createServer((req, res) => {
       const url = (req.url ?? '/').split('?')[0]
       try {
+        const brandFile = brandPaths.get(url)
+        if (req.method === 'GET' && brandFile) {
+          let asset = brandAssets.get(brandFile)
+          if (!asset) { asset = readFileSync(join(__dirname, '../../resources/brand', brandFile)); brandAssets.set(brandFile, asset) }
+          res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' })
+          res.end(asset)
+          return
+        }
         if (req.method === 'GET' && (url === '/' || url === '/board')) {
           const snap = getSnap()
           if (!snap) {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<html><body style="background:#0f1115;color:#6b7691;font-family:sans-serif"><p>面板未打开项目。</p></body></html>')
+            res.end(`<html><head><style>body{background:#0f1115;color:#6b7691;font-family:${boardFontFamily}}</style></head><body><p>面板未打开项目。</p></body></html>`)
             return
           }
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })

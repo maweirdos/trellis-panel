@@ -13,7 +13,7 @@ export function appCliPowerShell(executable: string, client: string, descriptor:
     '  & $launch.executable $launch.client --descriptor $launch.descriptor @args',
     '  exit $LASTEXITCODE',
     '} catch {',
-    "  [Console]::Out.WriteLine('{\"ok\":false,\"error\":{\"code\":\"E_SETUP_REQUIRED\",\"message\":\"Reinstall the tpanel command from Trellis Panel Settings.\"}}')",
+    "  [Console]::Out.WriteLine('{\"ok\":false,\"error\":{\"code\":\"E_SETUP_REQUIRED\",\"message\":\"Reinstall the tpanel command from Crux Settings.\"}}')",
     '  exit 1',
     '}',
     ''
@@ -72,14 +72,14 @@ function options(argv) {
 }
 function discovery(file) {
   let descriptor
-  try { descriptor = JSON.parse(readSmall(file, 4096)) } catch { return failure('E_SETUP_REQUIRED', 'Open Trellis Panel and enable the local access service in Settings.') }
-  if (!descriptor || descriptor.version !== 1 || descriptor.enabled !== true || descriptor.running !== true || typeof descriptor.endpoint !== 'string') return failure('E_SETUP_REQUIRED', 'Open Trellis Panel and enable the local access service in Settings.')
+  try { descriptor = JSON.parse(readSmall(file, 4096)) } catch { return failure('E_SETUP_REQUIRED', 'Open Crux and enable the local access service in Settings.') }
+  if (!descriptor || descriptor.version !== 1 || descriptor.enabled !== true || descriptor.running !== true || typeof descriptor.endpoint !== 'string') return failure('E_SETUP_REQUIRED', 'Open Crux and enable the local access service in Settings.')
   let endpoint
   try { endpoint = new URL(descriptor.endpoint) } catch { return failure('E_INVALID_ARG', 'Invalid local access descriptor.') }
   if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1' || !endpoint.port || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/tpap/v1') return failure('E_DENIED', 'The application client accepts only the local loopback access service.')
   let token
-  try { token = readSmall(path.join(path.dirname(file), 'access-token'), 256).trim() } catch { return failure('E_SETUP_REQUIRED', 'The local access credential is unavailable. Open Trellis Panel Settings.') }
-  if (!/^[a-f0-9]{64}$/.test(token)) return failure('E_SETUP_REQUIRED', 'The local access credential is unavailable. Open Trellis Panel Settings.')
+  try { token = readSmall(path.join(path.dirname(file), 'access-token'), 256).trim() } catch { return failure('E_SETUP_REQUIRED', 'The local access credential is unavailable. Open Crux Settings.') }
+  if (!/^[a-f0-9]{64}$/.test(token)) return failure('E_SETUP_REQUIRED', 'The local access credential is unavailable. Open Crux Settings.')
   return { endpoint, token }
 }
 async function request(config, settings) {
@@ -116,7 +116,7 @@ async function request(config, settings) {
       })
     })
     const timer = setTimeout(() => { finish(failure('E_TIMEOUT', 'The application request timed out. Check status before retrying.' + (mutating ? ' Retry this operation with --request-id ' + data.requestId + '.' : ''))); req.destroy() }, config.timeout)
-    req.on('error', () => finish(failure('E_SETUP_REQUIRED', 'The local access service is unavailable. Open Trellis Panel and check Settings.')))
+    req.on('error', () => finish(failure('E_SETUP_REQUIRED', 'The local access service is unavailable. Open Crux and check Settings.')))
     if (body) req.write(body)
     req.end()
   })

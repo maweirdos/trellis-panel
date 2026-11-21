@@ -148,7 +148,7 @@ export function installTpanel(token: string): { ok: boolean; error?: string; pat
     // NOTE: no parenthesized blocks — %VAR% set inside a block would expand
     // at parse time (classic batch pitfall). goto-flow keeps expansion correct.
     const cmd = `@echo off
-rem Trellis Panel bridge CLI (trellis hooks -> panel)
+rem Crux bridge CLI (trellis hooks -> panel)
 rem NOTE: keep this file ASCII-only; cmd.exe parses it in the OEM codepage.
 :try_app
 if /i not "%~1"=="app" goto :try_notify
