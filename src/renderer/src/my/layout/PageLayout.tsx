@@ -15,6 +15,7 @@ export const PAGE_LAYOUTS = {
   analytics: 'full',
   team: 'full',
   crux: 'full',
+  automations: 'centered',
   knowledge: 'full',
   spec: 'full',
   acp: 'full',

@@ -17,7 +17,7 @@ import { attachDocumentChangedSource } from './reader/document-session-hub'
 import { dispatchEscKey } from './utils/esc-layer'
 import { MyApp } from './my/layout/MyApp'
 import { DocWindowApp } from './my/pages/DocWindow'
-import { Loader2 } from 'lucide-react'
+import { BrandMotion } from './my/BrandMotion'
 import { pageRequiresProject, projectRootKey } from './my/navigation'
 import { StartupContext, StartupContentCommit } from './daemon/StartupContext'
 import { DaemonSettingsDialog } from './daemon/DaemonSettingsDialog'
@@ -26,8 +26,8 @@ const OnboardingWizard = lazy(() => import('./onboarding/OnboardingWizard').then
 
 function PageLoading(): JSX.Element {
   return (
-    <div className="flex h-full w-full items-center justify-center text-my-tertiary">
-      <Loader2 size={20} className="animate-spin text-my-icon-tertiary" />
+    <div className="flex h-full w-full items-center justify-center text-my-tertiary" role="status" aria-label="正在载入">
+      <BrandMotion state="loading" size={32} />
     </div>
   )
 }

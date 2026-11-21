@@ -2,7 +2,7 @@ import type { JSX, ReactNode } from 'react'
 import { useApp, type Page } from '../../store'
 import { api, hasIpc } from '../../api'
 import { useMy } from '../store'
-import { getPageNavigation, navigationScopeLabel, SETTINGS_VIEW_TITLES, type ToolView } from '../navigation'
+import { getPageNavigation, navigationScopeLabel, SETTINGS_VIEW_TITLES, usesSettingsLayout, type ToolView } from '../navigation'
 import { getSettingsDestination } from '../settings-catalog'
 import { Button } from '../ui'
 import { PAGE_LAYOUTS, PageBody, PageContent, PageHeader, PageLayout, PageNotice } from './PageLayout'
@@ -24,9 +24,9 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   const variant = PAGE_LAYOUTS[page]
   const tools = ['devtools', 'architecture', 'studio'].includes(page)
   const intake = page === 'inbox' || page === 'jira'
-  const embeddedKnowledgeLayout = navigation.domain === 'knowledge' || page === 'crux' || page === 'creations'
+  const embeddedKnowledgeLayout = navigation.domain === 'knowledge' || page === 'crux' || page === 'creations' || page === 'automations'
   const title = page === 'team' ? TEAM_TITLES[teamView] : tools ? '工具' : page === 'settings' ? SETTINGS_VIEW_TITLES[settingsView] : navigation.title
-  if (navigation.domain === 'settings') {
+  if (usesSettingsLayout(page)) {
     const destination = getSettingsDestination(page, settingsView)
     const Icon = destination.icon
     return <PageLayout variant="centered" className="my-settings-layout">

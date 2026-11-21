@@ -117,6 +117,8 @@ export interface MyStore {
   setCreateIssueOpen: (v: boolean) => void
   paletteOpen: boolean
   setPaletteOpen: (v: boolean) => void
+  helpOpen: boolean
+  setHelpOpen: (v: boolean | ((prev: boolean) => boolean)) => void
 
   sidebarCollapsed: boolean
   sidebarWidth: number
@@ -288,6 +290,8 @@ export const useMy = create<MyStore>()((set, get) => ({
   setCreateIssueOpen: (v) => set({ createIssueOpen: v }),
   paletteOpen: false,
   setPaletteOpen: (v) => set({ paletteOpen: v }),
+  helpOpen: false,
+  setHelpOpen: (v) => set((s) => ({ helpOpen: typeof v === 'function' ? (v as (prev: boolean) => boolean)(s.helpOpen) : v })),
 
   sidebarCollapsed: prefs.sidebarCollapsed === true,
   sidebarWidth: normalizeSidebarWidth(prefs.sidebarWidth),

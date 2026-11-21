@@ -10,7 +10,7 @@ import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { clsx } from 'clsx'
-import { getPageNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
+import { getPageNavigation, hasContextNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
 import { TeamContextSwitcher } from '../crux/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
 import { DevelopmentScopeTag } from '../crux/development/DevelopmentContextBar'
@@ -47,7 +47,7 @@ export function TitleBar(): JSX.Element {
   })
   const privateProjectTools = Boolean(privateCodeRoot && projectRootKey(privateCodeRoot) === projectRootKey(snapshot?.meta.root))
   const codeTools = development && (privateProjectTools || Boolean(openTaskDir) || (
-    domain !== 'team' && domain !== 'settings' && page !== 'chat' && page !== 'creations' &&
+    domain !== 'team' && domain !== 'settings' && domain !== 'automations' && domain !== 'integrations' && page !== 'chat' && page !== 'creations' &&
     (page !== 'tasks' || personalTaskSource !== 'team')
   ))
   const openError = useApp((s) => s.openError)
@@ -60,21 +60,21 @@ export function TitleBar(): JSX.Element {
   return (
     <header className="my-window-header relative z-50 flex shrink-0 flex-col">
       <div className={clsx('my-global-header-row', hasIpc && 'drag-region')}>
-        <div className="my-module-brand flex h-full shrink-0 items-center justify-center" title="Trellis Panel">
-          <BrandMark size={22} className="text-my-primary" />
-          <span className="sr-only">Trellis Panel</span>
+        <div className="my-module-brand flex h-full shrink-0 items-center justify-center" data-startup-brand-target title="Crux">
+          <BrandMark size="var(--my-module-icon-size)" className="text-my-primary" />
+          <span className="sr-only">Crux</span>
         </div>
         <ShellViewSwitcher />
         <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('crux')} />
-        <div className="no-drag my-header-collapse flex shrink-0 items-center">
+        {hasContextNavigation(page) && <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button id="shell-context-toggle" type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
               aria-expanded={!collapsed} onClick={toggleSidebar}
               className="my-icon-control">
-              {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.7} /> : <PanelLeftClose size={18} strokeWidth={1.7} />}
+              {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.7} /> : <PanelLeftClose size={16} strokeWidth={1.7} />}
             </button>
           </Tooltip>
-        </div>
+        </div>}
         <button type="button" disabled={hasIpc && !snapshot && pageRequiresProject(page)} onClick={() => setPaletteOpen(true)}
           className="my-window-search no-drag"
           aria-label="搜索或输入命令 (Ctrl+K)">

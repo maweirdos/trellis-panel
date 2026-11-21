@@ -60,7 +60,7 @@ export function OnboardingWizard({ onFinish, onDefer, storageUnavailable = false
     '可以先在本机使用，也可以连接团队与同事协作。',
     '检查当前选择，接下来就可以开始工作。'
   ]
-  const titles = ['欢迎使用 Trellis Panel', '连接一个模型', '了解 Agent 的工作权限', '发现本机 Agent', '连接团队（可选）', '准备就绪']
+  const titles = ['欢迎使用 Crux', '连接一个模型', '了解 Agent 的工作权限', '发现本机 Agent', '连接团队（可选）', '准备就绪']
   const provider = settings?.ai.providers?.find((item) => item.id === settings.ai.activeProviderId)
   const teamLabel = workspace.state === 'local' ? '本机个人使用' : workspace.state === 'connected' ? workspace.projectName ?? '已连接工作区' : workspace.state === 'offline' ? `${workspace.projectName ?? '团队工作区'} · 离线` : `${workspace.projectName ?? '团队工作区'} · 访问不可用`
   const footer = <div className="onboarding-actions">

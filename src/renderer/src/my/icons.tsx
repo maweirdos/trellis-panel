@@ -2,6 +2,8 @@
 import type { JSX } from 'react'
 import {
   Box,
+  Blocks,
+  Workflow,
   Calendar,
   ChartColumn,
   Circle,
@@ -115,6 +117,8 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   'work-items': ListTodo,
   cycles: RotateCw,
   modules: Box,
+  integrations: Blocks,
+  automations: Workflow,
   models: Server,
   mcp: PlugZap,
   views: Eye,

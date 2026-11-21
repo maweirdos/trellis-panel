@@ -1,7 +1,8 @@
 // 项目工作区：固定模块栏 + 按需上下文 + 稳定的来源页与任务阅读面。
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
-import { ArrowUpRight, Keyboard, Loader2, X } from 'lucide-react'
+import { clsx } from "clsx"
+import { ArrowUpRight, BookOpen, Briefcase, CircleHelp, Keyboard, ListTodo, Loader2, MessageCircle, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { observeCollaborationWorkspace, useCrux } from '../../crux/store'
 import { observeDevelopmentNavigation } from '../../crux/local-work'
@@ -9,7 +10,7 @@ import { DevelopmentContextBar } from '../../crux/development/DevelopmentContext
 import { useMy } from '../store'
 import { rememberVisit } from '../personal-history'
 import { loadStartupNavigationLocation, saveNavigationLocation } from '../navigation-preferences'
-import { activeModule, getPageNavigation, projectRootKey } from '../navigation'
+import { activeModule, getPageNavigation, hasContextNavigation, projectRootKey, usesSettingsLayout } from '../navigation'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { CommandPalette } from '../CommandPalette'
 import { Button, Modal } from '../ui'
@@ -19,6 +20,7 @@ import { SpecPage } from '../../pages/Spec'
 import { PageFrame } from './PageFrame'
 import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
+import { lazyPage } from '../../components/lazy-page'
 import { escLayerCount } from '../../utils/esc-layer'
 import { InteractionScope, useInteractionActive } from '../../utils/interaction-scope'
 import { StartupContentCommit, StartupContentRegion } from '../../daemon/StartupContext'
@@ -46,11 +48,12 @@ const StudioPage = lazy(() => import('../../pages/Studio').then((m) => ({ defaul
 const ArchitecturePage = lazy(() => import('../../pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
 const ModelsPage = lazy(() => import('../../pages/Models').then((m) => ({ default: m.ModelsPage })))
 const GatewayPage = lazy(() => import('../../pages/Gateway').then((m) => ({ default: m.GatewayPage })))
-const ChatPage = lazy(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
-const AcpConsolePage = lazy(() => import('../../pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
+const ChatPage = lazyPage<Record<string, never>>(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
+const AcpConsolePage = lazyPage<{ compact?: boolean }>(() => import('../../pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage').then((m) => ({ default: m.DevToolsPage })))
 const CruxApp = lazy(() => import('../../crux/CruxApp').then((m) => ({ default: m.CruxApp })))
 const TaskDetail = lazy(() => import('../../pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
+
 
 function rememberModulePage(page: Page): void {
   useMy.getState().rememberModulePage(page)
@@ -77,6 +80,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   acp: <AcpConsolePage />,
   team: <TeamPage />,
   crux: <CruxApp />,
+  automations: <CruxApp automationsOnly />,
   creations: <CreationWorkspace scope="personal" />,
   analytics: <AnalyticsPage />,
   jira: <JiraPage />,
@@ -114,7 +118,7 @@ export function PageBody(): JSX.Element {
   const returnDiscussionFocus = useRef(false)
   const wasDetour = useRef(false)
   const chatActive = page === 'chat'
-  const keepsChat = chatActive || getPageNavigation(page).domain === 'settings'
+  const keepsChat = chatActive || usesSettingsLayout(page)
   if (chatOwner !== null && !keepsChat) setChatOwner(null)
   else if (chatActive && chatOwner === null) setChatOwner(++sequence.current)
   // Finite prop-derived state: React retries this component before committing a replacement owner.
@@ -134,7 +138,7 @@ export function PageBody(): JSX.Element {
     }
     document.addEventListener('focusin', rememberFocus)
     const off = useApp.subscribe((state, previous) => {
-      if (state.page !== 'chat' && getPageNavigation(state.page).domain !== 'settings') {
+      if (state.page !== 'chat' && !usesSettingsLayout(state.page)) {
         setChatOwner(null)
         chatFocus.current = null; chatScroll.current = []
       } else if (previous.page === 'chat' && state.page !== 'chat') {
@@ -245,7 +249,8 @@ export function MyApp(): JSX.Element {
   const root = useApp((s) => projectRootKey(s.snapshot?.meta.root))
   const toggleSidebar = useMy((s) => s.toggleSidebar)
   const setCreateIssueOpen = useMy((s) => s.setCreateIssueOpen)
-  const [helpOpen, setHelpOpen] = useState(false)
+  const helpOpen = useMy((s) => s.helpOpen)
+  const setHelpOpen = useMy((s) => s.setHelpOpen)
   const workspace = useApp((s) => s.taskExpandOrigin !== null)
   const sourceRef = useRef<HTMLDivElement>(null)
   const sourceFocus = useRef<HTMLElement | null>(null)
@@ -374,22 +379,22 @@ export function MyApp(): JSX.Element {
           const team = useCrux.getState()
           if (team.currentSpaceId) team.setCreateTaskOpen(true)
           else { team.setModule('spaces'); if (app.page === 'tasks') app.setPage('crux') }
-        } else if (app.page !== 'creations' && app.snapshot) setCreateIssueOpen(true)
+        } else if (app.page !== 'creations' && app.page !== 'automations' && app.snapshot) setCreateIssueOpen(true)
       } else if (e.key === '/') {
         e.preventDefault()
         setPaletteOpen(true)
       } else if (e.key === '?') {
-        setHelpOpen((v) => !v)
+        setHelpOpen((v: boolean) => !v)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [setCreateIssueOpen, setPaletteOpen])
+  }, [setCreateIssueOpen, setPaletteOpen, setHelpOpen])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || document.querySelector('[aria-modal="true"]') || isTextEditingTarget(e.target)) return
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && hasContextNavigation(useApp.getState().page)) {
         e.preventDefault()
         toggleSidebar()
       }
@@ -432,37 +437,118 @@ export function MyApp(): JSX.Element {
   )
 }
 
-/** 快捷键帮助浮层（? 呼出，Esc 或点击遮罩关闭） */
+/** 快捷键与功能指引帮助浮层（? 呼出或左下角帮助按钮打开） */
 const SHORTCUTS: Array<[string, string]> = [
-  ['C', '新建工作项'],
-  ['/', '打开命令面板'],
+  ['C', '新建工作项与任务'],
+  ['/', '打开命令面板与全库搜索'],
   ['Ctrl+K', '命令面板（同 /）'],
   ['Ctrl+B', '收起 / 展开上下文栏'],
-  ['↑ ↓', '列表导航'],
-  ['Enter', '打开聚焦的工作项'],
-  ['?', '显示本帮助']
+  ['↑ ↓', '列表项快捷聚焦与导航'],
+  ['Enter', '打开当前聚焦项'],
+  ['?', '显示 / 关闭本帮助浮层'],
+  ['Esc', '退出当前弹层或焦点']
+]
+
+const HELP_MODULES = [
+  {
+    icon: <MessageCircle size={15} className="text-my-icon-secondary shrink-0" />,
+    title: "工程对话 (ACP Agent)",
+    description: "随时呼叫后台智能体协助分析工程、梳理需求、修改代码或进行架构设计，支持完整会话历史与材料回溯。"
+  },
+  {
+    icon: <ListTodo size={15} className="text-my-icon-secondary shrink-0" />,
+    title: "任务与工作项 (Work)",
+    description: "管理迭代、版本与团队待办，支持多维筛选、视图保存与看板呈现，按优先级与责任人推进项目落地。"
+  },
+  {
+    icon: <Briefcase size={15} className="text-my-icon-secondary shrink-0" />,
+    title: "双视图模式切换 (Work / Code)",
+    description: "点击顶栏视图切换器：Work 专注需求与协作规划，Code 直通工程分支、本地运行环境与开发控制台。"
+  },
+  {
+    icon: <BookOpen size={15} className="text-my-icon-secondary shrink-0" />,
+    title: "知识库与资料 (Knowledge)",
+    description: "沉淀团队规范、架构文档与参考资产，对话智能体可随时自动检索并引用项目知识库作为上下文。"
+  }
 ]
 
 function HelpOverlay({ onClose }: { onClose: () => void }): JSX.Element {
+  const [tab, setTab] = useState<'guide' | 'shortcuts'>('guide')
   return (
-    <Modal open onClose={onClose} width={380} placement="center" ariaLabel="键盘快捷键">
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-my-md font-semibold text-my-primary">
-            <Keyboard size={15} className="text-my-icon-secondary" />
-            键盘快捷键
-          </span>
-          <Button variant="ghost" aria-label="关闭快捷键帮助" onClick={onClose}>
-            <X size={14} />
+    <Modal open onClose={onClose} width={460} placement="center" ariaLabel="帮助与指引">
+      <div className="p-5">
+        <div className="mb-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-my-control bg-my-layer-1 text-my-primary border border-my-border-subtle">
+              <CircleHelp size={16} />
+            </span>
+            <div>
+              <h2 className="text-my-md font-semibold text-my-primary leading-tight">帮助与指引</h2>
+              <p className="text-my-2xs text-my-tertiary">快速掌握核心功能与效率捷径</p>
+            </div>
+          </div>
+          <Button variant="ghost" aria-label="关闭帮助" onClick={onClose} className="h-7 w-7 p-0">
+            <X size={15} />
           </Button>
         </div>
-        <div className="flex flex-col gap-1.5">
-          {SHORTCUTS.map(([keys, label]) => (
-            <div key={keys} className="flex items-center justify-between text-my-sm">
-              <span className="text-my-secondary">{label}</span>
-              <span className="my-kbd">{keys}</span>
-            </div>
-          ))}
+
+        <div className="mb-3 flex border-b border-my-border-subtle pb-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className={clsx(
+                "px-2.5 py-1 text-my-sm rounded-my-control transition-colors font-medium",
+                tab === "guide"
+                  ? "bg-my-layer-2-active text-my-primary"
+                  : "text-my-secondary hover:text-my-primary hover:bg-my-layer-transparent-hover"
+              )}
+              onClick={() => setTab("guide")}
+            >
+              核心功能指南
+            </button>
+            <button
+              type="button"
+              className={clsx(
+                "px-2.5 py-1 text-my-sm rounded-my-control transition-colors font-medium",
+                tab === "shortcuts"
+                  ? "bg-my-layer-2-active text-my-primary"
+                  : "text-my-secondary hover:text-my-primary hover:bg-my-layer-transparent-hover"
+              )}
+              onClick={() => setTab("shortcuts")}
+            >
+              快捷键速查
+            </button>
+          </div>
+        </div>
+
+        {tab === "guide" ? (
+          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1 my-scrollbar">
+            {HELP_MODULES.map((item) => (
+              <div key={item.title} className="rounded-my-control border border-my-border-subtle bg-my-panel p-3">
+                <div className="flex items-center gap-2 text-my-sm font-medium text-my-primary">
+                  {item.icon}
+                  <span>{item.title}</span>
+                </div>
+                <p className="mt-1 text-my-xs text-my-secondary leading-relaxed">
+                  {item.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 max-h-[380px] overflow-y-auto pr-1 my-scrollbar">
+            {SHORTCUTS.map(([keys, label]) => (
+              <div key={keys} className="flex items-center justify-between rounded-my-control px-2.5 py-1.5 text-my-sm hover:bg-my-layer-transparent-hover">
+                <span className="text-my-secondary">{label}</span>
+                <span className="my-kbd">{keys}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 pt-3 border-t border-my-border-subtle flex items-center justify-between text-my-2xs text-my-tertiary">
+          <span>提示：随时按 <kbd className="my-kbd text-my-2xs px-1">?</kbd> 键均可唤起此帮助</span>
+          <span>按 <kbd className="my-kbd text-my-2xs px-1">Esc</kbd> 关闭</span>
         </div>
       </div>
     </Modal>

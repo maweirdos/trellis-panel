@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChevronRight, CircleUser, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, X, Wrench, Activity, FileText } from 'lucide-react'
+import { Blocks, BookOpen, ChevronRight, CircleHelp, CircleUser, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import { NavIcon } from '../icons'
@@ -17,6 +17,8 @@ const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
   team: <Users className="my-module-icon" aria-hidden="true" />,
   knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,
+  integrations: <Blocks className="my-module-icon" aria-hidden="true" />,
+  automations: <Workflow className="my-module-icon" aria-hidden="true" />,
   settings: <Settings2 className="my-module-icon" aria-hidden="true" />
 }
 
@@ -33,11 +35,22 @@ export function WorkspaceSidebar(): JSX.Element {
         {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => {
           const remembered = useMy.getState().modulePages
           const saved = remembered[item.id] ?? (item.id === 'home' ? remembered.tasks : undefined)
-          const target = item.id === 'agents' || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
-          if ((current !== item.id || item.id === 'agents') && useApp.getState().page !== target) setPage(target)
+          const opensRoot = item.id === 'agents' || item.id === 'integrations'
+          const target = opensRoot || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
+          if ((current !== item.id || opensRoot) && useApp.getState().page !== target) setPage(target)
         }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
+        <div className="my-module-divider" aria-hidden="true" />
+        <button
+          type="button"
+          aria-label="帮助与指引"
+          title="帮助与指引 (?)"
+          onClick={() => useMy.getState().setHelpOpen(true)}
+          className={railClass(false)}
+        >
+          <CircleHelp className="my-module-icon" aria-hidden="true" />
+        </button>
         <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => {
           setPage(useMy.getState().modulePages.settings ?? 'settings')
         }} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>

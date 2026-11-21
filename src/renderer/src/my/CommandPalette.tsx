@@ -77,7 +77,7 @@ export function CommandPalette(): JSX.Element | null {
       run: () => { useApp.getState().setPersonalTaskSource('local'); setWorkItemsView('iterations'); setPageMain('tasks'); setOpen(false) }
     })
     const extra: PaletteItem[] = [
-      ...COLLABORATION_MODULES.map((entry) => ({
+      ...COLLABORATION_MODULES.filter((entry) => entry.id !== 'automations').map((entry) => ({
         id: `n-collaboration-${entry.id}`, section: '导航 · 团队', label: entry.label,
         icon: <FlowIcon name={entry.icon} size={16} />, hint: `团队协作 · ${entry.group}`,
         keywords: `${entry.id} 团队协作`, run: () => { useCrux.getState().setModule(entry.id); go('crux') }
@@ -139,7 +139,7 @@ export function CommandPalette(): JSX.Element | null {
         }
       }
     ]
-    const sections = (['home', 'agents', 'tasks', 'team', 'knowledge', 'settings'] as const).map((domain) => `导航 · ${DOMAIN_LABELS[domain]}`)
+    const sections = Object.values(DOMAIN_LABELS).map((label) => `导航 · ${label}`)
     const teamTasks: PaletteItem[] = (collaboration?.tasks ?? []).map((task) => ({ id: `team-task-${task.id}`, section: '团队任务', label: `${task.id} · ${task.title}`, icon: <FlowIcon name="tasks" size={16} />, hint: collaboration?.spaces.find((space) => space.id === task.spaceId)?.name, fulltext: task.description, run: () => { useCrux.getState().setModule('tasks'); useCrux.getState().openTask(task.id); go('crux') } }))
     return [...nav, ...extra].sort((a, b) => sections.indexOf(a.section) - sections.indexOf(b.section)).concat(page === 'crux' ? teamTasks : issues, page === 'crux' ? [] : teamTasks, actions.filter((item) => item.id !== 'a-new' || Boolean(projectRoot) || !hasIpc))
   }, [data, collaboration, theme, go, setWorkItemsView, setPageMain, openIssue, setOpen, setCreateIssueOpen, page, projectRoot])

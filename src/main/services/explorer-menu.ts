@@ -1,5 +1,5 @@
 /**
- * T1：资源管理器右键"用 Trellis Panel 阅读"。
+ * T1：资源管理器右键"用 Crux 阅读"。
  * 约束：仅打包态（开发态注册会劫持 electron.exe）；仅写 HKCU 当前用户键；
  * 幂等（/f 覆盖）；关闭即删除键。命令走 trellis-panel:// 深链，
  * 由既有的 second-instance → parseDeepLink → 上溯找 .trellis 链路接手。
@@ -8,7 +8,7 @@ import { app } from 'electron'
 import { execFile } from 'child_process'
 
 const REG_KEY = 'HKCU\\Software\\Classes\\Directory\\shell\\TrellisPanelOpen'
-const LABEL = '用 Trellis Panel 阅读'
+const LABEL = '用 Crux 阅读'
 
 function reg(args: string[]): Promise<void> {
   return new Promise((resolve) => {

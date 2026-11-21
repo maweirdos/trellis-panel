@@ -23,6 +23,7 @@ export type Page =
   | 'tasks'
   | 'creations'
   | 'crux'
+  | 'automations'
   | 'knowledge'
   | 'spec'
   | 'archive'

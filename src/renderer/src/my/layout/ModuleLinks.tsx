@@ -39,9 +39,9 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
       {route('channels', '频道', <Hash size={16} />)}
       </>}
     </> : <>
-      {row('materials', '资料', page === 'knowledge' && knowledgeView === 'materials', <FileText size={16} />, () => knowledge('materials'))}
-      {route('spec', '规范', <BookOpen size={16} />)}
-      {row('company', '知识库', page === 'knowledge' && knowledgeView === 'company', <Cloud size={16} />, () => knowledge('company'))}
+      {row('materials', hasProject ? '资料' : '团队知识库', page === 'knowledge' && knowledgeView === 'materials', <FileText size={16} />, () => knowledge('materials'))}
+      {hasProject && route('spec', '规范', <BookOpen size={16} />)}
+      {row('company', hasProject ? '知识库' : '企业知识库', page === 'knowledge' && knowledgeView === 'company', <Cloud size={16} />, () => knowledge('company'))}
     </>}
   </nav>
 }

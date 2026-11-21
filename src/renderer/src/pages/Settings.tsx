@@ -135,7 +135,7 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
             onChange={(autoUpdate) => void perform('desktop-updates', () => saveSettings({ desktop: { ...settings.desktop, autoUpdate } }))} />
         </PreferenceRow>
         <PreferenceRow label="资源管理器右键菜单" hint="仅打包版 Windows 支持。">
-          <Switch label="资源管理器右键：用 Trellis Panel 阅读" checked={settings.desktop.explorerContextMenu ?? false}
+          <Switch label="资源管理器右键：用 Crux 阅读" checked={settings.desktop.explorerContextMenu ?? false}
             disabled={pending['desktop-explorer']} onChange={(enabled) => void perform('desktop-explorer', async () => {
               const result = await api.desktopSetExplorerMenu(enabled)
               if (result.ok) await saveSettings({ desktop: { ...settings.desktop, explorerContextMenu: enabled } })
@@ -242,7 +242,7 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
         </PreferenceSection>)}
 
       {view === 'about' && <PreferenceSection id="preferences-about" title="关于">
-        <PreferenceRow label="Trellis Panel"><span className="text-my-secondary">v{appVersion}</span></PreferenceRow>
+        <PreferenceRow label="Crux"><span className="text-my-secondary">v{appVersion}</span></PreferenceRow>
         <PreferenceRow label="项目仓库"><Button size="sm" variant="ghost" onClick={() => void api.openExternal('https://github.com/maweirdos/trellis-panel')}>maweirdos/trellis-panel ↗</Button></PreferenceRow>
         <PreferenceRow label="问题反馈"><Button size="sm" variant="ghost" onClick={() => void api.openExternal('https://github.com/maweirdos/trellis-panel/issues')}>GitHub Issues ↗</Button></PreferenceRow>
         <PreferenceRow label="开源许可"><span className="text-my-secondary">{appLicense}</span></PreferenceRow>

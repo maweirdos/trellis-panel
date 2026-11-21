@@ -1,6 +1,6 @@
 import type { Page } from '../store'
 
-export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'knowledge' | 'settings'
+export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'knowledge' | 'integrations' | 'automations' | 'settings'
 export type NavigationScope = 'project' | 'application' | 'local' | 'mixed'
 export type WorkItemsView = 'items' | 'iterations'
 export type ModuleId = NavigationDomain
@@ -32,7 +32,7 @@ export const PAGE_NAVIGATION = {
   creations: { title: '产物', domain: 'home', scope: 'local', icon: 'pages', keywords: '个人 创作 作品 原型 文档 图表 评审' },
   inbox: { title: '接入', domain: 'tasks', scope: 'project', icon: 'inbox', keywords: '需求接入 待办池 收件箱' },
   jira: {
-    title: '接入', domain: 'tasks', scope: 'project', icon: 'work-items', keywords: 'Jira 来源 外部查询',
+    title: 'Jira 工单', domain: 'integrations', scope: 'project', icon: 'work-items', keywords: 'Jira 来源 外部查询',
     scopeNote: 'Jira 结果遵循外部查询条件；导入目标是顶栏所选项目。',
     commandHint: '导入当前项目 · 外部查询'
   },
@@ -49,7 +49,7 @@ export const PAGE_NAVIGATION = {
     title: '对话', domain: 'agents', scope: 'local', icon: 'inbox', keywords: '个人 助手 私人 本机 跨项目 会话'
   },
   knowledge: {
-    title: '资料', domain: 'knowledge', scope: 'project', icon: 'pages', keywords: '文档 知识库',
+    title: '资料', domain: 'knowledge', scope: 'mixed', icon: 'pages', keywords: '文档 知识库',
     scopeNote: '项目资料来自当前目录；知识库与个人对话历史可跨项目访问。',
     commandHint: '当前项目 · 知识库与个人资料'
   },
@@ -58,7 +58,8 @@ export const PAGE_NAVIGATION = {
   studio: { title: '定制', domain: 'tasks', scope: 'project', icon: 'modules' },
   models: { title: '模型供应商', domain: 'settings', scope: 'application', icon: 'models' },
   settings: { title: '设置', domain: 'settings', scope: 'application', icon: 'work-items' },
-  integrations: { title: '应用集成', domain: 'settings', scope: 'mixed', icon: 'modules', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知' },
+  integrations: { title: '应用集成', domain: 'integrations', scope: 'mixed', icon: 'integrations', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知' },
+  automations: { title: '自动化', domain: 'automations', scope: 'local', icon: 'automations', keywords: '团队 空间 规则 触发器 定时 运行历史', commandHint: '当前团队空间' },
   gateway: { title: 'MCP服务', domain: 'settings', scope: 'mixed', icon: 'mcp', keywords: '应用 项目' },
   devtools: {
     title: '工具', domain: 'tasks', scope: 'project', icon: 'views', keywords: 'Git 只读 应用 运行 日志 脚本 启动 端口',
@@ -67,14 +68,16 @@ export const PAGE_NAVIGATION = {
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  home: '个人', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', settings: '设置'
+  home: '个人', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', integrations: '应用集成', automations: '自动化', settings: '设置'
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
   { id: 'agents', page: 'chat', label: '对话', shortLabel: '对话' },
   { id: 'home', page: 'tasks', label: '个人', shortLabel: '个人' },
   { id: 'team', page: 'crux', label: '团队', shortLabel: '团队' },
-  { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' }
+  { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' },
+  { id: 'integrations', page: 'integrations', label: '应用集成', shortLabel: '集成' },
+  { id: 'automations', page: 'automations', label: '自动化', shortLabel: '自动化' }
 ]
 
 export function getPageNavigation(page: Page): PageNavigation {
@@ -83,7 +86,15 @@ export function getPageNavigation(page: Page): PageNavigation {
 
 export function pageRequiresProject(page: Page): boolean {
   const navigation = getPageNavigation(page)
-  return navigation.domain !== 'settings' && (navigation.scope === 'project' || navigation.scope === 'mixed')
+  return navigation.scope === 'project'
+}
+
+export function hasContextNavigation(page: Page): boolean {
+  return page !== 'automations' && activeModule(page) !== 'integrations'
+}
+
+export function usesSettingsLayout(page: Page): boolean {
+  return page === 'integrations' || getPageNavigation(page).domain === 'settings'
 }
 
 export function activeModule(page: Page): ModuleId {
@@ -94,7 +105,7 @@ export function activeModule(page: Page): ModuleId {
 
 /** Knowledge and conversation pages already own their real source/session browsers. */
 export function hasShellContext(page: Page): boolean {
-  return page !== 'crux' && !['knowledge', 'agents'].includes(activeModule(page))
+  return hasContextNavigation(page) && page !== 'crux' && !['knowledge', 'agents'].includes(activeModule(page))
 }
 
 export function navigationScopeLabel(scope: NavigationScope): string {

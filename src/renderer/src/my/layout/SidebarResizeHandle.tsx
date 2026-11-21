@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from '../appearance'
 import { useMy } from '../store'
+import { clsx } from 'clsx'
 import { usePointerResize } from '../../utils/use-pointer-resize'
 
 const viewportMax = (): number => Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, window.innerWidth - 360))
@@ -23,7 +24,7 @@ export function SidebarResizeHandle({ label = '调整左侧栏宽度' }: { label
   }, [])
   const effectiveWidth = Math.min(width, maximum)
   const resize = (value: number): void => setWidth(Math.max(MIN_SIDEBAR_WIDTH, Math.min(viewportMax(), value)))
-  const { bindings } = usePointerResize({
+  const { resizing, bindings } = usePointerResize({
     axis: 'x', getValue: () => handle.current?.parentElement?.getBoundingClientRect().width ?? effectiveWidth,
     onChange: resize, onCancel: () => setWidth(width)
   })
@@ -31,7 +32,7 @@ export function SidebarResizeHandle({ label = '调整左侧栏宽度' }: { label
   return <div
     ref={handle}
     {...bindings}
-    className="my-sidebar-resize-handle"
+    className={clsx('my-sidebar-resize-handle', resizing && 'is-resizing')}
     role="separator"
     aria-label={label}
     aria-orientation="vertical"
@@ -40,7 +41,7 @@ export function SidebarResizeHandle({ label = '调整左侧栏宽度' }: { label
     aria-valuenow={effectiveWidth}
     aria-valuetext={`${effectiveWidth} 像素`}
     tabIndex={0}
-    title="拖动调整宽度，双击恢复默认；方向键微调"
+    data-resizing={resizing || undefined}
     onDoubleClick={() => resize(DEFAULT_SIDEBAR_WIDTH)}
     onKeyDown={(event) => {
       const step = event.shiftKey ? 40 : 10
