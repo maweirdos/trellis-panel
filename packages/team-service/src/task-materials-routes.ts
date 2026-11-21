@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { sourcePartQuery } from '../../../src/shared/task-source-files'
 import { teamCommandIdSchema, teamIdSchema } from '../../../src/shared/team-platform'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 import type { TeamAuthentication } from './auth'
@@ -17,6 +18,12 @@ export async function registerTaskMaterialRoutes(api: FastifyInstance, store: Te
     }) }))
   }
   get('', 'taskMaterialList', params)
+  const partPath = '/source/:sourceId/:revision/:part'
+  const sourceParams = params.extend(sourcePartQuery.shape).strict()
+  get(partPath, 'taskSourcePartRead', sourceParams)
+  api.post(path + partPath, async request => ({ ok: true, value: await store.call('taskSourcePartPut', {
+    actor: auth.principal(request).actor, ...sourceParams.parse(request.params), query: request.query, body: request.body
+  }) }))
   get('/commands/:commandId', 'taskMaterialReceipt', params.extend({ commandId: teamCommandIdSchema }).strict())
   get('/:documentId', 'taskMaterialRead', params.extend({ documentId: teamIdSchema }).strict())
   get('/:documentId/versions', 'taskMaterialVersions', params.extend({ documentId: teamIdSchema }).strict())

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { SOURCE_PART_BYTES, sourcePartQuery, sourcePartData, taskSourceFiles } from '../../../src/shared/task-source-files'
 import type { CruxSpace, CruxTask } from '../../../src/shared/crux'
 import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
 import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
@@ -46,6 +47,46 @@ function cas(actual: number, expected: number): void {
 
 export class TeamTaskMaterials {
   constructor(private readonly host: TaskMaterialsHost & { workspaceChanged(projectId: string): void }) {}
+
+  sourcePart(principal: StorePrincipal, raw: Record<string, unknown>, writing: boolean) {
+    const location = teamTaskMaterialScopeSchema.parse(raw.query)
+    const ctx = this.context(principal, raw, location, writing)
+    const part = sourcePartQuery.parse({ sourceId: raw.sourceId, revision: raw.revision, part: raw.part })
+    const comment = ctx.task.handoff?.id === part.sourceId ? null : this.host.get(
+      "SELECT c.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.comments') c WHERE w.projectId=? AND json_extract(c.value,'$.taskId')=? AND json_extract(c.value,'$.sourceId')=?",
+      ctx.projectId, ctx.task.id, part.sourceId)
+    const contribution = comment ? stored(cruxSnapshotSchema.shape.comments.element, comment.body) : null
+    const handoff = ctx.task.handoff?.id === part.sourceId ? ctx.task.handoff : null
+    const files = taskSourceFiles.parse(handoff?.files ?? contribution?.sourceFiles ?? [])
+    const file = files.find(file => file.revision === part.revision) ?? unavailable()
+    const digest = file.parts[part.part] ?? unavailable()
+    const length = Math.min(SOURCE_PART_BYTES, file.bytes - part.part * SOURCE_PART_BYTES)
+    const identity = this.host.identity()
+    const receipt = { authorizationRevision: identity.authorizationRevision, instanceId: identity.instanceId, epoch: identity.epoch, projectId: ctx.projectId,
+      taskId: ctx.task.id, ...location, ...part, digest }
+    const key = [ctx.projectId, ctx.task.id, ctx.space.id, ctx.task.createdAt, part.sourceId, part.revision, part.part]
+    const grant = this.host.get('SELECT bodyDigest FROM task_source_parts WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=? AND sourceId=? AND revision=? AND part=?', ...key)
+    if (writing) {
+      if ((handoff ? ctx.task.creatorId : contribution?.authorId) !== principal.person.userId) forbidden()
+      const input = z.object({ epoch: z.string().uuid(), data: sourcePartData }).strict().parse(raw.body)
+      if (input.epoch !== identity.epoch) fail('WORKSPACE_EPOCH_CHANGED', 'Original workspace has changed')
+      const bytes = Buffer.from(input.data, 'base64')
+      if (bytes.length !== length || hash(bytes) !== digest || bytes.toString('base64') !== input.data) fail('SOURCE_CHANGED', 'Selected attachment bytes do not match this task')
+      if (grant) { if (grant.bodyDigest !== digest) unavailable(); return receipt }
+      if (length) {
+        const used = this.host.get('SELECT COALESCE(SUM(byteLength),0) AS bytes FROM blobs')
+        if (!this.host.get('SELECT 1 FROM blobs WHERE bodyDigest=?', digest) && Number(used?.bytes ?? MAX_BLOB_BYTES) + length > MAX_BLOB_BYTES) fail('CAPACITY_EXCEEDED', 'Team file storage is full', 507)
+        this.host.persistBody(bytes, digest)
+        this.host.run('INSERT INTO blobs(bodyDigest,byteLength,createdAt) VALUES(?,?,?) ON CONFLICT(bodyDigest) DO NOTHING', digest, length, Date.now())
+      }
+      this.host.run('INSERT INTO task_source_parts(projectId,taskId,spaceId,taskCreatedAt,sourceId,revision,part,bodyDigest) VALUES(?,?,?,?,?,?,?,?)', ...key, digest)
+      return receipt
+    }
+    if (!grant || grant.bodyDigest !== digest) fail('SOURCE_PENDING', '附件尚未传完，请稍后再打开', 409)
+    const bytes = length ? this.host.body(digest) : Buffer.alloc(0)
+    if (bytes.length !== length || hash(bytes) !== digest) fail('CORRUPT_STORE', 'Attachment part failed verification', 503)
+    return { ...receipt, data: bytes.toString('base64') }
+  }
 
   private context(principal: StorePrincipal, raw: Record<string, unknown>, scope: TeamTaskMaterialScope, writing = false): Context {
     const projectId = teamIdSchema.parse(raw.projectId), taskId = teamTaskProgressResourceIdSchema.parse(raw.taskId)
@@ -266,6 +307,19 @@ export class TeamTaskMaterials {
         template: { templateId: input.kind, version: 1 }, ownerId: ctx.principal.person.userId, editorIds: input.editorIds, approverIds: input.approverIds,
         revision: 1, draftRevision: 1, draft, approved: null, latestSubmission: null, createdAt: timestamp, updatedAt: timestamp }
       versionId = draft.versionId
+      if (ctx.task.handoff?.id === input.commandId) {
+        if (input.kind !== 'prd' || ctx.task.creatorId !== ctx.principal.person.userId ||
+            !ctx.task.handoff.versionLabel || ctx.task.handoff.materialDigest !== draft.bodyDigest) {
+          fail('TASK_HANDOFF_MATERIAL_CONFLICT', 'Handoff material must match the fixed selected requirement')
+        }
+        const row = this.host.get('SELECT snapshotJson FROM crux_workspaces WHERE projectId=?', ctx.projectId)
+        if (!row) unavailable()
+        const snapshot = stored(cruxSnapshotSchema, row.snapshotJson)
+        const task = snapshot.tasks.find(task => task.id === ctx.task.id && task.createdAt === ctx.task.createdAt)
+        if (!task?.handoff) unavailable()
+        task.handoff.material = { documentId, versionId: draft.versionId, bodyDigest: draft.bodyDigest }
+        this.host.run('UPDATE crux_workspaces SET snapshotJson=? WHERE projectId=?', JSON.stringify(snapshot), ctx.projectId)
+      }
     } else {
       doc = this.document(ctx, input.documentId)
       if (input.action === 'saveDraft') {

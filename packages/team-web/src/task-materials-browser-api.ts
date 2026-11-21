@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { sourcePartReply } from '../../../src/shared/task-source-files'
 import {
-  cruxMaterialScopeSchema, cruxMaterialListSchema, cruxMaterialReadSchema,
+  cruxSourcePartSchema, cruxMaterialScopeSchema, cruxMaterialListSchema, cruxMaterialReadSchema,
   cruxMaterialHistorySchema, cruxMaterialCommandSchema, cruxMaterialRecoverySchema,
   type CruxTaskMaterialsApi, type CruxMaterialScope, type CruxMaterialReply
 } from '../../../src/shared/crux-task-materials'
@@ -54,6 +55,15 @@ export class BrowserTaskMaterials {
     authEvents.addEventListener('denied', this.invalidate)
     authEvents.addEventListener('session-changed', this.invalidate)
     this.api = {
+      sourcePart: raw => this.run(async () => {
+        const input = cruxSourcePartSchema.parse(raw), owner = this.owner(input)
+        const path = `/source/${input.sourceId}/${input.revision}/${input.part}`
+        const value = await request(this.url(owner.scope, path), sourcePartReply, { ...this.readOptions(owner),
+          body: input.data === undefined ? undefined : { epoch: owner.epoch, data: input.data } })
+        this.identity(value, owner); this.task(value, owner)
+        if (value.sourceId !== input.sourceId || value.revision !== input.revision || value.part !== input.part) this.invalid('附件来源已变化')
+        return value
+      }),
       list: (input) => this.run(async () => {
         const parsed = cruxMaterialListSchema.parse(input), owner = this.owner(parsed)
         const value = await request(this.url(owner.scope, '', parsed), teamTaskMaterialListSchema, this.readOptions(owner))

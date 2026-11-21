@@ -5,6 +5,7 @@ import { handle } from './registry'
 
 export function registerCruxTaskMaterialsIpc(): void {
   const service = createCruxTaskMaterialsService(app.getPath('userData'))
+  handle(ipcInvoke.cruxMaterials.sourcePart, (_event, input) => service.sourcePart(input))
   handle(ipcInvoke.cruxMaterials.list, (_event, input) => service.list(input))
   handle(ipcInvoke.cruxMaterials.read, (_event, input) => service.read(input))
   handle(ipcInvoke.cruxMaterials.versions, (_event, input) => service.versions(input))

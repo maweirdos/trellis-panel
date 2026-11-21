@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { sourcePartQuery, sourcePartData, sourcePartReply } from './task-source-files'
 import { teamCommandIdSchema, teamIdSchema } from './team-platform'
 import { teamTaskProgressResourceIdSchema } from './team-task-progress'
 import {
@@ -10,6 +11,7 @@ import {
 export const cruxMaterialScopeSchema = teamTaskMaterialScopeSchema.extend({
   workspaceKey: z.string().min(1).max(2048), taskId: teamTaskProgressResourceIdSchema
 }).strict()
+export const cruxSourcePartSchema = cruxMaterialScopeSchema.extend({ ...sourcePartQuery.shape, data: sourcePartData.optional() }).strict()
 export const cruxMaterialListSchema = cruxMaterialScopeSchema.extend({
   cursor: teamTaskMaterialListInputSchema.shape.cursor, limit: teamTaskMaterialListInputSchema.shape.limit
 }).strict()
@@ -34,6 +36,7 @@ export type CruxMaterialReply<T> = { ok: true; value: T } | { ok: false; code: s
 
 /** Main owns identity, complete body validation and original-command recovery. No renderer verification grants. */
 export interface CruxTaskMaterialsApi {
+  sourcePart(input: z.infer<typeof cruxSourcePartSchema>): Promise<CruxMaterialReply<z.infer<typeof sourcePartReply>>>
   list(input: CruxMaterialListInput): Promise<CruxMaterialReply<TeamTaskMaterialList>>
   read(input: CruxMaterialReadInput): Promise<CruxMaterialReply<TeamTaskMaterialView>>
   versions(input: CruxMaterialHistoryInput): Promise<CruxMaterialReply<z.infer<typeof teamTaskMaterialHistorySchema>>>

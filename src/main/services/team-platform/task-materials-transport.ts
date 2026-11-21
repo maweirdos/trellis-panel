@@ -7,7 +7,8 @@ import {
   type TeamTaskMaterialCommand, type TeamTaskMaterialMetadata, type TeamTaskMaterialReceipt
 } from '../../../shared/team-task-materials'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, teamIdSchema } from '../../../shared/team-platform'
-import { cruxMaterialScopeSchema } from '../../../shared/crux-task-materials'
+import { sourcePartReply } from '../../../shared/task-source-files'
+import { cruxMaterialScopeSchema, cruxSourcePartSchema } from '../../../shared/crux-task-materials'
 import { DesktopTeamError } from './types'
 
 export const taskMaterialTransportPinSchema = cruxMaterialScopeSchema.extend({
@@ -76,6 +77,14 @@ export class TaskMaterialsTransport {
     if (fields.limit !== undefined) query.set('limit', String(fields.limit))
     if (fields.versionId !== undefined) query.set('versionId', fields.versionId)
     return query.toString()
+  }
+  async sourcePart(input: z.infer<typeof cruxSourcePartSchema>) {
+    const path = `/source/${input.sourceId}/${input.revision}/${input.part}`
+    const value = await this.request(`${this.base}${path}?${this.query()}`, sourcePartReply,
+      input.data === undefined ? undefined : { epoch: this.pin.epoch, data: input.data })
+    identity(this.pin, value); scope(this.pin, value)
+    if (value.sourceId !== input.sourceId || value.revision !== input.revision || value.part !== input.part) invalid()
+    return value
   }
   async list(raw: z.input<typeof teamTaskMaterialListInputSchema>): Promise<z.infer<typeof teamTaskMaterialListSchema>> {
     const input = teamTaskMaterialListInputSchema.parse(raw)

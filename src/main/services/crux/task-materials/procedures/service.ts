@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import {
-  cruxMaterialScopeSchema, cruxMaterialListSchema, cruxMaterialReadSchema, cruxMaterialHistorySchema,
+  cruxSourcePartSchema, cruxMaterialScopeSchema, cruxMaterialListSchema, cruxMaterialReadSchema, cruxMaterialHistorySchema,
   cruxMaterialCommandSchema, cruxMaterialRecoverySchema,
   type CruxMaterialScope, type CruxTaskMaterialsApi, type CruxMaterialReply, type CruxMaterialPending
 } from '../../../../../shared/crux-task-materials'
@@ -58,6 +58,7 @@ export class CruxTaskMaterialsService implements CruxTaskMaterialsApi {
     try { if (previous) await previous; return await work() }
     finally { release?.(); if (queues.get(key) === gate) queues.delete(key) }
   }
+  sourcePart: CruxTaskMaterialsApi['sourcePart'] = raw => this.guarded(cruxSourcePartSchema, raw, (input, ctx) => ctx.remote(transport => transport.sourcePart(input)))
   list: CruxTaskMaterialsApi['list'] = raw => this.guarded(cruxMaterialListSchema, raw, (input, ctx) => ctx.remote(transport => transport.list({
     spaceId: input.spaceId, taskCreatedAt: input.taskCreatedAt, cursor: input.cursor, limit: input.limit
   })))

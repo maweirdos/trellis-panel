@@ -1,4 +1,9 @@
 /** Additive tables on the existing owned database; bodies use the existing blobs table. */
+export const TASK_SOURCE_PARTS_SQL = `CREATE TABLE task_source_parts(
+ projectId TEXT NOT NULL REFERENCES projects(projectId), taskId TEXT NOT NULL, spaceId TEXT NOT NULL,
+ taskCreatedAt TEXT NOT NULL, sourceId TEXT NOT NULL, revision TEXT NOT NULL, part INTEGER NOT NULL,
+ bodyDigest TEXT NOT NULL, PRIMARY KEY(projectId,taskId,spaceId,taskCreatedAt,sourceId,revision,part)
+);`
 export const TEAM_TASK_MATERIALS_SQL = `
 CREATE TABLE task_material_documents(
  documentId TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(projectId),
