@@ -37,6 +37,8 @@ import { WorkflowCutoverCoordinator } from '../../services/workflow-cutover/coor
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
 import { NativeTaskExecutions } from './task-execution'
 import { BUILTINS } from '../../services/acp/runtime-definitions'
+import { AcpControlPlaneCursorError } from '../../services/acp/control-plane-store'
+import { AcpConversationProjectionService } from '../../services/acp/control-plane-service'
 import { PI_VERSION } from '../../services/pi/protocol'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
 import { NativeTaskProgressSender, type TaskReadRecovery } from '../../services/crux/task-progress-sender'
@@ -152,6 +154,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   }
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
+  const conversationProjections = new AcpConversationProjectionService(ports.userData ?? ports.directory)
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function observeWorkspace(root: string, generation: number): void {
@@ -224,6 +227,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         })(),
         taskProgress.close(), commands.drain()
       ])
+      conversationProjections.close()
       for (const timer of materialTimers.values()) clearTimeout(timer)
       materialTimers.clear()
       await Promise.all([...watchers.values()].map(watcher => watcher.close())); watchers.clear()
@@ -326,6 +330,26 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       case 'runtime.profileSave': return acp.saveAcpProfile(root, runtimeBodies[method].parse(raw).input)
       case 'runtime.profileDelete': return acp.deleteAcpProfile(root, runtimeBodies[method].parse(raw).profileId)
       case 'runtime.historyList': return acp.listAcpHistorySessions(root, runtimeBodies[method].parse(raw).input)
+      case 'runtime.conversationProjectionList': {
+        const body = runtimeBodies[method].parse(raw)
+        return conversationProjections.list(root, body.input)
+      }
+      case 'runtime.conversationProjectionDetail': {
+        const body = runtimeBodies[method].parse(raw)
+        try { return conversationProjections.detail(root, body) }
+        catch (error) {
+          if (error instanceof AcpControlPlaneCursorError) throw new DaemonError('E_CONFLICT', `Conversation projection reset: ${error.reason}`)
+          throw error
+        }
+      }
+      case 'runtime.conversationProjectionEvents': {
+        const body = runtimeBodies[method].parse(raw)
+        try { return conversationProjections.events(root, body) }
+        catch (error) {
+          if (error instanceof AcpControlPlaneCursorError) throw new DaemonError('E_CONFLICT', `Conversation projection reset: ${error.reason}`)
+          throw error
+        }
+      }
       case 'runtime.historySession': return acp.getAcpHistorySession(root, runtimeBodies[method].parse(raw).sessionId)
       case 'runtime.historyEvents': { const p = runtimeBodies[method].parse(raw); return acp.getAcpHistoryEvents(root, p.sessionId, p.input) }
       case 'runtime.piImage': { const p = runtimeBodies[method].parse(raw); return acp.getAcpPiImage(root, p.sessionId, p.imageId) }

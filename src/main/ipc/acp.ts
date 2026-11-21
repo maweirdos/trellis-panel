@@ -20,6 +20,7 @@ import {
   respondAcpPermission,
   listAcpProfiles, saveAcpProfile, deleteAcpProfile, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath, resumeAcpSession, configureAcpSession, bindAcpSessionTask,
   listAcpHistorySessions, getAcpHistorySession, getAcpHistoryEvents, getAcpPiImage, updateAcpHistorySession, retryAcpHistorySession, recoverAcpSessionModel,
+  listAcpConversationProjections, getAcpConversationProjection, readAcpConversationProjectionEvents,
   previewAcpSessionHandoff, createAcpSessionHandoff, getAcpSessionHandoff, cancelAcpSessionHandoff,
   previewAcpHistoryDeletion, deleteAcpHistorySession, regenerateAcpHistoryTitle
 } from '../services/daemon-client/acp'
@@ -93,6 +94,15 @@ export function registerAcpIpc(): void {
     return result
   }
   handle(ipcInvoke.acp.historyList, (_e, input) => scopedHistory((root) => listAcpHistorySessions(root, input)))
+  handle(ipcInvoke.acp.conversationProjectionList, (_e, input) => scopedHistory((root) => listAcpConversationProjections(root, input)))
+  handle(ipcInvoke.acp.conversationProjectionDetail, (_e, sessionId) => {
+    if (typeof sessionId !== 'string' || !/^[\w.-]{1,200}$/.test(sessionId)) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+    return scopedHistory((root) => getAcpConversationProjection(root, sessionId))
+  })
+  handle(ipcInvoke.acp.conversationProjectionEvents, (_e, sessionId, input) => {
+    if (typeof sessionId !== 'string' || !/^[\w.-]{1,200}$/.test(sessionId)) return ipcFail(IpcErrorCode.InvalidArg, '会话 ID 无效')
+    return scopedHistory((root) => readAcpConversationProjectionEvents(root, sessionId, input))
+  })
   handle(ipcInvoke.acp.historySession, (_e, id) => scopedHistory((root) => getAcpHistorySession(root, id)))
   handle(ipcInvoke.acp.historyUpdate, (_e, id, input) => {
     const root = getProjectRoot() ?? ''

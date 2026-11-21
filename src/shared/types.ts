@@ -1422,6 +1422,9 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   onAcpHistoryChanged: (callback: (event: { projectRoot: string; sessionId: string; deleted?: boolean }) => void) => () => void
   acpHistorySession: (sessionId: string) => Promise<{ ok: true; version: 1; session: import('./acp-history').AcpHistorySummary } | IpcFail>
   acpHistoryEvents: (sessionId: string, input?: { before?: string; after?: string; limit?: number }) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
+  acpConversationListSnapshot: (input?: import('./acp-projections').AcpConversationListInput) => Promise<import('./acp-projections').AcpConversationListSnapshot | IpcFail>
+  acpConversationDetailSnapshot: (sessionId: string) => Promise<import('./acp-projections').AcpConversationDetailSnapshot | IpcFail>
+  acpConversationEvents: (sessionId: string, input?: { after?: number; limit?: number }) => Promise<import('./acp-projections').AcpConversationEventPage | IpcFail>
   acpPiImage: (sessionId: string, imageId: string) => Promise<{ ok: true; image: { mimeType: import('./acp-images').AcpImageMimeType; data: string } } | IpcFail>
   acpPiImageSave: (sessionId: string, imageId: string) => Promise<{ ok: true; cancelled: boolean } | IpcFail>
   acpPiDocumentOpen: (input: import('./pi-document').PiDocumentOpenInput) => Promise<import('./local-document-link').LocalDocumentOpenResult>

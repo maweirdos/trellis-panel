@@ -770,3 +770,92 @@ to 60000 characters, 8000 per message, balanced per-turn budgets and sixteen
 messages per selected turn. Mark selection/size/read omissions `truncated`.
 Validate context ownership before display or requirement seeding. Keep original
 archive bytes, sequence, turn boundaries, coverage and request receipts unchanged.
+
+## Conversation control-plane projections
+
+### 1. Scope / Trigger
+
+Read this section when changing `src/shared/acp-projections.ts`,
+`src/main/services/acp/control-plane-*`, the daemon `runtime.conversation*`
+routes, or the preload ACP projection APIs. The projection store is a read model
+parallel to the authoritative archive; it must never become a second native
+session authority.
+
+### 2. Signatures
+
+```ts
+acpConversationListSnapshot(input?: AcpConversationListInput)
+  -> AcpConversationListSnapshot | IpcFail
+acpConversationDetailSnapshot(sessionId: string)
+  -> AcpConversationDetailSnapshot | IpcFail
+acpConversationEvents(sessionId: string, input?: AcpConversationEventsInput)
+  -> AcpConversationEventPage | IpcFail
+```
+
+The additive control-plane database is `userData/acp/control-plane.sqlite`. Its
+first schema contains normalized conversation, turn, turn-item, runtime-session,
+runtime-thread, provider-instance, monotonic event, and migration rows. Legacy
+`history.sqlite` is opened read-only as the migration source.
+
+### 3. Contracts
+
+- Projection list/detail reads derive the trusted canonical root only in the
+  main/daemon workspace context. Renderer input contains filters, limits,
+  cursors, and session IDs only.
+- Legacy migration is idempotent and restartable. A complete migration is
+  skipped only when both its source digest and last source sequence are
+  unchanged; a same-source partial migration resumes after its highest
+  projected source sequence.
+- Conversation, runtime, provider, turn-item, and projection-event writes commit
+  in one SQLite transaction. The global monotonic sequence is allocated only
+  inside that transaction.
+- Text payloads are bounded. Partial migration is truthful in
+  `coverage.state='partial'`; a partial page must never be presented as complete
+  history.
+- `archive='all'` means all archived states inside the same canonical root. It
+  never removes the root predicate through SQL operator precedence.
+- Projection reads never spawn, resume, authenticate, probe, install, or prompt
+  a provider. They do not alter `acpHistory*` data or behavior.
+- Existing history tombstones are checked on migration and every read. A
+  tombstoned conversation is absent, not empty.
+- Cursor failures are typed conflicts: cursor-ahead, conversation-reset, or
+  store-reset. A generic I/O failure must not replace a reset response.
+- Missing legacy provider metadata degrades to explicit identifiers such as
+  `unknown`; it must not fail SQLite non-null binding or invent a provider.
+
+### 4. Validation / Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Foreign or missing canonical root | No projected conversation row is returned |
+| Deleted/tombstoned source session | Read returns not-found or conversation-reset |
+| Client cursor exceeds store sequence | Typed cursor-ahead reset |
+| Conversation removed or store epoch changed | Typed conversation/store reset |
+| Same source migrated again | No duplicate conversation/turn/item rows |
+| Page exceeds projection byte budget | Partial migration and truthful coverage |
+| Legacy archive damaged/unavailable | Projection unavailable; legacy archive remains unchanged |
+| Metadata lacks agent id/name | Degrades provider identity without binding error |
+
+### 5. Good / Base / Bad Cases
+
+Good: a stopped runtime conversation remains listed and its detail snapshot
+returns recent items from the projection without touching a provider process.
+Base: a bounded migration leaves partial coverage and resumes later after the
+same source digest. Bad: resuming a provider to satisfy a projection read,
+rewriting authoritative legacy events, or treating a foreign-root row as local.
+
+### 6. Tests Required
+
+Exercise real SQLite files under OS TEMP: idempotent repeated migration,
+partial then resumed migration, source growth, root isolation for all archive
+filters, tombstone suppression, snapshot cursor ordering, incremental-only
+events, and all typed reset paths. Run `npm run check:acpx`, `npm run typecheck`,
+`npm run build`, and `npm run check:ui` for affected layers.
+
+### 7. Wrong vs Correct
+
+Wrong: making the normalized projection the native transcript authority, using
+renderer-supplied roots, or collapsing cursor resets into `E_IO`.
+Correct: preserve the authoritative archive, migrate read-only/idempotently,
+return bounded snapshots plus a monotonic cursor, and require a fresh snapshot
+on any unresumable cursor state.
