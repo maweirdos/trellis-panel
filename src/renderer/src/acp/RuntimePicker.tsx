@@ -1,9 +1,10 @@
 import { useState, type JSX } from 'react'
-import { ChevronDown, ChevronRight, Laptop, MoreHorizontal, Wifi, WifiOff } from 'lucide-react'
+import { ChevronDown, ChevronRight, Laptop, MoreHorizontal, Wifi } from 'lucide-react'
 import { clsx } from 'clsx'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
 import { Dropdown, DropdownHeader } from '../my/ui'
-import { RuntimePanel, runtimeHealthLabel } from './RuntimePanel'
+import { RuntimePanel } from './RuntimePanel'
+import { RuntimeConnectionIcon, runtimeConnectionState, runtimeHealthLabel } from './runtime-status'
 import type { AcpAgentStatus } from '../../../shared/types'
 
 export function RuntimeMark({ runtimeId, size = 16 }: { runtimeId?: string; size?: number }): JSX.Element {
@@ -12,11 +13,9 @@ export function RuntimeMark({ runtimeId, size = 16 }: { runtimeId?: string; size
 
 export function RuntimeConnectivity({ agent, showOff = false }: { agent: AcpAgentStatus | undefined; showOff?: boolean }): JSX.Element | null {
   if (!agent) return null
-  const online = agent.enabled && agent.available && !agent.setupRequired
+  const online = ['ready', 'detected'].includes(runtimeConnectionState(agent))
   if (!online && !showOff) return <span className="acp-runtime-status" title={runtimeHealthLabel(agent)}>{runtimeHealthLabel(agent)}</span>
-  return online
-    ? <Wifi size={13} className="acp-runtime-online" aria-label={runtimeHealthLabel(agent)} />
-    : <WifiOff size={13} className="acp-runtime-offline" aria-label={runtimeHealthLabel(agent)} />
+  return <RuntimeConnectionIcon agent={agent} size={13} />
 }
 
 function findAgent(agents: AcpAgentStatus[], runtimeId: string | undefined): AcpAgentStatus | undefined {

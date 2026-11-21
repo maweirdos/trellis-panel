@@ -30,6 +30,7 @@ export type RenderItem =
 
 /** Projection only: protocol ownership and partial-update validation live in the runtime. */
 export function compileItems(events: TimelineEvent[]): RenderItem[] {
+  const storedImageKeys = new Set<string>()
   events = replayConversationTextEvents(events)
   // Connection history stays available to diagnostics; it is not a user turn.
   // This also isolates old restores that accidentally reused the last turnId.
@@ -137,7 +138,7 @@ export function compileItems(events: TimelineEvent[]): RenderItem[] {
       const last = items[items.length - 1]
       const previousSource = last && sourceEvents.get(last.key)
       const sameMessage = previousSource && !piBlockKeys.has(last.key) && identityOf(previousSource) === identityOf(ev) && previousSource.payload?.messageId === ev.payload?.messageId
-      const storedImages = type === 'agent' ? readAcpStoredImages(asObject(ev.payload?.meta)?.piImages) : []
+      const storedImages = type === 'agent' ? readAcpStoredImages(asObject(ev.payload?.meta)?.piImages).filter(image => { const id = JSON.stringify([identityOf(ev), image.id]); if (storedImageKeys.has(id)) return false; storedImageKeys.add(id); return true }) : []
       const webPreview = type === 'agent' && ev.source === 'pi' ? readPiWebPreviewArtifact(asObject(ev.payload?.meta)?.piWebPreview) : null
       if (type !== 'user' && last?.type === type && sameMessage) {
         last.text += ev.text ?? ''
@@ -277,7 +278,7 @@ export function isRoutineRuntimeEvent(event: TimelineEvent): boolean {
   const payload = event.payload
   const isProblemLevel = (value: unknown): boolean => value === 'error' || value === 'warning' || value === 'warn'
   if (isProblemLevel(payload?.type) || payload?.error || payload?.success === false || payload?.ok === false || payload?.code !== undefined || payload?.status === 'failed' || asObject(payload?.result)?.status === 'failed' || asObject(payload?.observation)?.status === 'failed' || isProblemLevel(payload?.status) || isProblemLevel(payload?.severity) || isProblemLevel(payload?.level)) return false
-  if (payload?.tag === 'pi_thinking' || payload?.tag === 'pi_provider_response') return true
+  if (payload?.tag === 'pi_thinking' || payload?.tag === 'pi_model_request' || payload?.tag === 'pi_provider_response') return true
   if (payload?.tag === 'pi_compaction') return false
   // Image progress uses the current-turn status; preserve failures and unknown phases.
   if (payload?.tag === 'pi_image_generation') return payload.phase === 'running' || payload.phase === 'completed'

@@ -14,7 +14,7 @@ export const TOOL_BRANDS = [
   { id: 'cursor', label: 'Cursor', aliases: ['cursor-agent'], assetKey: 'cursor.svg', mode: 'mask' },
   { id: 'windsurf', label: 'Windsurf', aliases: ['windsurf-editor'], assetKey: 'windsurf.svg', mode: 'mask' },
   { id: 'github-copilot', label: 'GitHub Copilot', aliases: ['copilot', 'githubcopilot', 'github_copilot', 'copilot-cli'], assetKey: 'github-copilot.svg', mode: 'mask' },
-  { id: 'gemini-cli', label: 'Gemini CLI', aliases: ['gemini', 'geminicli', 'gemini_cli'], assetKey: 'gemini-cli.svg', mode: 'image' },
+  { id: 'gemini-cli', label: 'Gemini', aliases: ['gemini', 'geminicli', 'gemini_cli'], assetKey: 'gemini-cli.svg', mode: 'image' },
   { id: 'opencode', label: 'OpenCode', aliases: ['open-code', 'open_code'], assetKey: 'opencode.svg', mode: 'mask' },
   { id: 'qoder', label: 'Qoder', aliases: ['qoder-cli'], assetKey: 'qoder.svg', mode: 'mask' },
   { id: 'kiro', label: 'Kiro', aliases: ['kiro-cli'], assetKey: 'kiro.svg', mode: 'image' },

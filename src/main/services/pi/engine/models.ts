@@ -36,7 +36,7 @@ function configuredFetch(endpoint: string | undefined, dispatcher: ProxyAgent | 
   }
 }
 
-export async function createModels(input: PiInitialize): Promise<ModelRuntime> {
+export async function createModels(input: Pick<PiInitialize, 'models' | 'proxy'>): Promise<ModelRuntime> {
   const credentials = new InMemoryCredentialStore()
   const groups = new Map<string, PiModel[]>()
   const selections = new Set<string>()
@@ -96,7 +96,7 @@ export async function createModels(input: PiInitialize): Promise<ModelRuntime> {
   return runtime
 }
 
-export function selectedModel(input: PiInitialize, runtime: ModelRuntime, selectionId: string): Model<Api> {
+export function selectedModel(input: Pick<PiInitialize, 'models'>, runtime: ModelRuntime, selectionId: string): Model<Api> {
   const definition = input.models.find(item => item.selectionId === selectionId)
   const model = definition && runtime.getModel(definition.providerId, definition.modelId)
   if (!model) throw new Error('Pi model selection is not in the explicit configured models')

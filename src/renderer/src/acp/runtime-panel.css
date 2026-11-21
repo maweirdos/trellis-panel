@@ -7,7 +7,7 @@
 .runtime-overview-flow { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .runtime-overview-node-wrap { position: absolute; display: flex; justify-content: center; transform: translate(-50%, -50%); }
 .runtime-overview-node-control { position: relative; display: grid; place-items: center; flex: none; width: var(--my-space-44); height: var(--my-space-44); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base); background: var(--my-bg-surface-1); cursor: pointer; transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out); }
-.runtime-overview-node-progress { position: absolute; top: var(--my-space-2); right: var(--my-space-2); color: var(--my-txt-primary); }
+.runtime-overview-node-activity { position: absolute; inset-inline: var(--my-space-8); bottom: var(--my-space-4); height: var(--my-space-2); overflow: hidden; }
 .runtime-overview-node-control:hover:not([aria-pressed='true']) { background: var(--my-bg-layer-2-hover); }
 .runtime-overview-node-control[aria-pressed='true'] { border-color: var(--my-border-strong); background: var(--my-bg-layer-1-selected); }
 .runtime-overview-node-control:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
@@ -32,20 +32,34 @@
 .runtime-overview-hub[data-working='true'] .runtime-hub-upper { transform: translateY(calc(-1 * var(--my-space-8))); }
 .runtime-overview-hub[data-motion='false'] .runtime-hub-moving { transition: none; }
 .runtime-overview-summary { display: grid; justify-items: center; gap: var(--my-space-4); padding: var(--my-space-16) var(--my-space-8); text-align: center; overflow-wrap: anywhere; }
-.runtime-overview-rows { border-top: 1px solid var(--my-border-subtle); }
-.runtime-overview .runtime-engine-heading { flex-wrap: wrap; }
-.runtime-overview .runtime-engine-toggle { flex: 1 1 220px; }
+.runtime-overview-pagination { display: flex; align-items: center; justify-content: flex-end; gap: var(--my-space-4); padding-bottom: var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); font-variant-numeric: tabular-nums; }
+.runtime-overview-branch:not([data-emphasized='true']) { opacity: .45; }
+.runtime-overview-rows { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--my-border-subtle); margin-top: var(--my-space-4); }
+.runtime-overview-rows[data-columns='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.runtime-overview-rows[data-columns='2'] > .runtime-engine[data-column='0'] { padding-inline-end: var(--my-space-12); border-inline-end: 1px solid var(--my-border-subtle); }
+.runtime-overview-rows[data-columns='2'] > .runtime-engine[data-column='1'] { padding-inline-start: var(--my-space-12); }
+.runtime-overview-rows > .runtime-engine-controls { grid-column: 1 / -1; padding: var(--my-space-12); border-bottom: 1px solid var(--my-border-subtle); background: var(--my-bg-layer-1); }
+.runtime-engine-detail-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--my-space-8); }
+.runtime-overview .runtime-engine-heading { flex-wrap: nowrap; }
+.runtime-overview .runtime-engine-toggle { flex: 1 1 0; }
 .runtime-overview .runtime-engine[data-selected='true'] .runtime-engine-toggle { background: var(--my-bg-layer-transparent-selected); }
-.runtime-engine { min-width: 0; }
-.runtime-engine + .runtime-engine { border-top: 1px solid var(--my-border-subtle); }
-.runtime-engine-heading { display: flex; align-items: center; gap: var(--my-space-12); padding-block: var(--my-space-8); }
-.runtime-engine-toggle { display: flex; flex: 1; align-items: center; gap: var(--my-space-12); min-width: 0; padding: var(--my-space-8) var(--my-space-4); color: var(--my-txt-primary); text-align: left; border-radius: var(--my-control-radius); cursor: pointer; }
+.runtime-engine { min-width: 0; border-bottom: 1px solid var(--my-border-subtle); }
+.runtime-engine-heading { position: relative; display: flex; align-items: center; gap: var(--my-space-8); padding-block: var(--my-settings-row-padding); }
+.runtime-engine-toggle { display: flex; flex: 1; align-items: center; gap: var(--my-space-12); min-width: 0; padding: 0 var(--my-space-4); color: var(--my-txt-primary); text-align: left; border-radius: var(--my-control-radius); cursor: pointer; }
 .runtime-engine-toggle:hover { background: var(--my-bg-layer-2-hover); }
 .runtime-engine-toggle:focus-visible, .runtime-engine-inspect > summary:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
-.runtime-engine-identity { display: grid; gap: var(--my-space-4); min-width: 0; flex: 1; }
+.runtime-engine-identity { display: grid; gap: var(--my-space-2); min-width: 0; flex: 1; }
 .runtime-engine-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--my-space-8); font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); overflow-wrap: anywhere; color: var(--my-txt-item-title); }
+.runtime-engine-title, .runtime-engine-version { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .runtime-engine-version { color: var(--my-txt-tertiary); font-size: var(--my-text-xs); font-weight: var(--my-weight-normal); }
 .runtime-engine-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-6); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
+.runtime-connection-icon { flex: none; color: var(--my-txt-tertiary); }
+.runtime-connection-icon[data-state='ready'] { color: var(--my-txt-success-primary); }
+.runtime-connection-icon[data-state='detected'] { color: var(--my-txt-secondary); }
+.runtime-connection-icon[data-state='error'] { color: var(--my-txt-warning-primary); }
+.runtime-activity-status { display: inline-flex; align-items: center; gap: var(--my-space-6); padding-inline: var(--my-space-6); border-radius: var(--my-radius-base); background: var(--my-bg-layer-1); box-shadow: inset 0 0 0 1px var(--my-border-subtle); color: var(--my-txt-secondary); line-height: inherit; white-space: nowrap; }
+.runtime-activity-dot { flex: none; width: var(--my-space-4); height: var(--my-space-4); border-radius: var(--my-radius-full); background: currentColor; }
+.runtime-activity-status[data-animating='true'] .runtime-activity-dot { animation: runtime-activity-pulse calc(var(--my-motion-slow) * 4) var(--my-ease-standard) infinite; }
 .runtime-engine-status-value { animation: runtime-status-arrive var(--my-motion-normal) var(--my-ease-standard); }
 .runtime-engine-checking { display: inline-flex; align-items: center; gap: var(--my-space-4); color: var(--my-txt-secondary); }
 .runtime-engine-chevron { flex-shrink: 0; color: var(--my-txt-tertiary); transition: transform var(--my-motion-fast) var(--my-ease-standard); }
@@ -55,9 +69,20 @@
 .runtime-engine-controls:not([hidden]) { animation: runtime-controls-arrive var(--my-motion-normal) var(--my-ease-standard); }
 .runtime-engine-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); margin-bottom: var(--my-space-12); }
 .runtime-engine-actions:empty { display: none; }
-.runtime-engine-operation { display: grid; gap: var(--my-space-4); margin: 0 var(--my-space-4) var(--my-space-12); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
-.runtime-engine-progress { position: relative; height: var(--my-space-4); overflow: hidden; border-radius: var(--my-radius-full); background: var(--my-border-subtle); }
-.runtime-engine-progress > span { position: absolute; top: 0; bottom: 0; left: 35%; width: var(--my-space-64); max-width: 35%; border-radius: var(--my-radius-full); background: var(--my-txt-secondary); }
+.runtime-engine-progress-slot { display: flex; align-items: center; height: var(--my-space-20); }
+.runtime-engine-operation { display: flex; align-items: center; flex: 1; gap: var(--my-space-8); min-width: 0; margin-inline-start: calc(var(--my-space-4) + var(--my-space-32) + var(--my-space-12)); pointer-events: none; }
+.runtime-overview .runtime-engine-operation { margin-inline-start: calc(var(--my-space-4) + var(--my-space-24) + var(--my-space-12)); }
+.runtime-engine-progress { position: relative; flex: 1; min-width: 0; height: var(--my-space-2); background: var(--my-border-subtle); color: var(--my-txt-secondary); }
+.runtime-engine-progress::before, .runtime-engine-progress::after { content: ''; position: absolute; top: 50%; width: var(--my-space-4); height: var(--my-space-4); border-radius: var(--my-radius-full); background: var(--my-border-strong); transform: translateY(-50%); }
+.runtime-engine-progress::before { inset-inline-start: 0; }
+.runtime-engine-progress::after { inset-inline-end: 0; }
+.runtime-engine-progress-value { flex: none; width: var(--my-space-36); text-align: end; color: var(--my-txt-success-primary); font-size: var(--my-text-2xs); line-height: var(--my-line-ui); font-variant-numeric: tabular-nums; }
+.runtime-engine-operation[data-complete='true'] .runtime-engine-progress { color: var(--my-txt-success-primary); }
+.runtime-engine-operation[data-complete='true'] .runtime-engine-progress > span { animation: none; clip-path: inset(0); opacity: 1; }
+/* Reveal fixed dots from the text's leading edge; activity does not imply measured progress. */
+.runtime-overview-node-activity { color: var(--my-txt-secondary); }
+.runtime-overview-node-activity > span, .runtime-engine-progress > span { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, currentColor 0 var(--my-space-2), transparent var(--my-space-2) var(--my-space-4)); clip-path: inset(0 62% 0 0); }
+.runtime-overview-node-activity[data-animating='true'] > span, .runtime-engine-operation[data-animating='true'] .runtime-engine-progress > span { animation: runtime-activity-reveal calc(var(--my-motion-slow) * 12) steps(36, end) infinite; }
 
 .runtime-engine-result { display: flex; align-items: center; gap: var(--my-space-6); margin: 0 var(--my-space-4) var(--my-space-12); color: var(--my-txt-secondary); font-size: var(--my-text-xs); overflow-wrap: anywhere; }
 .runtime-engine-result > svg { flex: none; }
@@ -95,7 +120,13 @@
 .runtime-defaults-footer { display: flex; justify-content: flex-end; gap: var(--my-space-8); padding: var(--my-space-12) var(--my-space-20); border-top: 1px solid var(--my-border-subtle); }
 @keyframes runtime-controls-arrive { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes runtime-status-arrive { from { opacity: .45; } to { opacity: 1; } }
-@keyframes runtime-engine-progress { from { left: calc(-1 * var(--my-space-64)); } to { left: 100%; } }
+@keyframes runtime-activity-reveal {
+  0% { clip-path: inset(0 100% 0 0); opacity: 1; }
+  90% { clip-path: inset(0 8% 0 0); opacity: 1; }
+  96% { clip-path: inset(0 8% 0 0); opacity: 0; }
+  100% { clip-path: inset(0 100% 0 0); opacity: 0; }
+}
+@keyframes runtime-activity-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 @media (max-width: 600px) {
   .runtime-engine-heading { flex-wrap: wrap; }
   .runtime-engine-toggle { flex-basis: 100%; }
@@ -108,48 +139,27 @@
   .runtime-overview-particle { display: none; }
   .runtime-overview-link { transition: none; }
   .runtime-overview-node-control { transition: none; }
-  .runtime-overview .runtime-overview-node-progress { animation: none; }
-  .runtime-engine-operation .runtime-engine-progress > span { animation: none; }
+  .runtime-overview-node-activity[data-animating] > span, .runtime-engine-operation[data-animating] .runtime-engine-progress > span, .runtime-activity-status[data-animating] .runtime-activity-dot { animation: none; }
   .runtime-engine-chevron, .runtime-engine-inspect-chevron { transition: none; }
   .runtime-engine-controls:not([hidden]), .runtime-engine-status-value, .runtime-engine-checking .animate-spin { animation: none; }
 }
 
 /* Verified connections use the same neutral ink as the rest of the diagram. */
 .runtime-overview-branch[data-state='verified'] .runtime-overview-link { stroke: var(--my-txt-secondary); stroke-dasharray: none; }
-.runtime-overview-node-wrap[data-state='verified'] .runtime-overview-node-progress { color: var(--my-txt-primary); background: var(--my-bg-surface-1); border-radius: var(--my-radius-full); }
-.runtime-overview-rows { margin-top: var(--my-space-4); }
 .runtime-overview-summary { padding-block: var(--my-space-12); }
-.runtime-engine-heading { gap: var(--my-space-8); padding-block: var(--my-settings-row-padding); }
-.runtime-engine-toggle { padding-block: 0; }
-.runtime-engine-identity { gap: var(--my-space-2); }
-.runtime-engine-operation { margin: 0 0 var(--my-space-4); }
-.runtime-engine-progress { height: var(--my-space-2); background: transparent; }
 .runtime-engine[data-operating] .runtime-engine-status { color: var(--my-txt-secondary); }
 .runtime-engine-primary button[aria-disabled='true'] { cursor: default; }
-@media (max-width: 600px) {
-  .runtime-overview .runtime-engine-heading { flex-wrap: nowrap; }
-  .runtime-overview .runtime-engine-toggle { flex: 1 1 auto; }
-  .runtime-overview .runtime-engine-primary { flex: none; }
-}
 
-/* The dotted track expresses activity without implying a percentage. */
-.runtime-engine-progress > span { inset: 0; width: auto; max-width: none; border-radius: 0; background: repeating-linear-gradient(90deg, var(--my-txt-secondary) 0 2px, transparent 2px 6px); opacity: .65; }
-.runtime-engine-operation[data-animating='true'] .runtime-engine-progress > span { animation: runtime-activity 900ms linear infinite; }
 .runtime-overview-complete { fill: none; stroke: var(--my-txt-primary); stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: 1; vector-effect: non-scaling-stroke; animation: runtime-link-complete 650ms var(--my-ease-out) forwards; }
-.runtime-overview-node-complete { animation: runtime-check-complete 500ms var(--my-ease-out) both; }
-@keyframes runtime-activity { to { background-position: 12px 0; } }
 @keyframes runtime-link-complete { to { stroke-dashoffset: 0; } }
-@keyframes runtime-check-complete { 0% { opacity: 0; transform: scale(.55); } 65% { opacity: 1; transform: scale(1.18); } 100% { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
-  .runtime-engine-operation[data-animating] .runtime-engine-progress > span, .runtime-overview-complete, .runtime-overview-node-complete { animation: none; }
+  .runtime-overview-complete { animation: none; }
 }
 
 .runtime-engine-result[data-kind='success'] > svg { color: var(--my-txt-primary); }
 .runtime-engine-result[data-animate='true'] > svg { animation: runtime-result-complete 450ms var(--my-ease-out) both; }
 @keyframes runtime-result-complete { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .runtime-engine-result[data-animate='true'] > svg { animation: none; } }
-.runtime-overview .runtime-engine-heading { flex-wrap: nowrap; }
-.runtime-overview .runtime-engine-toggle { flex: 1 1 0; }
 .runtime-overview-hub { stroke: var(--my-txt-tertiary); }
 
 .runtime-engine-status[data-complete='true'] > svg { animation: runtime-result-complete 450ms var(--my-ease-out) both; }

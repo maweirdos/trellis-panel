@@ -78,7 +78,7 @@ export function ConversationPreviewLayout({ ownerKey, children, preview, expande
     <ConversationPreviewContext.Provider value={controls}><div className="acp-conversation-preview-main" tabIndex={-1}>{children}</div></ConversationPreviewContext.Provider>
     <div className={`acp-conversation-preview-region${!hasPreview || collapsed ? ' is-collapsed' : ''}${resizing ? ' is-resizing' : ''}`} style={{ '--acp-preview-pane-width': `${width}px` } as CSSProperties}>
       {hasPreview && available > 0 && <aside ref={pane} id={panelId} aria-hidden={collapsed || undefined} {...{ inert: collapsed ? '' : undefined }} aria-label="预览面板" className={`acp-web-preview-pane${resizing ? ' is-resizing' : ''}`}>
-        <div {...bindings} role="separator" aria-label="调整预览宽度" aria-orientation="vertical" aria-controls={panelId} aria-valuemin={Math.round(minimum)} aria-valuemax={Math.round(maximum)} aria-valuenow={Math.round(width)} tabIndex={0} className="acp-web-preview-resize" title="拖动调整宽度，双击恢复；方向键微调" onDoubleClick={() => resize(available / 2)} onKeyDown={event => {
+        <div {...bindings} role="separator" aria-label="调整预览宽度" aria-orientation="vertical" aria-controls={panelId} aria-valuemin={Math.round(minimum)} aria-valuemax={Math.round(maximum)} aria-valuenow={Math.round(width)} tabIndex={0} className="acp-web-preview-resize" onDoubleClick={() => resize(available / 2)} onKeyDown={event => {
           if (!canInteract() || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return
           const step = event.shiftKey ? 40 : 10
           const next = event.key === 'ArrowLeft' ? width + step : event.key === 'ArrowRight' ? width - step : event.key === 'Home' ? minimum : event.key === 'End' ? maximum : null

@@ -1,4 +1,5 @@
 import type { AcpSessionRecord } from '../../../shared/types'
+import { modelIdWithinLimit } from '@shared/model-selection'
 
 /** Saved engine choices are candidates only; recovery must validate their exact IDs. */
 export function getModelRecovery(session: AcpSessionRecord, message?: string): {
@@ -15,8 +16,9 @@ export function getModelRecovery(session: AcpSessionRecord, message?: string): {
   const candidates = modelConfigs.length === 1
     ? modelConfigs[0].options.map((option) => ({ modelId: option.value, name: option.name }))
     : session.models ?? []
-  const models = [...new Map(candidates.filter((model) => model.modelId.trim().length > 0).map((model) => [model.modelId, model])).values()]
-  const offline = !['ready', 'busy', 'awaiting_permission', 'cancelling', 'starting'].includes(session.status)
-  const canRecoverModel = Boolean(modelFailure && models.length > 0 && offline && session.connectionGeneration && session.canResume && !session.cleanupRequired && !environmentRequired)
+  const models = [...new Map(candidates.filter((model) => model.modelId.trim() && modelIdWithinLimit(model.modelId)).map((model) => [model.modelId, model])).values()]
+  const offline = ['closed', 'disconnected', 'error'].includes(session.status)
+  const canRecoverModel = Boolean(modelFailure && models.length > 0 && offline && session.connectionGeneration && session.canResume
+    && session.archivedAt === undefined && session.historyKind !== 'transcript' && session.historyKind !== 'legacy' && !session.cleanupRequired && !environmentRequired)
   return { modelFailure, models, environmentRequired, canRecoverModel }
 }

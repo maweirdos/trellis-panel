@@ -26,3 +26,20 @@ export function resolveWorkspaceEntry(view: WorkspaceView | undefined, activeId:
 export function conversationSummary(session: AcpSessionRecord): string {
   return session.conversationPreview?.trim() || acpConversationPreview(session.events, session.sessionId, session.projectRoot)?.text || '暂无对话内容'
 }
+
+export function formatRelativeTime(timestamp?: number): string {
+  if (!timestamp) return "";
+  const diff = Math.max(0, Date.now() - timestamp);
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo`;
+  const years = Math.floor(days / 365);
+  return `${years}y`;
+}

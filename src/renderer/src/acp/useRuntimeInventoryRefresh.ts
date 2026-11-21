@@ -12,14 +12,15 @@ export function getRuntimeInventorySnapshot(): AcpAgentStatus[] {
   return inventorySnapshot
 }
 
-/** Read installation discovery only; connection tests and registry refreshes stay explicit. */
+/** Show discovery first, then verify installed engines without blocking the list. */
 export function useRuntimeInventoryRefresh(options: {
   enabled: boolean
   paused: boolean
   agents: AcpAgentStatus[]
   isCurrent: () => boolean
   onChange: (agents: AcpAgentStatus[]) => void
-}): { error: string | null; reading: boolean; invalidate: () => void; clearError: () => void } {
+  onVerified?: (agent: AcpAgentStatus) => void
+}): { error: string | null; reading: boolean; checkingRuntimeId: string | null; invalidate: () => void; clearError: () => void } {
   const active = useInteractionActive()
   const canInteract = useInteractionGuard()
   const latest = useRef(options)
@@ -28,15 +29,20 @@ export function useRuntimeInventoryRefresh(options: {
   const wake = useRef<(() => void) | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(options.enabled && hasIpc && active)
+  const [checkingRuntimeId, setCheckingRuntimeId] = useState<string | null>(null)
   useEffect(() => {
     if (options.enabled) inventorySnapshot = options.agents
     setError(null)
   }, [options.agents, options.enabled])
   const invalidate = useCallback(() => { request.current.revision++ }, [])
 
-  useEffect(invalidate, [options.paused, invalidate])
+  useEffect(() => {
+    invalidate()
+    if (!options.paused) wake.current?.()
+  }, [options.paused, invalidate])
 
   useEffect(() => {
+    setCheckingRuntimeId(null)
     if (!hasIpc || !options.enabled || !active) return
     let disposed = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -53,23 +59,46 @@ export function useRuntimeInventoryRefresh(options: {
       const sinceLastRead = Date.now() - request.current.startedAt
       if (sinceLastRead < FOCUS_BURST_MS) { schedule(FOCUS_BURST_MS - sinceLastRead); return }
       const revision = request.current.revision
-      const source = latest.current.agents
+      const sources = new Set([latest.current.agents])
       const current = (): boolean => !disposed && revision === request.current.revision
         && document.visibilityState === 'visible' && canInteract() && !latest.current.paused
-        && latest.current.isCurrent() && latest.current.agents === source
+        && latest.current.isCurrent() && sources.has(latest.current.agents)
+      const publish = (agents: AcpAgentStatus[]): void => {
+        sources.add(agents)
+        inventorySnapshot = agents
+        latest.current.onChange(agents)
+      }
       request.current.pending = true
       request.current.startedAt = Date.now()
       setReading(true)
       try {
         const response = await api.acpAgents()
         if (!current()) return
-        if (response.ok && response.agents) { inventorySnapshot = response.agents; latest.current.onChange(response.agents); setError(null) }
-        else setError(response.error ?? '引擎状态读取失败，请重新探测。')
+        if (!response.ok || !response.agents) { setError(response.error ?? '引擎状态读取失败，请重新探测。'); return }
+        let agents = response.agents
+        publish(agents)
+        setError(null)
+        setReading(false)
+        for (const candidate of response.agents) {
+          if (!current()) return
+          const agent = agents.find(item => item.id === candidate.id)
+          if (!agent?.enabled || !agent.available || agent.setupRequired || agent.health !== 'not_checked'
+            || !['managed', 'native', 'bundled'].includes(agent.launchKind ?? '')) continue
+          const id = agent.runtimeId ?? agent.id
+          setCheckingRuntimeId(id)
+          const checked = await api.acpRuntimeTestConnection(id)
+          if (!current()) return
+          if (!checked.ok || !checked.agents) { setError(`${agent.name}：${checked.error ?? '连接检测未完成，请重试。'}`); return }
+          agents = checked.agents
+          publish(agents)
+          const verified = agents.find(item => item.id === agent.id)
+          if (checked.probe?.ok && verified?.enabled && verified.available && !verified.setupRequired && verified.health === 'ready') latest.current.onVerified?.(verified)
+        }
       } catch (cause) {
         if (current()) setError(cause instanceof Error ? cause.message : '引擎状态读取失败，请重新探测。')
       } finally {
         request.current.pending = false
-        if (!disposed) setReading(false)
+        if (!disposed) { setReading(false); setCheckingRuntimeId(null) }
         // A suspended/replaced scope waits for this read rather than starting an overlapping request.
         if (revision !== request.current.revision) wake.current?.()
         else schedule()
@@ -94,5 +123,5 @@ export function useRuntimeInventoryRefresh(options: {
     }
   }, [options.enabled, active, canInteract, invalidate])
 
-  return { error, reading, invalidate, clearError: () => setError(null) }
+  return { error, reading, checkingRuntimeId, invalidate, clearError: () => setError(null) }
 }

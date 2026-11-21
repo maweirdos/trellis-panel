@@ -2,7 +2,7 @@ import { isConversationRuntimeEvent } from './runtime-events'
 import { rememberVisit } from '../my/personal-history'
 /** Page-owned ACP profiles and explicitly started project conversations. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { Activity, ArrowDown, ArrowRightLeft, Bot, ChevronRight, CircleStop, Ellipsis, FileText, Folder, GitBranch, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Send, Settings2, ShieldCheck, X } from 'lucide-react'
+import { Activity, ArrowDown, ArrowRightLeft, ArrowUp, Bot, ChevronRight, Ellipsis, FileText, Folder, GitBranch, ImagePlus, Loader2, Menu, MessageSquare, Plus, RefreshCw, Search, Settings2, ShieldCheck, Square, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
@@ -47,6 +47,7 @@ import { ComposerUsageIndicator } from './ComposerUsageIndicator'
 import { ImageAttachments } from './ImageAttachments'
 import { useComposerImages } from './useComposerImages'
 import { ConnectionNotice, ConnectionRecovery } from './ConnectionNotice'
+import { isRecordedTurnFailure } from './conversation-transcript'
 import { compareConversationSessions, conversationManagement, useConversationHistory, type ConversationUpdate } from './useConversationHistory'
 import { captureTranscriptAnchor, restoreTranscriptAnchor, type TranscriptScrollAnchor } from './transcript-scroll'
 import { JiraPickerModal } from './JiraPicker'
@@ -160,6 +161,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const streamRef = useRef<HTMLDivElement>(null)
   const earlierAnchor = useRef<{ sessionId: string; snapshot: TranscriptScrollAnchor } | null>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const modelTrigger = useRef<HTMLButtonElement>(null)
   const newComposerFocus = useRef<{ root: string; sessionId: string; generation?: string; signal?: AbortSignal } | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const navigationRef = useRef<HTMLDivElement>(null)
@@ -765,19 +767,21 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     }
   }
 
-  const recoverModel = async (modelId: string): Promise<void> => {
-    if (!activeSession?.connectionGeneration || !selectedArchiveKnown || activeSession.archivedAt || !isCurrent() || !canInteract() || scope.actions.has(activeSession.sessionId)) return
+  const recoverModel = async (modelId: string): Promise<boolean> => {
+    if (!activeSession?.connectionGeneration || !selectedArchiveKnown || activeSession.archivedAt || !isCurrent() || !canInteract() || scope.actions.has(activeSession.sessionId)) return false
     const id = activeSession.sessionId, operationToken = Symbol('recover-model')
     scope.actions.add(id); scope.actionTokens.set(id, operationToken)
     setOperations((previous) => ({ ...previous, [id]: 'recover-model' })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
     try {
       const response = await api.acpSessionRecoverModel(id, { modelId, expectedConnectionGeneration: activeSession.connectionGeneration })
-      if (!isCurrent() || scope.actionTokens.get(id) !== operationToken) return
+      if (!isCurrent() || scope.actionTokens.get(id) !== operationToken) return false
       if (response.session) updateSession(response.session)
       setFeedback((previous) => ({ ...previous, [id]: { error: !response.ok, text: response.ok ? '' : response.error ?? '执行引擎未确认恢复，请查看连接详情。' } }))
       if (response.ok) await reloadSessions()
+      return response.ok && response.modelConfirmed
     } catch (error) { if (isCurrent() && scope.actionTokens.get(id) === operationToken) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })) }
     finally { if (scope.actionTokens.get(id) === operationToken) { scope.actionTokens.delete(id); scope.actions.delete(id); if (isCurrent()) setOperations((previous) => ({ ...previous, [id]: '' })) } }
+    return false
   }
 
   const retryHistory = async (): Promise<void> => {
@@ -1096,7 +1100,21 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
         {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
         {(!isReadOnly || activeSession.historyPersistence?.state === 'degraded' || (workflow.available && activeSession.taskDir)) && <footer className="acp-composer-region my-conversation-column">
           <WorkflowPanel root={root} taskDir={activeSession.taskDir ?? ''} session={activeSession} controller={workflow} onOpenHistory={openWorkflowHistory} />
-          {(!handoffEnded || activeSession.cleanupRequired || activeSession.historyPersistence?.state === 'degraded') && <ConnectionRecovery session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} pending={operations[activeSession.sessionId]} onRetry={() => void sessionAction('resume')} onCleanup={() => void sessionAction('kill')} onRetryHistory={() => void retryHistory()} onNew={() => openNewConversation()} onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }} />}
+          {(!handoffEnded || activeSession.cleanupRequired || activeSession.historyPersistence?.state === 'degraded') && <ConnectionRecovery
+            session={activeSession}
+            message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error}
+            reportedByTurn={!feedback[activeSession.sessionId]?.error && isRecordedTurnFailure(activeEvents, activeSession, activeSession.error)}
+            pending={operations[activeSession.sessionId]}
+            onRetry={() => void sessionAction('resume')}
+            onCleanup={() => void sessionAction('kill')}
+            onRetryHistory={() => void retryHistory()}
+            onNew={() => openNewConversation()}
+            onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }}
+            onChooseModel={isReadOnly || handoffComposerBlocked || managedComposerBlocked ? undefined : () => {
+              const trigger = modelTrigger.current
+              if (canInteract() && trigger?.getAttribute('aria-expanded') === 'false') trigger.click()
+            }}
+          />}
           {!isReadOnly && <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
             {composerImages.fileInput}
             {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}
@@ -1115,7 +1133,32 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
             {knowledgeReferenceErrors[activeSession.sessionId] && <p role="alert" className="px-3 pt-2 text-my-xs text-my-warning-text">{knowledgeReferenceErrors[activeSession.sessionId]}</p>}
             {knowledgeReferences.length > 0 && <div className="acp-source-references">{knowledgeReferences.map((source) => <div className="acp-source-chip" key={source.id}><FileText size={12} /><span title={source.kind === 'project' ? `${source.relativePath} · ${source.displayedRevision}` : `${source.kind === 'local' ? source.relativePath : `${source.instanceId ?? ''} · ${source.collectionId ?? ''} · ${source.documentId}`} · ${source.contentHash} · ${new Date(source.fetchedAt).toLocaleString()}`}>{source.title} · {source.kind === 'project' ? `文件 · ${source.displayedRevision.slice(0, 8)}` : `${source.mode === 'full' ? '正文' : '摘录'}${source.truncated ? ' · 已截断' : ''} · ${source.contentHash.slice(0, 8)}`}</span><button aria-label={`移除知识引用 ${source.title}`} onClick={() => { const next = readKnowledgeReferences(root, activeSession.sessionId).filter((item) => item.id !== source.id); writeKnowledgeReferences(root, activeSession.sessionId, next); setKnowledgeReferences(next) }}><X size={11} /></button></div>)}</div>}
             <textarea ref={composerRef} aria-label="Agent 指令" title={managedComposerBlocked ? '受管任务执行期间保留草稿；请等待或停止任务后再发送普通指令' : 'Enter 发送 · Shift Enter 换行'} readOnly={managedComposerBlocked} rows={2} value={input} placeholder="说说你的想法…" onChange={(event) => changeDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send() } }} />
-            <div className="acp-composer-toolbar"><ComposerModelPicker configureSession={(input) => api.acpSessionConfigure(activeSession.sessionId, input)} key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`} session={activeSession} message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error} operationPending={Boolean(operations[activeSession.sessionId]) || Boolean(sending[activeSession.sessionId]) || !selectedArchiveKnown || managedComposerBlocked || handoffComposerBlocked} onRecoverModel={recoverModel} acquireConfiguration={acquireConfiguration} isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration} onUpdated={updateSession} contextActions={(close) => <><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledgePicker() }}><Search size={14} /><span>查找项目知识</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button><button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button></>} usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />} sendAction={managedComposerBlocked ? <Button variant="outline" size="sm" title={workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止受管任务' : '核对任务状态'} aria-label={workflow.operation === 'stop' ? '请求停止' : workflow.snapshot?.composer.target === 'managed' ? '停止受管任务' : '核对任务状态'} disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><CircleStop size={14} aria-hidden="true" /></Button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <Button variant="outline" size="sm" title={activeSession.status === 'cancelling' || operations[activeSession.sessionId] === 'cancel' ? '正在停止…' : '停止当前回合'} aria-label={activeSession.status === 'cancelling' || operations[activeSession.sessionId] === 'cancel' ? '正在停止' : '停止当前回合'} disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><CircleStop size={14} aria-hidden="true" /></Button> : <Button variant="primary" size="sm" title="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><Send size={14} /></Button>} /></div>
+            <div className="acp-composer-toolbar">
+              <ComposerModelPicker
+                key={`${activeSession.sessionId}:${activeSession.connectionGeneration}`}
+                session={activeSession}
+                message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error}
+                operationPending={Boolean(operations[activeSession.sessionId]) || Boolean(sending[activeSession.sessionId]) || !selectedArchiveKnown || managedComposerBlocked || handoffComposerBlocked}
+                acquireConfiguration={acquireConfiguration}
+                configureSession={(configuration) => api.acpSessionConfigure(activeSession.sessionId, configuration)}
+                isCurrent={() => isCurrent() && canInteract() && activeSelection.current.view === 'conversation' && activeSelection.current.id === activeSession.sessionId && activeSelection.current.generation === activeSession.connectionGeneration}
+                onUpdated={updateSession}
+                onRecoverModel={recoverModel}
+                onReconnect={() => sessionAction('resume')}
+                triggerRef={modelTrigger}
+                onOpenModelSettings={() => useApp.getState().setPage('models')}
+                onOpenRuntimeSettings={() => { showView('agents'); setEngineSetupOpen(true) }}
+                contextActions={(close) => <>
+                  <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); composerImages.choose() }}><ImagePlus size={14} /><span>添加图片</span></button>
+                  <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openTask() }}><Folder size={14} /><span>{activeSession.taskDir ? '查看关联任务与材料' : '关联任务'}</span></button>
+                  <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledgePicker() }}><Search size={14} /><span>查找项目知识</span></button>
+                  <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openKnowledge() }}><FileText size={14} /><span>项目知识与来源</span></button>
+                  <button type="button" className="acp-add-action my-menu-item" onClick={() => { close(); openProjectActivity() }}><Activity size={14} /><span>项目活动</span></button>
+                </>}
+                usage={<ComposerUsageIndicator session={activeSession} events={activeEvents} />}
+                sendAction={managedComposerBlocked ? <button type="button" className="acp-composer-action acp-composer-stop" title={workflow.operation === 'stop' ? '请求停止…' : workflow.snapshot?.composer.target === 'managed' ? '停止受管任务' : '核对任务状态'} aria-label={workflow.operation === 'stop' ? '请求停止' : workflow.snapshot?.composer.target === 'managed' ? '停止受管任务' : '核对任务状态'} disabled={Boolean(workflow.operation) || workflow.snapshot?.composer.target !== 'managed'} onClick={() => void workflow.stop()}><Square size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" /></button> : (sending[activeSession.sessionId] || ['busy', 'awaiting_permission', 'cancelling'].includes(activeSession.status)) ? <button type="button" className="acp-composer-action acp-composer-stop" title={activeSession.status === 'cancelling' || operations[activeSession.sessionId] === 'cancel' ? '正在停止…' : '停止当前回合'} aria-label="停止当前回合" disabled={['kill', 'cancel'].includes(operations[activeSession.sessionId]) || activeSession.status === 'cancelling'} onClick={() => void sessionAction('cancel')}><Square size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" /></button> : <button type="button" className="acp-composer-action acp-composer-send" title="发送指令" aria-label="发送指令" disabled={handoffComposerBlocked || !selectedArchiveKnown || !canSubmitConversation(activeSession) || Boolean(operations[activeSession.sessionId]) || Boolean(currentTurnRequest) || composerImages.pending || (!input.trim() && !composerImages.images.length)} onClick={() => void send()}><ArrowUp size={18} aria-hidden="true" /></button>}
+              />
+            </div>
           </div>}
         </footer>}
       </section>}

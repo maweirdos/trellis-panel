@@ -26,6 +26,7 @@ export interface CurrentTurnActivity {
   phase: 'submitting' | 'knowledge' | 'waiting' | 'retrying' | 'thinking' | 'tool' | 'replying' | 'processing' | 'permission' | 'cancelling'
   label: string
   detail?: string
+  waitingSince?: number
   spinning: boolean
 }
 
@@ -70,7 +71,10 @@ export function projectCurrentTurnActivity({ root, session, events, request, ret
   if (local?.phase === 'submitting' && !local.turnId && !currentState) return { phase: 'submitting', label: '正在发送…', spinning: true }
   const latest = [...facts].reverse().find((event) =>
     (event.kind === 'message' && event.payload?.role !== 'user' && Boolean(event.text?.trim())) ||
-    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || ['pi_compaction', 'pi_thinking', 'pi_thinking_empty', 'pi_image_generation', 'pi_retry'].includes(String(event.payload?.tag)) || readKnowledgeOperation(event))
+    (event.kind === 'thought' && Boolean(event.text?.trim())) || event.kind === 'tool-call' || event.kind === 'plan' || ['pi_model_request', 'pi_provider_response', 'pi_compaction', 'pi_thinking', 'pi_thinking_empty', 'pi_image_generation', 'pi_retry'].includes(String(event.payload?.tag)) || readKnowledgeOperation(event))
+  const waitingSince = facts.find(event => event.kind === 'message' && event.payload?.role === 'user' && event.ts > 0)?.ts
+  if (latest?.payload?.tag === 'pi_model_request') return { phase: 'waiting', label: '正在请求模型服务', spinning: true, waitingSince: latest.ts }
+  if (latest?.payload?.tag === 'pi_provider_response') return { phase: 'waiting', label: '模型服务已响应，等待内容', spinning: true, waitingSince: latest.ts }
   if (latest?.payload?.tag === 'pi_retry') return latest.payload.phase === 'running'
     ? { phase: 'retrying', label: '请求未完成，正在重试', spinning: false }
     : { phase: 'processing', label: '处理中', spinning: true }
@@ -79,17 +83,21 @@ export function projectCurrentTurnActivity({ root, session, events, request, ret
     ? { phase: 'processing', label: '正在生成图片', spinning: true }
     : { phase: 'processing', label: '处理中', spinning: true }
   if (latest?.payload?.tag === 'pi_thinking' || latest?.payload?.tag === 'pi_thinking_empty') return latest.payload.phase === 'running'
-    ? { phase: 'thinking', label: '正在思考', spinning: true }
+    ? { phase: 'thinking', label: '正在思考', spinning: true, waitingSince: latest.ts }
     : { phase: 'processing', label: '处理中', spinning: true }
   const knowledge = latest && readKnowledgeOperation(latest)
   if (knowledge?.phase === 'running') return { phase: 'knowledge', label: knowledgeOperationLabel(knowledge, true), detail: knowledge.query, spinning: true }
   if (latest?.kind === 'message') return { phase: 'replying', label: '正在生成回复', spinning: true }
-  if (latest?.kind === 'thought') return { phase: 'thinking', label: '正在思考', spinning: true }
+  if (latest?.kind === 'thought') return { phase: 'thinking', label: '正在思考', spinning: true, waitingSince: latest.ts }
   if (latest?.kind === 'tool-call') {
     const toolId = latest.payload?.toolCallId ?? latest.id
     const status = [...facts].reverse().find((event) => event.kind === 'tool-call' && (event.payload?.toolCallId ?? event.id) === toolId && typeof event.payload?.status === 'string')?.payload?.status
     if (status === 'completed' || status === 'failed' || status === 'cancelled') return { phase: 'processing', label: '处理中', spinning: true }
-    return { phase: 'tool', label: '正在调用工具', spinning: true }
+    const tool = latest.payload?.title
+    const input = latest.payload?.rawInput
+    const path = input && typeof input === 'object' && 'path' in input && typeof input.path === 'string' ? input.path : undefined
+    const name = path?.replaceAll('\\', '/').split('/').at(-1)
+    return { phase: 'tool', label: tool === 'read' ? '正在读取资料' : (tool === 'write' || tool === 'edit') && /\.md$/i.test(path ?? '') ? '正在保存文档' : '正在调用工具', detail: name, spinning: true }
   }
   if (latest?.kind === 'plan') return { phase: 'processing', label: '处理中', spinning: true }
   // Host lookup can finish before the native transport accepts its input.
@@ -99,5 +107,5 @@ export function projectCurrentTurnActivity({ root, session, events, request, ret
     event.kind === 'diagnostic' && event.payload?.activityScope === 'turn' && typeof event.payload.promptDelivery === 'object' && event.payload.promptDelivery !== null && 'state' in event.payload.promptDelivery && event.payload.promptDelivery.state === 'sent' ||
     event.kind === 'session-status' && typeof event.payload?.observation === 'object' && event.payload.observation !== null && 'label' in event.payload.observation && event.payload.observation.label === '指令已发送至引擎')
   if (preparing && !delivered) return { phase: 'processing', label: '正在准备回复', spinning: true }
-  return { phase: 'waiting', label: '等待模型回复', spinning: true }
+  return { phase: 'waiting', label: '等待模型回复', spinning: true, waitingSince }
 }

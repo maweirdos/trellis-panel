@@ -7,6 +7,16 @@ export type RuntimeConnectionProbeResult = AcpConnectionProbeResult & { errorCod
 type Verification = { identity: string; checkedAt: number; probe: RuntimeConnectionProbeResult }
 const verifications = new Map<string, Verification>()
 const MAX_VERIFICATIONS = 64
+const VERIFICATION_TTL_MS = 5 * 60_000
+
+function currentVerification(id: string): Verification | undefined {
+  const verification = verifications.get(id)
+  if (verification && Date.now() - verification.checkedAt >= VERIFICATION_TTL_MS) {
+    verifications.delete(id)
+    return undefined
+  }
+  return verification
+}
 
 /** In-memory only. File replacement and changed launch selection invalidate prior evidence. */
 export function runtimeVerificationIdentity(config: AcpAgentConfig, argv: string[] | undefined, selection: {
@@ -33,11 +43,11 @@ export function rememberRuntimeVerification(id: string, identity: string, probe:
 }
 
 export function hasRuntimeVerification(id: string): boolean {
-  return verifications.has(id)
+  return currentVerification(id) !== undefined
 }
 
 export function applyRuntimeVerification(agent: AcpAgentStatus, identity: string): AcpAgentStatus {
-  const verification = verifications.get(agent.id)
+  const verification = currentVerification(agent.id)
   if (!verification) return agent
   if (verification.identity !== identity) {
     verifications.delete(agent.id)

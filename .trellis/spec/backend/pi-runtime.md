@@ -73,6 +73,13 @@ project paths before dispatch and after approval. Read-only mode denies mutation
 and shell tools; workspace mode asks before writes, commands and unknown MCP tools.
 Automatic approval is an explicit session mode, not an OS sandbox.
 
+Length-truncated tool responses require bounded host recovery. `engine.ts`
+correlates the public assistant `message_end` length stop with the SDK's synthetic
+truncated-tool failure. Count once per response, steer one smaller-input repair,
+and abort on the next failure through the public session API. Synthetic failures
+can skip extension `turn_end`; an extension-only guard does not bound the loop.
+Host termination settles failed; an explicit user stop settles cancelled.
+
 ### Managed Windows file-search dependency
 
 #### Scope
@@ -231,6 +238,15 @@ session file over 128 MiB; the separately stored presentation images do not
 remove that limit. Preserve the original session and report failure rather than
 discarding tool images needed by the model.
 
+Deduplicate identical image bytes across a turn before charging the presentation
+budget. Images returned by the SDK `read` tool are optional history previews:
+if saving those previews exceeds the existing count/byte limits or fails, emit
+one `pi_image_preview` status with phase `skipped`, retain the SDK's original
+tool result and let text processing continue. Do not set the turn's imageFailure
+for that preview. Provider image-generation results and other image deliverables
+retain strict failure semantics; a completed generation with missing bytes still
+fails. Never raise limits or remove native model context to hide an archival fault.
+
 Project thinking only from SDK events. A thinking block that starts and ends
 without visible text records the explicit empty-content status; no thinking
 event implies no such status. Record `response.created` as a provider response
@@ -376,3 +392,14 @@ TEMP compatibility probes with saved-session copies, credential/permission and
 cancel behavior, compaction/resume and applicable Windows packaging. Keep session
 backups and a rollback path; current v3 migration is not a guarantee of future
 bidirectional compatibility. Follow the root local-only validation rule.
+
+
+## Visible request progress
+
+Emit `pi_model_request` from the public SDK `before_provider_request` extension
+hook only for an active, uncancelled turn. Do not infer request dispatch from
+assistant `message_start`: it can occur after response establishment. Existing
+`pi_provider_response` comes from the provider's actual `response.created` event.
+Thinking summaries, tools and text retain their original events. These facts may
+update localized progress; they do not promise a completion time or expose hidden
+reasoning. Never log the provider-request payload or credentials for this status.

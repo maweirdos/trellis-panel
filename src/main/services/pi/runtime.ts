@@ -12,7 +12,7 @@ import type { ConversationRuntime } from './runtime-port'
 import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { readAcpStoredImages } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
-import { DESIGN_GENERATION_DIRECTORY, readDesignGenerationOutput } from '../../../shared/design-generation'
+import { DESIGN_GENERATION_DIRECTORY, designGenerationSourcePathSchema, readDesignGenerationOutput } from '../../../shared/design-generation'
 import { inspectPiWebPreviewEntry } from './engine/web-preview-entry'
 import { prepareAgentRules, assertAgentRulesCurrent } from '../agent-rules'
 import { composePiPromptPacket } from './prompt-context'
@@ -392,7 +392,15 @@ export class PiConversationRuntime implements ConversationRuntime {
       const root = this.pathRoot, cwd = this.pathCwd
       if (!root || !cwd || !isAbsolute(request.homeDir) || relative(cwd, request.cwd) !== '' ||
         relative(root, realpathSync(this.options.meta.projectRoot)) !== '' || relative(cwd, realpathSync(this.options.meta.cwd ?? this.options.meta.projectRoot)) !== '') throw new Error('Pi 工作目录或项目归属已改变')
-      if (request.name === 'design_open') return assertPiToolPath(root, root, request.homeDir, 'write', DESIGN_GENERATION_DIRECTORY)
+      if (request.name === 'design_open') {
+        const paths = assertPiToolPath(root, root, request.homeDir, 'write', DESIGN_GENERATION_DIRECTORY)
+        if (Array.isArray(request.args.pages)) for (const page of request.args.pages) {
+          if (page && typeof page === 'object' && 'sourcePath' in page && page.sourcePath != null) {
+            paths.push(...assertPiToolPath(root, root, request.homeDir, 'read', designGenerationSourcePathSchema.parse(page.sourcePath)))
+          }
+        }
+        return paths
+      }
       const raw = request.args.path
       if (typeof raw !== 'string' && !(raw === undefined && ['grep', 'find', 'ls'].includes(request.name))) throw new Error('工具路径无效')
       if (request.name === 'preview_web') return [inspectPiWebPreviewEntry(root, raw as string).file]

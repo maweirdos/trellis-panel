@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { Bot, CheckCircle2, ChevronDown, CircleAlert, CircleX, Download, ExternalLink, FolderOpen, Loader2, MoreHorizontal, PackageCheck, PlugZap, RefreshCw, Settings2, Terminal } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleX, Download, ExternalLink, FolderOpen, Loader2, MoreHorizontal, PlugZap, RefreshCw, Settings2, Terminal, X } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
@@ -8,30 +8,14 @@ import { useApp } from '../store'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { useRuntimeInventoryRefresh } from './useRuntimeInventoryRefresh'
 import { RuntimeDefaultsEditor } from './RuntimeDefaultsEditor'
-import type { AcpAgentStatus, AcpConnectionProbeResult, AcpRuntimeHealth, Settings } from '../../../shared/types'
+import { RuntimeConnectionIcon, runtimeHealthLabel } from './runtime-status'
+import type { AcpAgentStatus, AcpConnectionProbeResult, Settings } from '../../../shared/types'
 import './runtime-panel.css'
 
-const HEALTH_LABEL: Record<AcpRuntimeHealth, string> = {
-  not_checked: '等待连接验证', executable_missing: '本机环境未就绪', adapter_missing: '尚未安装',
-  launch_error: '启动失败', incompatible: '协议不兼容', auth_required: '需要登录',
-  directory_unavailable: '目录不可用', ready: '启动条件满足'
-}
+export { runtimeHealthLabel } from './runtime-status'
 
 function isUnsupportedLegacyRuntime(agent: AcpAgentStatus | undefined): boolean {
   return agent?.launchKind === 'custom'
-}
-
-export function runtimeHealthLabel(agent: AcpAgentStatus | undefined): string {
-  if (!agent) return '执行引擎未配置'
-  if (isUnsupportedLegacyRuntime(agent)) return '不再支持'
-  if (!agent.enabled) return '未启用'
-  if (agent.health && !['ready', 'not_checked'].includes(agent.health)) return HEALTH_LABEL[agent.health] ?? '状态未知'
-  if (agent.available && !agent.setupRequired) {
-    if (agent.launchKind === 'sdk') return '可用'
-    if (agent.health === 'ready') return '连接已验证'
-    return '已安装'
-  }
-  return agent.setupRequired ? '尚未安装' : '未探测到程序'
 }
 
 type RuntimeAction = 'refresh' | 'node' | 'setup' | 'path' | 'test' | 'migration'
@@ -42,6 +26,7 @@ const ACTION_LABEL: Record<RuntimeAction, string> = {
 const ACTION_PENDING: Partial<Record<RuntimeAction, string>> = {
   refresh: '正在重新探测', node: '正在选择全局 Node', setup: '正在安装或升级', path: '正在配置路径', test: '正在测试连接'
 }
+const COMPLETION_PROGRESS_MS = 2000
 
 function pendingActionLabel(action: RuntimeAction, setupIntent?: SetupIntent | null): string | undefined {
   if (action === 'setup' && setupIntent) return { install: '正在安装', upgrade: '正在升级', reinstall: '正在重装' }[setupIntent]
@@ -76,6 +61,12 @@ function RuntimeFeedbackDetails({ commandId }: { commandId?: string }): JSX.Elem
   </details>
 }
 
+function RuntimeActivity({ label, animating }: { label?: string; animating: boolean }): JSX.Element {
+  return <span className="runtime-activity-status" data-animating={animating || undefined}>
+    <span className="runtime-activity-dot" aria-hidden="true" /><span>{label}</span>
+  </span>
+}
+
 /** Shared between the page-owned Agent settings and application runtime settings. */
 export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading = true, onConfigureModels, onManageAgents, autoRefresh = false, disabled = false, onPendingChange }: {
   agents: AcpAgentStatus[]
@@ -92,6 +83,8 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   const sectionId = useId()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [selectedEngine, setSelectedEngine] = useState<string | null>(null)
+  const [panelWidth, setPanelWidth] = useState(0)
+  const [completedProgress, setCompletedProgress] = useState<Map<string, { action: RuntimeAction; source: string; statusSource: string; expiresAt: number }>>(() => new Map())
   const [reduceMotion, setReduceMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [documentVisible, setDocumentVisible] = useState(() => document.visibilityState === 'visible')
   const [pending, setPending] = useState<string | null>(null)
@@ -110,7 +103,10 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   const panelRef = useRef<HTMLElement>(null)
   const illustrationRefs = useRef(new Map<string, HTMLButtonElement>())
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
+  const primaryRefs = useRef(new Map<string, HTMLDivElement>())
+  const detailRefs = useRef(new Map<string, HTMLDivElement>())
   const visibleIdsRef = useRef(new Set<string>())
+  const diagramIdsRef = useRef(new Set<string>())
   const recoveryFocusRef = useRef<Element | null>(null)
   const modalFocusRef = useRef<EventTarget | null>(null)
   const configTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -126,6 +122,21 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   const motionEnabledRef = useRef(motionEnabled)
   motionEnabledRef.current = motionEnabled
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useLayoutEffect(() => {
+    const element = panelRef.current
+    if (!element) return
+    const measure = (): void => setPanelWidth(element.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (!completedProgress.size) return
+    const nextExpiry = Math.min(...[...completedProgress.values()].map(item => item.expiresAt))
+    const timer = window.setTimeout(() => setCompletedProgress(previous => new Map([...previous].filter(([, item]) => item.expiresAt > Date.now()))), Math.max(0, nextExpiry - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [completedProgress])
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const update = (): void => { if (media.matches) setCompletionBeat(null); setReduceMotion(media.matches) }
@@ -149,12 +160,18 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   }, [completionBeat, motionEnabled])
   const agentsRef = useRef(agents)
   agentsRef.current = agents
+  const completeProgress = (agent: AcpAgentStatus, action: RuntimeAction): void => {
+    const id = agent.runtimeId ?? agent.id
+    setCompletedProgress(previous => new Map(previous).set(id, { action,
+      source: feedbackIdentity(agent, settingsRef.current?.acp, action), statusSource: requestSource(agent), expiresAt: Date.now() + COMPLETION_PROGRESS_MS }))
+  }
   const inventory = useRuntimeInventoryRefresh({
     enabled: autoRefresh && heading,
     paused: disabled || pending !== null || configuring !== null,
     agents,
     isCurrent: () => mounted.current && isCurrent() && !pendingRef.current,
-    onChange
+    onChange,
+    onVerified: agent => completeProgress(agent, 'test')
   })
   const controlsDisabled = disabled || pending !== null || !active
   const run = async (action: RuntimeAction, targetId?: string, setupIntent?: SetupIntent): Promise<void> => {
@@ -165,6 +182,12 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
     if (targetId) setSelectedEngine(targetId)
     pendingRef.current = true
     setCompletionBeat(null)
+    setCompletedProgress(previous => {
+      if (!targetId) return new Map()
+      const next = new Map(previous)
+      next.delete(targetId)
+      return next
+    })
     inventory.invalidate()
     onPendingChange?.(true)
     setPendingSetupIntent(action === 'setup' ? setupIntent ?? null : null)
@@ -200,11 +223,12 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
       if (targetId) {
         const agent = updatedAgents.find(item => (item.runtimeId ?? item.id) === targetId)
         if (agent) {
-          const representedByHealth = kind === 'success' && action === 'setup' && Boolean(beforeAgent && (!beforeAgent.available || beforeAgent.setupRequired))
-            && ['已安装', '连接已验证'].includes(runtimeHealthLabel(agent))
+          const representedByHealth = kind === 'success' && (action === 'test' && agent.health === 'ready'
+            || action === 'setup' && Boolean(beforeAgent && (!beforeAgent.available || beforeAgent.setupRequired)) && ['已安装', '可用'].includes(runtimeHealthLabel(agent)))
           const resultSource = feedbackIdentity(agent, settingsRef.current?.acp, action)
           const statusSource = requestSource(agent)
           setRowResults(previous => new Map(previous).set(targetId, { source: resultSource, statusSource, action, text, kind, representedByHealth }))
+          if (kind === 'success') completeProgress(agent, action)
           if (kind === 'success' && motionEnabledRef.current && document.visibilityState === 'visible' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             setCompletionBeat({ id: targetId, action, source: resultSource, statusSource, token: ++completionToken.current })
           }
@@ -306,8 +330,16 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   const selectedAgent = visibleAgents.find(agent => (agent.runtimeId ?? agent.id) === selectedEngine) ?? visibleAgents[0]
   const modelRuntimeId = selectedAgent ? selectedAgent.runtimeId ?? selectedAgent.id : null
   const selectedAction = modelRuntimeId && !isUnsupportedLegacyRuntime(selectedAgent) ? pendingRowAction(pending, modelRuntimeId) : undefined
-  const selectedStatus = selectedAction ? pendingActionLabel(selectedAction, pendingSetupIntent) : runtimeHealthLabel(selectedAgent)
+  const selectedStatus = selectedAction ? pendingActionLabel(selectedAction, pendingSetupIntent)
+    : modelRuntimeId && !pending && inventory.checkingRuntimeId === modelRuntimeId ? '正在检测连接' : runtimeHealthLabel(selectedAgent)
+  const selectedBusy = Boolean(selectedAction || modelRuntimeId && !pending && inventory.checkingRuntimeId === modelRuntimeId)
   const overview = heading && !runtimeId
+  const columns = overview && panelWidth >= 680 ? 2 : 1
+  const overviewCapacity = (panelWidth >= 960 ? 4 : panelWidth && panelWidth < 600 ? 2 : 3) * 2
+  const overviewPageCount = Math.ceil(visibleAgents.length / overviewCapacity)
+  const overviewPage = Math.floor(Math.max(0, selectedAgent ? visibleAgents.indexOf(selectedAgent) : 0) / overviewCapacity)
+  const diagramAgents = visibleAgents.slice(overviewPage * overviewCapacity, (overviewPage + 1) * overviewCapacity)
+  diagramIdsRef.current = new Set(diagramAgents.map(agent => agent.runtimeId ?? agent.id))
   const configTargetAvailable = Boolean(configuring && agents.some(agent => (agent.runtimeId ?? agent.id) === configuring.id && agent.launchKind === configuring.launchKind && !isUnsupportedLegacyRuntime(agent)))
   visibleIdsRef.current = new Set(visibleAgents.map(agent => agent.runtimeId ?? agent.id))
   useEffect(() => {
@@ -335,8 +367,8 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
       return next.size === previous.size ? previous : next
     })
   }, [agents, settings?.acp])
-  const rememberRemovedFocus = (element: Element | undefined, id: string): void => {
-    if (element && !visibleIdsRef.current.has(id) && element.contains(document.activeElement)) recoveryFocusRef.current = document.activeElement
+  const rememberRemovedFocus = (element: Element | undefined, id: string, stillVisible = visibleIdsRef.current.has(id)): void => {
+    if (element && !stillVisible && element.contains(document.activeElement)) recoveryFocusRef.current = document.activeElement
   }
   useLayoutEffect(() => {
     if (configuring && !configTargetRemoved && !configTargetAvailable) setConfigTargetRemoved(true)
@@ -344,7 +376,9 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
     if (!previous) return
     recoveryFocusRef.current = null
     if (!previous.isConnected && document.activeElement === document.body && isCurrent() && canInteract()) {
-      const fallback = modelRuntimeId ? rowRefs.current.get(modelRuntimeId)?.querySelector<HTMLButtonElement>('.runtime-engine-toggle') : null
+      const fallback = modelRuntimeId ? previous.classList.contains('runtime-overview-node-control')
+        ? illustrationRefs.current.get(modelRuntimeId)
+        : rowRefs.current.get(modelRuntimeId)?.querySelector<HTMLButtonElement>('.runtime-engine-toggle') : null
       const target = fallback ?? panelRef.current
       target?.focus({ preventScroll: true })
     }
@@ -359,28 +393,30 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
   }, [selectedEngine, modelRuntimeId])
   const selectEngine = (id: string): void => {
     setSelectedEngine(id)
+    if (overview) setExpanded(previous => Object.values(previous).some(Boolean) ? { [id]: true } : previous)
   }
   const selectIllustrationEngine = (id: string): void => {
     selectEngine(id)
   }
-  const illustrationWidth = 600 + Math.max(0, Math.ceil(visibleAgents.length / 6) - 1) * 220
+  const illustrationWidth = 600
   const flowGradientId = `runtime-flow-${sectionId.replace(/[^a-zA-Z0-9_-]/g, '')}`
-  const illustrationItems = visibleAgents.map((agent, index) => {
+  const illustrationItems = diagramAgents.map((agent, index) => {
     const id = agent.runtimeId ?? agent.id
     const side = index % 2 === 0 ? -1 : 1
     const slot = Math.floor(index / 2)
-    const rowCount = Math.min(3, Math.ceil(visibleAgents.length / 2))
-    const row = slot % 3
-    const x = illustrationWidth / 2 + side * (185 + Math.floor(slot / 3) * 105)
-    const y = rowCount === 1 ? 100 : rowCount === 2 ? 44 + row * 112 : 38 + row * 62
+    const rowCount = Math.ceil(diagramAgents.length / 2)
+    const row = slot
+    const x = illustrationWidth / 2 + side * 185
+    const y = rowCount === 1 ? 100 : 36 + row * 128 / (rowCount - 1)
     const endX = illustrationWidth / 2 + side * 55
-    const endY = y < 80 ? 77 : y > 120 ? 123 : 100
+    const endY = rowCount === 1 ? 100 : 70 + row * 60 / (rowCount - 1)
     const bendX = (x + endX) / 2
     const path = `M ${x} ${y} L ${bendX} ${y} L ${endX} ${endY}`
     const unsupported = isUnsupportedLegacyRuntime(agent)
-    const busy = !unsupported && (pending === 'refresh' || (!pending && inventory.reading) || Boolean(pending?.endsWith(`:${id}`)))
+    const automaticallyChecking = inventory.checkingRuntimeId === id && !pending
+    const busy = !unsupported && (pending === 'refresh' || automaticallyChecking || Boolean(pending?.endsWith(`:${id}`)))
     const rowAction = unsupported ? undefined : pendingRowAction(pending, id)
-    const status = rowAction ? pendingActionLabel(rowAction, pendingSetupIntent) : busy ? '正在更新状态' : runtimeHealthLabel(agent)
+    const status = rowAction ? pendingActionLabel(rowAction, pendingSetupIntent) : automaticallyChecking ? '正在检测连接' : runtimeHealthLabel(agent)
     const error = (rowFeedback.get(id) ?? []).some(entry => entry.source === feedbackIdentity(agent, settings?.acp, entry.action))
     const state = unsupported ? 'disabled' : busy ? 'busy' : error ? 'error' : !agent.enabled ? 'disabled'
       : agent.health === 'adapter_missing' || agent.health === 'executable_missing' ? 'missing'
@@ -400,8 +436,7 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
     </div>
   )
   const completionMatches = (agent: AcpAgentStatus): boolean => Boolean(motionEnabled && completionBeat && completionBeat.id === (agent.runtimeId ?? agent.id) && completionBeat.source === feedbackIdentity(agent, settings?.acp, completionBeat.action) && completionBeat.statusSource === requestSource(agent))
-  const engineRows = <>
-      {visibleAgents.map((agent, index) => {
+  const engineEntries = visibleAgents.map((agent, index) => {
         const id = agent.runtimeId ?? agent.id
         const unsupported = isUnsupportedLegacyRuntime(agent)
         const native = agent.launchKind === 'native'
@@ -414,55 +449,37 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
         const controlsId = `${sectionId}-runtime-${index}`
         const needsInstall = !sdk && (agent.setupRequired || native && !agent.available)
         const canTest = !sdk && agent.enabled && agent.available && !agent.setupRequired
-        const primaryAction = unsupported ? undefined : (needsInstall || updatePending) && canSetup ? 'setup' : canTest ? 'test' : zcode || native ? 'path' : undefined
-        const primaryLabel = primaryAction === 'setup' ? needsInstall ? '安装' : '升级' : primaryAction === 'path' ? zcode ? '选择目录' : '配置路径' : '测试连接'
+        const primaryAction = unsupported ? undefined : (needsInstall || updatePending) && canSetup ? 'setup' : canTest && agent.health && !['ready', 'not_checked'].includes(agent.health) ? 'test' : !agent.available && (zcode || native) ? 'path' : undefined
+        const primaryLabel = primaryAction === 'setup' ? needsInstall ? '安装' : '升级' : primaryAction === 'path' ? zcode ? '选择目录' : '配置路径' : '重试'
         const attention = unsupported || !agent.enabled || !agent.available || Boolean(agent.setupRequired) || Boolean(agent.health && !['ready', 'not_checked'].includes(agent.health))
-        const StatusIcon = attention ? CircleAlert : agent.health === 'ready' ? CheckCircle2 : PackageCheck
-        const rowAction = unsupported ? undefined : pendingRowAction(pending, id)
-        const checking = !unsupported && !pending && inventory.reading
+        const automaticallyChecking = !unsupported && !pending && inventory.checkingRuntimeId === id
+        const rowAction = unsupported ? undefined : pendingRowAction(pending, id) ?? (automaticallyChecking ? 'test' : undefined)
+        const pendingText = automaticallyChecking ? '正在检测连接' : rowAction ? pendingActionLabel(rowAction, pendingSetupIntent) : undefined
         const diagnostics = agent.diagnostics ?? []
         const currentErrors = (rowFeedback.get(id) ?? []).filter(entry => entry.source === feedbackIdentity(agent, settings?.acp, entry.action))
         const result = rowResults.get(id)
         const completing = completionMatches(agent)
         const currentResult = result && result.source === feedbackIdentity(agent, settings?.acp, result.action) && (result.kind !== 'success' || result.statusSource === requestSource(agent)) ? result : undefined
+        const progress = completedProgress.get(id)
+        const progressComplete = !rowAction && Boolean(progress && progress.expiresAt > Date.now()
+          && progress.source === feedbackIdentity(agent, settings?.acp, progress.action) && progress.statusSource === requestSource(agent))
         const actionButton = (action: RuntimeAction, label: string, variant: 'primary' | 'outline' | 'ghost' = 'outline', setupIntent?: SetupIntent): JSX.Element => {
-          const busy = pending === (action === 'refresh' || action === 'node' ? action : `${action}:${id}`)
+          const busy = pending === (action === 'refresh' || action === 'node' ? action : `${action}:${id}`) || automaticallyChecking && action === 'test'
           const Icon = action === 'setup' ? Download : action === 'test' ? PlugZap : action === 'refresh' ? RefreshCw : action === 'migration' ? ExternalLink : FolderOpen
-          return <Button size="sm" variant={variant} aria-label={`${agent.name} · ${busy ? pendingActionLabel(action, pendingSetupIntent) : label}`} disabled={(controlsDisabled && !busy) || !hasIpc} aria-disabled={busy || undefined} onClick={() => { if (!busy) void run(action, id, setupIntent) }}>
-            {busy ? <Loader2 size={13} className={motionEnabled ? 'animate-spin' : undefined} aria-label={pendingActionLabel(action, pendingSetupIntent)} /> : <><Icon size={13} /> {label}</>}
+          return <Button size="sm" variant={variant} aria-label={`${agent.name} · ${busy ? automaticallyChecking ? '正在检测连接' : pendingActionLabel(action, pendingSetupIntent) : label}`} disabled={(controlsDisabled && !busy) || !hasIpc} aria-disabled={busy || undefined} onClick={() => { if (!busy) void run(action, id, setupIntent) }}>
+            <Icon size={13} aria-hidden="true" /> {label}
           </Button>
         }
-        return (
-        <div key={agent.id} className="runtime-engine" data-runtime-id={id} data-expanded={open} data-operating={rowAction || undefined} data-selected={overview && modelRuntimeId === id || undefined} ref={element => {
-          if (element) rowRefs.current.set(id, element)
-          else { rememberRemovedFocus(rowRefs.current.get(id), id); rowRefs.current.delete(id) }
-        }}>
-          <div className="runtime-engine-heading">
-            <button type="button" className="runtime-engine-toggle" aria-expanded={open} aria-controls={controlsId}
-              onClick={() => { if (overview) selectEngine(id); setExpanded((previous) => ({ ...previous, [id]: !open })) }}>
-              <ToolBrandIcon brand={id} size={32} />
-              <span className="runtime-engine-identity">
-                <span className="runtime-engine-name my-item-title">{agent.name}{agent.adapterVersion && <span className="runtime-engine-version">v{agent.adapterVersion}</span>}</span>
-                <span className={`runtime-engine-status${attention ? ' is-attention' : ''}`} data-complete={currentResult?.representedByHealth && !rowAction && completing || undefined}>
-                  {rowAction ? <Loader2 size={12} className={motionEnabled ? 'animate-spin' : undefined} aria-hidden="true" /> : <StatusIcon key={completing ? completionBeat?.token : 'idle'} size={12} aria-hidden="true" />}
-                  <span key={rowAction ?? runtimeHealthLabel(agent)} className="runtime-engine-status-value">{rowAction ? pendingActionLabel(rowAction, pendingSetupIntent) : checking ? '正在更新状态' : updatePending ? `可升级至 v${agent.latestVersion}` : runtimeHealthLabel(agent)}</span>
-                </span>
-              </span>
-              <ChevronDown size={15} className="runtime-engine-chevron" aria-hidden="true" />
-            </button>
-            {primaryAction && <div className="runtime-engine-primary">{actionButton(primaryAction, primaryLabel, needsInstall || updatePending || zcode && !agent.available ? 'primary' : 'outline', primaryAction === 'setup' ? needsInstall ? 'install' : 'upgrade' : undefined)}</div>}
-            {overview && !unsupported && sdk && onConfigureModels && <Button size="sm" variant="outline" disabled={controlsDisabled} aria-label={`${agent.name} · 配置模型`} onClick={() => { if (isCurrent() && canInteract()) { selectEngine(id); onConfigureModels() } }}><Settings2 size={13} />配置模型</Button>}
-
-          </div>
-          {rowAction && <div className="runtime-engine-operation" data-animating={motionEnabled || undefined}>
-            <div className="runtime-engine-progress" role="progressbar" aria-label={`${agent.name}：${pendingActionLabel(rowAction, pendingSetupIntent)}`} aria-valuetext="进行中，进度未知"><span /></div>
-          </div>}
-          {currentResult && !rowAction && !(currentResult.kind === 'success' && (currentResult.representedByHealth || currentResult.text === runtimeHealthLabel(agent))) && <div className="runtime-engine-result" data-kind={currentResult.kind} data-animate={completing && currentResult.kind === 'success' || undefined}>{currentResult.kind === 'cancelled' ? <CircleX size={13} aria-hidden="true" /> : <CheckCircle2 key={completing ? completionBeat?.token : 'idle'} size={13} aria-hidden="true" />}<span>{ACTION_LABEL[currentResult.action]}：{currentResult.text}</span></div>}
-          {currentErrors.map(error => <div key={error.action} className="runtime-engine-feedback">
-            <p role="alert" className={`text-my-sm ${error.kind === 'error' || error.kind === 'not-admitted' ? 'text-my-danger-text' : 'text-my-secondary'}`}>{ACTION_LABEL[error.action]}：{error.text}</p>
-            <RuntimeFeedbackDetails commandId={error.commandId} />
-          </div>)}
-          <div id={controlsId} className="runtime-engine-controls" hidden={!open}>
+        const controls = (
+          <div key={`details:${agent.id}`} id={controlsId} className="runtime-engine-controls" hidden={!open} role="region" aria-label={`${agent.name}设置`} ref={element => {
+            if (element) detailRefs.current.set(id, element)
+            else { rememberRemovedFocus(detailRefs.current.get(id), id); detailRefs.current.delete(id) }
+          }}>
+            {overview && <div className="runtime-engine-detail-heading"><span className="my-item-title">{agent.name}</span><Button size="sm" variant="ghost" aria-label={`关闭 ${agent.name} 设置`} onClick={() => {
+              if (!canInteract()) return
+              setExpanded(previous => ({ ...previous, [id]: false }))
+              rowRefs.current.get(id)?.querySelector<HTMLButtonElement>('.runtime-engine-toggle')?.focus()
+            }}><X size={14} /></Button></div>}
             {!unsupported && <div className="runtime-engine-actions" role="group" aria-label={`${agent.name}操作`}>
               {native && agent.availableMigration && actionButton('migration', `v${agent.availableMigration.version} 迁移指南`)}
               {heading && <Button size="sm" variant="outline" disabled={controlsDisabled || !hasIpc || !settings} aria-label={`${agent.name} · 默认配置`} onClick={event => { if (isCurrent() && canInteract()) { configTriggerRef.current = event.currentTarget; setConfigTargetRemoved(false); setConfiguring({ id, name: agent.name, launchKind: agent.launchKind }) } }}><Settings2 size={13} />默认配置</Button>}
@@ -498,10 +515,56 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
               <ul className="runtime-engine-diagnostics">{diagnostics.map((message, diagnosticIndex) => <li key={diagnosticIndex}>{message}</li>)}</ul>
             </details>}
           </div>
+        )
+        const entry = (
+        <div key={`header:${agent.id}`} className="runtime-engine" data-column={index % columns} data-runtime-id={id} data-expanded={open} data-operating={rowAction || undefined} data-selected={overview && modelRuntimeId === id || undefined} ref={element => {
+          if (element) rowRefs.current.set(id, element)
+          else { rememberRemovedFocus(rowRefs.current.get(id), id); rowRefs.current.delete(id) }
+        }}>
+          <div className="runtime-engine-heading">
+            <button type="button" className="runtime-engine-toggle" aria-expanded={open} aria-controls={controlsId}
+              onClick={() => { if (overview) selectEngine(id); setExpanded((previous) => overview ? { [id]: !open } : { ...previous, [id]: !open }) }}>
+              <ToolBrandIcon brand={id} size={overview ? 24 : 32} />
+              <span className="runtime-engine-identity">
+                <span className="runtime-engine-name my-item-title"><span className="runtime-engine-title" title={agent.name}>{agent.name}</span>{agent.adapterVersion && <span className="runtime-engine-version" title={agent.adapterVersion}>v{agent.adapterVersion}</span>}</span>
+                <span className={`runtime-engine-status${attention ? ' is-attention' : ''}`} data-complete={currentResult?.representedByHealth && !rowAction && completing || undefined}>
+                  {rowAction ? <RuntimeActivity label={pendingText} animating={motionEnabled} /> : <>
+                    <span key={runtimeHealthLabel(agent)} className="runtime-engine-status-value">{updatePending ? `可升级至 v${agent.latestVersion}` : runtimeHealthLabel(agent)}</span>
+                  </>}
+                </span>
+              </span>
+              <RuntimeConnectionIcon agent={agent} decorative />
+              <ChevronDown size={15} className="runtime-engine-chevron" aria-hidden="true" />
+            </button>
+            {primaryAction && <div className="runtime-engine-primary" ref={element => {
+              if (element) primaryRefs.current.set(id, element)
+              else { rememberRemovedFocus(primaryRefs.current.get(id), id, false); primaryRefs.current.delete(id) }
+            }}>{actionButton(primaryAction, primaryLabel, needsInstall || updatePending || zcode && !agent.available ? 'primary' : 'outline', primaryAction === 'setup' ? needsInstall ? 'install' : 'upgrade' : undefined)}</div>}
+            {overview && !unsupported && sdk && onConfigureModels && <Button size="sm" variant="ghost" title="配置模型" disabled={controlsDisabled} aria-label={`${agent.name} · 配置模型`} onClick={() => { if (isCurrent() && canInteract()) { selectEngine(id); onConfigureModels() } }}><Settings2 size={14} /></Button>}
+          </div>
+          <div className="runtime-engine-progress-slot">
+            {(rowAction || progressComplete) && <div className="runtime-engine-operation" data-complete={progressComplete || undefined} data-animating={rowAction && motionEnabled || undefined}>
+              <div className="runtime-engine-progress" role="progressbar" aria-label={`${agent.name}：${progressComplete ? '已完成' : pendingText}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressComplete ? 100 : undefined} aria-valuetext={progressComplete ? '已完成，100%' : '进行中，进度未知'}><span /></div>
+              <span className="runtime-engine-progress-value" aria-hidden="true">{progressComplete ? '100%' : ''}</span>
+            </div>}
+          </div>
+          {currentResult && !rowAction && !(currentResult.kind === 'success' && (currentResult.representedByHealth || currentResult.text === runtimeHealthLabel(agent))) && <div className="runtime-engine-result" data-kind={currentResult.kind} data-animate={completing && currentResult.kind === 'success' || undefined}>{currentResult.kind === 'cancelled' ? <CircleX size={13} aria-hidden="true" /> : <CheckCircle2 key={completing ? completionBeat?.token : 'idle'} size={13} aria-hidden="true" />}<span>{ACTION_LABEL[currentResult.action]}：{currentResult.text}</span></div>}
+          {currentErrors.map(error => <div key={error.action} className="runtime-engine-feedback">
+            <p role="alert" className={`text-my-sm ${error.kind === 'error' || error.kind === 'not-admitted' ? 'text-my-danger-text' : 'text-my-secondary'}`}>{ACTION_LABEL[error.action]}：{error.text}</p>
+            <RuntimeFeedbackDetails commandId={error.commandId} />
+          </div>)}
+
         </div>
         )
-      })}
-  </>
+        return { header: entry, controls }
+      })
+  const engineRows = engineEntries.flatMap((entry, index) => {
+    const nodes = [entry.header]
+    if ((index + 1) % columns === 0 || index === engineEntries.length - 1) {
+      nodes.push(...engineEntries.slice(Math.floor(index / columns) * columns, index + 1).map(item => item.controls))
+    }
+    return nodes
+  })
   const content = <>
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
       {(feedback || inventory.error) && <p role="alert" className="mb-3 break-words text-my-sm text-my-danger-text">{feedback ?? inventory.error}</p>}
@@ -520,11 +583,16 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
       </div>)}
       {visibleAgents.length === 0 && <p className="runtime-engine-empty text-my-sm text-my-tertiary">{inventory.reading ? '正在检测…' : runtimeId ? '未找到此执行引擎' : '暂未取得执行引擎列表'}</p>}
       {overview && visibleAgents.length > 0 && <div className="runtime-overview" role="group" aria-label="本机执行引擎">
+        {overviewPageCount > 1 && <nav className="runtime-overview-pagination" aria-label="执行引擎概览分组">
+          <Button size="sm" variant="ghost" aria-label="上一组执行引擎" aria-disabled={overviewPage === 0} onClick={() => { if (canInteract() && overviewPage > 0) selectEngine(visibleAgents[(overviewPage - 1) * overviewCapacity].id) }}><ChevronLeft size={14} /></Button>
+          <span aria-label={`第 ${overviewPage + 1} 组，共 ${overviewPageCount} 组`}>{overviewPage + 1} / {overviewPageCount}</span>
+          <Button size="sm" variant="ghost" aria-label="下一组执行引擎" aria-disabled={overviewPage + 1 >= overviewPageCount} onClick={() => { if (canInteract() && overviewPage + 1 < overviewPageCount) selectEngine(visibleAgents[(overviewPage + 1) * overviewCapacity].id) }}><ChevronRight size={14} /></Button>
+        </nav>}
         <div className="runtime-overview-illustration my-scrollbar" role="group" aria-label="选择执行引擎">
-          <div className="runtime-overview-track" style={visibleAgents.length > 6 ? { minWidth: illustrationWidth * .8 } : undefined}>
+          <div className="runtime-overview-track" style={{ height: `calc(var(--my-space-64) * ${Math.min(visibleAgents.length, overviewCapacity) > 6 ? 5 : 4})` }}>
           <svg viewBox={`0 0 ${illustrationWidth} 200`} preserveAspectRatio="none" className="runtime-overview-art" aria-hidden="true">
             <defs><linearGradient id={flowGradientId}><stop stopColor="var(--my-txt-tertiary)" /><stop offset="1" stopColor="var(--my-txt-primary)" /></linearGradient></defs>
-            {illustrationItems.map(({ agent, id, path, state }) => <g key={agent.id} className="runtime-overview-branch" data-runtime-id={id} data-state={state} data-selected={modelRuntimeId === id || undefined}>
+            {illustrationItems.map(({ agent, id, path, state }) => <g key={agent.id} className="runtime-overview-branch" data-runtime-id={id} data-state={state} data-selected={modelRuntimeId === id || undefined} data-emphasized={modelRuntimeId === id || state === 'busy' || undefined}>
               <path className="runtime-overview-link" d={path} />
               {state === 'verified' && completionMatches(agent) && completionBeat?.action === 'test' && <path key={`verified-${id}-${completionBeat.token}`} className="runtime-overview-complete" d={path} pathLength="1" />}
               {state === 'busy' && motionEnabled && <>
@@ -533,7 +601,7 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
               </>}
             </g>)}
           </svg>
-          <svg viewBox="235 18 130 160" className="runtime-overview-hub" aria-hidden="true" data-motion={motionEnabled} data-working={motionEnabled && (pending === 'refresh' || Boolean(pending && /^(setup|path|test):/.test(pending))) || undefined}>
+          <svg viewBox="235 18 130 160" className="runtime-overview-hub" aria-hidden="true" data-motion={motionEnabled} data-working={motionEnabled && (pending === 'refresh' || Boolean(inventory.checkingRuntimeId) || Boolean(pending && /^(setup|path|test):/.test(pending))) || undefined}>
             <path className="runtime-hub-base" d="M245 127v10q0 5 7 9l39 23q9 5 18 0l39-23q7-4 7-9v-10l-46 26q-9 5-18 0z" />
             <path className="runtime-hub-surface" d="m250 117 41-24q9-5 18 0l41 24q9 5 0 10l-41 24q-9 5-18 0l-41-24q-9-5 0-10z" />
             <path className="runtime-hub-edge" d="m251 139 40 23q9 5 18 0l40-23" />
@@ -558,25 +626,25 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
             <g className="runtime-hub-ports"><circle cx="245" cy="63" r="2.7" /><circle cx="355" cy="84" r="2.7" /><circle cx="245" cy="108" r="2.7" /><circle cx="355" cy="128" r="2.7" /></g>
             </g>
           </svg>
-          {illustrationItems.map(({ agent, id, x, y, busy, error, state, status }) => <div key={agent.id} className="runtime-overview-node-wrap" data-state={state} data-selected={modelRuntimeId === id || undefined} style={{ left: `${100 * x / illustrationWidth}%`, top: `${y / 2}%`, width: `${Math.min(22, 9200 / illustrationWidth)}%` }}>
+          {illustrationItems.map(({ agent, id, x, y, busy, error, state, status }) => <div key={agent.id} className="runtime-overview-node-wrap" data-state={state} data-selected={modelRuntimeId === id || undefined} style={{ left: `${100 * x / illustrationWidth}%`, top: `${y / 2}%`, width: '28%' }}>
             <button type="button" className="runtime-overview-node-control" data-runtime-id={id} aria-pressed={modelRuntimeId === id} aria-label={`${agent.name}，${status}${error ? '，有操作反馈' : ''}`}
               ref={element => {
                 if (element) illustrationRefs.current.set(id, element)
-                else { rememberRemovedFocus(illustrationRefs.current.get(id), id); illustrationRefs.current.delete(id) }
+                else { rememberRemovedFocus(illustrationRefs.current.get(id), id, diagramIdsRef.current.has(id)); illustrationRefs.current.delete(id) }
               }}
               onClick={() => selectIllustrationEngine(id)}>
               <ToolBrandIcon brand={id} size={24} />
-              {busy ? <Loader2 size={12} className={`runtime-overview-node-progress${motionEnabled ? ' animate-spin' : ''}`} aria-hidden="true" /> : state === 'verified' ? <CheckCircle2 key={completionMatches(agent) && completionBeat?.action === 'test' ? completionBeat.token : 'idle'} size={12} className={`runtime-overview-node-progress${completionMatches(agent) && completionBeat?.action === 'test' ? ' runtime-overview-node-complete' : ''}`} aria-hidden="true" /> : null}
+              {busy && <span className="runtime-overview-node-activity" data-animating={motionEnabled || undefined} aria-hidden="true"><span /></span>}
             </button>
-            <span className="runtime-overview-node-label">{agent.name}</span>
+            <span className="runtime-overview-node-label" title={agent.name}>{agent.name}</span>
           </div>)}
           </div>
         </div>
         <div className="runtime-overview-summary">
           <span className="my-item-title">{selectedAgent?.name}</span>
-          <span className="my-item-description">{selectedStatus}</span>
+          <span className="my-item-description">{selectedBusy ? <RuntimeActivity label={selectedStatus} animating={motionEnabled} /> : selectedStatus}</span>
         </div>
-        <div className="runtime-overview-rows">{engineRows}</div>
+        <div className="runtime-overview-rows" data-columns={columns}>{engineRows}</div>
         <span className="sr-only" role="status" aria-live="polite">{selectedAgent ? `已选择 ${selectedAgent.name}，${selectedStatus}` : ''}</span>
       </div>}
       {!overview && engineRows}

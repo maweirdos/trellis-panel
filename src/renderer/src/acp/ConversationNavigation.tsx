@@ -1,10 +1,10 @@
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { ConversationSearch as ConversationSearchView } from './ConversationSearch'
-import { ConversationListRow, ConversationListPreview, ConversationRenameDialog, useConversationListPreview } from './ConversationListRow'
-import { Archive, ArchiveRestore, ChevronDown, Ellipsis, Loader2, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ConversationListRow, ConversationListPreview, ConversationRenameDialog, useConversationListPreview, ArchiveArrowDown } from './ConversationListRow'
+import { Archive, ArchiveRestore, ChevronDown, Columns2, Copy, Loader2, MessageSquareDot, MoreVertical, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 
-import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
+import { Button, Dropdown, DropdownDivider, DropdownItem, Modal } from '../my/ui'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
@@ -126,13 +126,84 @@ export function ConversationNavigation({ sessions, activeId, view, onView, onSel
   const closeSearch = (): void => { if (!canInteract()) return; setSearchOpen(false) }
 
   const recent = sessions.filter((session) => (archive === 'archived' ? !!session.archivedAt : !session.archivedAt) && (diagnostics ? isDiagnosticConversation(session) : !isDiagnosticConversation(session))).sort(compareConversationSessions)
-  const row = (session: AcpSessionRecord): JSX.Element => <ConversationListRow key={session.sessionId} id={session.sessionId} title={session.title ?? session.profileSnapshot?.name ?? session.agentName + ' 会话'} selected={activeId === session.sessionId && view === 'conversation'} pinned={!!session.pinnedAt} previewId={hover.preview?.id === session.sessionId ? hover.id : undefined} onPreview={(element) => hover.schedule({ id: session.sessionId, title: session.title ?? session.agentName, summary: conversationSummary(session), time: session.startedAt, metadata: <>{session.profileSnapshot?.name ? session.profileSnapshot.name + ' · ' : ''}{session.agentName}{session.taskDir ? ' · ' + session.taskDir : ' · 未关联任务'}</> }, element)} onDismissPreview={dismiss} onSelect={() => onSelect(session.sessionId)} error={rename?.sessionId === session.sessionId ? undefined : mutationErrors[session.sessionId]} actions={<>{canManage && onUpdate && <Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={session.sessionId} className="acp-recent-menu-trigger my-icon-control" aria-label={`会话操作：${session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`}`} aria-expanded={expanded} aria-haspopup="menu" aria-busy={mutationBusy[session.sessionId] || undefined} disabled={mutationBusy[session.sessionId]} onFocus={dismiss} onMouseEnter={dismiss} onClick={() => { dismiss(); toggle() }}>{mutationBusy[session.sessionId] ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
-      <DropdownItem icon={<Pencil size={14} />} disabled={mutationBusy[session.sessionId] || !!session.deletionState} onClick={() => { close(); openRename(session) }}>重命名</DropdownItem>
-      {onRegenerateTitle && <DropdownItem icon={<Sparkles size={14} />} disabled={mutationBusy[session.sessionId] || !!session.customTitle || !!session.deletionState} onClick={() => { close(); if (canInteract()) void onRegenerateTitle(session.sessionId) }}>{session.customTitle ? '手动标题' : '重新生成标题'}</DropdownItem>}
-      <DropdownItem icon={session.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { pinned: !session.pinnedAt }) }}>{session.pinnedAt ? '取消置顶' : '置顶'}</DropdownItem>
-      <DropdownItem icon={session.archivedAt ? <ArchiveRestore size={14} /> : <Archive size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { archived: !session.archivedAt }) }}>{session.archivedAt ? '取消归档' : '归档'}</DropdownItem>
-      {onDelete && <DropdownItem danger icon={<Trash2 size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); dismiss(); if (canInteract()) void onDelete(session.sessionId) }}>{session.deletionState ? '重试永久删除' : '永久删除…'}</DropdownItem>}
-    </>}</Dropdown>}</>} />
+  const isSessionBusy = (session: AcpSessionRecord): boolean => {
+    return ['busy', 'starting', 'awaiting_permission', 'cancelling'].includes(session.status)
+  }
+
+  const copyTitle = async (session: AcpSessionRecord): Promise<void> => {
+    const text = session.title ?? session.profileSnapshot?.name ?? `${session.agentName} 会话`
+    try {
+      if (typeof api?.copyToClipboard === 'function') {
+        await api.copyToClipboard(text)
+      } else if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  const row = (session: AcpSessionRecord): JSX.Element => {
+    const pinned = Boolean(session.pinnedAt)
+    const archived = Boolean(session.archivedAt)
+    const busy = isSessionBusy(session)
+    const time = (session as AcpSessionRecord & { lastActivityAt?: number }).lastActivityAt ?? session.startedAt
+    const title = session.title ?? session.profileSnapshot?.name ?? session.agentName + ' 会话'
+    const isSelected = activeId === session.sessionId && view === 'conversation'
+
+    return <ConversationListRow
+      key={session.sessionId}
+      id={session.sessionId}
+      title={title}
+      selected={isSelected}
+      pinned={pinned}
+      archived={archived}
+      busy={busy}
+      time={time}
+      previewId={hover.preview?.id === session.sessionId ? hover.id : undefined}
+      onPreview={(element) => hover.schedule({
+        id: session.sessionId,
+        title: session.title ?? session.agentName,
+        summary: conversationSummary(session),
+        time: session.startedAt,
+        metadata: <>{session.profileSnapshot?.name ? session.profileSnapshot.name + ' · ' : ''}{session.agentName}{session.taskDir ? ' · ' + session.taskDir : ' · 未关联任务'}</>
+      }, element)}
+      onDismissPreview={dismiss}
+      onSelect={() => onSelect(session.sessionId)}
+      onTogglePin={canManage && onUpdate ? () => void onUpdate(session.sessionId, { pinned: !pinned }) : undefined}
+      onToggleArchive={canManage && onUpdate ? () => void onUpdate(session.sessionId, { archived: !archived }) : undefined}
+      error={rename?.sessionId === session.sessionId ? undefined : mutationErrors[session.sessionId]}
+      actions={<>{canManage && onUpdate && <Dropdown
+        align="left"
+        width={196}
+        className="acp-recent-menu"
+        trigger={({ open: expanded, toggle }) => <button
+          type="button"
+          data-session-id={session.sessionId}
+          className="acp-recent-menu-trigger acp-recent-action-btn my-icon-control"
+          aria-label={`更多会话操作：${title}`}
+          aria-expanded={expanded}
+          aria-haspopup="menu"
+          aria-busy={mutationBusy[session.sessionId] || undefined}
+          disabled={mutationBusy[session.sessionId]}
+          onFocus={dismiss}
+          onMouseEnter={dismiss}
+          onClick={(e) => { e.stopPropagation(); dismiss(); toggle() }}
+        >
+          {mutationBusy[session.sessionId] ? <Loader2 size={13} className="animate-spin" /> : <MoreVertical size={13} strokeWidth={1.5} />}
+        </button>}
+      >{(close) => <>
+        <DropdownItem icon={<Pencil size={14} />} disabled={mutationBusy[session.sessionId] || Boolean(session.deletionState)} onClick={() => { close(); openRename(session) }}>重命名</DropdownItem>
+        <DropdownItem icon={pinned ? <PinOff size={14} /> : <Pin size={14} />} shortcut="Alt+Shift+P" disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { pinned: !pinned }) }}>{pinned ? '取消置顶' : '置顶'}</DropdownItem>
+        <DropdownItem icon={<MessageSquareDot size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close() }}>标为未读</DropdownItem>
+        <DropdownItem icon={<Copy size={14} />} hasSubmenu disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void copyTitle(session) }}>复制</DropdownItem>
+        <DropdownItem icon={<Columns2 size={14} />} hasSubmenu disabled={mutationBusy[session.sessionId]} onClick={() => { close() }}>拆分视图</DropdownItem>
+        <DropdownDivider />
+        <DropdownItem icon={archived ? <ArchiveRestore size={14} /> : <ArchiveArrowDown size={14} strokeWidth={1.5} />} shortcut="Ctrl+Alt+A" disabled={mutationBusy[session.sessionId]} onClick={() => { close(); void onUpdate(session.sessionId, { archived: !archived }) }}>{archived ? '取消归档' : '归档'}</DropdownItem>
+        {onDelete && <DropdownItem danger icon={<Trash2 size={14} />} disabled={mutationBusy[session.sessionId]} onClick={() => { close(); dismiss(); if (canInteract()) void onDelete(session.sessionId) }}>删除</DropdownItem>}
+      </>}</Dropdown>}</>}
+    />
+  }
   return <>
     <ConversationSidebar open={open} onClose={onClose} onScroll={dismiss}
       title={<Dropdown trigger={({ open: expanded, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={expanded} onClick={toggle}><strong>{view === 'agents' ? '角色' : '对话'}</strong><ChevronDown size={13} /></button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={view === 'agents' ? 'roles' : 'conversation'} onAgentView={(next) => { dismiss(); onView(next === 'roles' ? 'agents' : 'conversation') }} /></div>}</Dropdown>}

@@ -5,6 +5,19 @@ import { readdirSync } from 'node:fs'
 import esbuild from 'esbuild'
 import type { Plugin } from 'vite'
 import { reactHookRefresh } from './scripts/vite-hook-refresh'
+import { canonicalTeamOrigin } from './src/main/services/team-platform/http'
+
+const DEFAULT_DESKTOP_TEAM_ORIGIN = 'http://127.0.0.1:5441'
+
+function desktopTeamOrigin(command: 'build' | 'serve'): string {
+  const configured = process.env.CRUX_TEAM_SERVICE_ORIGIN
+  if (configured === undefined) return command === 'serve' ? DEFAULT_DESKTOP_TEAM_ORIGIN : ''
+  try {
+    return canonicalTeamOrigin(configured, command === 'serve')
+  } catch (error) {
+    throw new Error(`Invalid CRUX_TEAM_SERVICE_ORIGIN: ${error instanceof Error ? error.message : error}`)
+  }
+}
 
 /**
  * S0 G2：diff worker 单独 esbuild 打包（不走 rollup 多入口——实测 vite 会给第二入口
@@ -57,13 +70,15 @@ function bundleMainRole(entry: string, filename: string): Plugin {
 
 function bundlePiEngine(): Plugin {
   return { name: 'bundle-pi-sdk-engine', apply: 'build', async closeBundle() {
-    await esbuild.build({ entryPoints: [resolve(__dirname, 'src/main/services/pi/engine.ts')],
-      outfile: resolve(__dirname, 'out/pi-engine/engine.mjs'), bundle: true, packages: 'external',
+    await esbuild.build({ entryPoints: {
+      engine: resolve(__dirname, 'src/main/services/pi/engine.ts'),
+      'text-completion': resolve(__dirname, 'src/main/services/pi/engine/text-completion.ts')
+    }, outdir: resolve(__dirname, 'out/pi-engine'), outExtension: { '.js': '.mjs' }, bundle: true, packages: 'external',
       platform: 'node', format: 'esm', target: 'node24', logLevel: 'warning' })
   } }
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
     plugins: [
       externalizeDepsPlugin(),
@@ -115,6 +130,14 @@ export default defineConfig({
     }
   },
   renderer: {
+    define: {
+      __CRUX_TEAM_SERVICE_ORIGIN__: JSON.stringify(desktopTeamOrigin(command))
+    },
+    optimizeDeps: {
+      // The editor is lazy. Discover its public dependencies before the first
+      // workbench visit so dev optimization cannot invalidate its import mid-open.
+      include: ['@tiptap/core', '@tiptap/react', '@tiptap/react/menus', '@tiptap/markdown', '@tiptap/starter-kit', '@tiptap/extension-list', '@tiptap/extension-table', '@tiptap/pm/model', '@tiptap/pm/state', '@tiptap/pm/history']
+    },
     root: resolve(__dirname, 'src/renderer'),
     resolve: {
       alias: {
@@ -133,4 +156,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

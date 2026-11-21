@@ -89,6 +89,8 @@ export interface AcpHistoryEventPage {
   oversized: boolean
   coverage: AcpHistoryCoverage
   historyPersistence: AcpHistoryPersistence
+  /** Text-only context is independent of the visible transcript page. Never merge into timeline events. */
+  discussion?: { events: TimelineEvent[]; truncated: boolean }
 }
 export interface AcpHistoryPersistenceState extends AcpHistoryPersistence {
   sessionId: string

@@ -7,6 +7,7 @@ import { decryptKeyOf, resolveEndpoint } from '../ai'
 import { resolveAuthorizedDocumentPath } from '../documents/paths'
 import { piModelSchema, type PiModel } from './protocol'
 import { readBoundedBytes } from '../../daemon/files'
+import { defaultConfiguredModelId } from '../../../shared/model-selection'
 
 function contextWindow(model: ModelItem): number {
   const match = /^\s*(\d+(?:\.\d+)?)\s*([km])?\s*$/i.exec(model.contextWindow ?? '')
@@ -35,8 +36,7 @@ export function piConfiguredModels(): { models: PiModel[]; defaultModelId: strin
       maxTokens: Math.min(model.maxTokens ?? 8192, Math.floor(size / 2)), reasoning: true })
   }))
   if (!models.length) throw new Error('请先在设置 → AI 模型中启用一个供应商和模型，再创建 Pi 会话')
-  const preferred = models.find(model => model.selectionId === `${ai.activeProviderId}:${ai.model}`)
-    ?? models.find(model => model.selectionId.startsWith(`${ai.activeProviderId}:`)) ?? models[0]
+  const preferred = models.find(model => model.selectionId === defaultConfiguredModelId(ai)) ?? models[0]
   if (!preferred) throw new Error('没有可用的 Pi 模型配置')
   return { models, defaultModelId: preferred.selectionId, proxy, revision: createHash('sha256').update(JSON.stringify({ models, proxy })).digest('hex') }
 }

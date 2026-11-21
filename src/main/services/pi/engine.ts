@@ -35,7 +35,7 @@ const emptySchema = z.object({}).strict()
 
 type Command = z.infer<typeof commandSchema>
 type Prompt = z.infer<typeof promptSchema>
-type Turn = { cancelled: boolean; started: boolean; failure?: string; imageFailure?: string; aborted: boolean; imageCount: number; imageBytes: number; responseNumber: number; imageKeys: Set<string>; imageProgress: Set<string>; completedImages: Set<string> }
+type Turn = { cancelled: boolean; started: boolean; failure?: string; imageFailure?: string; previewWarning?: boolean; aborted: boolean; outputLimitFailures: number; outputTruncated: boolean; boundedFailure?: boolean; lastDesignError?: string; sameDesignFailures?: number; imageCount: number; imageBytes: number; responseNumber: number; imageKeys: Set<string>; imageDigests: Set<string>; imageProgress: Set<string>; completedImages: Set<string> }
 type PermissionDecision = { allow: boolean; reason?: string }
 
 let configuration: PiInitialize | undefined
@@ -222,6 +222,9 @@ function requestPermission(request: PiPermission, signal?: AbortSignal): Promise
 }
 
 const permissionExtension: ExtensionFactory = pi => {
+  pi.on('before_provider_request', async () => {
+    if (turn && !turn.cancelled && !closing) status('正在请求模型服务', 'pi_model_request', 'running')
+  })
   pi.on('tool_call', async (event, ctx) => {
     const decision = await requestPermission({ toolCallId: event.toolCallId, name: event.toolName, args: event.input, cwd: ctx.cwd, homeDir: homedir() }, ctx.signal)
     return decision.allow ? undefined : { block: true, reason: decision.reason || 'Permission denied by host', terminate: Boolean(turn?.cancelled || closing) }
@@ -254,20 +257,29 @@ function resultText(value: unknown): string {
     && 'text' in item && typeof item.text === 'string' ? [item.text] : []).join('\n')
 }
 
-function captureImage(key: string, data: unknown, mimeType?: unknown): void {
+function captureImage(key: string, data: unknown, mimeType?: unknown, required = true): void {
   const owner = turn
   if (!owner || owner.cancelled || !configuration || owner.imageKeys.has(key)) return
   try {
     if (typeof data !== 'string') throw new Error('Pi 图片内容缺失')
+    const digest = createHash('sha256').update(data).digest('hex')
+    if (owner.imageDigests.has(digest)) { owner.imageKeys.add(key); return }
     const bytes = acpImageBytes(data)
     if (owner.imageCount >= ACP_IMAGE_MAX_COUNT || owner.imageBytes + bytes > ACP_IMAGES_MAX_BYTES) throw new Error('Pi 图片超出本轮数量或总大小限制')
     const image = savePiImage(configuration.sessionDir, data, typeof mimeType === 'string' ? mimeType : undefined)
-    owner.imageCount++; owner.imageBytes += bytes; owner.imageKeys.add(key)
+    owner.imageCount++; owner.imageBytes += bytes; owner.imageKeys.add(key); owner.imageDigests.add(digest)
     activity({ type: 'text_delta', text: '', stream: 'output', messageId: assistantStream?.id ?? `pi-image-${key}`, meta: { piImages: [image] } })
   } catch (error) {
     owner.imageKeys.add(key)
-    owner.imageFailure = errorText(error)
-    activity({ type: 'error', message: `图片保存失败：${owner.imageFailure}` })
+    if (required) {
+      owner.imageFailure = errorText(error)
+      activity({ type: 'error', message: `图片保存失败：${owner.imageFailure}` })
+    } else if (!owner.previewWarning) {
+      // Tool images are optional history previews, not generated-image deliverables.
+      // The SDK still receives the original tool result; preview archival cannot fail its turn.
+      owner.previewWarning = true
+      status(`部分工具图片未保留预览：${errorText(error)}。原工具结果和文本处理不受影响。`, 'pi_image_preview', 'skipped')
+    }
   }
 }
 
@@ -300,17 +312,17 @@ function providerEvent(value: unknown): void {
   }
 }
 
-function safeToolOutput(value: unknown, toolCallId: string, capture: boolean): unknown {
+function safeToolOutput(value: unknown, toolCallId: string, capture: boolean, requiredImages = true): unknown {
   if (!value || typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(item => safeToolOutput(item, toolCallId, capture))
+  if (Array.isArray(value)) return value.map(item => safeToolOutput(item, toolCallId, capture, requiredImages))
   const object = value as Record<string, unknown>
   if (object.type === 'image' && typeof object.data === 'string') {
     // The hash identifies repeated partial/final copies within one tool call.
     const key = `tool:${toolCallId}:${createHash('sha256').update(object.data).digest('hex')}`
-    if (capture) captureImage(key, object.data, object.mimeType)
+    if (capture) captureImage(key, object.data, object.mimeType, requiredImages)
     return { type: 'image', omitted: true }
   }
-  return Object.fromEntries(Object.entries(object).map(([key, item]) => [key, safeToolOutput(item, toolCallId, capture)]))
+  return Object.fromEntries(Object.entries(object).map(([key, item]) => [key, safeToolOutput(item, toolCallId, capture, requiredImages)]))
 }
 
 function promptStarted(): void {
@@ -351,7 +363,8 @@ function onEvent(event: AgentSessionEvent): void {
         completedAssistantMessages.add(event.message)
         assistantStream = undefined
         if (turn) {
-          turn.failure = event.message.stopReason === 'error' ? errorText(event.message.errorMessage || 'Pi provider failed') : undefined
+          turn.outputTruncated = event.message.stopReason === 'length'
+          if (!turn.boundedFailure && turn.outputLimitFailures < 2) turn.failure = event.message.stopReason === 'error' ? errorText(event.message.errorMessage || 'Pi provider failed') : undefined
           turn.aborted = event.message.stopReason === 'aborted'
         }
         contextUsage()
@@ -375,7 +388,36 @@ function onEvent(event: AgentSessionEvent): void {
       toolOutput.delete(event.toolCallId)
       activity({ type: 'tool_call', text: resultText(event.result).slice(0, 64 * 1024) || event.toolName, toolCallId: event.toolCallId,
         title: event.toolName, status: event.isError ? 'failed' : 'completed', tag: 'pi_tool_end', rawOutput: safeToolOutput(event.result, event.toolCallId, false) })
-      if (!event.isError) safeToolOutput(event.result, event.toolCallId, true)
+      if (event.isError && turn?.outputTruncated && /response hit the output token limit|arguments may be truncated/i.test(resultText(event.result))) {
+        const owner = turn
+        if (owner && !owner.cancelled && !closing) {
+          owner.outputTruncated = false
+          owner.outputLimitFailures++
+          if (owner.outputLimitFailures === 1) {
+            status('输出超出单次额度，正在缩小工具输入', 'pi_design_repair', 'running')
+            void session?.steer('The tool arguments were truncated. Do not repeat the same oversized call. Use a smaller complete write and bounded edit calls. For a design, prepare one small complete page in .tpanel-design-input/<page-id>.html, then register it with design_open using sourcePath and short metadata only. Keep each write within the remaining output budget. This is the only automatic repair attempt; if it cannot finish, clearly explain the failure without claiming delivery.', undefined, { source: 'rpc' }).catch(error => {
+              if (turn === owner) { owner.failure = errorText(error); owner.boundedFailure = true; void session?.abort().catch(fatal) }
+            })
+          } else {
+            owner.failure = '输出超出单次额度，调整后仍未完成。请缩小生成范围后重试；已有内容已保留。'
+            owner.boundedFailure = true
+            // Synthetic truncated-tool results bypass SDK extension boundaries.
+            // Abort through the public session immediately; waiting for turn_end loops.
+            void session?.abort().catch(fatal)
+          }
+        }
+      }
+      if (event.isError && event.toolName === 'design_open' && turn && !turn.cancelled && !turn.boundedFailure) {
+        const reason = resultText(event.result)
+        turn.sameDesignFailures = turn.lastDesignError === reason ? (turn.sameDesignFailures ?? 0) + 1 : 1
+        turn.lastDesignError = reason
+        if (turn.sameDesignFailures >= 2) {
+          turn.failure = '设计交付连续失败，本轮已停止。已有文件保留，可查看详情后调整再试。'
+          turn.boundedFailure = true
+          void session?.abort().catch(fatal)
+        }
+      }
+      if (!event.isError) safeToolOutput(event.result, event.toolCallId, true, event.toolName !== 'read')
       if (!event.isError && event.toolName === 'preview_web') {
         const result = event.result as { details?: { piWebPreview?: unknown } }
         const preview = readPiWebPreviewArtifact(result.details?.piWebPreview)
@@ -477,7 +519,7 @@ function nativeCompact(text: string): string | undefined {
 }
 
 function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: string }): void {
-  const owner: Turn = { cancelled: false, started: false, aborted: false, imageCount: 0, imageBytes: 0, responseNumber: 0, imageKeys: new Set(), imageProgress: new Set(), completedImages: new Set() }
+  const owner: Turn = { cancelled: false, started: false, aborted: false, outputLimitFailures: 0, outputTruncated: false, imageCount: 0, imageBytes: 0, responseNumber: 0, imageKeys: new Set(), imageDigests: new Set(), imageProgress: new Set(), completedImages: new Set() }
   turn = owner
   running = Promise.resolve().then(async () => {
     if (owner.cancelled || closing) return
@@ -503,8 +545,8 @@ function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: stri
       owner.imageFailure = '供应商报告图片生成完成，但未返回图片内容'
       activity({ type: 'error', message: owner.imageFailure })
     }
-    if (owner.failure && !owner.cancelled && !owner.aborted) activity({ type: 'error', message: owner.failure })
-    const phase = owner.cancelled || owner.aborted ? 'cancelled' : owner.failure || owner.imageFailure ? 'failed' : 'completed'
+    if (owner.failure && !owner.cancelled && (!owner.aborted || owner.boundedFailure)) activity({ type: 'error', message: owner.failure })
+    const phase = owner.cancelled ? 'cancelled' : owner.boundedFailure ? 'failed' : owner.aborted ? 'cancelled' : owner.failure || owner.imageFailure ? 'failed' : 'completed'
     toolOutput.clear()
     assistantStream = undefined
     turn = undefined

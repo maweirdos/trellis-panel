@@ -10,6 +10,7 @@ import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary
 import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './handoff-history'
 import { readHistoryDeletion } from './history-deletion'
 import { readHistoryText } from './history-text'
+import { readHistoryDiscussion } from './history-discussion'
 import { isPrivateAcpRecord } from './private-access'
 import { isRecoverableRuntimeRecord } from './runtime-definitions'
 
@@ -349,6 +350,7 @@ export class AcpHistoryCore {
     return { ok: true, version: 1, session, events, hasEarlier, hasLater, startsMidTurn, oversized,
       beforeCursor: hasEarlier ? this.encode({ kind: 'events', root, sessionId, seq: first }) : null,
       afterCursor: hasLater ? this.encode({ kind: 'events', root, sessionId, seq: last }) : null,
-      coverage: session.historyCoverage, historyPersistence: session.historyPersistence }
+      coverage: session.historyCoverage, historyPersistence: session.historyPersistence,
+      ...(!input.before && !input.after ? { discussion: readHistoryDiscussion(this.db, root, sessionId) } : {}) }
   }
 }

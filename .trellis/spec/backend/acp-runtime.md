@@ -40,7 +40,7 @@ trusted root. Public preload methods use the corresponding `acpSession*`,
 `acpRuntimeSetup(runtimeId)` and `acpRuntimeNodePick` manage local setup separately.
 `api.acpSessions()` currently exposes the service's default history limit.
 
-Explicit Runtime connection tests resolve the selected current launch argv and
+Runtime connection checks resolve the selected current launch argv and
 send only ACP initialize. Managed adapters, native CLIs and bundled bridges use
 the same protocol probe; SDK entry validation is
 separate and does not prove model credentials. Never create a session, send a
@@ -54,6 +54,46 @@ queries npm latest versions or starts a protocol handshake. Explicit full refres
 may query version registries; local reads reuse matching registry evidence for
 at most five minutes. Installation/removal outside the application must appear
 on the next local read after the burst cache expires.
+
+After displaying discovery, visible Engine Settings verifies installed, enabled
+managed/native/bundled engines whose connection status is `not_checked`, one at
+a time through the existing initialize-only check. SDK, disabled, missing and
+legacy custom engines are excluded. Only the current engine shows connection
+activity; the list remains visible. Suspend new checks while hidden, inactive or
+configuring/running an explicit action. Existing checks keep their bounded native
+cleanup; late replies cannot overwrite a replaced scope or external list update.
+Failed checks keep their diagnostic state and the explicit retry action. A
+successful check displays `可用`; it does not establish model/account access.
+
+Runtime activity uses a neutral status dot and label with a two-pixel dotted
+line anchored to the item text. A quiet baseline and end markers show the track
+bounds. Fixed dots reveal left to right in a 3.6-second activity cycle while
+progress is unknown; intermediate percentages are not inferred from time. An
+acknowledged successful operation or automatic handshake fills the track and
+shows 100% for two seconds, independently of reduced-motion preferences. Failure,
+cancellation, unknown outcomes and late/foreign replies never establish 100%.
+Completion feedback is bound to the exact agent/configuration/status source;
+retries clear prior feedback. It does not delay subsequent work. Hidden/inactive
+scopes and reduced motion keep static status and stop decorative loops.
+
+Engine Settings uses two columns from a measured 680px panel width and one
+column below it. Only one details region opens, after its complete card row;
+DOM/focus order follows that grouping. Closing details or completing an action
+whose focused button disappears returns focus to the original engine control.
+The shared Runtime status projection drives both the
+Settings and picker icons: verified/SDK readiness uses a green connection icon,
+installed-but-unverified stays neutral, missing/disabled uses disconnection and
+actual connection errors use an alert. Background discovery retains known
+labels and does not animate every engine as working.
+
+The diagram shows a width-dependent group of four, six or eight engines from
+the complete catalog, with unique row positions and no horizontal expansion.
+Pagination changes only the inspected engine; it never selects an execution
+default or starts a session. Selecting any list item locates its diagram group,
+including after resize. Emphasize the inspected/working links. Catalog sizes
+of 0, 1, 6, 12 and 30 must remain usable; presentation does not enable unsupported
+runtime definitions or add adapters. If resizing removes a focused diagram node,
+return keyboard focus to the still-visible inspected node in the current scope.
 
 Returning to Engine Settings immediately restores its last displayed local list
 and revalidates it in the background. Inventory-only Node validation and CLI
@@ -88,8 +128,8 @@ IDs and rejects extra CLI parameters because it runs an SDK.
 
 Connection verification is bounded, main-process memory evidence keyed by the
 exact Runtime definition, resolved argv, selected Node/native paths and actual
-executable/entry file identity. Refresh may retain matching evidence; changed
-launch configuration/files or process restart requires new evidence. Return the
+executable/entry file identity. Matching results expire after five minutes;
+changed launch configuration/files or process restart requires new evidence. Return the
 updated agent list with each test so the visible state changes immediately.
 Reject stale probe results after launch-source replacement. The generated
 Diagnostic Mock and its exact historical fixture copies are excluded from the
@@ -713,3 +753,20 @@ Wrong: recursively delete a renderer-supplied path, append replacement text,
 claim success after one failed cleanup, or generate titles while listing history.
 Correct: confirm an exact native-owned scope, fence/drain/tombstone it, verify
 every removal, and apply separately requested background summaries through CAS.
+
+
+## Text-only discussion alongside history pages
+
+`AcpHistoryEventPage.discussion?: { events: TimelineEvent[]; truncated: boolean }`
+is independent of the visible timeline. Initial/latest pages hydrate this in the
+archive worker; directional paging retains its original cursor contract. Never
+merge discussion events into `WorkspaceEntry.events` or execute them.
+
+`readHistoryDiscussion(db, root, sessionId)` selects the first four and last twelve
+user turns. Replay authoritative Pi blocks; join legacy assistant chunks only for
+the same source/root/session/generation/turn and message identity. Include user
+text and assistant proposals, no thoughts, tool bodies or image bytes. Bound text
+to 60000 characters, 8000 per message, balanced per-turn budgets and sixteen
+messages per selected turn. Mark selection/size/read omissions `truncated`.
+Validate context ownership before display or requirement seeding. Keep original
+archive bytes, sequence, turn boundaries, coverage and request receipts unchanged.

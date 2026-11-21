@@ -25,17 +25,22 @@ export interface TranscriptOwner {
   connectionGeneration: string
   turnId: string
 }
+export function sameTranscriptOwner(left: TranscriptOwner, right: TranscriptOwner): boolean {
+  return left.source === right.source && projectRootKey(left.projectRoot) === projectRootKey(right.projectRoot) && left.sessionId === right.sessionId && left.connectionGeneration === right.connectionGeneration && left.turnId === right.turnId
+}
 
 export interface TranscriptTurn {
   type: 'turn'
   key: string
   owner: TranscriptOwner
+  entries: TranscriptEntry[]
   process: TranscriptEntry[]
   delivery: TranscriptEntry[]
   lastItemKey?: string
   startedAt?: number
   terminalId?: string
   outcome?: 'completed' | 'cancelled' | 'failed'
+  failure?: TranscriptEntry[]
   durationMs?: number
   issues: number
 }
@@ -90,6 +95,69 @@ export function isTranscriptEventIssue(event: TimelineEvent): boolean {
   const payload = event.payload
   const problem = (value: unknown): boolean => typeof value === 'string' && ['failed', 'error', 'warning', 'warn'].includes(value)
   return Boolean(payload?.error || payload?.success === false || payload?.ok === false || [payload?.status, payload?.type, payload?.severity, payload?.level, asObject(payload?.result)?.status, asObject(payload?.observation)?.status].some(problem))
+}
+
+export function isTranscriptRetryFailure(entry: TranscriptEntry): boolean {
+  if (entry.item.type !== 'detail' || entry.item.ev.payload?.tag !== 'pi_retry') return false
+  const payload = entry.item.ev.payload
+  return payload.phase === 'failed' || payload.status === 'failed' || Boolean(payload.error) || payload.success === false
+}
+
+export function transcriptProblemMessage(event: TimelineEvent): string {
+  const payload = event.payload
+  const result = asObject(payload?.result)
+  return [result?.error, asObject(result?.error)?.message, payload?.error, asObject(payload?.error)?.message,
+    result?.message, payload?.message, asObject(payload?.hostPolicyOutcome)?.message, event.text]
+    .find((value): value is string => typeof value === 'string' && Boolean(value.trim())) ?? ''
+}
+
+function failureReason(message: string): string {
+  return message.trim().replace(/\s+/g, ' ').replace(/[.!。！]+$/, '').toLowerCase()
+}
+
+export function isRecordedTurnFailure(events: readonly TimelineEvent[], session: AcpSessionRecord | undefined, message: string | undefined): boolean {
+  if (!message || !session?.turnId || !session.connectionGeneration) return false
+  const reason = failureReason(message)
+  if (!reason) return false
+  const expected = JSON.stringify([projectRootKey(session.projectRoot), session.sessionId, session.connectionGeneration, session.turnId])
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]
+    if (event.kind === 'turn-done' && event.source === (session.engine ?? 'acp') && owner(event) === expected) {
+      return terminalOutcome(event) === 'failed' && failureReason(transcriptProblemMessage(event)) === reason
+    }
+  }
+  return false
+}
+
+function belongsToTerminalFailure(entry: TranscriptEntry, terminal: TimelineEvent, reason: string): boolean {
+  if (entry.item.key === terminal.id) return true
+  if (entry.item.type !== 'detail') return false
+  const event = entry.item.ev
+  return event.source === terminal.source && owner(event) === owner(terminal) && Boolean(reason) && failureReason(transcriptProblemMessage(event)) === reason
+    && (isTranscriptRetryFailure(entry) || event.kind === 'diagnostic' && isTranscriptEventIssue(event))
+}
+
+function mergeFailure(occurrences: TranscriptTurn[], terminal: TimelineEvent): void {
+  let destination = occurrences.at(-1)
+  if (!destination) return
+  const failure: TranscriptEntry[] = []
+  const reason = failureReason(transcriptProblemMessage(terminal))
+  for (const turn of occurrences) {
+    const grouped = turn.entries.filter(entry => belongsToTerminalFailure(entry, terminal, reason))
+    if (!grouped.length) continue
+    failure.push(...grouped)
+    const keys = new Set(grouped.map(entry => entry.item.key))
+    if (keys.has(terminal.id)) destination = turn
+    turn.entries = turn.entries.filter(entry => entry.item.key === terminal.id || !keys.has(entry.item.key))
+    turn.process = turn.process.filter(entry => !keys.has(entry.item.key))
+    turn.delivery = turn.delivery.filter(entry => !keys.has(entry.item.key))
+  }
+  if (!failure.some(entry => entry.item.key === terminal.id)) {
+    const entry: TranscriptEntry = { item: { type: 'detail', key: terminal.id, ev: terminal }, presentation: 'process' }
+    failure.push(entry)
+    destination.entries.push(entry)
+  }
+  destination.failure = failure
 }
 
 /** Saved protocol facts remain inspectable, but never become a process checklist. */
@@ -157,7 +225,7 @@ export function isTranscriptTurnActive(turn: TranscriptTurn, session: AcpSession
 export function segmentTranscriptEntries(entries: readonly TranscriptEntry[]): TranscriptPart[] {
   const parts: TranscriptPart[] = []
   for (const entry of entries) {
-    if (!['tool', 'thought', 'knowledge-operation'].includes(entry.item.type) || isArtifact(entry.item)) {
+    if (!['tool', 'thought', 'knowledge-operation'].includes(entry.item.type) || isArtifact(entry.item) || hasIssue(entry.item)) {
       parts.push({ type: 'entry', key: entry.item.key, entry })
       continue
     }
@@ -237,6 +305,7 @@ export function projectConversationTranscript(items: readonly RenderItem[], even
   }
   const nodes: TranscriptNode[] = []
   const occurrences = new Map<string, number>()
+  const turnOccurrences = new Map<string, TranscriptTurn[]>()
   let current: { scope: string; turn: TranscriptTurn } | undefined
   items.forEach((item, index) => {
     const scope = scopes[index]
@@ -265,12 +334,16 @@ export function projectConversationTranscript(items: readonly RenderItem[], even
       const turn: TranscriptTurn = {
         type: 'turn', key: `transcript:${scope}:${occurrence}`,
         owner: { source: runtime?.source ?? event.source, projectRoot: event.projectRoot, sessionId: event.sessionId, connectionGeneration: event.connectionGeneration, turnId: event.turnId },
-        process: [], delivery: [], startedAt, terminalId: terminal?.id, outcome, durationMs, issues: 0
+        entries: [], process: [], delivery: [], startedAt, terminalId: terminal?.id, outcome, durationMs, issues: 0
       }
+      const turns = turnOccurrences.get(scope) ?? []
+      turns.push(turn)
+      turnOccurrences.set(scope, turns)
       nodes.push(turn); current = { scope, turn }
     }
     if (!current || item.type === 'user') return
     const turn = current.turn
+    turn.entries.push(entry)
     turn.lastItemKey = item.key
     if (entry.presentation === 'final' || turn.terminalId && isArtifact(item)) turn.delivery.push(entry)
     else turn.process.push(entry)
@@ -278,9 +351,14 @@ export function projectConversationTranscript(items: readonly RenderItem[], even
   })
   for (const node of nodes) {
     if (node.type !== 'turn') continue
+    node.entries = readableTranscriptEntries(node.entries, events)
     node.process = readableTranscriptEntries(node.process, events)
     if (node.outcome === 'completed') node.issues = 0
     node.delivery = [...node.delivery.filter(entry => entry.presentation === 'final'), ...node.delivery.filter(entry => entry.presentation !== 'final')]
   }
-  return nodes
+  for (const [scope, turns] of turnOccurrences) {
+    const terminal = terminals.get(scope)
+    if (terminal && terminalOutcome(terminal) === 'failed') mergeFailure(turns, terminal)
+  }
+  return nodes.filter(node => node.type === 'row' || node.outcome !== 'failed' || node.entries.length || node.failure)
 }

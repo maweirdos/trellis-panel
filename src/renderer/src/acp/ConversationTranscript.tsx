@@ -1,13 +1,16 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useState, type JSX } from 'react'
-import { ChevronRight, CircleAlert, Clock3, Loader2, ShieldQuestion, Sparkles, Wrench } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight, Clock3, ShieldQuestion, Sparkles, Wrench } from 'lucide-react'
 import { clsx } from 'clsx'
 import { EventRow, type EventRowProps } from './TranscriptRow'
 import { TranscriptProcessLeaf } from './TranscriptProcessLeaf'
-import { formatDuration, type RenderItem } from './timeline'
-import { isTranscriptTurnActive, projectConversationTranscript, segmentTranscriptEntries, type TranscriptEntry, type TranscriptOwner, type TranscriptSegment, type TranscriptTurn } from './conversation-transcript'
+import { asObject, formatDuration, type RenderItem } from './timeline'
+import { isTranscriptEventIssue, isTranscriptRetryFailure, isTranscriptTurnActive, projectConversationTranscript, sameTranscriptOwner, segmentTranscriptEntries, transcriptProblemMessage, type TranscriptEntry, type TranscriptOwner, type TranscriptSegment, type TranscriptTurn } from './conversation-transcript'
 import { InteractionScope, useInteractionActive } from '../utils/interaction-scope'
 import type { CurrentTurnActivity } from './current-turn-activity'
 import { projectRootKey } from '../my/navigation'
+import { AgentActivityMark } from './AgentActivityMark'
+import { FeedbackNotice } from '../my/FeedbackNotice'
+import { describeConnectionError } from './ConnectionNotice'
 
 export interface TranscriptActiveSegment {
   owner: TranscriptOwner
@@ -18,10 +21,13 @@ export interface TranscriptActiveSegment {
 
 export type ConversationTranscriptProps = Omit<EventRowProps, 'item' | 'messagePresentation' | 'compact'> & {
   items: readonly RenderItem[]
+  renderTurnArtifacts?: (owner: TranscriptOwner) => ReactNode
   /** The same activity used by CurrentTurnStatus; no second activity projector. */
   currentActivity?: CurrentTurnActivity | null
   /** Only an actual owned tail segment can take over tool/thought/knowledge feedback. */
   onActiveSegmentChange?: (segment: TranscriptActiveSegment | null) => void
+  /** Host-owned conversion receipts hide only their exact internal turn. */
+  suppressedTaskTurns?: readonly TranscriptOwner[]
 }
 
 /** A timestamp must come from this turn's recorded start, never its first loaded token. */
@@ -51,25 +57,38 @@ function segmentLabel(segment: TranscriptSegment): string {
   return thoughts ? '思考' : '处理记录'
 }
 
-function isRetryFailure(entry: TranscriptEntry): boolean {
-  if (entry.item.type !== 'detail' || entry.item.ev.payload?.tag !== 'pi_retry') return false
-  const payload = entry.item.ev.payload
-  return payload.phase === 'failed' || payload.status === 'failed' || Boolean(payload.error) || payload.success === false
-}
-
 function logKind(entry: TranscriptEntry, pendingPerm: EventRowProps['pendingPerm']): 'permission' | 'retry' | undefined {
   const item = entry.item
   if (item.type === 'perm' && !pendingPerm[String(item.ev.payload?.requestId ?? '')]) return 'permission'
-  if (item.type === 'detail' && item.ev.payload?.tag === 'pi_retry' && !isRetryFailure(entry)) return 'retry'
+  if (item.type === 'detail' && item.ev.payload?.tag === 'pi_retry' && !isTranscriptRetryFailure(entry)) return 'retry'
   return undefined
 }
 
 function RetryFailure({ entry }: { entry: TranscriptEntry }): JSX.Element | null {
-  if (entry.item.type !== 'detail') return null
-  const event = entry.item.ev
-  const error = event.payload?.error
-  const reason = typeof error === 'string' ? error : typeof error === 'object' && error && 'message' in error && typeof error.message === 'string' ? error.message : event.text
-  return <p data-acp-item={entry.item.key} className="acp-tool-failure my-scrollbar" role="alert" tabIndex={0}>重试失败：{reason || '执行引擎未返回进一步原因。'}</p>
+  const reason = diagnosticMessage(entry)
+  return <div data-acp-item={entry.item.key}><FeedbackNotice title="重试失败" diagnostic={reason} variant="inline" announcement={false} /></div>
+}
+
+function diagnosticMessage(entry: TranscriptEntry): string {
+  return entry.item.type === 'detail' ? transcriptProblemMessage(entry.item.ev) : ''
+}
+
+function TurnFailure({ turn, entries, current, children }: { turn: TranscriptTurn; entries: readonly TranscriptEntry[]; current: boolean; children: ReactNode }): JSX.Element {
+  const terminal = entries.find(entry => entry.item.key === turn.terminalId)
+  const message = terminal ? diagnosticMessage(terminal) : ''
+  const description = message && describeConnectionError(message)
+  const diagnostic = entries.map(entry => [
+    `事件：${entry.item.key}`,
+    entry.item.type === 'detail' ? `来源：${entry.item.ev.source}` : `类型：${entry.item.type}`,
+    diagnosticMessage(entry) || '执行引擎未返回进一步原因。'
+  ].join('\n')).join('\n\n')
+  return <div data-acp-item={turn.terminalId}><FeedbackNotice
+    title={description && description.title !== '本次请求未完成' ? description.title : '本轮处理失败'}
+    diagnostic={diagnostic}
+    details={children}
+    variant="inline"
+    announcement={current}
+  /></div>
 }
 
 function LogGroup({ entries, kind, render }: { entries: TranscriptEntry[]; kind: 'permission' | 'retry'; render: (entry: TranscriptEntry) => JSX.Element }): JSX.Element {
@@ -94,7 +113,7 @@ function ProcessSegment({ segment, current, activity, render }: {
   const tools = segment.entries.some(entry => entry.item.type === 'tool' || entry.item.type === 'knowledge-operation')
   return <section className="acp-process-segment" data-acp-segment={segment.key} data-state={current ? 'current' : 'past'}>
     <button type="button" className="acp-turn-process-toggle" aria-expanded={expanded} aria-controls={regionId} onClick={() => setChoice({ epoch, expanded: !expanded })}>
-      {activity?.spinning ? <Loader2 className="acp-progress-spinner" aria-hidden="true" /> : tools ? <Wrench aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+      {activity?.spinning ? <AgentActivityMark phase={activity.phase} /> : tools ? <Wrench aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
       <span title={activity?.detail}>{label}</span><ChevronRight className={clsx('acp-turn-process-chevron', expanded && 'is-open')} aria-hidden="true" />
     </button>
     {activity && <span role="status" aria-label="当前回合状态" aria-live="polite" className="sr-only">{activity.label}</span>}
@@ -104,26 +123,36 @@ function ProcessSegment({ segment, current, activity, render }: {
   </section>
 }
 
-function ProcessTurn({ turn, activeSegment, ...props }: Omit<EventRowProps, 'item'> & { turn: TranscriptTurn; activeSegment: TranscriptActiveSegment | null }): JSX.Element {
+function ProcessTurn({ turn, activeSegment, artifacts, ...props }: Omit<EventRowProps, 'item'> & { turn: TranscriptTurn; activeSegment: TranscriptActiveSegment | null; artifacts?: ReactNode }): JSX.Element {
   const regionId = useId()
   const [choice, setChoice] = useState<{ terminalId?: string; expanded: boolean } | null>(null)
   const ended = Boolean(turn.terminalId)
   const running = isTranscriptTurnActive(turn, props.session)
+  const interactive = useInteractionActive()
+  const ranHere = useRef(false)
+  useLayoutEffect(() => { if (running && interactive) ranHere.current = true }, [interactive, running])
   const expanded = choice && choice.terminalId === turn.terminalId ? choice.expanded : !ended
   const pendingPermission = (entry: TranscriptEntry): boolean => entry.item.type === 'perm' && Boolean(props.pendingPerm[String(entry.item.ev.payload?.requestId ?? '')])
   const process = turn.process
-  const permissions = turn.process.filter(pendingPermission)
-  const visibleFailure = (entry: TranscriptEntry): boolean => entry.item.type === 'tool' && entry.item.tool.status === 'failed' || entry.item.type === 'detail' && entry.item.ev.kind === 'turn-done' && turn.outcome === 'failed' || isRetryFailure(entry)
-  const failures = process.filter(visibleFailure)
-  const details = process.filter(entry => !pendingPermission(entry) && !visibleFailure(entry))
-  const parts = ended ? details.map(entry => ({ type: 'entry' as const, key: entry.item.key, entry })) : segmentTranscriptEntries(details)
+  const visibleIssue = (entry: TranscriptEntry): boolean => entry.item.type === 'tool' && entry.item.tool.status === 'failed'
+    || entry.item.type === 'detail' && (entry.item.ev.kind === 'turn-done' || isTranscriptEventIssue(entry.item.ev)) || isTranscriptRetryFailure(entry)
+  const deliveryKeys = new Set(turn.delivery.map(entry => entry.item.key))
+  const persistent = (entry: TranscriptEntry): boolean => visibleIssue(entry) || pendingPermission(entry) || deliveryKeys.has(entry.item.key)
+  const details = turn.entries.filter(entry => !persistent(entry))
+  const parts = ended ? details.map(entry => ({ type: 'entry' as const, key: entry.item.key, entry })) : segmentTranscriptEntries(turn.entries)
   const hasDetails = details.length > 0
-  const label = turn.durationMs !== undefined ? `用时 ${formatDuration(turn.durationMs)}` : '处理过程'
-  const problem = turn.outcome === 'failed'
-  const status = problem ? '处理失败' : turn.outcome === 'cancelled' ? '已中止' : undefined
+  const failed = turn.outcome === 'failed'
+  const hasIndependentPersistent = turn.failure && turn.entries.some(entry => entry.item.key !== turn.terminalId && persistent(entry))
+  const foldProcess = Boolean(turn.failure && hasDetails && !hasIndependentPersistent)
+  const durationLabel = turn.durationMs !== undefined ? `用时 ${formatDuration(turn.durationMs)}` : undefined
+  const label = !failed && durationLabel ? durationLabel : '处理过程'
+  const status = turn.outcome === 'cancelled' ? '已中止' : undefined
+  const showProcess = failed
+    ? hasDetails && !foldProcess
+    : process.length > 0 || (!ended && turn.entries.length > 0) || durationLabel || status || (running && turn.startedAt !== undefined)
   const render = (entry: TranscriptEntry, thoughtBody = false): JSX.Element => <TranscriptProcessLeaf
     {...props} key={entry.item.key} item={entry.item}
-    suppressWorkingIndicator thoughtBody={thoughtBody} messagePresentation={entry.presentation}
+    suppressWorkingIndicator thoughtBody={thoughtBody} messagePresentation={entry.presentation} announceFailure={running && interactive}
   />
   const renderedParts: JSX.Element[] = []
   for (let index = 0; index < parts.length; index++) {
@@ -144,25 +173,37 @@ function ProcessTurn({ turn, activeSegment, ...props }: Omit<EventRowProps, 'ite
     renderedParts.push(<LogGroup key={part.key} entries={group} kind={kind} render={render} />)
   }
   return <section className={clsx('acp-transcript-turn', ended && 'is-ended')} data-acp-turn={turn.key}>
-    {(process.length > 0 || turn.durationMs !== undefined || status || running && turn.startedAt !== undefined) && <div className={clsx('acp-turn-process', problem && 'has-issues')}>
+    {showProcess && <div className="acp-turn-process">
       {running && turn.startedAt !== undefined && <div className="acp-turn-elapsed"><Clock3 aria-hidden="true" /><RunningElapsed startedAt={turn.startedAt} /></div>}
       {(!running || ended) && <button type="button" className="acp-turn-process-toggle" disabled={!hasDetails} aria-label={`${label}${status ? ` · ${status}` : ''}`} aria-expanded={hasDetails ? expanded : undefined} aria-controls={hasDetails ? regionId : undefined} onClick={() => setChoice({ terminalId: turn.terminalId, expanded: !expanded })}>
-        {problem ? <CircleAlert aria-hidden="true" /> : <Clock3 aria-hidden="true" />}
+        <Clock3 aria-hidden="true" />
         <span>{label}</span>{status && <span className="acp-turn-process-outcome">{status}</span>}{hasDetails && <ChevronRight className={clsx('acp-turn-process-chevron', expanded && 'is-open')} aria-hidden="true" />}
       </button>}
-      <div id={regionId} className="acp-turn-process-body my-scrollbar" hidden={!expanded}><InteractionScope active={expanded}>{renderedParts}</InteractionScope></div>
+      <div id={regionId} className="acp-turn-process-body my-scrollbar" hidden={!expanded}><InteractionScope active={expanded}>{expanded && renderedParts}</InteractionScope></div>
     </div>}
-    {failures.map(entry => isRetryFailure(entry) ? <RetryFailure key={entry.item.key} entry={entry} /> : render(entry))}
-    {permissions.map(entry => render(entry))}
-    {turn.delivery.length > 0 && <div className="acp-turn-delivery">{turn.delivery.map(entry => render(entry))}</div>}
+    {ended && <div className="acp-turn-delivery">
+      {turn.entries.filter(persistent).map(entry => {
+        if (turn.failure && entry.item.key === turn.terminalId) {
+          return <TurnFailure key={entry.item.key} turn={turn} entries={turn.failure} current={interactive && ranHere.current}>
+            {durationLabel && <p className="acp-turn-duration-detail">{durationLabel}</p>}
+            {foldProcess && renderedParts}
+          </TurnFailure>
+        }
+        return isTranscriptRetryFailure(entry) ? <RetryFailure key={entry.item.key} entry={entry} /> : render(entry)
+      })}
+    </div>}
+    {artifacts}
   </section>
 }
 
 /** The host keeps admission/wait/retry/permission/cancel feedback when no segment owns it. */
-export function ConversationTranscript({ items, currentActivity, onActiveSegmentChange, ...props }: ConversationTranscriptProps): JSX.Element {
+export function ConversationTranscript({ items, currentActivity, onActiveSegmentChange, renderTurnArtifacts, suppressedTaskTurns, ...props }: ConversationTranscriptProps): JSX.Element {
   const interactive = useInteractionActive()
   const nodes = useMemo(() => projectConversationTranscript(items, props.events ?? []), [items, props.events])
-  const tail = nodes.at(-1)
+  const visibleNodes = useMemo(() => suppressedTaskTurns?.length
+    ? nodes.filter(node => node.type !== 'turn' || !suppressedTaskTurns.some(owner => sameTranscriptOwner(owner, node.owner)))
+    : nodes, [nodes, suppressedTaskTurns])
+  const tail = visibleNodes.at(-1)
   const lastPart = tail?.type === 'turn' ? segmentTranscriptEntries(tail.process).at(-1) : undefined
   const lastItem = lastPart?.type === 'segment' ? lastPart.entries.at(-1)?.item : undefined
   // A new thinking-start without a body belongs to the host, not an old thought.
@@ -186,10 +227,10 @@ export function ConversationTranscript({ items, currentActivity, onActiveSegment
     ? <EventRow {...props} key={entry.item.key} item={entry.item} messagePresentation={entry.presentation} />
     : <TranscriptProcessLeaf {...props} key={entry.item.key} item={entry.item} messagePresentation={entry.presentation} />
   const rendered: JSX.Element[] = []
-  for (let index = 0; index < nodes.length; index++) {
-    const node = nodes[index]
-    if (node.type === 'turn') { rendered.push(<ProcessTurn {...props} key={node.key} turn={node} activeSegment={activeSegment} />); continue }
-    if (isRetryFailure(node.entry)) { rendered.push(<RetryFailure key={node.key} entry={node.entry} />); continue }
+  for (let index = 0; index < visibleNodes.length; index++) {
+    const node = visibleNodes[index]
+    if (node.type === 'turn') { const later = visibleNodes.slice(index + 1).some(next => next.type === 'turn' && sameTranscriptOwner(next.owner, node.owner)); rendered.push(<ProcessTurn {...props} key={node.key} turn={node} activeSegment={activeSegment} artifacts={!later ? renderTurnArtifacts?.(node.owner) : undefined} />); continue }
+    if (isTranscriptRetryFailure(node.entry)) { rendered.push(<RetryFailure key={node.key} entry={node.entry} />); continue }
     const kind = logKind(node.entry, props.pendingPerm)
     if (!kind || !('ev' in node.entry.item)) { rendered.push(renderRow(node.entry)); continue }
     const event = node.entry.item.ev

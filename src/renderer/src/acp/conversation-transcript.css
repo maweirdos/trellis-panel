@@ -5,7 +5,8 @@
   background: var(--my-bg-user-message);
   color: var(--my-txt-chat);
 }
-.acp-user-message .acp-message-actions { align-self: flex-end; margin-top: 0; }
+.acp-user-message { position: relative; }
+.acp-user-message .acp-message-actions { position: absolute; top: 100%; right: 0; margin-top: 0; }
 .acp-user-message .acp-message-copy-btn { opacity: 0; }
 .acp-user-message:hover .acp-message-copy-btn,
 .acp-user-message:focus-within .acp-message-copy-btn,
@@ -13,7 +14,7 @@
 .acp-user-message .acp-message-copy-btn,
 .acp-transcript-turn .acp-message-copy-btn { border-radius: var(--my-control-radius); }
 .acp-message-copy-btn:focus-visible { outline: var(--my-space-2) solid var(--my-border-accent-strong); outline-offset: var(--my-space-2); }
-.acp-transcript-turn { min-width: 0; margin-block: var(--my-space-8) var(--my-space-16); }
+.acp-transcript-turn { min-width: 0; margin-block: var(--my-space-6) var(--my-space-12); }
 .acp-turn-process { min-width: 0; }
 .acp-turn-elapsed {
   display: flex;
@@ -43,12 +44,10 @@
 .acp-turn-process-toggle:hover { color: var(--my-txt-primary); background: var(--my-bg-layer-transparent-hover); }
 .acp-turn-process-toggle:disabled { color: var(--my-txt-tertiary); background: transparent; cursor: default; }
 .acp-turn-process-toggle:focus-visible { outline: var(--my-space-2) solid var(--my-border-accent-subtle); outline-offset: var(--my-space-2); }
-.acp-turn-process-toggle>svg:first-child { box-sizing: content-box; width: var(--my-space-14); height: var(--my-space-14); padding-inline: var(--my-space-1); flex: 0 0 var(--my-space-14); stroke-width: 1.6; }
+.acp-turn-process-toggle>svg:first-child { box-sizing: border-box; width: var(--my-space-20); height: var(--my-space-20); padding: var(--my-space-3); flex: 0 0 var(--my-space-20); stroke-width: 1.6; }
 .acp-turn-process-chevron { width: var(--my-space-12); height: var(--my-space-12); flex: 0 0 var(--my-space-12); stroke-width: 1.6; transition: transform var(--my-motion-fast) var(--my-ease-out); }
 .acp-turn-process-chevron.is-open { transform: rotate(90deg); }
 .acp-turn-process-outcome { color: var(--my-txt-secondary); }
-.acp-turn-process.has-issues .acp-turn-process-toggle>svg:first-child,
-.acp-turn-process.has-issues .acp-turn-process-outcome { color: var(--my-txt-danger-primary); }
 .acp-turn-process-body { min-width: 0; padding-block: var(--my-space-4) var(--my-space-8); }
 .acp-turn-process-body[hidden] { display: none; }
 .acp-transcript-turn.is-ended .acp-turn-process-body {
@@ -92,3 +91,4 @@
 .acp-log-group[open] > summary .acp-turn-process-chevron { transform: rotate(90deg); }
 .acp-historical-permission, .acp-retry-detail { margin: var(--my-space-4) 0; color: var(--my-txt-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .acp-tool-failure { max-height: 12rem; overflow: auto; margin: var(--my-space-4) 0 var(--my-space-8); color: var(--my-txt-danger-primary); font-size: var(--my-text-activity); white-space: pre-wrap; overflow-wrap: anywhere; }
+.acp-turn-duration-detail { margin: 0 0 var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-activity); line-height: var(--my-line-document); font-variant-numeric: tabular-nums; }

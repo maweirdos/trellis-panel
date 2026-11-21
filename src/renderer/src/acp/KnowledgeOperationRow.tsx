@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
-import { ChevronRight, CircleAlert, FileText, Loader2, Search, Send, Workflow, X } from 'lucide-react'
+import { ChevronRight, CircleAlert, FileText, Search, Send, Workflow, X } from 'lucide-react'
+import { AgentActivityMark } from './AgentActivityMark'
 import { Button, Modal } from '../my/ui'
 import { SavedArtifactModal } from './SavedArtifactModal'
 import { KnowledgeSourceView } from '../knowledge/KnowledgeSourceView'
@@ -106,7 +107,7 @@ export function KnowledgeOperationRow({ item, session, onOpenTask, suppressWorki
         setExpanded(!expanded)
         if (!expanded && sourceIds.length && !sources.length && !loading) void loadSources()
       }}>
-        {!primaryDocument && (operation.phase === 'running' && live ? <Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /> : <Icon size={14} aria-hidden="true" />)}
+        {!primaryDocument && (operation.phase === 'running' && live ? <AgentActivityMark phase={operation.kind === 'search' ? 'knowledge' : 'processing'} active={interactive} /> : <Icon size={14} aria-hidden="true" />)}
         <span className={primaryDocument ? 'sr-only' : undefined}>{label}</span>
         {operation.query && <span className="acp-knowledge-operation-query" title={operation.query}>{operation.query}</span>}
         {hasDetails && <ChevronRight size={12} className={expanded ? 'is-open' : ''} aria-hidden="true" />}
