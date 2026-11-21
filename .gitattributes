@@ -12,3 +12,6 @@ resources/licenses/tool-brands/** -text
 # Unified-diff context prefixes a tab-indented source line with a space.
 patches/*.patch whitespace=-space-before-tab
 resources/collaboration/** text eol=lf
+resources/brand/*.svg text eol=lf
+src/renderer/public/favicon.svg text eol=lf
+packages/team-web/public/favicon.svg text eol=lf
