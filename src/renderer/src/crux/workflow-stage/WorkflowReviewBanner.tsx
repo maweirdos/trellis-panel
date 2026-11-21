@@ -4,16 +4,18 @@ import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { Button } from '../../my/ui'
 import type { TaskMaterialReviewState } from '../task-materials/TaskMaterials'
 
-export function WorkflowReviewBanner({ state, snapshot, task, actorId, writable, onOpen, onInputs }: {
+export function WorkflowReviewBanner({ state, snapshot, task, actorId, writable, showEmpty = true, onOpen, onInputs }: {
   state: TaskMaterialReviewState
   snapshot: CruxSnapshot
   task: CruxTask
   actorId: string | null
   writable: boolean
+  showEmpty?: boolean
   onOpen(): void
   onInputs?(): void
-}): JSX.Element {
+}): JSX.Element | null {
   const document = state.document
+  if (!showEmpty && state.state === 'ready' && !document && !state.incomplete) return null
   const review = document?.latestSubmission ?? document?.approved
   const version = state.versionNumber === undefined ? 'PRD · 固定版本' : `PRD v${state.versionNumber}`
   const space = snapshot.spaces.find((item) => item.id === task.spaceId)

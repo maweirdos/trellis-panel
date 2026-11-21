@@ -15,9 +15,10 @@ interface TaskPropertiesProps {
   actorId?: string
   source: TaskSourceOwner
   mutate: TaskMutation
+  onOpenTask?(taskId: string): void
 }
 
-export function TaskProperties({ snapshot, task, disabled, actorId, source, mutate }: TaskPropertiesProps): JSX.Element {
+export function TaskProperties({ snapshot, task, disabled, actorId, source, mutate, onOpenTask }: TaskPropertiesProps): JSX.Element {
   const [draft, setDraft] = useState<CruxTaskPatchInput>({})
   const draftRef = useRef(draft)
   const save = async (attempt: CruxTaskPatchInput): Promise<void> => {
@@ -72,7 +73,7 @@ export function TaskProperties({ snapshot, task, disabled, actorId, source, muta
     </section>
     <Field label="专项"><Select disabled={disabled} value={(draft.projectId === undefined ? task.projectId : draft.projectId) ?? ''} onChange={(value) => change({ projectId: value || null })} options={[{ value: '', label: '无专项' }, ...snapshot.projects.filter((project) => project.spaceId === task.spaceId && (project.status === 'active' || project.id === task.projectId)).map((project) => ({ value: project.id, label: project.name }))]} /></Field>
     <Field label="父任务"><Select disabled={disabled} value={parentId ?? ''} onChange={(value) => change({ parentTaskId: value || null })} options={[{ value: '', label: '无父任务' }, ...parents.map((candidate) => ({ value: candidate.id, label: `${candidate.id} · ${candidate.title}` }))]} /></Field>
-    {parent && <Button size="sm" variant="ghost" className="justify-start" onClick={() => { if (source.owns()) useCrux.getState().openTask(parent.id) }}>打开父任务 {parent.id}</Button>}
+    {parent && <Button size="sm" variant="ghost" className="justify-start" onClick={() => { if (source.owns()) onOpenTask ? onOpenTask(parent.id) : useCrux.getState().openTask(parent.id) }}>打开父任务 {parent.id}</Button>}
     {hasDraft && <div className="flex flex-wrap gap-2"><Button size="sm" disabled={disabled} onClick={() => void save(draftRef.current)}>重试保存</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={() => { draftRef.current = {}; setDraft({}) }}>还原属性</Button></div>}
     <dl className="border-t border-my-line pt-3 text-my-xs text-my-tertiary"><dt>创建人</dt><dd className="mt-1 text-my-secondary">{memberOf(snapshot, task.creatorId)?.name ?? '—'}</dd></dl>
   </div>

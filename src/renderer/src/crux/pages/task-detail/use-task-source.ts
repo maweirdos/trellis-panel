@@ -5,7 +5,8 @@ import { hasIpc } from '../../../api'
 import { useInteractionGuard, useInteractionSignal } from '../../../utils/interaction-scope'
 import { useCrux } from '../../store'
 
-export function taskActorId(snapshot: CruxSnapshot, context: CruxWorkspaceContext): string | undefined {
+export function taskActorId(snapshot: CruxSnapshot | null, context: CruxWorkspaceContext): string | undefined {
+  if (!snapshot) return undefined
   return context.actorId ?? (context.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id : undefined)
 }
 
@@ -45,6 +46,8 @@ interface TaskSourceScope {
   spaceId: string
   taskId?: string
   creating?: boolean
+  /** An embedded post owns its taskId without selecting the global task drawer. */
+  embedded?: boolean
 }
 
 export interface TaskSourceOwner {
@@ -56,7 +59,7 @@ export interface TaskSourceOwner {
 }
 
 /** Invalidate on the actual transition, including a batched A → B → A. */
-export function useTaskSource({ spaceId, taskId, creating }: TaskSourceScope): TaskSourceOwner {
+export function useTaskSource({ spaceId, taskId, creating, embedded }: TaskSourceScope): TaskSourceOwner {
   const [available, setAvailable] = useState(true)
   const generation = useRef(0)
   const mounted = useRef(false)
@@ -70,6 +73,7 @@ export function useTaskSource({ spaceId, taskId, creating }: TaskSourceScope): T
       key: state.snapshot ? taskSourceKey(state.snapshot, state.workspaceContext) : '',
       currentSpaceId: state.currentSpaceId,
       openTaskId: state.openTaskId,
+      embedded: Boolean(embedded),
       module: state.module,
       globalCreation: creating && state.createTaskOpen,
       creationContext: JSON.stringify(state.createTaskContext)
@@ -79,6 +83,7 @@ export function useTaskSource({ spaceId, taskId, creating }: TaskSourceScope): T
     const state = useCrux.getState()
     return Boolean(state.snapshot && taskSourceKey(state.snapshot, state.workspaceContext) === origin.key &&
       state.currentSpaceId === origin.currentSpaceId && state.openTaskId === origin.openTaskId && state.module === origin.module &&
+      (!origin.embedded || state.openTaskId === null || state.openTaskId === taskId) &&
       (!origin.globalCreation || state.createTaskOpen && JSON.stringify(state.createTaskContext) === origin.creationContext) &&
       canReadTaskSpace(state.snapshot, state.workspaceContext, spaceId) &&
       (!taskId || state.snapshot.tasks.some((task) => task.id === taskId && task.spaceId === spaceId)))

@@ -1,0 +1,14 @@
+.task-output-review-board {
+  display: inline-flex;
+  min-height: var(--my-space-20);
+  align-items: center;
+  gap: var(--my-space-4);
+  border-radius: var(--my-radius-base);
+  padding: 0 var(--my-space-6);
+  font-size: var(--my-text-2xs);
+  line-height: 1;
+  color: var(--my-txt-secondary);
+  background: var(--my-bg-layer-1);
+}
+.task-output-review-board[data-state='awaiting_review'] { color: var(--my-txt-warning-primary); background: var(--my-bg-warning-subtle); }
+.task-output-review-board[data-state='confirmed'] { color: var(--my-txt-success-primary); background: var(--my-bg-success-subtle); }
