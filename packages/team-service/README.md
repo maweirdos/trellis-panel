@@ -33,7 +33,8 @@ deployment process; it does not silently load or save a `.env` file.
 Local accounts work without OIDC configuration. `TEAM_PUBLIC_ORIGIN` defaults to
 `http://127.0.0.1:5441`. `TEAM_DEPLOYMENT_MODE=local` enables self-registration by
 default only on a loopback origin. Each new account is ordinary and can create
-its own team as owner. Passwords require at least ten characters and use separate
+its own team as owner. Any nonempty password up to 256 UTF-16 code units is accepted.
+The service hashes passwords using separate
 32-byte salts with scrypt N=32768, r=8, p=1 and a 64-byte derived key. Login routes
 limit attempts, require an Origin-bound CSRF challenge and return generic
 credential failures. Passwords are never included in identity replies or command

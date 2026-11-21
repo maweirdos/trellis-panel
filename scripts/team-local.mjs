@@ -120,11 +120,17 @@ async function main() {
   await assertAvailablePort(env.TEAM_HOST, Number(env.TEAM_PORT))
   await buildTeamPackages({ reuse: args.includes('--no-build') })
   const { parseTeamConfig, teamConfigFromEnvironment } = await import(pathToFileURL(join(repositoryRoot, 'packages/team-service/dist/index.mjs')).href)
-  parseTeamConfig(teamConfigFromEnvironment(env))
+  const config = parseTeamConfig(teamConfigFromEnvironment(env))
   if (!existsSync(join(env.TEAM_WEB_DIR, 'index.html'))) throw Error('TEAM_WEB_DIR must contain the compiled Web index.html.')
   await assertAvailablePort(env.TEAM_HOST, Number(env.TEAM_PORT))
   Object.assign(process.env, await provisionLocalContentKey(env, externalDataDirectory))
-  console.log(`[team] Starting ${env.TEAM_PUBLIC_ORIGIN}\n[team] Data: ${env.TEAM_DATA_DIR}\n[team] Web: ${env.TEAM_WEB_DIR}\n[team] Press Ctrl+C to stop. Register your own account in the Web sign-in page.`)
+  console.log(`[team] Starting ${env.TEAM_PUBLIC_ORIGIN}`)
+  console.log(`[team] Data: ${env.TEAM_DATA_DIR}`)
+  console.log(`[team] Web: ${env.TEAM_WEB_DIR}`)
+  console.log(config.allowSelfRegistration
+    ? '[team] 在 Crux 桌面端点左下角头像 → 登录 / 注册。也可以使用网页版。'
+    : '[team] 此服务未开放注册。已有账号可在 Crux 桌面端或网页版登录。')
+  console.log('[team] Press Ctrl+C to stop.')
   // The actual Node CLI owns its SQLite lock and SIGINT/SIGTERM shutdown in this process.
   // Importing avoids an orphaned child service when a Windows terminal is interrupted.
   await import(pathToFileURL(join(repositoryRoot, 'packages/team-service/dist/cli.mjs')).href)

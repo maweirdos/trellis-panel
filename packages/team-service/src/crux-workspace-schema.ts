@@ -23,6 +23,16 @@ CREATE TRIGGER IF NOT EXISTS crux_workspace_person_update AFTER UPDATE OF active
 END;
 `
 
+export const TEAM_CRUX_WORKSPACE_LEGACY_TRIGGERS = [
+  'hifox_workspace_project_member_insert',
+  'hifox_workspace_project_member_update',
+  'hifox_workspace_project_member_delete',
+  'hifox_workspace_team_member_insert',
+  'hifox_workspace_team_member_update',
+  'hifox_workspace_team_member_delete',
+  'hifox_workspace_person_update',
+] as const
+
 export const TEAM_CRUX_WORKSPACE_SQL = `
 CREATE TABLE crux_workspaces(projectId TEXT PRIMARY KEY REFERENCES projects(projectId),revision INTEGER NOT NULL CHECK(revision>=0),snapshotJson TEXT NOT NULL,updatedAt INTEGER NOT NULL);
 CREATE TABLE crux_inbox_preferences(projectId TEXT NOT NULL REFERENCES projects(projectId),userId TEXT NOT NULL REFERENCES people(userId),inboxId TEXT NOT NULL,read INTEGER NOT NULL CHECK(read IN (0,1)),cleared INTEGER NOT NULL CHECK(cleared IN (0,1)),snoozedUntil TEXT,PRIMARY KEY(projectId,userId,inboxId));

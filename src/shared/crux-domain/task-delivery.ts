@@ -6,7 +6,7 @@ import {
   type TaskDeliveryInput, type TaskDeliveryIssueDecisionInput, type TaskDeliveryIssueInput, type TaskDeliveryRoles,
   type TaskDeliveryState, type TaskMaterialReference, type TaskTestRun, type TaskTestRunInput
 } from '../task-delivery'
-import { CruxError } from './core'
+import { CruxError } from './errors'
 import { mutate, nextId } from './store'
 
 export class TaskDeliveryError extends CruxError {

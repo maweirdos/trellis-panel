@@ -5,7 +5,7 @@ import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_TASK_PROGRESS_SQL } from './task-progress-schema'
 import { TEAM_CODE_RESOURCES_SQL } from './code-resources-schema'
-import { TEAM_TASK_MATERIALS_SQL } from './task-materials-schema'
+import { TEAM_TASK_MATERIALS_SQL, TASK_SOURCE_PARTS_SQL } from './task-materials-schema'
 import { TEAM_CONTENT_SQL } from './content-schema'
 import { TEAM_GOVERNANCE_SQL } from './governance-schema'
 import { TEAM_TASK_EXECUTIONS_SQL, TEAM_TASK_EXECUTION_BOUNDARY_SQL } from './task-executions-schema'
@@ -13,7 +13,8 @@ import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
 import { TEAM_JIRA_BUSINESS_HOOKS_SQL } from './jira-business-hooks-schema'
 import { TEAM_CUTOVERS_SQL } from './cutovers-schema'
-export const TEAM_SCHEMA_VERSION = 23
+import { TEAM_FEISHU_MEMBERS_SQL } from './integrations/feishu-member-schema'
+export const TEAM_SCHEMA_VERSION = 25
 export const TEAM_INVITATION_SPACES_SQL = `CREATE TABLE IF NOT EXISTS invitation_spaces(invitationId TEXT PRIMARY KEY REFERENCES invitations(invitationId),spaceId TEXT NOT NULL,spaceName TEXT NOT NULL,workspaceRevision INTEGER NOT NULL,workspaceEpoch TEXT NOT NULL);`
 export const TEAM_INVITATION_SPACE_IDENTITY_SQL = `
 ALTER TABLE invitation_spaces ADD COLUMN spaceCreatedAt TEXT;
@@ -93,6 +94,7 @@ ${TEAM_CREATIONS_SQL}
 ${TEAM_TASK_PROGRESS_SQL}
 ${TEAM_CODE_RESOURCES_SQL}
 ${TEAM_TASK_MATERIALS_SQL}
+${TASK_SOURCE_PARTS_SQL}
 ${TEAM_CONTENT_SQL}
 ${TEAM_GOVERNANCE_SQL}
 ${TEAM_TASK_EXECUTIONS_SQL}
@@ -101,4 +103,5 @@ ${TEAM_IMPORTS_SQL}
 ${TEAM_EXECUTION_INPUTS_SQL}
 ${TEAM_JIRA_BUSINESS_HOOKS_SQL}
 ${TEAM_CUTOVERS_SQL}
+${TEAM_FEISHU_MEMBERS_SQL}
 `

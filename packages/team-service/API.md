@@ -11,10 +11,11 @@ publisher metadata and never permission grants.
 POST `/api/integrations/jira/oauth/relay` requires an active paired desktop
 `td_` credential, no browser Origin or cookies, and
 `{connectionId,revision,baseUrl,clientId,redirectUri}` as validated by
-`src/shared/jira-auth.ts`. The Jira base must use HTTPS without credentials,
-query or fragment. The redirect must exactly equal the configured public HTTPS
-origin plus `/auth/jira/callback`. Local HTTP configuration does not enable this
-relay. Replies contain `{relayId,state,claimSecret,redirectUri,expiresAt}` inside
+`src/shared/jira-auth.ts`. The Jira base accepts HTTP(S), including ports and context paths, without
+credentials, query or fragment. The redirect must exactly equal the configured
+public HTTPS origin plus `/auth/jira/callback`. Allowing an HTTP Jira instance
+does not allow an HTTP team relay origin; desktop loopback callbacks use the
+native listener and do not create a team relay. Replies contain `{relayId,state,claimSecret,redirectUri,expiresAt}` inside
 the normal success envelope. No new deployment configuration is required.
 
 POST `/api/integrations/jira/oauth/relay/:relayId/poll` and `/cancel` accept
@@ -82,7 +83,8 @@ short-lived HttpOnly login-CSRF cookie. POST `/auth/local/register` accepts
 `{username,password,displayName,returnTo?}`; POST `/auth/local/login` accepts
 `{username,password,returnTo?}`. Both require exact Origin and the challenge in
 `X-CSRF-Token`. Usernames are case-insensitive, 3–64 ASCII letters/digits/dots/
-underscores/hyphens; passwords are 10–256 characters at registration. Registration
+underscores/hyphens. Passwords accept any combination of characters and must be
+1–256 UTF-16 code units long for both registration and login. Registration
 creates an ordinary person and session, never a platform administrator. Replies
 are `{session:TeamSession,returnTo}`; person.provider identifies local/oidc/gitlab.
 Clients that send `X-Trellis-Auth-Options-Capability: initial-task-types` receive
@@ -119,6 +121,13 @@ an excluded item. HTTP/RPC request envelope is2MiB; JSON reply bound is3MiB.
   sessions and revokes active device credentials. Re-enable requires fresh login
   and does not reactivate devices. Person response includes authorization revision.
 - GET/POST `/api/teams`; create body `{commandId,name}`.
+- POST `/api/organizations`: browser session/CSRF only; body `{commandId,name}`.
+  One command atomically creates an existing-contract team with owner membership,
+  an internal project with admin membership, and a creator-readable public Crux
+  space named `默认空间` with key `MAIN`. The stable reply is
+  `{teamId,projectId,spaceId,name}`; an identical retry returns `duplicate` with
+  the same result, while a changed body for the same command ID conflicts. Legacy
+  `/api/teams` and `/api/projects` remain unchanged.
 - GET `/api/teams/:teamId/members?cursor=&limit=`.
 - POST `/api/teams/:teamId/members`:
   `{commandId,userId,roles,active,expectedRevision}`. Team roles owner/admin/member;
@@ -291,10 +300,13 @@ This read does not execute, publish, approve, adopt or write a binding. It provi
 no grant for a later action; each later read or write must reauthorize.
 
 `POST /api/projects/:projectId/crux/commands` accepts
-`{commandId,expectedEpoch,expectedRevision,operation,input}`. Supported operation
-and input validators are `shared/crux-domain/commands.ts`; replies use
-`cruxRemoteCommandReplySchema`. Epoch/revision conflicts return409 without applying
-the draft. Actor fields come from authenticated identity, never submitted names.
+`{commandId,expectedEpoch,expectedRevision,expectedAuthorizationRevision?,operation,input}`.
+Supported operations and inputs are defined in `shared/crux-domain/commands.ts`.
+Replies use `cruxRemoteCommandReplySchema`. If supplied, the authorization
+revision must match the current revision at admission. Epoch and revision
+conflicts return HTTP 409 without applying the draft. Commands with an
+authorization revision include the affected task ID for task edits and
+transitions. Actor fields come from the authenticated identity.
 
 Local roster invitation/profile operations cannot change server identities.
 Use the authenticated account/invitation/membership APIs. People may join public
@@ -309,6 +321,39 @@ workspace revision. Inbox recipients are explicit; read/snooze/clear preferences
 are account-specific. The service runs due scheduled rules independently of open
 desktop clients and persists their date deduplication in the owned transaction.
 Runtime-bound configuration never becomes a claim of actual Agent execution.
+
+### Feishu member access
+
+The routes use the `/api/projects/:projectId/crux/feishu/` prefix.
+
+| Method and route | Authentication | Request |
+| --- | --- | --- |
+| `POST codes` | Signed-in space member | `{spaceId}` |
+| `GET bindings` | Signed-in account | `?spaceId=...` |
+| `POST bindings/:bindingId/revoke` | Signed-in account | `{spaceId}` |
+| `POST ready` | Paired device for a current space member | `{spaceId}` |
+| `POST claim` | Paired bot device | `{spaceId,identity,code}` |
+| `POST snapshot` | Original paired bot device | `{spaceId,identity,bindingId?,agentId?}` |
+| `POST commands` | Original paired bot device | `{spaceId,identity,bindingId,command}` |
+| `POST receipt` | Original paired bot device | `{spaceId,identity,bindingId,commandId}` |
+
+`identity` contains the Feishu `appId`, `tenantKey` and sender `senderOpenId`.
+The member sends the five-minute code in a direct message to the intended bot.
+The service stores a hash and consumes the code atomically with the binding.
+Only the account that issued the code can list or revoke its bindings.
+
+Each bot request checks the original device, current project and space
+membership of both accounts, and the original binding ID when supplied.
+The snapshot returns the member's identity and the selected space's task
+metadata, or the selected same-space Agent's instructions. Task writes run as
+the bound member through Crux. Commands use the original UUID and workspace
+and authorization revisions. A receipt is readable through the original
+binding while the member retains access to that space.
+
+Creation stores `feishuSource` with `chatId`, `messageId` and optional
+`threadId`. The source follows the task's read permissions. The task's
+confirmed checks use `acceptanceCriteria`. Its requirements and open
+questions use `description`.
 
 Historical `cruxCommand` receipts retain original instance/epoch/revision/time,
 but their body and actor projection use current access. They prove the old

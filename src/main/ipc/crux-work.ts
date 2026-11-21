@@ -6,6 +6,8 @@ import { CruxTaskWorkspaceService, type CruxTaskWorkspaceDependencies } from '..
 import { handle } from './registry'
 import { createTaskMaterialInputs } from '../services/crux/task-material-inputs'
 import { readTaskExecutionSource } from '../services/crux/task-execution-source'
+import { createCruxTaskMaterialsService } from '../services/crux/task-materials'
+import { readAgentAttachments } from '../services/crux/post-attachments'
 
 export type CruxWorkIpcDependencies = Pick<CruxTaskWorkspaceDependencies, 'getProjectRoot' | 'getProjectGeneration' | 'creationReferences' | 'creationFiles' | 'taskCodeResource'> & { getMain(): BrowserWindow | null }
 
@@ -15,7 +17,9 @@ export function registerCruxWorkIpc(deps: CruxWorkIpcDependencies): CruxTaskWork
   const invocations = new AsyncLocalStorage<{ current(): boolean }>()
   const service = new CruxTaskWorkspaceService({
     ...deps, dataDir: app.getPath('userData'),
-    readExecutionSource: readTaskExecutionSource,
+    readExecutionSource: (query, expected) => readTaskExecutionSource(query, expected, (scope, actorId, sources) =>
+      readAgentAttachments(app.getPath('userData'), scope, actorId, sources, createCruxTaskMaterialsService(app.getPath('userData')).sourcePart,
+        () => { if (!invocations.getStore()?.current()) throw Error('原任务窗口已变化') })),
     teamInputs: (query) => teamInputs.inputs(query),
     teamMaterialFiles: (query, references) => teamInputs.files(query, references),
     governanceFiles: (query, input) => teamInputs.governanceFiles(query, input),

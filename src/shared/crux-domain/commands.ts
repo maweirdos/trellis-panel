@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { cruxConversationLinkSchema, cruxFeishuSourceSchema, cruxTaskOutputReviewPatchSchema, cruxTaskSharedMaterialSchema } from '../crux-schema'
+import { taskSourceFiles } from '../task-source-files'
 import type { CruxSnapshot, CruxSpace } from '../crux'
 import { withCruxDomainSnapshot } from './store'
 import * as core from './core'
@@ -7,7 +9,7 @@ import * as agents from './agents'
 import * as workflow from './workflow'
 import { recordTaskDelivery } from './task-delivery'
 import { recordTaskDeliveryInputSchema, type TaskDeliveryDependencies } from '../task-delivery'
-import { cruxCrewInputSchema, cruxTaskWorkKindSchema, cruxTransitionTaskInputSchema, cruxRecordVersionDeliveryInputSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypesSchema } from '../crux-schema'
+import { cruxTaskHandoffSchema, cruxCrewInputSchema, cruxTaskWorkKindSchema, cruxTransitionTaskInputSchema, cruxRecordVersionDeliveryInputSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypesSchema } from '../crux-schema'
 
 const id = z.string().min(1).max(256)
 const ids = z.array(id).max(2000)
@@ -19,7 +21,10 @@ const category = z.enum(['backlog', 'todo', 'in_progress', 'in_review', 'done', 
 const executor = z.object({ kind: z.enum(['agent', 'crew']), id, name }).strict()
 const filter = z.object({ keyword: z.string().max(2000).optional(), statusIds: ids.optional(), typeIds: ids.optional(), labelIds: ids.optional(), assigneeIds: ids.optional(), priorities: z.array(priority).optional(), iterationId: id.optional(), projectId: id.optional() }).strict()
 const taskFields = { title: name.optional(), description: text.optional(), typeId: id.nullable().optional(), statusId: id.optional(), priority: priority.optional(), assigneeIds: ids.optional(), executor: executor.nullable().optional(), labelIds: ids.optional(), projectId: id.nullable().optional(), iterationIds: ids.optional(), parentTaskId: id.nullable().optional(), workKind: cruxTaskWorkKindSchema.optional(), acceptanceCriteria: cruxTransitionTaskInputSchema.shape.acceptanceCriteria }
-const taskPatch = z.object({ ...taskFields, followerToggle: id.optional() }).strict()
+const taskPatch = z.object({ ...taskFields, expectedTitle: text.optional(), expectedPostDescription: text.optional(), expectedDescription: text.optional(), followerToggle: id.optional(), bindConversation: cruxConversationLinkSchema.optional(),
+  clarification: z.object({ commentId: id, action: z.enum(['confirm', 'withdraw']), expectedCount: z.number().int().nonnegative(), reason: z.string().trim().max(500).optional() }).strict().optional(),
+  sharedMaterial: cruxTaskSharedMaterialSchema.optional(), outputReview: cruxTaskOutputReviewPatchSchema.optional()
+}).strict()
 const agentFields = { spaceId: id, name, description: text.optional(), instructions: text.min(1), skillIds: ids.optional(), repositories: z.array(z.object({ name, url: z.string().max(2048).optional() }).strict()).max(128).optional(), runtimeKind: z.enum(['claude-code', 'codex', 'custom']).optional(), workingDirectory: z.enum(['repo', 'temp']).optional(), enabled: z.boolean().optional(), archived: z.boolean().optional() }
 const inboxSelection = { ids: ids.optional(), all: z.boolean().optional(), section: z.enum(['important', 'other']).optional() }
 
@@ -38,14 +43,15 @@ export const cruxMutationInputSchemas = {
   removeTaskStatus: z.object({ id }).strict(),
   createLabel: z.object({ spaceId: id.optional(), name, color: z.string().max(100).optional() }).strict(),
   archiveLabel: z.object({ id }).strict(),
-  createTask: z.object({ ...taskFields, spaceId: id, title: name, creatorId: id.optional(), typeId: id.optional(), triagePending: z.boolean().optional() }).strict(),
+  createTask: z.object({ ...taskFields, spaceId: id, title: name, creatorId: id.optional(), typeId: id.optional(), triagePending: z.boolean().optional(), lightweightSource: z.literal('conversation').optional(), handoff: cruxTaskHandoffSchema.optional(), bindConversation: cruxConversationLinkSchema.optional(), feishuSource: cruxFeishuSourceSchema.optional() }).strict(),
   updateTask: z.object({ id, patch: taskPatch }).strict(),
+  restoreLightweightTask: z.object({ taskId: id, expectedUpdatedAt: z.string().min(1), statusId: id.optional(), assigneeIds: ids.max(2000).optional() }).strict(),
   transitionTask: cruxTransitionTaskInputSchema,
   recordTaskDelivery: recordTaskDeliveryInputSchema,
   removeTask: z.object({ id }).strict(),
   addRelation: z.object({ taskId: id, relation: z.object({ kind: z.enum(['blocks', 'related', 'duplicate']), taskId: id }).strict() }).strict(),
   removeRelation: z.object({ taskId: id, targetTaskId: id }).strict(),
-  addComment: z.object({ taskId: id, body: text.min(1), authorId: id, parentId: id.optional() }).strict(),
+  addComment: z.object({ taskId: id, body: text.min(1), authorId: id, parentId: id.optional(), sourceId: z.string().uuid().optional(), sourceFiles: taskSourceFiles.optional() }).strict(),
   resolveComment: z.object({ id, resolved: z.boolean() }).strict(),
   createProject: z.object({ spaceId: id, name, goal: text.optional(), ownerIds: ids.optional() }).strict(),
   updateProject: z.object({ id, name: name.optional(), goal: text.optional(), ownerIds: ids.optional(), status: z.enum(['active', 'done', 'archived']).optional() }).strict(),
@@ -58,7 +64,7 @@ export const cruxMutationInputSchemas = {
   removeMilestone: cruxMilestoneCommandInputSchema,
   saveView: z.object({ id: id.optional(), spaceId: id, name, filter, groupBy: z.enum(['status', 'assignee', 'type', 'priority']) }).strict(),
   removeView: z.object({ id }).strict(),
-  triage: z.object({ taskId: id, disposition: z.enum(['assign', 'iterate', 'park', 'close']), assigneeIds: ids.optional(), iterationId: id.optional(), actorId: id.optional(), note: text.optional() }).strict(),
+  triage: z.object({ taskId: id, disposition: z.enum(['assign', 'iterate', 'park', 'close']), assigneeIds: ids.optional(), iterationId: id.optional(), actorId: id.optional(), note: text.optional(), expectedUpdatedAt: z.string().min(1).optional() }).strict(),
   saveAutomation: z.object({ id: id.optional(), spaceId: id, name, enabled: z.boolean().optional(), trigger: z.object({ kind: z.enum(['schedule', 'task_status', 'task_created', 'comment']), value: z.string().max(2000).optional(), days: z.array(z.number().int().min(1).max(7)).max(7).optional() }).strict(), target: z.object({ kind: z.enum(['agent', 'crew', 'member', 'none']), id: id.optional(), name: name.optional() }).strict(), instruction: text.optional(), projectId: id.optional() }).strict(),
   toggleAutomation: z.object({ id, enabled: z.boolean() }).strict(),
   removeAutomation: z.object({ id }).strict(),
@@ -84,7 +90,7 @@ const mutations = {
   inviteMember: core.inviteMember, updateMember: core.updateMember, removeMember: core.removeMember, setSpaceMembers: core.setSpaceMembers,
   createTaskType: core.createTaskType, updateTaskType: core.updateTaskType, removeTaskType: core.removeTaskType,
   createTaskStatus: core.createTaskStatus, removeTaskStatus: core.removeTaskStatus, createLabel: core.createLabel, archiveLabel: core.archiveLabel,
-  createTask: core.createTask, updateTask: core.updateTask, transitionTask: workflow.transitionTask, recordTaskDelivery, removeTask: core.removeTask, addRelation: core.addRelation, removeRelation: core.removeRelation,
+  createTask: core.createTask, updateTask: core.updateTask, restoreLightweightTask: core.restoreLightweightTask, transitionTask: workflow.transitionTask, recordTaskDelivery, removeTask: core.removeTask, addRelation: core.addRelation, removeRelation: core.removeRelation,
   addComment: core.addComment, resolveComment: core.resolveComment,
   createProject: planning.createProject, updateProject: planning.updateProject,
   createIteration: planning.createIteration, updateIteration: planning.updateIteration, completeIteration: planning.completeIteration, recordVersionDelivery: planning.recordVersionDelivery,
@@ -105,7 +111,7 @@ const scopedCollections = ['taskTypes', 'taskStatuses', 'taskLabels', 'tasks', '
 type ScopedCollection = typeof scopedCollections[number]
 const targetCollections: Partial<Record<CruxMutationName, ScopedCollection | 'spaces' | 'comments'>> = {
   updateSpace: 'spaces', updateTaskType: 'taskTypes', removeTaskType: 'taskTypes', removeTaskStatus: 'taskStatuses', archiveLabel: 'taskLabels',
-  updateTask: 'tasks', removeTask: 'tasks', resolveComment: 'comments', updateProject: 'projects', updateIteration: 'iterations', completeIteration: 'iterations', removeView: 'views',
+  updateTask: 'tasks', restoreLightweightTask: 'tasks', removeTask: 'tasks', resolveComment: 'comments', updateProject: 'projects', updateIteration: 'iterations', completeIteration: 'iterations', removeView: 'views',
   saveMilestone: 'milestones', completeMilestone: 'milestones', removeMilestone: 'milestones',
   saveAutomation: 'automations', toggleAutomation: 'automations', removeAutomation: 'automations', runAutomation: 'automations',
   saveAgent: 'agents', removeAgent: 'agents', saveSkill: 'skills', removeSkill: 'skills', saveCrew: 'crews', removeCrew: 'crews'
@@ -225,7 +231,11 @@ export function executeCruxDomain(snapshot: CruxSnapshot, operation: CruxMutatio
   if (actorId) {
     if (operation === 'createSpace') input = { ...cruxMutationInputSchemas.createSpace.parse(input), actorId }
     if (operation === 'joinSpace') input = { ...cruxMutationInputSchemas.joinSpace.parse(input), memberId: actorId }
-    if (operation === 'createTask') input = { ...cruxMutationInputSchemas.createTask.parse(input), creatorId: actorId }
+    if (operation === 'createTask') {
+      const parsed = cruxMutationInputSchemas.createTask.parse(input)
+      if (parsed.handoff?.material) throw new CruxSpaceAccessError('材料版本只能由团队材料保存回执关联')
+      input = { ...parsed, creatorId: actorId }
+    }
     if (operation === 'addComment') input = { ...cruxMutationInputSchemas.addComment.parse(input), authorId: actorId }
     if (operation === 'triage') input = { ...cruxMutationInputSchemas.triage.parse(input), actorId }
     if (operation === 'updateTask') {

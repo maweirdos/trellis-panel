@@ -5,9 +5,10 @@ import { cruxMutationInputSchemas, cruxMutationNameSchema } from '../../../share
 import { cruxRemoteCommandSchema, cruxRemoteSnapshotSchema, type CruxRemoteCommand, type CruxRemoteSnapshot, type CruxWorkspaceContext } from '../../../shared/crux-remote'
 import type { DesktopTeamService } from '../team-platform/service'
 import { DesktopTeamError } from '../team-platform/types'
+import { isTerminalCruxRevisionConflict, isVerifiedCruxCommandDenial } from '../team-platform/http'
 import { CruxRemotePersistence, remoteBindingSchema, remoteScopeKey, type CruxRemoteBinding, type CruxRemotePending, type CruxRemotePersisted } from './remote-persistence'
 
-export type CruxRemoteTransport = Pick<DesktopTeamService, 'connections' | 'connectionContext' | 'cruxSnapshot' | 'cruxCommand' | 'cruxReceipt'>
+export type CruxRemoteTransport = Pick<DesktopTeamService, 'connections' | 'connectionContext' | 'cruxSnapshot' | 'cruxCommand' | 'cruxReceipt' | 'cruxRevalidate'>
 export type CruxRemoteOptions = {
   dataDir: string
   service?: CruxRemoteTransport
@@ -145,10 +146,11 @@ export class CruxRemoteClient {
     })
   }
   private noteFailure(selected: Selection, error: unknown): void {
-    const code = codeOf(error)
+    const reported = codeOf(error)
+    const code = reported === 'ACCESS_LOCKED' ? selected.saved.pending?.errorCode ?? selected.context.error ?? reported : reported
     selected.context.error = code
     selected.context.canManage = false
-    if (lockedCodes.has(code)) {
+    if (lockedCodes.has(reported)) {
       selected.context.state = 'access-revoked'
       const pending = selected.saved.pending
       // Clear in memory first even if the disk becomes unwritable during revocation.
@@ -171,7 +173,7 @@ export class CruxRemoteClient {
     if (selected.saved.authority && value.instanceId !== selected.saved.authority.instanceId) throw new RemoteError('BINDING_CHANGED', '原设备绑定的团队服务实例已改变，不能转用其他实例')
     return value
   }
-  private accept(selected: Selection, raw: CruxRemoteSnapshot): void {
+  private accept(selected: Selection, raw: CruxRemoteSnapshot, recoveredPending?: CruxRemotePending): void {
     const value = this.validate(selected, raw), authority = selected.saved.authority
     if (selected.saved.retiredEpochs.includes(value.epoch)) throw new RemoteError('STALE_SNAPSHOT', '旧世代快照已失效，不能重新成为当前共享内容')
     const changedEpoch = !!authority && authority.epoch !== value.epoch
@@ -186,7 +188,7 @@ export class CruxRemoteClient {
     }
     if (!authority || changedEpoch || authority.authorizationRevision !== value.authorizationRevision) selected.viewGeneration++
     Object.assign(selected.context, head)
-    this.save(selected, { authority: head, cache: value, observedAt: Date.now() })
+    this.save(selected, { authority: head, cache: value, observedAt: Date.now(), ...(recoveredPending ? { accessLocked: false, pending: recoveredPending } : {}) })
     selected.viewFingerprint = viewFingerprint(value)
     selected.context.revision = value.revision
     selected.context.state = 'connected'; selected.context.canManage = value.canManage
@@ -229,7 +231,8 @@ export class CruxRemoteClient {
     this.timer.unref()
   }
   private failure(error: unknown, selected?: Selection): CruxRemoteResult {
-    return { ok: false, code: codeOf(error), error: error instanceof RemoteError || error instanceof DesktopTeamError ? error.message : '远程协作操作未完成，请保留草稿和原命令', outcomeUnknown: unknownOf(error) || !!selected?.saved.pending?.outcomeUnknown, pending: !!selected?.saved.pending, context: this.status() }
+    const transportUnknown = !isVerifiedCruxCommandDenial(error) && !isTerminalCruxRevisionConflict(error) && unknownOf(error)
+    return { ok: false, code: codeOf(error), error: error instanceof RemoteError || error instanceof DesktopTeamError ? error.message : '远程协作操作未完成，请保留草稿和原命令', outcomeUnknown: transportUnknown || !!selected?.saved.pending?.outcomeUnknown, pending: !!selected?.saved.pending, context: this.status() }
   }
   private invalidateRejectedEpoch(selected: Selection): void {
     const pending = selected.saved.pending, authority = selected.saved.authority
@@ -338,7 +341,27 @@ export class CruxRemoteClient {
     this.assertCurrent(selected)
     let pending = selected.saved.pending
     if (!pending) throw new RemoteError('NO_PENDING_COMMAND', '没有可核对的远程协作命令')
-    if (selected.context.state === 'access-revoked' || pending.state === 'access-revoked') throw new RemoteError('ACCESS_LOCKED', '原命令的设备权限已锁定')
+    if (selected.saved.accessLocked || selected.context.state === 'access-revoked' || pending.state === 'access-revoked') {
+      if (!explicitRetry) throw new RemoteError('ACCESS_LOCKED', '原命令的设备权限已锁定')
+      const authority = selected.saved.authority, saved = selected.saved, generation = selected.viewGeneration, command = pending.command
+      if (!authority) throw new RemoteError('ACCESS_LOCKED', '缺少原服务授权记录，无法恢复原命令')
+      const check = (raw: CruxRemoteSnapshot): void => {
+        this.assertCurrent(selected)
+        if (selected.saved !== saved || selected.viewGeneration !== generation) throw new RemoteError('SCOPE_CHANGED', '核对期间原空间授权已变化')
+        const value = this.validate(selected, raw)
+        if (value.epoch !== authority.epoch || selected.saved.retiredEpochs.includes(value.epoch) || value.authorizationRevision < authority.authorizationRevision || value.revision < authority.revision) throw new RemoteError('BINDING_CHANGED', '原服务世代或授权版本无法恢复')
+      }
+      const value = await this.service(service => service.cruxRevalidate(selected.binding.connectionId, { ...selected.binding, ...authority }, command, check))
+      check(value)
+      pending = { ...pending, state: pending.outcomeUnknown ? 'acknowledgement-unknown' : 'queued' }
+      this.accept(selected, value, pending)
+      const receipt = await this.service(service => service.cruxReceipt(selected.binding.connectionId, command.commandId, authority.instanceId))
+      this.assertCurrent(selected)
+      if (receipt) { await this.settleReceipt(selected, pending, receipt); return this.success(selected, receipt.taskId) }
+      this.schedule(selected)
+      // Missing at this read point never proves absence of an earlier effect.
+      throw new RemoteError('RECONCILE_REQUIRED', '原连接已核实，尚未查到原回执；请核对后明确重试原命令', pending.outcomeUnknown, true)
+    }
     if (pending.state === 'conflict') throw new RemoteError(epochCodes.has(pending.errorCode ?? '') ? pending.errorCode ?? 'EPOCH_CONFLICT' : 'REVISION_CONFLICT', '原操作与服务端世代或版本冲突，请保留草稿并明确处理后重新提交')
     if (pending.outcomeUnknown || pending.state === 'dispatching' || pending.state === 'acknowledgement-unknown') {
       const originalCommandId = pending.command.commandId
@@ -367,13 +390,19 @@ export class CruxRemoteClient {
     this.assertCurrent(selected)
     let taskId: string | undefined
     try {
-      const reply = await this.service((service) => service.cruxCommand(selected.binding.connectionId, pending.command, selected.saved.authority?.instanceId))
+      const reply = await this.service((service) => service.cruxCommand(selected.binding.connectionId, pending.command, selected.saved.authority?.instanceId, selected.saved.authority ?? undefined))
       if (reply.commandId !== pending.command.commandId || reply.result.revision !== pending.command.expectedRevision + 1) throw new RemoteError('RECEIPT_MISMATCH', '原命令回执不一致', true)
       await this.settleReceipt(selected, pending, reply.result)
       taskId = reply.result.taskId
     } catch (error) {
-      const code = codeOf(error), unknown = (epochCodes.has(code) ? selected.saved.pending?.outcomeUnknown ?? pending.outcomeUnknown : pending.outcomeUnknown) || unknownOf(error) || !['REVISION_CONFLICT', 'CONFLICT', 'INVALID_INPUT', 'FORBIDDEN', 'UNAUTHORIZED', 'ACCESS_LOCKED', ...epochCodes].includes(code)
-      const state: CruxRemotePending['state'] = lockedCodes.has(code) ? 'access-revoked' : unknown ? 'acknowledgement-unknown' : 'conflict'
+      const code = codeOf(error), businessDenied = isVerifiedCruxCommandDenial(error)
+      // A freshly verified business denial rejects this dispatch, despite the
+      // transport's conservative POST flag. It cannot retire uncertainty from
+      // an earlier dispatch; that still requires the original terminal proof.
+      const priorUnknown = epochCodes.has(code) ? selected.saved.pending?.outcomeUnknown ?? pending.outcomeUnknown : pending.outcomeUnknown
+      const unknown = !isTerminalCruxRevisionConflict(error) && (priorUnknown || (!businessDenied
+        && (unknownOf(error) || !['REVISION_CONFLICT', 'CONFLICT', 'INVALID_INPUT', 'FORBIDDEN', 'UNAUTHORIZED', 'ACCESS_LOCKED', ...epochCodes].includes(code))))
+      const state: CruxRemotePending['state'] = lockedCodes.has(code) ? 'access-revoked' : unknown ? 'acknowledgement-unknown' : businessDenied ? 'queued' : 'conflict'
       // Memory keeps the same command even if recording the response now fails.
       selected.saved = { ...selected.saved, pending: { ...pending, state, outcomeUnknown: unknown, errorCode: code } }
       if (epochCodes.has(code)) this.invalidateRejectedEpoch(selected)

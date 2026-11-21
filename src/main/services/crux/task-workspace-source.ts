@@ -1,3 +1,5 @@
+import { currentPostInput, fixedPostInput } from '../../../shared/crux'
+import type { AgentAttachment } from './post-attachments'
 import { z } from 'zod'
 import type { CruxSnapshot } from '../../../shared/crux'
 import { cruxWorkMaterialSchema, type CruxWorkMaterial, type CruxTeamInputSelection } from '../../../shared/crux-work'
@@ -18,6 +20,7 @@ export type CruxWorkSourceDependencies = {
   workspaceStatus(): Promise<CruxWorkspaceContext>
   workspaceSnapshot(): Promise<CruxWorkWorkspaceView>
   workspaceGeneration?(): number
+  postAttachments?(query: CruxWorkQuery & { spaceId: string; taskCreatedAt: string }, actorId: string, sources: ReturnType<typeof currentPostInput>['sources']): Promise<AgentAttachment[]>
   creationReferences?(query: CruxWorkQuery): Promise<CreationMaterialReference[]>
   teamMaterialReferences?(query: CruxWorkQuery & { spaceId: string; taskCreatedAt: string }): Promise<TaskMaterialInputReference[]>
   teamInputs?(query: CruxWorkQuery & { spaceId: string; taskCreatedAt: string }): Promise<CruxTeamInputSelection>
@@ -73,9 +76,12 @@ export async function readCruxWorkSource(deps: CruxWorkSourceDependencies, query
   if (teamMaterialReferences.some((reference) => reference.spaceId !== task.spaceId || reference.taskCreatedAt !== task.createdAt)) throw new CruxWorkError('scope_changed', '团队文档不属于原任务的空间或创建身份。')
   if (authority(await deps.workspaceStatus()) !== authority(after)) throw new CruxWorkError('scope_changed', '读取团队文档期间原协作身份已变化。')
   assertGeneration()
+  const post = fixedPostInput(task) ?? currentPostInput(task, view.snapshot.comments)
+  const attachments = post.sources.length ? await deps.postAttachments?.(teamScope, actor.id, post.sources) : undefined
+  assertGeneration()
   const material = cruxWorkMaterialSchema.parse({
-    title: task.title, description: task.description ?? '',
-    workKind: task.workKind ?? 'code', acceptanceCriteria: task.acceptanceCriteria ?? [],
+    title: post.title, description: attachments?.length ? `${post.description}\n\n本轮任务附件\n${JSON.stringify(attachments)}` : post.description,
+    workKind: task.workKind ?? 'code', acceptanceCriteria: post.acceptanceCriteria,
     artifacts: (task.workflow?.artifacts ?? []).filter((artifact) => ['requirements', 'design', 'acceptance'].includes(artifact.kind))
       .map(({ id, kind, body, actorId, at }) => ({ id, kind, body, actorId, at })),
     ...(creationReferences.length ? { creationReferences } : {}),

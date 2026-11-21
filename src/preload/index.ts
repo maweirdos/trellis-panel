@@ -1,3 +1,4 @@
+import '../shared/csp-validation'
 import { contextBridge, ipcRenderer } from 'electron'
 import { ipcEvent, ipcInvoke } from '../shared/ipc-channels'
 import type { DocumentWindowApi, DocumentOriginReturn } from '../shared/document-windows'
@@ -24,6 +25,7 @@ import type { IntegrationApi } from '../shared/integrations'
 import { createJiraWorkspaceBridge } from '../shared/jira-integration'
 import { createGitlabWorkspaceBridge } from '../shared/gitlab-integration'
 import { createDingTalkBridge } from '../shared/dingtalk-integration'
+import { createFeishuBridge } from '../shared/feishu-integration'
 import type { DaemonApi } from '../shared/daemon'
 import type { DaemonQuitApi } from '../shared/daemon-quit'
 import type { DaemonLifecycleDialogApi } from '../shared/daemon-lifecycle-dialog'
@@ -150,14 +152,29 @@ const api = {
     read: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.read, id),
     events: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.events, id, input),
     send: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.send, id, input),
+    reconcileSend: (id, requestId) => ipcRenderer.invoke(ipcInvoke.privateConversations.reconcileSend, id, requestId),
+    taskAction: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.taskAction, id, input),
+    taskSuggestion: {
+      start: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.taskSuggestion.start, id, input),
+      check: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.taskSuggestion.check, id, input),
+      adopt: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.taskSuggestion.adopt, id, input),
+      close: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.taskSuggestion.close, id, input)
+    },
     respond: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.respond, id, input),
     cancel: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.cancel, id, input),
     end: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.end, id, input),
     configure: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.configure, id, input),
     recoverModel: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.recoverModel, id, input),
+    connect: id => ipcRenderer.invoke(ipcInvoke.privateConversations.connect, id),
     pickDirectory: input => ipcRenderer.invoke(ipcInvoke.privateConversations.pickDirectory, input),
     git: id => ipcRenderer.invoke(ipcInvoke.privateConversations.git, id),
     requirements: {
+      polish: {
+        run: (id, draftId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.polish.run, id, draftId, input),
+        observe: (id, draftId, operationId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.polish.observe, id, draftId, operationId),
+        cancel: (id, draftId, operationId) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.polish.cancel, id, draftId, operationId),
+        apply: (id, draftId, operationId, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.polish.apply, id, draftId, operationId, input)
+      },
       knowledge: {
         connections: id => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.knowledge.connections, id),
         collections: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.requirements.knowledge.collections, id, input),
@@ -185,6 +202,7 @@ const api = {
     pickFiles: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.pickFiles, id),
     files: (id) => ipcRenderer.invoke(ipcInvoke.privateConversations.files, id),
     openFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.openFile, id, input),
+    readAttachment: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.readAttachment, id, input),
     readFile: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.readFile, id, input),
     previewImage: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.previewImage, id, input),
     previewPdf: (id, input) => ipcRenderer.invoke(ipcInvoke.privateConversations.previewPdf, id, input),
@@ -200,6 +218,7 @@ const api = {
   } satisfies ConversationApi,
   cruxMaterials: {
     list: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.list, input),
+    sourcePart: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.sourcePart, input),
     read: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.read, input),
     versions: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.versions, input),
     submissions: input => ipcRenderer.invoke(ipcInvoke.cruxMaterials.submissions, input),
@@ -246,6 +265,7 @@ const api = {
   jiraIntegration: createJiraWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   gitlabWorkspace: createGitlabWorkspaceBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   dingtalkWorkspace: createDingTalkBridge((channel, input) => ipcRenderer.invoke(channel, input)),
+  feishuWorkspace: createFeishuBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   crux: {
     workspaceStatus: () => invokeCrux('workspaceStatus'),
     workspacePending: () => invokeCrux('workspacePending'),
@@ -277,6 +297,7 @@ const api = {
     completeMilestone: (input) => invokeCrux('completeMilestone', input),
     removeMilestone: (input) => invokeCrux('removeMilestone', input),
     updateTask: (input) => invokeCrux('updateTask', input),
+    restoreLightweightTask: (input) => invokeCrux('restoreLightweightTask', input),
     removeTask: (input) => invokeCrux('removeTask', input),
     addRelation: (input) => invokeCrux('addRelation', input),
     removeRelation: (input) => invokeCrux('removeRelation', input),
@@ -306,6 +327,29 @@ const api = {
     saveCrew: (input) => invokeCrux('saveCrew', input),
     removeCrew: (input) => invokeCrux('removeCrew', input)
   } satisfies CruxApi,
+  taskPlanning: {
+    read: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.read, input),
+    prepare: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.prepare, input),
+    selectSources: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.selectSources, input),
+    generate: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.generate, input),
+    respond: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.respond, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.reconcile, input),
+    stop: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.stop, input),
+    saveDraft: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.saveDraft, input),
+    recoverSave: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.recoverSave, input)
+  } satisfies import('../shared/task-planning').TaskPlanningApi,
+  productTask: {
+    read: input => ipcRenderer.invoke(ipcInvoke.productTask.read, input),
+    prepare: input => ipcRenderer.invoke(ipcInvoke.productTask.prepare, input),
+    retryPrepare: input => ipcRenderer.invoke(ipcInvoke.productTask.retryPrepare, input),
+    start: input => ipcRenderer.invoke(ipcInvoke.productTask.start, input),
+    stop: input => ipcRenderer.invoke(ipcInvoke.productTask.stop, input),
+    permission: input => ipcRenderer.invoke(ipcInvoke.productTask.permission, input),
+    reconcile: input => ipcRenderer.invoke(ipcInvoke.productTask.reconcile, input),
+    results: input => ipcRenderer.invoke(ipcInvoke.productTask.results, input),
+    artifact: input => ipcRenderer.invoke(ipcInvoke.productTask.artifact, input),
+    finish: input => ipcRenderer.invoke(ipcInvoke.productTask.finish, input)
+  } satisfies import('../shared/product-task-entry').ProductTaskApi,
   cruxWork: {
     status: (input) => ipcRenderer.invoke(ipcInvoke.cruxWork.status, input),
     prepare: (input) => ipcRenderer.invoke(ipcInvoke.cruxWork.prepare, input),
@@ -425,6 +469,7 @@ const api = {
     start: () => ipcRenderer.invoke(ipcInvoke.daemon.start),
     stop: () => ipcRenderer.invoke(ipcInvoke.daemon.stop),
     restart: () => ipcRenderer.invoke(ipcInvoke.daemon.restart),
+    inspectRecovery: () => ipcRenderer.invoke(ipcInvoke.daemon.inspectRecovery),
     onOpenSettings: (listener) => subscribe(ipcEvent.daemonOpenSettings, listener),
     preferences: () => ipcRenderer.invoke(ipcInvoke.daemon.preferences),
     setPreferences: (input) => ipcRenderer.invoke(ipcInvoke.daemon.setPreferences, input),
@@ -526,6 +571,8 @@ const api = {
   openLocalDocument: (href: string) => ipcRenderer.invoke(ipcInvoke.shell.openLocalDocument, href),
 
   getSettings: () => ipcRenderer.invoke(ipcInvoke.settings.get),
+  setDefaultConversationModel: (input: { modelId: string; expectedDefaultId?: string }) => ipcRenderer.invoke(ipcInvoke.settings.setDefaultConversationModel, input),
+  onConversationDefaultsChanged: (cb: () => void) => { const listener = (): void => cb(); ipcRenderer.on(ipcEvent.conversationDefaultsChanged, listener); return () => ipcRenderer.removeListener(ipcEvent.conversationDefaultsChanged, listener) },
   onThemeChanged: (cb: (theme: Settings['theme']) => void) => subscribe(ipcEvent.themeChanged, cb),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(ipcInvoke.settings.set, patch),
 
@@ -704,6 +751,7 @@ const api = {
 
   aiChat: (messages: ChatMessage[]) => ipcRenderer.invoke(ipcInvoke.ai.chat, messages),
   aiTest: (cfg: AiConfig) => ipcRenderer.invoke(ipcInvoke.ai.test, cfg),
+  aiTestConnection: (baseUrl: string) => ipcRenderer.invoke(ipcInvoke.ai['test-connection'], baseUrl),
   aiFetchModels: (provider: ModelProvider) => ipcRenderer.invoke(ipcInvoke.ai['fetch-models'], provider),
   aiTestModel: (provider: ModelProvider, modelId: string) => ipcRenderer.invoke(ipcInvoke.ai['test-model'], provider, modelId),
   aiPrdDraft: (dirName: string) => ipcRenderer.invoke(ipcInvoke.ai.prdDraft, dirName),

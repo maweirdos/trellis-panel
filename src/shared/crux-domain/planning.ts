@@ -9,6 +9,7 @@ import type {
   CruxAutomationInput,
   CruxAutomationRun,
   CruxID,
+  CruxInboxItem,
   CruxIteration,
   CruxMilestone,
   CruxMilestoneCommandInput,
@@ -37,6 +38,14 @@ function taskOf(draft: CruxSnapshot, id: CruxID): CruxTask {
 function pushActivity(draft: CruxSnapshot, taskId: CruxID, kind: string, text: string): void {
   const activity: CruxActivity = { id: nextId('ac'), taskId, kind, text, at: nowIso() }
   draft.activities.unshift(activity)
+}
+
+function memberName(draft: CruxSnapshot, id: CruxID): string {
+  return draft.members.find((member) => member.id === id)?.name ?? id
+}
+
+function pushInbox(draft: CruxSnapshot, item: Omit<CruxInboxItem, 'id' | 'at' | 'read'>): void {
+  draft.inbox.unshift({ id: nextId('in'), read: false, at: nowIso(), ...item })
 }
 
 /** Resolve a category within the task type's workflow, never the space alone. */
@@ -491,7 +500,7 @@ export function triageQueue(draft: CruxSnapshot, spaceId: CruxID): Array<{ task:
     })
 }
 
-export function triage(input: Omit<CruxTriageDecision, 'at'> & { assigneeIds?: CruxID[]; iterationId?: CruxID }): CruxSnapshot {
+export function triage(input: Omit<CruxTriageDecision, 'at'> & { assigneeIds?: CruxID[]; iterationId?: CruxID; expectedUpdatedAt?: string }): CruxSnapshot {
   return mutate((draft) => {
     const task = taskOf(draft, input.taskId)
     const space = draft.spaces.find((s) => s.id === task.spaceId)
@@ -499,6 +508,7 @@ export function triage(input: Omit<CruxTriageDecision, 'at'> & { assigneeIds?: C
     if (!task.triagePending) fail('任务不在待分拣队列')
     if (task.workflow) fail('交接任务请使用接受、补充或拒绝操作完成分拣')
     if (input.actorId && !space.memberIds.includes(input.actorId)) fail('分拣成员不在该空间内')
+    if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== task.updatedAt) fail('任务内容已更新，请刷新后重试')
     if (!['assign', 'iterate', 'park', 'close'].includes(input.disposition)) fail('分拣处置方式无效')
 
     if (input.disposition === 'assign') {
@@ -510,6 +520,14 @@ export function triage(input: Omit<CruxTriageDecision, 'at'> & { assigneeIds?: C
       if (!space.multiAssignee && assigneeIds.length > 1 && task.assigneeIds.length <= 1) fail('该空间未开启多人处理人')
       task.assigneeIds = assigneeIds
       task.statusId = taskStatusForCategory(draft, task, 'todo')
+      for (const id of assigneeIds) pushInbox(draft, {
+        section: 'important',
+        kind: 'assign',
+        title: `${task.id} 已指派给 ${memberName(draft, id)}`,
+        body: task.title,
+        taskId: task.id,
+        recipientIds: [id]
+      })
       pushActivity(draft, task.id, 'triage', `分拣：指派给 ${assigneeIds.map((id) => draft.members.find((m) => m.id === id)?.name ?? id).join('、')}`)
     } else if (input.disposition === 'iterate') {
       if (!input.iterationId) fail('处置为放入版本时需选择版本')

@@ -23,7 +23,7 @@ export async function createTeamService(input: TeamServiceConfigInput): Promise<
   app.decorateRequest('teamPrincipal', null)
   app.setErrorHandler((error, _request, reply) => {
     const http = error instanceof Error ? error as Error & { statusCode?: number; code?: string } : null
-    const known = error instanceof TeamServiceError ? error : error instanceof z.ZodError ? new TeamServiceError('INVALID_INPUT', error.issues[0]?.message ?? 'Invalid request') : http?.statusCode && http.statusCode >= 400 && http.statusCode < 500 ? new TeamServiceError(http.code ?? 'INVALID_INPUT', 'Request could not be accepted', http.statusCode) : new TeamServiceError('SERVICE_UNAVAILABLE', 'Team service could not complete this request; retain its command identity', 503)
+    const known = error instanceof TeamServiceError ? error : error instanceof z.ZodError ? new TeamServiceError('INVALID_INPUT', error.issues[0]?.message ?? 'Invalid request') : http?.statusCode && http.statusCode >= 400 && http.statusCode < 500 ? new TeamServiceError(http.code ?? (http.statusCode === 429 ? 'RATE_LIMITED' : 'INVALID_INPUT'), 'Request could not be accepted', http.statusCode) : new TeamServiceError('SERVICE_UNAVAILABLE', 'Team service could not complete this request; retain its command identity', 503)
     return reply.code(known.statusCode).send({ ok: false, code: known.code, error: known.message })
   })
   app.addHook('onRequest', async (request, reply) => {

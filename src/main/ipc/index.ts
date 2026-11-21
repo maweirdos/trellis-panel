@@ -19,6 +19,7 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { registerCruxCodeResourcesIpc } from './crux-code-resources'
 import { registerCruxTaskMaterialsIpc } from './crux-task-materials'
 import { registerCruxProgressIpc } from './crux-progress'
+import { registerProductTaskEntryIpc } from './product-task-entry'
 import { registerCreationsIpc } from './creations'
 import { registerWhiteboardV2Ipc } from './whiteboard-v2'
 import { taskCreationReferences, taskCreationFiles } from '../services/creations'
@@ -53,7 +54,6 @@ import { registerWorkflowIpc } from './workflow'
 import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
 import { registerPrivateConversationsIpc } from './private-conversations'
-import { registerDesignWorkspaceIpc } from './design-workspace'
 import { ConversationError } from '../services/private-conversations/service'
 import { getAcpHistorySession } from '../services/daemon-client/acp'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -80,6 +80,7 @@ export function registerIpc(deps: WindowDeps): void {
   const taskWorkspace = registerCruxWorkIpc({ getProjectRoot, getProjectGeneration, getMain: deps.getMain, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles,
     taskCodeResource: (query) => codeResources.taskForPreparation(query.workspaceKey, query.taskId) })
   const taskProgress = registerCruxProgressIpc(taskWorkspace, deps.getMain)
+  registerProductTaskEntryIpc(taskWorkspace, deps.getMain)
   registerCruxTaskOutputsIpc({
     getMain: deps.getMain, channels: ipcInvoke.taskOutputs,
     resolveContext: (query, expected) => taskWorkspace.resolveOutputContext(query, expected),
@@ -118,7 +119,6 @@ export function registerIpc(deps: WindowDeps): void {
   registerTeamDesktopIpc(deps.getMain)
   registerAcpIpc()
   const privateConversations = registerPrivateConversationsIpc(deps)
-  registerDesignWorkspaceIpc(deps, privateConversations)
   registerPiWebPreviewIpc({
     getProject: sessionId => sessionId?.startsWith('acp-private-')
       ? privateConversations.previewProject(sessionId)

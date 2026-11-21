@@ -1,8 +1,10 @@
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { z } from 'zod'
-import type { CruxInboxItem, CruxMember, CruxSnapshot, CruxTask, CruxTransitionTaskInput } from '../../../src/shared/crux'
+import type { CruxInboxItem, CruxMember, CruxSnapshot, CruxSpace, CruxTask, CruxTransitionTaskInput } from '../../../src/shared/crux'
+import type { CruxTaskOutputReviewOutput } from '../../../src/shared/crux'
 import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
 import { executeCruxDomain, canReadCruxSpace, CruxSpaceAccessError, cruxMutationNames, cruxMutationInputSchemas, type CruxMutationName } from '../../../src/shared/crux-domain/commands'
+import { hasOnlyIntakeHistory } from '../../../src/shared/crux-domain/lightweight'
 import { buildInitialSnapshot } from '../../../src/shared/crux-domain/seed'
 import { CruxError as CoreError } from '../../../src/shared/crux-domain/core'
 import { CruxError as PlanningError, tickScheduledAutomations } from '../../../src/shared/crux-domain/planning'
@@ -14,9 +16,11 @@ import { teamTaskMaterialMetadataSchema, teamTaskMaterialSubmissionSchema, teamT
 import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError, requireValue } from './errors'
 import type { TeamTaskRef } from '../../../src/shared/team-task-execution'
+import type { FeishuMemberTaskCommand } from '../../../src/shared/feishu-member'
 
 type Row = Record<string, SQLOutputValue>
 type Workspace = { revision: number; snapshot: CruxSnapshot }
+type FeishuProjection = { spaceId: string; agentId?: string; taskId?: string }
 /** All persistence and transactions stay on the existing SQLite writer. */
 export interface CruxWorkspaceHost {
   identity(): { instanceId: string; epoch: string; authorizationRevision: number }
@@ -30,13 +34,14 @@ export interface CruxWorkspaceHost {
   run(sql: string, ...params: SQLInputValue[]): unknown
   authenticate(actor: StoreActor): StorePrincipal
   project(principal: StorePrincipal, projectId: string): void
+  validateOutputReviewReference(principal: StorePrincipal, projectId: string, taskId: string, output: CruxTaskOutputReviewOutput): void
   mutation<T>(actor: StoreActor, commandId: string, kind: string, input: unknown, authorize: (principal: StorePrincipal) => void, apply: (principal: StorePrincipal) => T, replay?: (principal: StorePrincipal, result: T) => void): TeamCommandReply<T>
 }
 
 const privateInbox = new Set<CruxMutationName>(['markInboxRead', 'clearInbox', 'snoozeInbox', 'restoreInbox'])
 const ordinaryMutations = new Set<CruxMutationName>([
   'joinSpace', 'setSpaceMembers',
-  'createTask', 'updateTask', 'transitionTask', 'recordVersionDelivery', 'removeTask', 'addRelation', 'removeRelation', 'addComment', 'resolveComment',
+  'createTask', 'updateTask', 'restoreLightweightTask', 'transitionTask', 'recordVersionDelivery', 'removeTask', 'addRelation', 'removeRelation', 'addComment', 'resolveComment',
   'createProject', 'updateProject', 'createIteration', 'updateIteration', 'completeIteration', 'saveView', 'removeView', 'triage', ...privateInbox
 ])
 const membershipMutations = new Set<CruxMutationName>(['inviteMember', 'removeMember', 'updateMember'])
@@ -116,9 +121,12 @@ export class TeamCruxWorkspace {
 
   /** Also used when authorizing a historical command receipt. */
   authorize(principal: StorePrincipal, projectId: string, operation?: CruxMutationName): void {
-    const current = this.host.authenticate(principal.actor)
-    this.host.project(current, teamIdSchema.parse(projectId))
-    const member = requireValue(this.members(projectId).find((entry) => entry.id === current.person.userId), 'FORBIDDEN', 'Current project membership is unavailable', 403)
+    this.authorizeResolved(this.host.authenticate(principal.actor), projectId, operation)
+  }
+
+  private authorizeResolved(principal: StorePrincipal, projectId: string, operation?: CruxMutationName): void {
+    this.host.project(principal, teamIdSchema.parse(projectId))
+    const member = requireValue(this.members(projectId).find((entry) => entry.id === principal.person.userId), 'FORBIDDEN', 'Current project membership is unavailable', 403)
     if (operation && membershipMutations.has(operation)) throw new TeamServiceError('MANAGEMENT_REQUIRED', 'Manage authenticated invitations, account profiles and project roles through the team membership API', 403)
     if (operation && !ordinaryMutations.has(operation) && member.role === 'member') deny()
   }
@@ -185,7 +193,7 @@ export class TeamCruxWorkspace {
   }
 
   private personal(projectId: string, userId: string, snapshot: CruxSnapshot, authority: CruxSnapshot = snapshot): CruxSnapshot {
-    snapshot = this.scoped(snapshot, userId, authority)
+    snapshot = this.scoped(projectId, snapshot, userId, authority)
     // Old receipts cannot revive a resolved/revoked review or supply its recipients.
     const visible = [...snapshot.inbox.filter((item) => !item.id.startsWith(MATERIAL_REVIEW_PREFIX) && item.recipientIds?.includes(userId)), ...this.materialInbox(projectId, userId, snapshot, authority)]
       .sort((left, right) => Date.parse(right.at) - Date.parse(left.at) || left.id.localeCompare(right.id))
@@ -198,7 +206,7 @@ export class TeamCruxWorkspace {
   }
 
   /** Project roles permit private metadata management, never access to private content or rosters. */
-  private scoped(source: CruxSnapshot, userId: string, authority: CruxSnapshot = source): CruxSnapshot {
+  private scoped(projectId: string, source: CruxSnapshot, userId: string, authority: CruxSnapshot = source): CruxSnapshot {
     const snapshot = structuredClone(source)
     const manager = authority.members.some((member) => member.id === userId && member.role !== 'member')
     const readable = new Set(authority.spaces.filter((space) => canReadCruxSpace(space, userId)).map((space) => space.id))
@@ -236,6 +244,8 @@ export class TeamCruxWorkspace {
     const present = (values: string[], allowed: Set<string>): string[] => values.filter((id) => allowed.has(id))
     const optional = (value: string | undefined, allowed: Set<string>): string | undefined => value && allowed.has(value) ? value : undefined
     snapshot.tasks = snapshot.tasks.map((task) => ({ ...task, typeId: optional(task.typeId, typeIds), parentTaskId: optional(task.parentTaskId, taskIds),
+      lightweightSource: task.workflow ? (hasOnlyIntakeHistory(task) && this.provenConversationTask(projectId, task) ? 'conversation' : undefined) : task.lightweightSource,
+      conversations: task.conversations?.filter(link => link.actorId === userId),
       labelIds: present(task.labelIds, labelIds), projectId: optional(task.projectId, projectIds), iterationIds: present(task.iterationIds, iterationIds),
       relations: task.relations.filter((relation) => taskIds.has(relation.taskId)), executor: task.executor && (task.executor.kind === 'agent' ? agentIds : crewIds).has(task.executor.id) ? task.executor : undefined }))
     snapshot.comments = snapshot.comments.filter((comment) => taskIds.has(comment.taskId))
@@ -244,6 +254,7 @@ export class TeamCruxWorkspace {
     const hiddenTaskIds = source.tasks.filter((task) => !taskIds.has(task.id)).map((task) => task.id)
     snapshot.activities = snapshot.activities.filter((activity) => taskIds.has(activity.taskId)
       && !(activity.kind === 'relation' && hiddenTaskIds.some((id) => activity.text.includes(id))))
+      .map(activity => activity.kind === 'conversation' ? { ...activity, text: '已绑定任务对话' } : activity)
     snapshot.triageDecisions = snapshot.triageDecisions.filter((decision) => taskIds.has(decision.taskId))
     // Legacy taskless reminders have no provable scope; do not expose their bodies remotely.
     snapshot.inbox = snapshot.inbox.filter((item) => (!item.taskId || taskIds.has(item.taskId)) && (item.spaceId ? readable.has(item.spaceId) : Boolean(item.taskId)))
@@ -295,6 +306,91 @@ export class TeamCruxWorkspace {
     return this.view(principal, projectId, this.load(projectId))
   }
 
+  feishuMembership(projectId: string, spaceId: string, actorIds: string[]): CruxSpace {
+    return this.requireFeishuSpace(this.load(projectId), spaceId, actorIds)
+  }
+
+  private requireFeishuSpace(workspace: Workspace, spaceId: string, actorIds: string[]): CruxSpace {
+    const space = workspace.snapshot.spaces.find(item => item.id === spaceId && !item.archived)
+    if (!space || actorIds.some(id => !space.memberIds.includes(id) || !workspace.snapshot.members.some(member => member.id === id))) {
+      throw new TeamServiceError('FEISHU_MEMBER_NOT_AUTHORIZED', 'Current membership in the Feishu target space is required', 403)
+    }
+    return space
+  }
+
+  private feishuView(principal: StorePrincipal, projectId: string, workspace: Workspace, projection: FeishuProjection): CruxRemoteSnapshot {
+    const { spaceId, agentId, taskId } = projection
+    const actor = requireValue(workspace.snapshot.members.find(member => member.id === principal.person.userId), 'FORBIDDEN', 'Current project membership is unavailable', 403)
+    const space = this.requireFeishuSpace(workspace, spaceId, [actor.id])
+    const tasks = agentId ? [] : workspace.snapshot.tasks.filter(task => task.spaceId === spaceId && (taskId === undefined || task.id === taskId))
+    const agents = agentId ? workspace.snapshot.agents.filter(agent => agent.id === agentId && agent.spaceId === spaceId && agent.enabled && !agent.archived) : []
+    const snapshot: CruxSnapshot = {
+      ...buildInitialSnapshot(), members: [actor],
+      spaces: [{
+        id: space.id, name: space.name, key: space.key, createdAt: space.createdAt, visibility: space.visibility,
+        memberIds: [actor.id], multiAssignee: space.multiAssignee, taskSeq: 0
+      }],
+      taskStatuses: agentId ? [] : workspace.snapshot.taskStatuses.filter(status => status.spaceId === spaceId),
+      tasks: tasks.map(task => ({
+        id: task.id, spaceId, title: task.title, statusId: task.statusId, priority: task.priority, creatorId: task.creatorId,
+        assigneeIds: [], labelIds: [], iterationIds: [], relations: [], followerIds: [],
+        createdAt: task.createdAt, updatedAt: task.updatedAt, triagePending: task.triagePending, workKind: task.workKind,
+        workflow: task.workflow ? { stage: task.workflow.stage, artifacts: [], history: [] } : undefined,
+        ...(taskId && task.feishuSource ? { feishuSource: task.feishuSource } : {})
+      })),
+      agents: agents.map(agent => ({
+        id: agent.id, spaceId, name: agent.name, instructions: agent.instructions.slice(0, 12_000), enabled: true,
+        skillIds: [], repositories: [], runtimeKind: agent.runtimeKind, workingDirectory: 'temp', createdAt: agent.createdAt
+      }))
+    }
+    const value = cruxRemoteSnapshotSchema.parse({
+      projectId, ...this.host.identity(), revision: workspace.revision, actor, canManage: actor.role !== 'member',
+      snapshot, serverTime: Date.now(), ...(taskId && tasks.length ? { taskId } : {})
+    })
+    if (Buffer.byteLength(JSON.stringify(value)) > MAX_SNAPSHOT_BYTES) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Feishu space exceeds its response bound', 413)
+    return value
+  }
+
+  feishuRead(principal: StorePrincipal, projectId: string, spaceId: string, agentId?: string, taskId?: string): CruxRemoteSnapshot {
+    this.authorizeResolved(principal, projectId)
+    return this.feishuView(principal, projectId, this.load(projectId), { spaceId, agentId, taskId })
+  }
+
+  authorizeFeishuCommand(principal: StorePrincipal, projectId: string, spaceId: string, command: FeishuMemberTaskCommand): void {
+    this.authorizeResolved(principal, projectId, command.operation)
+    const { epoch, authorizationRevision } = this.host.identity()
+    if (epoch !== command.expectedEpoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'The original service generation changed', 409)
+    if (authorizationRevision !== command.expectedAuthorizationRevision) throw new TeamServiceError('REVISION_CONFLICT', 'Workspace authorization changed', 409)
+    const workspace = this.load(projectId)
+    this.requireFeishuSpace(workspace, spaceId, [principal.person.userId])
+    if (command.operation === 'createTask') {
+      if (spaceId !== command.input.spaceId) deny()
+    } else {
+      const taskId = command.operation === 'updateTask' ? command.input.id : command.input.taskId
+      if (!workspace.snapshot.tasks.some(task => task.id === taskId && task.spaceId === spaceId)) deny()
+    }
+  }
+
+  applyFeishuCommand(principal: StorePrincipal, projectId: string, spaceId: string, command: FeishuMemberTaskCommand): CruxRemoteSnapshot {
+    return this.applyBusinessCommand(principal, projectId, command, spaceId)
+  }
+
+  feishuProjectReceipt(principal: StorePrincipal, projectId: string, spaceId: string, result: CruxRemoteSnapshot): CruxRemoteSnapshot {
+    this.authorizeResolved(principal, projectId)
+    const { instanceId, epoch, authorizationRevision } = this.host.identity()
+    if (result.projectId !== projectId || result.instanceId !== instanceId || result.epoch !== epoch || result.actor.id !== principal.person.userId ||
+        result.snapshot.spaces.length !== 1 || result.snapshot.spaces[0].id !== spaceId) {
+      throw new TeamServiceError('FEISHU_MEMBER_RECEIPT_MISMATCH', 'The stored receipt does not match the original member, space and service', 409)
+    }
+    const workspace = this.load(projectId)
+    this.requireFeishuSpace(workspace, spaceId, [principal.person.userId])
+    const task = result.snapshot.tasks.find(item => item.id === result.taskId && item.spaceId === spaceId)
+    if (!task || !workspace.snapshot.tasks.some(item => item.id === task.id && item.spaceId === spaceId && item.createdAt === task.createdAt)) {
+      return { ...result, authorizationRevision, taskId: undefined, snapshot: { ...result.snapshot, tasks: [] } }
+    }
+    return { ...result, authorizationRevision }
+  }
+
   /** Authorization is checked on every wait tick; no snapshot parse, clone or roster projection. */
   head(actor: StoreActor, raw: Record<string, unknown>): { instanceId: string; epoch: string; authorizationRevision: number; revision: number } {
     const projectId = teamIdSchema.parse(raw.projectId)
@@ -319,13 +415,23 @@ export class TeamCruxWorkspace {
     if (workspace.snapshot.automations.some(rule => rule.enabled && rule.spaceId === spaceId)) throw new TeamServiceError('IMPORT_AUTOMATION_CONFLICT', 'Select an import space without enabled task automations or explicitly link an existing task', 409)
     const statusId = workspace.snapshot.taskStatuses.find(status => status.spaceId === spaceId && status.category === 'backlog')?.id
     if (!statusId) throw new TeamServiceError('IMPORT_STATUS_UNAVAILABLE', 'Import space has no Backlog state', 409)
-    const result = this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'createTask', input: { spaceId, title, statusId, triagePending: true, workKind: 'code', assigneeIds: [] } })
+    const result = this.applyBusinessCommand(principal, projectId, { commandId: '', expectedEpoch: this.host.identity().epoch, expectedRevision, operation: 'createTask', input: { spaceId, title, statusId, triagePending: true, assigneeIds: [] } })
     const task = result.snapshot.tasks.find(entry => entry.id === result.taskId)
     if (!task) throw new TeamServiceError('CORRUPT_STORE', 'Imported task identity was not committed by the task domain', 503)
     return { instanceId: this.host.identity().instanceId, projectId, spaceId, taskId: task.id, taskCreatedAt: task.createdAt }
   }
 
-  private applyBusinessCommand(principal: StorePrincipal, projectId: string, input: z.infer<typeof cruxRemoteCommandSchema>): CruxRemoteSnapshot {
+  bootstrapDefaultSpace(principal: StorePrincipal, projectId: string, commandId: string): string {
+    const result = this.applyBusinessCommand(principal, projectId, {
+      commandId, expectedEpoch: this.host.identity().epoch, expectedRevision: 0,
+      operation: 'createSpace', input: { name: '默认空间', key: 'MAIN', visibility: 'public' }
+    })
+    const [space] = result.snapshot.spaces
+    if (!space || result.snapshot.spaces.length !== 1 || space.ownerId !== principal.person.userId) throw new TeamServiceError('CORRUPT_STORE', 'Default space was not initialized', 503)
+    return space.id
+  }
+
+  private applyBusinessCommand(principal: StorePrincipal, projectId: string, input: z.infer<typeof cruxRemoteCommandSchema>, feishuSpaceId?: string): CruxRemoteSnapshot {
     const workspace = this.load(projectId)
     if (workspace.revision !== input.expectedRevision) throw new TeamServiceError('REVISION_CONFLICT', 'Workspace revision changed; reload the authorized snapshot before creating a new command', 409)
     if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
@@ -333,6 +439,22 @@ export class TeamCruxWorkspace {
     if (input.operation === 'saveAgent') {
       const agent = cruxMutationInputSchemas.saveAgent.parse(input.input)
       for (const repository of agent.repositories ?? []) if (repository.url) repositoryReference(repository.url)
+    }
+    if (input.operation === 'restoreLightweightTask') {
+      const restore = cruxMutationInputSchemas.restoreLightweightTask.parse(input.input)
+      const original = source.tasks.find(task => task.id === restore.taskId)
+      const space = source.spaces.find(entry => entry.id === original?.spaceId)
+      if (!original || !space?.memberIds.includes(principal.person.userId)) throw new TeamServiceError('SPACE_ACCESS_DENIED', '当前成员无权修改此任务', 403)
+      if (!hasOnlyIntakeHistory(original) || !this.provenConversationTask(projectId, original)) throw new TeamServiceError('LIGHTWEIGHT_GOVERNANCE_CONFLICT', '此任务需要按原阶段交接，请刷新任务。', 409)
+      original.lightweightSource = 'conversation'
+    }
+    if (input.operation === 'updateTask') {
+      const { id, patch } = cruxMutationInputSchemas.updateTask.parse(input.input)
+      if (patch.outputReview) {
+        const original = source.tasks.find(task => task.id === id)
+        if (original?.workflow && hasOnlyIntakeHistory(original) && this.provenConversationTask(projectId, original)) original.lightweightSource = 'conversation'
+        else if (original?.workflow) throw new TeamServiceError('LIGHTWEIGHT_GOVERNANCE_CONFLICT', '此任务使用阶段评审', 409)
+      }
     }
     let executed: ReturnType<typeof executeCruxDomain>
     try { executed = executeCruxDomain(source, input.operation, input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input, principal.person.userId) }
@@ -343,6 +465,10 @@ export class TeamCruxWorkspace {
       throw error
     }
     let committedTransition: { transition: CruxTransitionTaskInput; before: CruxTask; after: CruxTask } | undefined
+    if (input.operation === 'updateTask') {
+      const parsed = cruxMutationInputSchemas.updateTask.parse(input.input)
+      if (parsed.patch.outputReview?.action === 'submit') this.host.validateOutputReviewReference(principal, projectId, parsed.id, structuredClone(parsed.patch.outputReview.output))
+    }
     if (input.operation === 'transitionTask') {
       const transition = cruxMutationInputSchemas.transitionTask.parse(input.input)
       const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
@@ -361,10 +487,33 @@ export class TeamCruxWorkspace {
       workspace.snapshot = executed.snapshot
     }
     workspace.revision++
-    const result = this.view(principal, projectId, workspace, executed.taskId)
+    const commandTaskId = input.expectedAuthorizationRevision === undefined ? undefined
+      : input.operation === 'updateTask' ? cruxMutationInputSchemas.updateTask.parse(input.input).id
+      : committedTransition?.transition.taskId
+    const taskId = executed.taskId ?? commandTaskId
+    const result = feishuSpaceId ? this.feishuView(principal, projectId, workspace, { spaceId: feishuSpaceId, taskId: taskId ?? '' })
+      : this.view(principal, projectId, workspace, taskId)
     this.host.run('INSERT INTO crux_workspaces(projectId,revision,snapshotJson,updatedAt) VALUES(?,?,?,?) ON CONFLICT(projectId) DO UPDATE SET revision=excluded.revision,snapshotJson=excluded.snapshotJson,updatedAt=excluded.updatedAt', projectId, workspace.revision, JSON.stringify(workspace.snapshot), Date.now())
     if (committedTransition) this.host.committedTaskTransition(principal, projectId, input.commandId, committedTransition.transition, committedTransition.before, committedTransition.after, workspace.revision)
     return result
+  }
+
+  private provenConversationTask(projectId: string, task: CruxTask): boolean {
+    const scope = [projectId, task.id, task.spaceId, task.createdAt]
+    if (this.host.get('SELECT 1 FROM team_task_executions WHERE projectId=? AND taskId=? LIMIT 1', projectId, task.id) ||
+      this.host.get('SELECT 1 FROM task_input_heads WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=? LIMIT 1', ...scope) ||
+      this.host.get('SELECT 1 FROM team_task_code_resources WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=? LIMIT 1', ...scope) ||
+      this.host.get('SELECT 1 FROM task_material_documents WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=? LIMIT 1', ...scope)) return false
+    if (task.lightweightSource === 'conversation') return true
+    const link = task.conversations?.find(item => item.actorId === task.creatorId)
+    if (!link) return false
+    const receipt = this.host.get("SELECT resultJson FROM commands WHERE kind='cruxCommand' AND userId=? AND json_extract(resultJson,'$.projectId')=? AND json_extract(resultJson,'$.taskId')=? ORDER BY createdAt, rowid LIMIT 1", task.creatorId, projectId, task.id)
+    if (!receipt) return false
+    const read = cruxRemoteSnapshotSchema.safeParse(JSON.parse(string(receipt, 'resultJson')))
+    if (!read.success) return false
+    const created = read.data.snapshot.tasks.find(item => item.id === task.id && item.createdAt === task.createdAt && item.spaceId === task.spaceId && item.creatorId === task.creatorId)
+    return Boolean(created?.triagePending && !created.workflow && !created.workKind && !created.acceptanceCriteria && !created.handoff &&
+      created.conversations?.some(item => item.id === link.id && item.actorId === task.creatorId))
   }
 
   command(actor: StoreActor, raw: Record<string, unknown>): TeamCommandReply<CruxRemoteSnapshot> {
@@ -374,7 +523,12 @@ export class TeamCruxWorkspace {
     const reply = this.host.mutation(actor, input.commandId, 'cruxCommand', { projectId, ...input },
       (principal) => {
         this.authorize(principal, projectId, input.operation)
-        if (input.expectedEpoch !== this.host.identity().epoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'Workspace generation changed; reload the authorized snapshot and reconcile the original command before creating a new intent', 409)
+        const authority = this.host.identity()
+        if (input.expectedEpoch !== authority.epoch) throw new TeamServiceError('WORKSPACE_EPOCH_CHANGED', 'Workspace generation changed; reload the authorized snapshot and reconcile the original command before creating a new intent', 409)
+        if (input.expectedAuthorizationRevision !== undefined && input.expectedAuthorizationRevision !== authority.authorizationRevision) throw new TeamServiceError('REVISION_CONFLICT', 'Workspace authorization changed; reload the authorized snapshot before creating a new command', 409)
+        if (input.operation === 'createTask' && cruxMutationInputSchemas.createTask.parse(input.input).feishuSource) {
+          throw new TeamServiceError('FEISHU_MEMBER_NOT_AUTHORIZED', 'Verified Feishu source requires the original member binding', 403)
+        }
         if (input.operation === 'setSpaceMembers') this.authorizeSpaceMembers(this.load(projectId).snapshot, principal.person.userId, spaceMembersInputSchema.parse(input.input).spaceId)
       },
       (principal) => this.applyBusinessCommand(principal, projectId, input),

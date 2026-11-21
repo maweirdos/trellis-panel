@@ -642,10 +642,18 @@ export interface ModelFetchResult {
   models?: ModelItem[]
 }
 
+export interface AiConnectionTestResult {
+  ok: boolean
+  latencyMs?: number
+  error?: string
+  httpStatus?: number
+}
+
 export interface ModelTestResult {
   ok: boolean
   error?: string
   latencyMs?: number
+  latencyKind?: 'first_output' | 'response'
   model?: string
   message?: string
 }
@@ -1186,6 +1194,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   crux: import('./crux').CruxApi
   conversations: import('./private-conversations').ConversationApi
   designWorkspace: import('./design-workspace').DesignWorkspaceApi
+  productTask?: import('./product-task-entry').ProductTaskApi
+  taskPlanning?: import('./task-planning').TaskPlanningApi
   cruxWork?: import('./crux-work').CruxWorkApi
   cruxProgress?: import('./crux-task-progress').CruxProgressApi
   creations?: import('./creation-api').CreationApi
@@ -1195,6 +1205,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   jiraIntegration?: import('./jira-integration').JiraIntegrationApi
   gitlabWorkspace?: import('./gitlab-integration').GitlabWorkspaceApi
   dingtalkWorkspace?: import('./dingtalk-integration').DingTalkApi
+  feishuWorkspace?: import('./feishu-integration').FeishuApi
   /** 置顶文档小窗：打开/聚焦（支持多开，key 去重）；theme 跟随面板主题 */
   docOpen: (opts: { key: string; title: string; file: string; theme: string }) => Promise<{
     ok: boolean
@@ -1319,6 +1330,9 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   openLocalDocument: (href: string) => Promise<import('./local-document-link').LocalDocumentOpenResult>
 
   getSettings: () => Promise<Settings>
+  daemon?: import('./daemon').DaemonApi
+  setDefaultConversationModel?: (input: { modelId: string; expectedDefaultId?: string }) => Promise<{ modelId: string }>
+  onConversationDefaultsChanged?: (cb: () => void) => () => void
   onThemeChanged: (cb: (theme: Settings['theme']) => void) => () => void
   setSettings: (patch: Partial<Settings>) => Promise<Settings>
 
@@ -1519,6 +1533,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   /* --- AI（baseUrl 自定义模型与多供应商） --- */
   aiChat: (messages: ChatMessage[]) => Promise<AiChatResult>
   aiTest: (cfg: AiConfig) => Promise<AiChatResult>
+  aiTestConnection: (baseUrl: string) => Promise<AiConnectionTestResult>
   aiFetchModels: (provider: ModelProvider) => Promise<ModelFetchResult>
   aiTestModel: (provider: ModelProvider, modelId: string) => Promise<ModelTestResult>
   aiPrdDraft: (dirName: string) => Promise<AiChatResult>
@@ -1896,7 +1911,7 @@ export interface AcpRuntimeRetry {
 export interface AcpHostPolicyOutcome {
   authority: 'host-policy'
   status: 'cancelled'
-  cause: 'retry-beyond-turn-budget'
+  cause: 'retry-beyond-turn-budget' | 'planning-policy-changed'
   turnId: string
   connectionGeneration: string
   backendSessionId: string
@@ -1949,7 +1964,7 @@ export interface AcpModelCatalogMetadata {
 export interface AcpSessionMeta {
   /** Product-managed v2 execution; absent on ordinary and retained v1 sessions. */
   platformExecution?: { dispatchId: string; preparationId: string; taskIdentity: string; configurationDigest: string }
-  privateConversation?: { id: string; creatorId: string; request?: { id: string; turnId: string; sent: boolean } }
+  privateConversation?: { id: string; creatorId: string; planningPolicy?: import('./private-conversations').TaskPlanningPolicy; request?: { id: string; turnId: string; sent: boolean } }
   /** Application execution identity; legacy absent values denote ACP. */
   engine?: 'acp' | 'pi'
   pi?: { sessionFile: string; version: '1.4.0'; sessionVersion: 3 }
@@ -2034,6 +2049,7 @@ export interface AcpPermissionPayload {
   connectionGeneration?: string
   turnId?: string
   expiresAt?: number
+  reviewContext?: import('./acp-permission-review').AcpPermissionReview
 }
 
 /**

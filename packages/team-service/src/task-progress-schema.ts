@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS crux_task_progress_commands(
 CREATE INDEX IF NOT EXISTS crux_task_progress_commands_scope ON crux_task_progress_commands(projectId,taskId);
 `
 
+export const TEAM_TASK_PROGRESS_RECEIPTS_INDEX_SQL = 'CREATE INDEX crux_task_progress_receipts_bound ON crux_task_progress_receipts(projectId,taskId,createdAt);'
+
 export const TEAM_TASK_PROGRESS_SQL = `
 CREATE TABLE crux_task_progress(
  projectId TEXT NOT NULL REFERENCES projects(projectId),taskId TEXT NOT NULL,spaceId TEXT NOT NULL,
@@ -20,6 +22,6 @@ CREATE TABLE crux_task_progress_receipts(
  PRIMARY KEY(userId,commandId),
  FOREIGN KEY(projectId,taskId) REFERENCES crux_task_progress(projectId,taskId) ON DELETE CASCADE
 );
-CREATE INDEX crux_task_progress_receipts_bound ON crux_task_progress_receipts(projectId,taskId,createdAt);
+${TEAM_TASK_PROGRESS_RECEIPTS_INDEX_SQL}
 ${TEAM_TASK_PROGRESS_IDENTITIES_SQL}
 `

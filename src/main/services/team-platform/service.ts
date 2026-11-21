@@ -3,6 +3,7 @@ import { shell } from 'electron'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapshotSchema, type CruxRemoteCommand, type CruxRemoteSnapshot } from '../../../shared/crux-remote'
+import { assertCruxSpaceMutation } from '../../../shared/crux-domain/commands'
 import { desktopAuthoredPublicationSchema, desktopConnectionIdSchema, desktopDocumentInputSchema, desktopFeedbackInputSchema, desktopFeedbackListSchema, desktopListInputSchema, desktopPairingInputSchema, desktopPublicationBaseSchema, desktopVersionsInputSchema, type DesktopAuthoredPublicationInput, type DesktopFeedbackInput, type DesktopMaterialPublicationInput, type DesktopTeamApi, type DesktopTeamConnection, type DesktopTeamConnectionContext, type DesktopTeamDocument, type DesktopTeamEventSync, type DesktopTeamOutbox, type DesktopTeamOutboxPage, type DesktopTeamPairing, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
 import { desktopTeamAccountIdSchema, desktopTeamAuthOptionsSchema, desktopTeamConnectWorkspaceSchema, desktopTeamCreateInvitationSchema, desktopTeamCreatedInvitationSchema, desktopTeamCreatedOrganizationSchema, desktopTeamCreatedWorkspaceSchema, desktopTeamCreateOrganizationSchema, desktopTeamCreateWorkspaceSchema, desktopTeamInvitationAcceptSchema, desktopTeamInvitationSchema, desktopTeamLoginSchema, desktopTeamPageOptionsSchema, desktopTeamRegisterSchema, type DesktopTeamAccount, type DesktopTeamAuthOptions, type DesktopTeamConnectWorkspaceInput, type DesktopTeamCreateInvitationInput, type DesktopTeamCreatedInvitation, type DesktopTeamCreatedOrganization, type DesktopTeamCreatedWorkspace, type DesktopTeamCreateOrganizationInput, type DesktopTeamCreateWorkspaceInput, type DesktopTeamInvitationAcceptInput, type DesktopTeamInvitationInput, type DesktopTeamLoginInput, type DesktopTeamPageOptions, type DesktopTeamRegisterInput } from '../../../shared/team-desktop-account'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, createTeamProjectSchema, createTeamSchema, deviceApproveInputSchema, deviceEnrollmentInputSchema, publicationInputSchema, teamCommandIdSchema, teamCommandReplySchema, teamDeviceApprovalSchema, teamDeviceEnrollmentSchema, teamDeviceSchema, teamEventPageSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamIdSchema, teamMaterialVersionSchema, teamPageSchema, teamProjectSchema, teamPublishedDocumentSchema, teamSessionSchema, teamTeamSchema, type TeamCommandReply, type TeamMaterialVersion, type TeamPage, type TeamFeedback, type TeamProject, type TeamSession, type TeamTeam } from '../../../shared/team-platform'
@@ -14,8 +15,8 @@ import { protectSecret, revealSecret } from '../integrations/credentials'
 import { proxiedFetch } from '../proxy'
 import { DesktopTeamStore } from './store-client'
 import { canonicalTeamJson, verifyTeamDocument } from './codec'
-import { canonicalTeamOrigin, TeamHttp, verificationUrl, type TeamBrowserCredentials, type TeamFetch } from './http'
-import { DesktopTeamError, accountRecordSchema, accountSessionEnvelopeSchema, invitationIntentEnvelopeSchema, invitationIntentRecordSchema, publicAccount, publicConnection, publicOutbox, type AccountRecord, type AccountSessionEnvelope, type CachedDocument, type ConnectionRecord, type InvitationIntentEnvelope, type InvitationIntentRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
+import { canonicalTeamOrigin, isCruxCommandDenial, isCruxRevisionConflict, TeamHttp, verificationUrl, verifyCruxCommandDenial, verifyTerminalCruxRevisionConflict, type TeamBrowserCredentials, type TeamFetch } from './http'
+import { DesktopTeamError, accountRecordSchema, accountSessionEnvelopeSchema, invitationIntentEnvelopeSchema, invitationIntentRecordSchema, organizationIntentRecordSchema, publicAccount, publicConnection, publicOutbox, type AccountRecord, type AccountSessionEnvelope, type CachedDocument, type ConnectionRecord, type InvitationIntentEnvelope, type InvitationIntentRecord, type OrganizationIntentRecord, type OutboxRecord, type TrustedTeamMaterial } from './types'
 import { creationListInputSchema, creationListSchema, creationViewInputSchema, creationViewSchema, creationHeadSchema, creationCommandSchema, creationCommandReplySchema, creationCommandResultSchema, type CreationCommand, type CreationView, type CreationCommandReply, type CreationHead } from '../../../shared/creations'
 import { teamCodeResourceListInputSchema, teamCodeResourceListSchema, teamTaskCodeResourceDtoSchema, teamCodeResourceCommandSchema, teamCodeResourceCommandReplySchema, teamCodeResourceReceiptSchema, teamCodeResourceScopeIdSchema, type TeamCodeResourceList, type TeamTaskCodeResourceDto, type TeamCodeResourceCommand, type TeamCodeResourceCommandReply } from '../../../shared/team-code-resources'
 import { teamTaskProgressResourceIdSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, teamTaskProgressDtoSchema, teamTaskProgressReceiptSchema, type TeamTaskProgressCommand, type TeamTaskProgressDto, type TeamTaskProgressCommandReply, type TeamTaskProgressReceipt } from '../../../shared/team-task-progress'
@@ -29,6 +30,7 @@ import { teamTaskDevelopmentContextSchema, type TeamTaskDevelopmentContext } fro
 import { desktopExecutionScopeSchema, desktopExecutionCommandSchema, desktopExecutionHistorySchema, desktopExecutionIntentSchema, desktopExecutionPendingInputSchema, desktopExecutionPendingPageSchema, teamTaskIdentity } from '../../../shared/team-task-execution'
 import { executionInputCommandSchema, executionInputSelectionIdSchema, executionInputResourceViewSchema, type ExecutionInputView } from '../../../shared/team-execution-input'
 import { TaskExecutionTransport } from './task-execution-transport'
+import { executionArtifactRefSchema } from '../../../shared/team-execution-artifacts'
 
 const hash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 const lockedCodes = new Set(['UNAUTHENTICATED', 'UNAUTHORIZED', 'FORBIDDEN', 'DEVICE_REVOKED', 'ACCOUNT_DISABLED', 'AUTHENTICATION_REQUIRED', 'CREDENTIAL_UNAVAILABLE', 'BINDING_CHANGED'])
@@ -54,6 +56,9 @@ export type DesktopTeamOptions = {
   /** Main-only adapters; never accept these from IPC/renderer input. */
   protectSecret?: (value: string) => string; revealSecret?: (value: string) => string;
   openExternal?: (url: string) => Promise<void>; fetch?: TeamFetch
+}
+export type CruxRevalidationPin = Pick<ConnectionRecord, 'origin' | 'pairingId' | 'deviceId' | 'ownerId' | 'projectId'> & {
+  instanceId: string; epoch: string; authorizationRevision: number; revision: number
 }
 export class DesktopTeamService implements DesktopTeamApi {
   private async withExecution<T>(raw: z.infer<typeof desktopExecutionScopeSchema>, action: (transport: TaskExecutionTransport, c: ConnectionRecord) => Promise<T>): Promise<T> {
@@ -81,6 +86,11 @@ export class DesktopTeamService implements DesktopTeamApi {
   async executionHistory(raw: z.infer<typeof desktopExecutionHistorySchema>): ReturnType<DesktopTeamApi['executionHistory']> {
     const input = desktopExecutionHistorySchema.parse(raw)
     return this.withExecution({ connectionId: input.connectionId, task: input.task }, transport => transport.history(input.executionId))
+  }
+  /** Main-only fixed read; current task/space ACL is enforced by the service. */
+  async executionArtifact(raw: z.infer<typeof desktopExecutionScopeSchema> & { ref: z.infer<typeof executionArtifactRefSchema> }): ReturnType<TaskExecutionTransport['artifact']> {
+    const input = desktopExecutionScopeSchema.extend({ ref: executionArtifactRefSchema }).strict().parse(raw)
+    return this.withExecution({ connectionId: input.connectionId, task: input.task }, transport => transport.artifact(input.ref))
   }
   /** Main-only capture through the original authenticated connection and retained command UUID. */
   async executionInputCapture(raw: { connectionId: string; task: z.infer<typeof desktopExecutionScopeSchema>['task']; command: z.infer<typeof executionInputCommandSchema> }): ReturnType<TaskExecutionTransport['captureInput']> {
@@ -401,9 +411,26 @@ export class DesktopTeamService implements DesktopTeamApi {
   async createOrganization(raw: DesktopTeamCreateOrganizationInput): Promise<TeamCommandReply<DesktopTeamCreatedOrganization>> {
     return this.tracked(async () => {
       const input = desktopTeamCreateOrganizationSchema.parse(raw), account = await this.account(input.accountId, true)
-      const body = createTeamSchema.parse({ commandId: input.commandId, name: input.name })
-      const result = await this.accountRequest(account, '/api/teams', teamCommandReplySchema(desktopTeamCreatedOrganizationSchema), body, true)
-      if (result.commandId !== input.commandId) throw new DesktopTeamError('RECEIPT_MISMATCH', '组织创建回执不属于原命令', true)
+      const normalizedName = input.name.trim(), intentKey = hash(canonicalTeamJson([account.accountId, account.origin, normalizedName]))
+      const intent = organizationIntentRecordSchema.nullable().parse(await this.store.call<OrganizationIntentRecord | null>({ op: 'organization-intent', input: { intentKey } }))
+      if (intent && (intent.accountId !== account.accountId || intent.origin !== account.origin || intent.payloadDigest !== hash(canonicalTeamJson({ commandId: intent.commandId, name: normalizedName })))) throw new DesktopTeamError('COMMAND_CONFLICT', '组织创建名称摘要与原命令不一致；请使用原名称重试核对')
+      const body = createTeamSchema.parse({ commandId: intent?.commandId ?? input.commandId, name: normalizedName })
+      const commandId = intent?.commandId ?? input.commandId
+      const nextIntent = organizationIntentRecordSchema.parse({
+        intentKey, accountId: account.accountId, origin: account.origin, commandId,
+        payloadDigest: hash(canonicalTeamJson(body)), createdAt: intent?.createdAt ?? Date.now(), updatedAt: Date.now()
+      })
+      const savedIntent = organizationIntentRecordSchema.parse(await this.store.call({ op: 'save-organization-intent', input: nextIntent }))
+      if (savedIntent.commandId !== commandId || savedIntent.payloadDigest !== nextIntent.payloadDigest || savedIntent.accountId !== account.accountId || savedIntent.origin !== account.origin) throw new DesktopTeamError('COMMAND_CONFLICT', '组织创建命令已被并发操作固定，请使用原名称重试核对')
+      const result = await this.accountRequest(account, '/api/organizations', teamCommandReplySchema(desktopTeamCreatedOrganizationSchema), body, true)
+      if (result.commandId !== commandId) throw new DesktopTeamError('RECEIPT_MISMATCH', '组织创建回执不属于原命令', true)
+      if (result.result.teamId === result.result.projectId || result.result.name !== normalizedName) throw new DesktopTeamError('RECEIPT_MISMATCH', '组织创建回执身份或名称不一致', true)
+      const current = await this.account(account.accountId, true)
+      if (current.accountId !== account.accountId || current.origin !== account.origin || current.person.userId !== account.person.userId) throw new DesktopTeamError('ACCOUNT_CHANGED', '组织已创建，但桌面账号会话已变化；请重新登录核对原结果', true)
+      const project = await this.workspaceForAccount(current, result.result.projectId)
+      if (project.teamId !== result.result.teamId) throw new DesktopTeamError('RECEIPT_MISMATCH', '返回工作区不属于原组织', true)
+      try { await this.store.call({ op: 'clear-organization-intent', input: { intentKey, accountId: account.accountId, commandId } }) }
+      catch { throw new DesktopTeamError('ACKNOWLEDGEMENT_UNKNOWN', '组织已创建，但本地创建意图确认丢失；请使用同一名称重试核对', true) }
       return result
     })
   }
@@ -525,6 +552,11 @@ export class DesktopTeamService implements DesktopTeamApi {
       if (body === undefined) await this.store.call({ op: 'update-connection', input: { connectionId: c.connectionId, network: 'reachable', errorCode: null } })
       return value
     }
+    catch (error) { if (!isCruxCommandDenial(error)) await this.noteError(c, error, path); throw error }
+  }
+  private async pairingDevice(c: ConnectionRecord): Promise<z.infer<typeof teamDeviceSchema>> {
+    const path = `/api/device-pairings/${encodeURIComponent(c.pairingId)}/status`
+    try { return await this.http.request(c.origin, path, teamDeviceSchema, this.token(c)) }
     catch (error) { await this.noteError(c, error, path); throw error }
   }
   private async verifyActive(c: ConnectionRecord): Promise<TeamSession> {
@@ -616,14 +648,92 @@ export class DesktopTeamService implements DesktopTeamApi {
       return value
     })
   }
-  async cruxCommand(connectionId: string, raw: CruxRemoteCommand, expectedInstanceId?: string): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
+  async cruxCommand(connectionId: string, raw: CruxRemoteCommand, expectedInstanceId?: string, expectedAuthority?: Pick<CruxRemoteSnapshot, 'instanceId' | 'epoch' | 'authorizationRevision' | 'revision'>): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
     return this.tracked(async () => {
       const payload = cruxRemoteCommandSchema.parse(raw), c = await this.connection(connectionId, true)
+      const authority = expectedAuthority === undefined ? undefined : z.object({ instanceId: z.string().uuid(), epoch: z.string().uuid(), authorizationRevision: z.number().int().nonnegative().safe(), revision: z.number().int().nonnegative().safe() }).strict().parse(expectedAuthority)
+      if (authority && (authority.instanceId !== expectedInstanceId || authority.epoch !== payload.expectedEpoch)) throw new DesktopTeamError('BINDING_CHANGED', '原命令的服务授权头不匹配')
       await this.verifyActive(c)
-      const reply = await this.request(c, `/api/projects/${c.projectId}/crux/commands`, cruxRemoteCommandReplySchema, payload)
+      let reply: z.infer<typeof cruxRemoteCommandReplySchema>
+      try { reply = await this.request(c, `/api/projects/${c.projectId}/crux/commands`, cruxRemoteCommandReplySchema, payload) }
+      catch (error) {
+        if (isCruxRevisionConflict(error) && expectedInstanceId && authority) {
+          // The owned service transaction checks (owner, UUID, complete request
+          // hash) before CAS; effect and receipt commit together. A sourced CAS
+          // denial therefore establishes no prior effect at that serialized
+          // point. A greater durable head in the same epoch also prevents any
+          // later copy of this exact old command from committing. Neither an
+          // isolated 404 nor a bare conflict/error string establishes this.
+          const value = await this.cruxRevalidate(connectionId, { ...this.binding(c), ...authority, revision: Math.max(payload.expectedRevision, authority.revision) }, payload, () => {})
+          if (value.revision > payload.expectedRevision) {
+            const receipt = await this.cruxReceipt(connectionId, payload.commandId, expectedInstanceId)
+            const current = await this.connection(connectionId, true)
+            if (canonicalTeamJson(this.binding(current)) !== canonicalTeamJson(this.binding(c)) || current.encryptedToken !== c.encryptedToken || current.accessGeneration !== c.accessGeneration) throw new DesktopTeamError('BINDING_CHANGED', '原命令核对期间连接再次失权，不能结束未知意图', true)
+            if (receipt) {
+              if (receipt.epoch !== payload.expectedEpoch || receipt.revision !== payload.expectedRevision + 1) throw new DesktopTeamError('RECEIPT_MISMATCH', '核对回执与原命令版本不一致', true)
+              return cruxRemoteCommandReplySchema.parse({ status: 'duplicate', commandId: payload.commandId, result: receipt })
+            }
+            verifyTerminalCruxRevisionConflict(error)
+          }
+          throw error
+        }
+        if (!isCruxCommandDenial(error)) throw error
+        try {
+          if (!expectedInstanceId) throw new DesktopTeamError('BINDING_CHANGED', '缺少原服务实例，不能核实业务拒绝')
+          await this.cruxRevalidate(connectionId, { ...this.binding(c), instanceId: expectedInstanceId, epoch: payload.expectedEpoch, revision: Math.max(payload.expectedRevision, authority?.revision ?? 0), authorizationRevision: authority?.authorizationRevision ?? 0 }, payload, () => {})
+          verifyCruxCommandDenial(error)
+        } catch (proofError) {
+          const denied = new DesktopTeamError('FORBIDDEN', '业务拒绝后的原设备授权无法核实，请保留原命令核对', true)
+          await this.noteError(c, denied)
+          throw proofError instanceof DesktopTeamError && lockedCodes.has(proofError.code) ? proofError : denied
+        }
+        throw error
+      }
       if (reply.commandId !== payload.commandId || reply.result.epoch !== payload.expectedEpoch || reply.result.revision !== payload.expectedRevision + 1) throw new DesktopTeamError('RECEIPT_MISMATCH', '远程协作回执与原命令或版本不一致', true)
       await this.verifyCruxSnapshot(c, reply.result, true, expectedInstanceId)
       return reply
+    })
+  }
+  /** Main-only recovery: original credential proof and CAS, never a business POST. */
+  async cruxRevalidate(connectionId: string, pin: CruxRevalidationPin, raw: CruxRemoteCommand, assertCurrent: (value: CruxRemoteSnapshot) => void): Promise<CruxRemoteSnapshot> {
+    return this.tracked(async () => {
+      const c = await this.connection(connectionId), command = cruxRemoteCommandSchema.parse(raw)
+      if (c.state !== 'active' || !c.ownerId || !c.projectId || canonicalTeamJson(this.binding(c)) !== canonicalTeamJson({ origin: pin.origin, pairingId: pin.pairingId, deviceId: pin.deviceId, projectId: pin.projectId, ownerId: pin.ownerId })) throw new DesktopTeamError('BINDING_CHANGED', '只能核对仍活动的原连接')
+      const token = this.token(c)
+      // Raw reads deliberately do not clear diagnostics or mutate the record
+      // captured for the final atomic compare-and-swap.
+      const read = <T extends z.ZodType>(path: string, schema: T): Promise<z.output<T>> => this.http.request(c.origin, path, schema, token)
+      const device = await read(`/api/device-pairings/${c.pairingId}/status`, teamDeviceSchema)
+      if (device.status !== 'active' || device.deviceId !== c.deviceId || device.ownerId !== c.ownerId || device.projectId !== c.projectId || device.sequence < (c.remoteDevice?.sequence ?? -1)) throw new DesktopTeamError('BINDING_CHANGED', '原设备已撤销、到期或授权不匹配')
+      const session = await read('/api/session', teamSessionSchema)
+      if (session.authentication !== 'device' || session.deviceId !== c.deviceId || session.person.userId !== c.ownerId || !session.person.active) throw new DesktopTeamError('BINDING_CHANGED', '原设备账号无法核实')
+      let cursor: string | undefined, found = false
+      for (let pageIndex = 0; pageIndex < 50; pageIndex++) {
+        const query = new URLSearchParams({ limit: '100' }); if (cursor) query.set('cursor', cursor)
+        const page = await read('/api/projects?' + query, teamPageSchema(teamProjectSchema))
+        if (page.items.some(item => item.projectId === c.projectId)) { found = true; break }
+        if (!page.hasMore) break
+        if (!page.nextCursor || page.nextCursor === cursor) throw new DesktopTeamError('CURSOR_CONFLICT', '原项目授权游标未前进')
+        cursor = page.nextCursor
+      }
+      if (!found) throw new DesktopTeamError('FORBIDDEN', '原项目成员授权已失效')
+      const value = await read(`/api/projects/${c.projectId}/crux/snapshot`, cruxRemoteSnapshotSchema)
+      const member = value.snapshot.members.find(item => item.id === c.ownerId)
+      if (value.projectId !== c.projectId || value.actor.id !== c.ownerId || !member || member.role !== value.actor.role || value.instanceId !== pin.instanceId || value.epoch !== pin.epoch || command.expectedEpoch !== pin.epoch || value.authorizationRevision < pin.authorizationRevision || value.revision < pin.revision) throw new DesktopTeamError('BINDING_CHANGED', '原服务实例、世代或授权版本无法核实')
+      try {
+        assertCruxSpaceMutation(value.snapshot, command.operation, command.input, c.ownerId)
+        const input = command.input as Record<string, unknown>
+        const task = value.snapshot.tasks.find(item => item.id === (input.taskId ?? (['updateTask', 'removeTask'].includes(command.operation) ? input.id : undefined)))
+        if (typeof input.taskId === 'string' && !task) throw new Error('Missing original task')
+        const spaceId = task?.spaceId ?? input.spaceId
+        if (typeof spaceId === 'string') {
+          const space = value.snapshot.spaces.find(item => item.id === spaceId)
+          if (!space || space.archived || !space.memberIds.includes(c.ownerId)) throw new Error('Original space membership unavailable')
+        }
+      } catch { throw new DesktopTeamError('FORBIDDEN', '原命令的任务或空间授权已失效') }
+      assertCurrent(value)
+      await this.store.call({ op: 'update-connection', input: { connectionId, expectedConnection: c, device, errorCode: c.lastErrorCode } })
+      return value
     })
   }
   async cruxReceipt(connectionId: string, commandId: string, expectedInstanceId?: string): Promise<CruxRemoteSnapshot | null> {
@@ -841,7 +951,7 @@ export class DesktopTeamService implements DesktopTeamApi {
     const connectionId = randomUUID()
     let encrypted: string
     try { encrypted = this.protection(JSON.stringify({ version: 1, connectionId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, token: enrolled.deviceToken })) } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '系统加密不可用，配对凭据未保存') }
-    const c: ConnectionRecord = { connectionId, accountId, approvalCommandId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, deviceName: input.deviceName, state: 'pending', projectId: input.projectId ?? null, ownerId: null, userCode: enrolled.userCode, verificationUri: url, expiresAt: enrolled.expiresAt, pollAfterMs: enrolled.pollAfterMs, nextPollAt: Date.now() + enrolled.pollAfterMs, encryptedToken: encrypted, capabilityClaims: input.capabilityClaims, sequence: -1, accessLocked: false, network: 'reachable', lastCheckedAt: Date.now(), lastErrorCode: null, remoteDevice: null }
+    const c: ConnectionRecord = { connectionId, accountId, approvalCommandId, origin, pairingId: enrolled.pairingId, deviceId: enrolled.deviceId, deviceName: input.deviceName, state: 'pending', projectId: input.projectId ?? null, ownerId: null, userCode: enrolled.userCode, verificationUri: url, expiresAt: enrolled.expiresAt, pollAfterMs: enrolled.pollAfterMs, nextPollAt: Date.now() + enrolled.pollAfterMs, encryptedToken: encrypted, capabilityClaims: input.capabilityClaims, sequence: -1, accessGeneration: 0, accessLocked: false, network: 'reachable', lastCheckedAt: Date.now(), lastErrorCode: null, remoteDevice: null }
     await this.store.call({ op: 'add-connection', input: c })
     let opened: DesktopTeamPairing['browser'] = openBrowser ? 'opened' : 'unavailable'
     if (openBrowser) try { await this.browser(url) } catch { opened = 'unavailable' }
@@ -880,8 +990,8 @@ export class DesktopTeamService implements DesktopTeamApi {
       for (;;) {
         try {
           const current = await this.connection(currentConnection.connectionId)
-          const device = await this.request(current, `/api/device-pairings/${encodeURIComponent(current.pairingId)}/status`, teamDeviceSchema)
-          currentConnection = await this.store.call({ op: 'update-connection', input: { connectionId: current.connectionId, device, nextPollAt: Date.now() + current.pollAfterMs } })
+          const device = await this.pairingDevice(current)
+          currentConnection = await this.store.call({ op: 'update-connection', input: { connectionId: current.connectionId, expectedConnection: current, device, nextPollAt: Date.now() + current.pollAfterMs } })
           if (currentConnection.state === 'active') {
             if (currentConnection.ownerId !== account.person.userId || currentConnection.projectId !== input.workspaceId) throw new DesktopTeamError('BINDING_CHANGED', '设备状态不属于原账号或工作区')
             await this.verifyActive(currentConnection)
@@ -916,9 +1026,9 @@ export class DesktopTeamService implements DesktopTeamApi {
       const c = await this.connection(connectionId)
       if (c.state === 'disconnected') return publicConnection(c)
       if (Date.now() < c.nextPollAt) return publicConnection(c)
-      await this.store.call({ op: 'update-connection', input: { connectionId, nextPollAt: Date.now() + c.pollAfterMs } })
-      const device = await this.request(c, `/api/device-pairings/${c.pairingId}/status`, teamDeviceSchema)
-      const next = await this.store.call<ConnectionRecord>({ op: 'update-connection', input: { connectionId, device } })
+      const reserved = await this.store.call<ConnectionRecord>({ op: 'update-connection', input: { connectionId, nextPollAt: Date.now() + c.pollAfterMs } })
+      const device = await this.pairingDevice(reserved)
+      const next = await this.store.call<ConnectionRecord>({ op: 'update-connection', input: { connectionId, expectedConnection: reserved, device } })
       if (next.state === 'active') await this.verifyActive(next)
       return publicConnection(await this.connection(connectionId))
     })
@@ -938,7 +1048,7 @@ export class DesktopTeamService implements DesktopTeamApi {
       const reserved = await this.store.call<ConnectionRecord>({ op: 'reserve-heartbeat', input: connectionId })
       const device = await this.request(reserved, '/api/devices/heartbeat', teamDeviceSchema, { capabilityClaims: reserved.capabilityClaims, sequence: reserved.sequence })
       if (device.sequence !== reserved.sequence) throw new DesktopTeamError('INVALID_RESPONSE', '心跳回执序号不属于本次已记录请求')
-      return publicConnection(await this.store.call({ op: 'update-connection', input: { connectionId, device } }))
+      return publicConnection(await this.store.call({ op: 'update-connection', input: { connectionId, expectedConnection: reserved, device } }))
     })
   }
   private binding(c: ConnectionRecord) { return { origin: c.origin, pairingId: c.pairingId, deviceId: c.deviceId, projectId: c.projectId, ownerId: c.ownerId } }

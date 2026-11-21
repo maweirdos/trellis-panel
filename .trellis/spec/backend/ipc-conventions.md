@@ -13,6 +13,11 @@
    + `runId` 关联推送（参照 cli 域实现），禁止用单次巨型 invoke 响应承载流式数据。
    广播事件统一走 `broadcastToWindows(channel, payload)`，channel 取 `ipcEvent`。
 
+The Electron preload must initialize Zod with `jitless: true` before importing IPC
+schemas. Zod's generated object parser can fail when a `contextBridge` call runs
+under the document's Content Security Policy. Exercise schema-backed methods in
+the actual window with context isolation and the production CSP enabled.
+
 ## 主进程三层结构
 
 ```

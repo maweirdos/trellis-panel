@@ -16,6 +16,7 @@
 import { JIRA_IPC } from './jira-integration'
 import { GITLAB_IPC } from './gitlab-integration'
 import { DINGTALK_IPC } from './dingtalk-integration'
+import { FEISHU_IPC } from './feishu-integration'
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
@@ -25,13 +26,18 @@ export const ipcInvoke = {
   },
   docxPreviewResult: 'docxPreview:result',
   privateConversations: {
+    reconcileSend: 'privateConversations:reconcileSend',
+    taskAction: 'privateConversations:taskAction',
+    taskSuggestion: { start: 'privateConversations:taskSuggestion:start', check: 'privateConversations:taskSuggestion:check', adopt: 'privateConversations:taskSuggestion:adopt', close: 'privateConversations:taskSuggestion:close' },
+    connect: 'privateConversations:connect',
     list: 'privateConversations:list', createDraft: 'privateConversations:createDraft', updateDraft: 'privateConversations:updateDraft',
     read: 'privateConversations:read', events: 'privateConversations:events', send: 'privateConversations:send', respond: 'privateConversations:respond',
     cancel: 'privateConversations:cancel', end: 'privateConversations:end', configure: 'privateConversations:configure', recoverModel: 'privateConversations:recoverModel', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
-    files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', previewImage: 'privateConversations:previewImage', previewPdf: 'privateConversations:previewPdf', previewDocx: 'privateConversations:previewDocx', cancelDocx: 'privateConversations:cancelDocx', validatePdfLocator: 'privateConversations:validatePdfLocator', releasePdfLocator: 'privateConversations:releasePdfLocator', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
+    files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', readAttachment: 'privateConversations:readAttachment', previewImage: 'privateConversations:previewImage', previewPdf: 'privateConversations:previewPdf', previewDocx: 'privateConversations:previewDocx', cancelDocx: 'privateConversations:cancelDocx', validatePdfLocator: 'privateConversations:validatePdfLocator', releasePdfLocator: 'privateConversations:releasePdfLocator', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
     projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify',
     git: 'privateConversations:git',
     requirements: {
+      polish: { run: 'privateConversations:requirements:polish:run', observe: 'privateConversations:requirements:polish:observe', cancel: 'privateConversations:requirements:polish:cancel', apply: 'privateConversations:requirements:polish:apply' },
       list: 'privateConversations:requirements:list', create: 'privateConversations:requirements:create', createSuccessor: 'privateConversations:requirements:createSuccessor', read: 'privateConversations:requirements:read',
       save: 'privateConversations:requirements:save', sync: 'privateConversations:requirements:sync',
       target: 'privateConversations:requirements:target', commit: 'privateConversations:requirements:commit', open: 'privateConversations:requirements:open',
@@ -47,9 +53,11 @@ export const ipcInvoke = {
   jiraIntegration: JIRA_IPC,
   gitlabWorkspace: GITLAB_IPC,
   dingtalkWorkspace: DINGTALK_IPC,
+  feishuWorkspace: FEISHU_IPC,
   daemonQuit: { state: 'daemonQuit:state', decide: 'daemonQuit:decide' },
   daemonLifecycleDialog: { state: 'daemonLifecycleDialog:state', decide: 'daemonLifecycleDialog:decide' },
   daemon: {
+    inspectRecovery: 'daemon:inspectRecovery',
     status: 'daemon:status', start: 'daemon:start', stop: 'daemon:stop', restart: 'daemon:restart',
     preferences: 'daemon:preferences', setPreferences: 'daemon:setPreferences', reconcileStartup: 'daemon:reconcileStartup', logs: 'daemon:logs'
   },
@@ -138,6 +146,7 @@ export const ipcInvoke = {
     completeMilestone: 'crux:completeMilestone',
     removeMilestone: 'crux:removeMilestone',
     updateTask: 'crux:updateTask',
+    restoreLightweightTask: 'crux:restoreLightweightTask',
     removeTask: 'crux:removeTask',
     addRelation: 'crux:addRelation',
     removeRelation: 'crux:removeRelation',
@@ -166,6 +175,16 @@ export const ipcInvoke = {
     removeSkill: 'crux:removeSkill',
     saveCrew: 'crux:saveCrew',
     removeCrew: 'crux:removeCrew'
+  },
+  taskPlanning: {
+    read: 'taskPlanning:read', prepare: 'taskPlanning:prepare', selectSources: 'taskPlanning:selectSources', generate: 'taskPlanning:generate',
+    respond: 'taskPlanning:respond',
+    reconcile: 'taskPlanning:reconcile', stop: 'taskPlanning:stop', saveDraft: 'taskPlanning:saveDraft', recoverSave: 'taskPlanning:recoverSave'
+  },
+  productTask: {
+    read: 'productTask:read', prepare: 'productTask:prepare', retryPrepare: 'productTask:retryPrepare', start: 'productTask:start',
+    stop: 'productTask:stop', permission: 'productTask:permission', reconcile: 'productTask:reconcile',
+    results: 'productTask:results', artifact: 'productTask:artifact', finish: 'productTask:finish'
   },
   cruxWork: {
     status: 'crux-work:status',
@@ -280,7 +299,7 @@ export const ipcInvoke = {
     retry: 'cruxResources:retry'
   },
   cruxMaterials: {
-    list: 'cruxMaterials:list',
+    list: 'cruxMaterials:list', sourcePart: 'cruxMaterials:sourcePart',
     read: 'cruxMaterials:read',
     versions: 'cruxMaterials:versions',
     submissions: 'cruxMaterials:submissions',
@@ -390,6 +409,7 @@ export const ipcInvoke = {
   ai: {
     chat: 'ai:chat',
     test: 'ai:test',
+    'test-connection': 'ai:test-connection',
     'fetch-models': 'ai:fetch-models',
     'test-model': 'ai:test-model',
     prdDraft: 'ai:prdDraft',
@@ -401,6 +421,7 @@ export const ipcInvoke = {
   },
   settings: {
     get: 'settings:get',
+    setDefaultConversationModel: 'settings:setDefaultConversationModel',
     set: 'settings:set'
   },
   storage: { scan: 'storage:scan', clean: 'storage:clean', openDataDirectory: 'storage:openDataDirectory' },
@@ -527,6 +548,7 @@ export const ipcEvent = {
   appRuntimeDone: 'appRuntime:done',
   /** Appearance only; never broadcast settings containing credentials. */
   themeChanged: 'settings:themeChanged',
+  conversationDefaultsChanged: 'settings:conversationDefaultsChanged',
   integrationsChanged: 'integration:changed',
   /** 项目快照刷新（全量推送） */
   snapshotUpdated: 'project:snapshot',

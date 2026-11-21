@@ -7,6 +7,7 @@ export interface DaemonApi {
   start(): Promise<DaemonResult<DaemonStatus>>
   stop(): Promise<DaemonResult<null>>
   restart(): Promise<DaemonResult<DaemonStatus>>
+  inspectRecovery?(): Promise<DaemonResult<{ build: 'current' | 'changed' | 'unknown'; epoch: string }>>
   /** Desktop tray entry; optional on older preload versions. */
   onOpenSettings?(listener: () => void): () => void
   preferences(): Promise<DaemonResult<DaemonPreferences>>

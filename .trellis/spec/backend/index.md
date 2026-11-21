@@ -28,6 +28,8 @@ ZCode setup and startup changes also follow [Managed ZCode startup](./zcode-mana
 | [window-navigation.md](./window-navigation.md) | Trusted app documents, external links, redirects and popup routing | Adding windows or link navigation |
 | [task-conversations.md](./task-conversations.md) | Native session metadata, durable task links, bounded editor navigation and equal-width homepage entries | Task conversation continuation |
 | [private-conversations.md](./private-conversations.md) | Creator-private Work/Code drafts, native directory grants, exact runtime owners and explicit file delivery | Personal assistant entry and conversation context |
+| [task-planning.md](./task-planning.md) | Task-bound read-only ACP planning, fixed sources, completed-turn candidates, original material commands and cleanup fences | Technical planning and implementation preclaim |
+| [task-lessons.md](./task-lessons.md) | Completed task evidence, compared rule bases, explicit review and later adoption | Task result to rule draft integration |
 | [local-document-links.md](./local-document-links.md) | Narrow Markdown document opener, main-owned roots, safe paths and visible errors | Local HTML/PDF/Markdown/text links |
 | [knowledge-document-reading.md](./knowledge-document-reading.md) | Saved-revision Modal, project-relative images and version-aware local opening | Product-document preview and assets |
 | [document-watch.md](./document-watch.md)           | Opaque watch leases, project generations and exact release | Modern reader watch/IPC cleanup |

@@ -1,3 +1,4 @@
+import { effectiveTaskDescription, fixedPostInput } from '../../../src/shared/crux'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { canReadCruxSpace } from '../../../src/shared/crux-domain/commands'
@@ -98,7 +99,7 @@ export class TeamTaskExecutions {
     if (writing && !writable) fail('EXECUTION_FORBIDDEN', 'Only the current handler of an open task can write', 403)
     const inputs = this.host.get('SELECT revision,currentBundleId FROM task_input_heads WHERE projectId=? AND taskId=? AND spaceId=? AND taskCreatedAt=?', ref.projectId, ref.taskId, ref.spaceId, ref.taskCreatedAt)
     return { principal, task, ref, fence: hash(taskInputCanonical([ref, resource.fence, space.createdAt, inputs?.revision ?? 0, inputs?.currentBundleId ?? null,
-      inputs?.currentBundleId ? null : [task.title, task.description ?? '']])), writable }
+      fixedPostInput(task) ?? (inputs?.currentBundleId && !task.clarifications?.length ? null : [task.title, effectiveTaskDescription(task)])])), writable }
   }
 
   private head(ref: TeamTaskRef): { generation: number; activeExecutionId: string | null } {
@@ -188,8 +189,11 @@ export class TeamTaskExecutions {
     const ctx = this.context(actor, ref), head = this.head(ctx.ref)
     const row = head.activeExecutionId ? this.row(head.activeExecutionId) : null
     const active = row && this.valid(row) ? row.record : null
+    const latestRow = this.host.get('SELECT executionId FROM team_task_executions WHERE projectId=? AND taskId=? AND json_extract(recordJson,\'$.task.spaceId\')=? AND json_extract(recordJson,\'$.task.taskCreatedAt\')=? ORDER BY json_extract(recordJson,\'$.generation\') DESC LIMIT 1',
+      ctx.ref.projectId, ctx.ref.taskId, ctx.ref.spaceId, ctx.ref.taskCreatedAt)
+    const latest = latestRow ? this.historyForPrincipal(ctx.principal, ctx.ref, String(latestRow.executionId)) : null
     const { epoch, authorizationRevision } = this.host.identity()
-    return teamExecutionViewSchema.parse({ contractVersion: 2, task: ctx.ref, epoch, authorizationRevision, generation: row && !active ? next(head.generation) : head.generation, active, serverTime: Date.now() })
+    return teamExecutionViewSchema.parse({ contractVersion: 2, task: ctx.ref, epoch, authorizationRevision, generation: row && !active ? next(head.generation) : head.generation, active, latest, serverTime: Date.now() })
   }
   history(actor: StoreActor, ref: TeamTaskRef, id: string): TeamExecutionRecord {
     return this.historyForPrincipal(this.host.authenticate(actor), ref, id)

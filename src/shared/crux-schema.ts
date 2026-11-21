@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { taskSourceFiles } from './task-source-files'
 import { teamRoleSchema } from './team-platform'
+import { teamTaskProgressResourceIdSchema } from './team-task-progress'
 import { adoptTaskDeliveryProtocolSchema, taskDeliveryEventLinksSchema, taskDeliveryInputSchema, taskDeliveryStateSchema, taskTestRunInputSchema } from './task-delivery'
 
 export const cruxInitialTaskTypeSchema = z.enum(['需求', 'Bug', '任务', '内容'])
@@ -12,6 +14,73 @@ const ids = z.array(id)
 const record = z.object({ id }).passthrough()
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
 export const cruxTaskWorkKindSchema = z.enum(['code', 'general'])
+export const cruxConversationLinkSchema = z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(300) }).strict()
+export const cruxFeishuSourceSchema = z.object({
+  chatId: z.string().regex(/^oc_[A-Za-z0-9_-]{1,120}$/),
+  messageId: z.string().regex(/^om_[A-Za-z0-9_-]{1,120}$/),
+  threadId: z.string().regex(/^omt_[A-Za-z0-9_-]{1,120}$/).optional()
+}).strict()
+export const cruxTaskHandoffSchema = z.object({
+  sourceDraftId: z.string().uuid().optional(),
+  files: taskSourceFiles.optional(),
+  id: z.string().uuid(),
+  versionLabel: z.string().trim().min(1).max(300).optional(),
+  materialDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  material: z.object({ documentId: id, versionId: id, bodyDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional()
+}).strict()
+export const cruxTaskSharedMaterialSchema = z.object({
+  sourceDraftId: z.string().uuid().optional(),
+  documentId: id,
+  versionId: id,
+  title: z.string().trim().min(1).max(300),
+  versionLabel: z.string().trim().min(1).max(300),
+  bodyDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  localBody: z.string().max(1024 * 1024).optional()
+}).strict()
+const cruxTaskOutputReviewFeedbackSchema = z.object({
+  id, body: z.string().trim().min(1).max(10000), actorId: id, at: z.string()
+}).strict()
+export const cruxTaskOutputReviewOutputSchema = z.object({
+  creationId: id,
+  revisionId: id,
+  bodyDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  revisionNumber: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  title: z.string().trim().min(1).max(300)
+}).strict()
+export const cruxTaskOutputReviewRecordSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...cruxTaskOutputReviewOutputSchema.shape,
+    kind: z.literal('submission'),
+    submissionId: id,
+    submittedBy: id,
+    submittedAt: z.string(),
+    feedback: z.array(cruxTaskOutputReviewFeedbackSchema).max(100).default([])
+  }).strict(),
+  z.object({ kind: z.literal('confirmation'), submissionId: id, confirmedBy: id, confirmedAt: z.string() }).strict()
+])
+export const cruxTaskOutputReviewSchema = z.object({
+  history: z.array(cruxTaskOutputReviewRecordSchema).max(500).default([])
+}).strict()
+export const cruxTaskOutputReviewStatusSchema = z.enum(['none', 'awaiting_review', 'changes_requested', 'confirmed'])
+export const cruxTaskOutputReviewPatchSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('submit'),
+    output: cruxTaskOutputReviewOutputSchema,
+    expectedRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    expectedStatus: cruxTaskOutputReviewStatusSchema.exclude(['awaiting_review'])
+  }).strict(),
+  z.object({
+    action: z.literal('requestChanges'),
+    feedback: z.string().trim().min(1).max(10000),
+    expectedSubmissionId: id,
+    expectedFeedbackCount: z.number().int().nonnegative().max(100)
+  }).strict(),
+  z.object({
+    action: z.literal('confirm'),
+    expectedSubmissionId: id,
+    expectedFeedbackCount: z.number().int().nonnegative().max(100)
+  }).strict()
+])
 export const cruxTaskStageSchema = z.enum(['accepted', 'needs_info', 'design_ready', 'designing', 'design_review', 'dev_ready', 'planning', 'developing', 'testing', 'acceptance', 'done'])
 export const cruxTaskActionSchema = z.enum(['accept', 'arrange', 'request_info', 'supplement', 'decline', 'start_design', 'submit_design', 'approve_design', 'return_design', 'begin_development', 'approve_plan', 'submit_test', 'return_development', 'pass_test', 'accept_delivery', 'return_delivery', 'submit_delivery', 'reassign'])
 export const cruxTaskWorkflowArtifactSchema = z.object({
@@ -20,6 +89,10 @@ export const cruxTaskWorkflowArtifactSchema = z.object({
 }).passthrough()
 export const cruxTaskWorkflowEventSchema = z.object({
   id, action: cruxTaskActionSchema, fromStage: cruxTaskStageSchema, toStage: cruxTaskStageSchema,
+  postInput: z.object({
+    title: z.string(), description: z.string(), acceptanceCriteria: z.array(z.string()),
+    sources: z.array(z.object({ id: z.string().uuid(), files: taskSourceFiles }).strict())
+  }).strict().optional(),
   actorId: id, assigneeId: id.optional(), body: z.string().optional(), at: z.string(), checkedCriteria: z.array(z.string()).optional(), deliveryLinks: taskDeliveryEventLinksSchema.optional()
 }).passthrough()
 export const cruxTaskWorkflowSchema = z.object({
@@ -35,8 +108,15 @@ export const cruxTransitionTaskInputSchema = z.object({
   nextStage: z.enum(['design_ready', 'dev_ready']).optional(), checkedCriteria: z.array(z.string().trim().min(1).max(10000)).max(100).optional(),
   adoptDeliveryProtocol: adoptTaskDeliveryProtocolSchema.optional(),
   expectedDeliveryRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  expectedInputs: z.object({
+    instanceId: z.string().uuid(), epoch: z.string().uuid(), projectId: z.string().uuid(),
+    spaceId: teamTaskProgressResourceIdSchema, taskCreatedAt: z.string().min(1).max(100),
+    authorizationRevision: z.number().int().nonnegative().safe(), revision: z.number().int().nonnegative().safe(),
+    current: z.object({ bundleId: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().nullable()
+  }).strict().optional(),
   delivery: taskDeliveryInputSchema.optional(), deliveryId: id.optional(), testRun: taskTestRunInputSchema.optional(), testRunId: id.optional()
 }).strict().superRefine((input, context) => {
+  if (input.expectedInputs && !['approve_plan', 'submit_design', 'approve_design', 'submit_test', 'submit_delivery', 'pass_test', 'accept_delivery'].includes(input.action)) context.addIssue({ code: 'custom', message: '固定输入核对仅用于方案确认、设计交接、交付、测试和验收操作' })
   if (input.delivery && input.deliveryId) context.addIssue({ code: 'custom', message: 'Choose a saved delivery or a new delivery, not both' })
   if (input.testRun && input.testRunId) context.addIssue({ code: 'custom', message: 'Choose a saved test run or a new test run, not both' })
   if (input.adoptDeliveryProtocol && !['arrange', 'reassign'].includes(input.action)) context.addIssue({ code: 'custom', message: 'Explicit protocol adoption requires arrange or reassign' })
@@ -87,6 +167,12 @@ export const cruxSnapshotSchema = z.object({
   taskStatuses: z.array(record.extend({ spaceId: id, name: z.string(), category: z.enum(['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled']), order: z.number() })),
   taskLabels: z.array(record.extend({ spaceId: id.optional(), name: z.string(), color: z.string(), archived: z.boolean().optional() })),
   tasks: z.array(record.extend({
+    outputReview: cruxTaskOutputReviewSchema.optional(), lightweightSource: z.literal('conversation').optional(),
+    lightweightRestore: z.object({ workflow: cruxTaskWorkflowSchema, workKind: cruxTaskWorkKindSchema.optional(), acceptanceCriteria: z.array(z.string()).optional(), restoredAt: z.string() }).strict().optional(),
+    conversations: z.array(cruxConversationLinkSchema.extend({ actorId: id })).optional(),
+    descriptionHistory: z.array(z.object({ title: z.string(), description: z.string(), at: z.string() })).optional(),
+    clarifications: z.array(z.object({ commentId: id, body: z.string(), authorId: id, confirmedBy: id, confirmedAt: z.string(),
+      withdrawn: z.object({ actorId: id, at: z.string(), reason: z.string() }).optional() })).optional(),
     spaceId: id, title: z.string(), description: z.string().optional(), typeId: id.optional(), statusId: id,
     priority, assigneeIds: ids, creatorId: id, labelIds: ids, projectId: id.optional(), iterationIds: ids,
     parentTaskId: id.optional(), followerIds: ids,
@@ -94,9 +180,10 @@ export const cruxSnapshotSchema = z.object({
     dispatch: z.object({ status: z.enum(['queued', 'waiting_runtime']), since: z.string(), note: z.string().optional() }).optional(),
     relations: z.array(z.object({ kind: z.enum(['blocks', 'related', 'duplicate']), taskId: id })),
     createdAt: z.string(), updatedAt: z.string(), completedAt: z.string().optional(), triagePending: z.boolean().optional(),
-    workKind: cruxTaskWorkKindSchema.optional(), acceptanceCriteria: z.array(z.string()).optional(), workflow: cruxTaskWorkflowSchema.optional()
+    workKind: cruxTaskWorkKindSchema.optional(), acceptanceCriteria: z.array(z.string()).optional(), workflow: cruxTaskWorkflowSchema.optional(), handoff: cruxTaskHandoffSchema.optional(),
+    sharedMaterials: z.array(cruxTaskSharedMaterialSchema).max(100).optional(), feishuSource: cruxFeishuSourceSchema.optional()
   })),
-  comments: z.array(record.extend({ taskId: id, authorId: id, body: z.string(), mentions: ids, createdAt: z.string(), parentId: id.optional(), resolved: z.boolean().optional() })),
+  comments: z.array(record.extend({ taskId: id, authorId: id, body: z.string(), mentions: ids, createdAt: z.string(), parentId: id.optional(), resolved: z.boolean().optional(), sourceId: z.string().uuid().optional(), sourceFiles: taskSourceFiles.optional() })),
   activities: z.array(record.extend({ taskId: id, kind: z.string(), text: z.string(), at: z.string() })),
   projects: z.array(record.extend({ spaceId: id, name: z.string(), goal: z.string().optional(), ownerIds: ids, status: z.enum(['active', 'done', 'archived']), createdAt: z.string() })),
   iterations: z.array(record.extend({ spaceId: id, name: z.string(), goal: z.string().optional(), startDate: z.string(), endDate: z.string(), status: z.enum(['pending', 'active', 'completed']), taskIds: ids, predecessorId: id.optional() })),

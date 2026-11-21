@@ -6,7 +6,8 @@ import type {
   cruxTaskWorkKindSchema, cruxTaskStageSchema, cruxTaskActionSchema,
   cruxTaskWorkflowArtifactSchema, cruxTaskWorkflowEventSchema, cruxTaskWorkflowSchema,
   cruxTransitionTaskInputSchema, cruxVersionDeliverySchema, cruxRecordVersionDeliveryInputSchema,
-  cruxMilestoneSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypeSchema
+  cruxMilestoneSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypeSchema,
+  cruxTaskOutputReviewSchema, cruxTaskOutputReviewPatchSchema, cruxTaskOutputReviewOutputSchema, cruxTaskOutputReviewRecordSchema, cruxTaskOutputReviewStatusSchema
 } from './crux-schema'
 
 export type CruxInitialTaskType = z.infer<typeof cruxInitialTaskTypeSchema>
@@ -139,6 +140,13 @@ export interface CruxTaskRelation {
 }
 
 export interface CruxTask {
+  feishuSource?: z.infer<typeof import('./crux-schema').cruxFeishuSourceSchema>
+  sharedMaterials?: CruxTaskSharedMaterial[]
+  outputReview?: CruxTaskOutputReview
+  conversations?: { id: string; title: string; actorId: string }[]
+  descriptionHistory?: { title: string; description: string; at: string }[]
+  clarifications?: CruxClarification[]
+  handoff?: CruxTaskHandoff
   id: CruxID
   spaceId: CruxID
   title: string
@@ -162,12 +170,16 @@ export interface CruxTask {
   workKind?: CruxTaskWorkKind
   acceptanceCriteria?: string[]
   workflow?: CruxTaskWorkflow
+  lightweightSource?: 'conversation'
+  lightweightRestore?: { workflow: CruxTaskWorkflow; workKind?: CruxTaskWorkKind; acceptanceCriteria?: string[]; restoredAt: string }
   createdAt: string
   updatedAt: string
   completedAt?: string
 }
 
 export interface CruxComment {
+  sourceFiles?: import('./task-source-files').TaskSourceFile[]
+  sourceId?: string
   id: CruxID
   taskId: CruxID
   /** 作者：成员 id 或 `agent:<id>` */
@@ -177,6 +189,45 @@ export interface CruxComment {
   createdAt: string
   resolved?: boolean
   parentId?: CruxID
+}
+
+export interface CruxClarification {
+  commentId: string
+  body: string
+  authorId: string
+  confirmedBy: string
+  confirmedAt: string
+  withdrawn?: { actorId: string; at: string; reason: string }
+}
+
+export function effectiveTaskDescription(task: Pick<CruxTask, 'description' | 'clarifications'>): string {
+  const notes = task.clarifications?.filter(note => !note.withdrawn)
+  if (!notes?.length) return task.description ?? ''
+  return [task.description, '已确认补充', ...notes.map(note => `• ${note.body}`)].filter(Boolean).join('\n\n')
+}
+
+export function postSources(task: CruxTask, comments: readonly CruxComment[]) {
+  const sources = task.handoff?.files?.length ? [{ id: task.handoff.id, files: task.handoff.files }] : []
+  for (const comment of comments) {
+    if (comment.taskId === task.id && comment.sourceId && comment.sourceFiles?.length) sources.push({ id: comment.sourceId, files: comment.sourceFiles })
+  }
+  return sources
+}
+
+export function currentPostInput(task: CruxTask, comments: readonly CruxComment[]) {
+  return { title: task.title, description: effectiveTaskDescription(task), acceptanceCriteria: task.acceptanceCriteria ?? [], sources: postSources(task, comments) }
+}
+
+export function fixedPostInput(task: CruxTask) {
+  return task.workflow?.history.filter(event => event.postInput).at(-1)?.postInput
+}
+
+export function canConfirmTaskClarification(snapshot: CruxSnapshot, task: CruxTask, actorId?: string): boolean {
+  const actor = snapshot.members.find(member => member.id === actorId)
+  const space = snapshot.spaces.find(item => item.id === task.spaceId)
+  return Boolean(actor && space && !space.archived && space.memberIds.includes(actor.id) &&
+    (actor.id === task.creatorId || actor.id === space.ownerId || actor.role === 'owner' || actor.role === 'admin' ||
+      actor.projectRoles?.includes('product')))
 }
 
 export interface CruxActivity {
@@ -404,7 +455,34 @@ export interface CruxSnapshot {
   crews: CruxCrew[]
 }
 
+export interface CruxTaskHandoff {
+  sourceDraftId?: string
+  files?: import('./task-source-files').TaskSourceFile[]
+  id: string
+  versionLabel?: string
+  materialDigest?: string
+  material?: { documentId: string; versionId: string; bodyDigest: string }
+}
+
+export interface CruxTaskSharedMaterial {
+  sourceDraftId?: string
+  documentId: string
+  versionId: string
+  title: string
+  versionLabel: string
+  bodyDigest: string
+  localBody?: string
+}
+export type CruxTaskOutputReview = z.infer<typeof cruxTaskOutputReviewSchema>
+export type CruxTaskOutputReviewOutput = z.infer<typeof cruxTaskOutputReviewOutputSchema>
+export type CruxTaskOutputReviewRecord = z.infer<typeof cruxTaskOutputReviewRecordSchema>
+export type CruxTaskOutputReviewStatus = z.infer<typeof cruxTaskOutputReviewStatusSchema>
+export type CruxTaskOutputReviewPatch = z.infer<typeof cruxTaskOutputReviewPatchSchema>
+
 export interface CruxTaskInput {
+  feishuSource?: CruxTask['feishuSource']
+  bindConversation?: { id: string; title: string }
+  handoff?: CruxTaskHandoff
   spaceId: CruxID
   creatorId?: CruxID
   title: string
@@ -419,11 +497,17 @@ export interface CruxTaskInput {
   iterationIds?: CruxID[]
   parentTaskId?: CruxID | null
   triagePending?: boolean
+  lightweightSource?: 'conversation'
   workKind?: CruxTaskWorkKind
   acceptanceCriteria?: string[]
 }
 
 export interface CruxTaskPatchInput {
+  bindConversation?: { id: string; title: string }
+  clarification?: { commentId: string; action: 'confirm' | 'withdraw'; expectedCount: number; reason?: string }
+  expectedDescription?: string
+  expectedTitle?: string
+  expectedPostDescription?: string
   workKind?: CruxTaskWorkKind
   acceptanceCriteria?: string[]
   title?: string
@@ -438,6 +522,17 @@ export interface CruxTaskPatchInput {
   iterationIds?: CruxID[]
   followerToggle?: CruxID
   parentTaskId?: CruxID | null
+  sharedMaterial?: CruxTaskSharedMaterial
+  outputReview?: CruxTaskOutputReviewPatch
+}
+
+export type CruxTriageInput = Omit<CruxTriageDecision, 'at'> & { assigneeIds?: CruxID[]; iterationId?: CruxID; expectedUpdatedAt?: string }
+
+export interface CruxLightweightTaskRestoreInput {
+  taskId: CruxID
+  expectedUpdatedAt: string
+  statusId?: CruxID
+  assigneeIds?: CruxID[]
 }
 
 export interface CruxAgentInput {
@@ -480,7 +575,7 @@ export interface CruxAutomationInput {
 /* ---------------- 渲染层 API 契约（preload satisfies） ---------------- */
 
 export interface CruxFailure { ok: false; error: string; context?: CruxWorkspaceContext; code?: string; outcomeUnknown?: boolean; pending?: boolean }
-export interface CruxPendingCommand { commandId: string; operation: string; state: string; outcomeUnknown: boolean; errorCode: string | null; createdAt: number }
+export interface CruxPendingCommand { commandId: string; operation: string; state: string; outcomeUnknown: boolean; errorCode: string | null; createdAt: number; taskHandoff?: { id: string; spaceId: string; creatorId?: string } }
 
 export interface CruxApi {
   workspacePending: () => Promise<{ ok: true; data: CruxPendingCommand[] } | CruxFailure>
@@ -514,13 +609,14 @@ export interface CruxApi {
 
   createTask: (input: CruxTaskInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext; taskId: CruxID } | CruxFailure>
   updateTask: (input: { id: CruxID; patch: CruxTaskPatchInput }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  restoreLightweightTask: (input: CruxLightweightTaskRestoreInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   transitionTask: (input: CruxTransitionTaskInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   recordTaskDelivery: (input: RecordTaskDeliveryInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   removeTask: (input: { id: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   addRelation: (input: { taskId: CruxID; relation: CruxTaskRelation }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   removeRelation: (input: { taskId: CruxID; targetTaskId: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
-  addComment: (input: { taskId: CruxID; body: string; authorId: string; parentId?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  addComment: (input: { taskId: CruxID; body: string; authorId: string; parentId?: CruxID; sourceId?: string; sourceFiles?: import('./task-source-files').TaskSourceFile[] }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   resolveComment: (input: { id: CruxID; resolved: boolean }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
   createProject: (input: { spaceId: CruxID; name: string; goal?: string; ownerIds?: CruxID[] }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
@@ -538,7 +634,7 @@ export interface CruxApi {
   saveView: (input: { id?: CruxID; spaceId: CruxID; name: string; filter: CruxViewFilter; groupBy: CruxView['groupBy'] }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   removeView: (input: { id: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
-  triage: (input: Omit<CruxTriageDecision, 'at'> & { assigneeIds?: CruxID[]; iterationId?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  triage: (input: CruxTriageInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
   saveAutomation: (input: CruxAutomationInput & { id?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   toggleAutomation: (input: { id: CruxID; enabled: boolean }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>

@@ -217,7 +217,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
       const preparation = nativeTaskPreparationRequestSchema.parse(body)
       if (preparation.operation === 'prepare') await withDesktopTeamService(service => service.authorizeTaskProgress(preparation.pin.connectionId))
     }
-    client = await connect(dedicated, method.startsWith('runtime.private') || method === 'runtime.command' || method === 'runtime.workflowCutover' || method === 'runtime.taskExecution' || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    client = await connect(dedicated, method.startsWith('feishu.workspace.') || method.startsWith('runtime.private') || method === 'runtime.command' || method === 'runtime.workflowCutover' || method.startsWith('runtime.taskExecution') || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = workcopyCleanup || taskControl ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)

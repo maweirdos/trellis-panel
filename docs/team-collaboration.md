@@ -18,8 +18,7 @@ When a declared dependency is missing, it runs `npm ci --include=dev --no-audit
 `npm run build` and loads the actual `packages/team-service/dist/cli.mjs` in
 Node.js. The compiled Web client is served by the same service.
 
-Open [the local team service](http://127.0.0.1:5441). The default bind address is
-`127.0.0.1:5441`. Stop it with Ctrl+C in its terminal. The launcher does not open
+The default bind address is `127.0.0.1:5441`. Stop it with Ctrl+C in its terminal. The launcher does not open
 a browser or helper window. An occupied port causes a visible error and nonzero
 exit; the launcher never stops another process.
 
@@ -38,28 +37,41 @@ The root desktop dependency installation is separate from these two packages.
 
 ## Accounts, invitations and desktop connection
 
-On the Web sign-in page, choose **创建独立账号**, provide a username, display name
-and password, then select **注册并登录**. Usernames contain 3–64 letters, digits,
-dots, underscores or hyphens and are case insensitive. Passwords require at least
-10 characters. Each registered account is ordinary; registration does not grant
+Start Crux with `npm run dev` in a second terminal. In the desktop app, choose the
+bottom-left avatar → **登录 / 注册**. Existing users sign in with their username
+and password. New users choose **注册**, enter a username, display name and
+password, then select **注册并继续**. The [Web sign-in page](http://127.0.0.1:5441)
+also accepts the same accounts. Usernames contain 3–64 letters, digits,
+dots, underscores or hyphens and are case insensitive. A single digit, letter or
+symbol is enough for a password. Each registered account is ordinary; registration does not grant
 platform administration. No accounts or passwords are seeded by the launcher.
 
-In **团队与成员**, create a team, then a shared workspace in that team. The creator owns
-the team. Choose **邀请加入团队和工作区**, select the workspace and roles, and enter the
-recipient's independent username. Give the generated invitation link to that
-person. The recipient registers or logs in with the named account, checks the
-team and workspace, and explicitly chooses **确认以当前账号加入**. Opening a link or
-logging in alone does not grant workspace access.
+After sign-in, choose **创建组织** and enter the organization name. The creator
+becomes its owner and joins **默认空间**. The service provisions the backing
+workspace in the same transaction. Owners of an existing organization can
+manage additional workspaces under **成员与设置**.
+
+Invite a colleague using their account username and optionally select a space.
+Give them the generated link. The recipient signs in with that account, checks
+the destination, and accepts. Acceptance grants the specified organization and
+workspace memberships and adds the recipient to the selected space. Within an
+authorized workspace a member can find and join public spaces. Access to a
+private space's tasks requires membership in that space.
 
 Select the authorized workspace, then its collaboration module, to share tasks, comments,
 versions, Agent configurations and squads. Assignment to an Agent or squad
 records configuration and dispatch intent; actual execution requires a Runtime.
 
-In the desktop **团队** module, open **选择本机或共享协作空间**. Enter
-`http://127.0.0.1:5441` under **团队服务地址** and choose **连接并在浏览器登录**.
-In the browser, sign in, select the authorized workspace, check the desktop name
-and pairing code, and approve the connection. Return to the desktop, refresh
-the connection state if needed, and choose **进入团队工作区**.
+In the desktop app, select an authorized workspace and
+choose **连接当前电脑**. The development desktop uses `http://127.0.0.1:5441`
+for a new connection. If the local service uses a different origin, set
+`CRUX_TEAM_SERVICE_ORIGIN` before `npm run dev`, or edit **服务设置** on the sign-in
+page. If the desktop opens before the service is ready, start the service and
+choose **重试**.
+
+The **团队共享** dialog also uses the configured origin for new connections.
+For browser pairing, expand **使用浏览器配对** and choose **保存配对并打开浏览器** to sign in, select an authorized workspace,
+and approve the desktop name and pairing code.
 Existing local workspace data is independent and is not automatically uploaded.
 After restoring a backup, commands from the old service epoch retain their
 original identity and cannot be replayed into the restored workspace. The

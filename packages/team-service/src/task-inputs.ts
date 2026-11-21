@@ -1,3 +1,4 @@
+import { effectiveTaskDescription, fixedPostInput } from '../../../src/shared/crux'
 import { randomUUID } from 'node:crypto'
 import { readDatabaseDeliveryDescriptor } from '../../../src/shared/database-delivery'
 import type { TaskDatabaseDeliveryValidator } from './database-delivery'
@@ -10,7 +11,7 @@ import { teamCommandIdSchema, teamIdSchema, type TeamCommandReply } from '../../
 import { teamTaskMaterialMetadataSchema, teamTaskMaterialScopeSchema, teamTaskMaterialSubmissionSchema, teamTaskMaterialVersionSchema, type TeamTaskMaterialMetadata, type TeamTaskMaterialVersion } from '../../../src/shared/team-task-materials'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 import {
-  taskInputBundleSchema, taskInputCandidatesSchema, taskInputCommandSchema, taskInputReadSchema, taskInputReceiptSchema, taskInputDocumentViewSchema,
+  taskInputBundleSchema, taskInputCandidatesSchema, taskInputCommandSchema, taskInputReadSchema, taskInputReceiptSchema, taskInputDocumentViewSchema, taskInputTransitionFence,
   type TaskInputBundle, type TaskInputCandidates, type TaskInputCommand, type TaskInputRead, type TaskInputReceipt
 } from '../../../src/shared/team-task-inputs'
 import { TeamGovernance, governanceCas, governanceFail, governanceHash, governanceNext, governanceStored, type GovernanceContext, type GovernanceHost } from './governance'
@@ -219,7 +220,8 @@ export class TeamTaskInputs {
       else if (candidates.documents.some(doc => doc.kind === 'prd') || candidates.rules.some(rule => rule.settings.kind === 'rule' && rule.settings.obligation === 'required')) {
         status = 'requires-adoption'; blockers.push('任务尚未明确采纳必需资料，请比较并确认固定输入。')
       } else {
-        const summary = { title: ctx.task.title, description: ctx.task.description ?? '' }, bytes = Buffer.from(canonical(summary), 'utf8')
+        const fixed = fixedPostInput(ctx.task)
+        const summary = { title: fixed?.title ?? ctx.task.title, description: fixed?.description ?? effectiveTaskDescription(ctx.task) }, bytes = Buffer.from(canonical(summary), 'utf8')
         legacySummary = { ...summary, bodyDigest: governanceHash(bytes), byteLength: bytes.length, workspaceRevision: ctx.workspaceRevision }
       }
     }
@@ -246,6 +248,7 @@ export class TeamTaskInputs {
     const ctx = this.context(principal, { projectId, taskId: beforeTask.id }, scope, true)
     if (ctx.task.updatedAt !== beforeTask.updatedAt || ctx.task.workflow?.stage !== beforeTask.workflow?.stage) governanceFail('TASK_INPUT_SCOPE_CONFLICT', 'Transition source no longer matches the persisted task')
     const read = this.read(principal, { projectId, taskId: beforeTask.id, query: scope })
+    if (input.expectedInputs && canonical(input.expectedInputs) !== canonical(taskInputTransitionFence(read))) governanceFail('TASK_INPUT_REVISION_CONFLICT', '任务采用的材料、流程或职责已变化，请核对原任务后重新交接。')
     if (read.admission.status !== 'ready') governanceFail('TASK_INPUT_TRANSITION_BLOCKED', read.admission.blockers.join(' ') || 'Required fixed inputs have not been adopted')
     const bundle = read.current, settings = bundle?.template?.settings
     if (bundle && input.action === 'submit_test') {

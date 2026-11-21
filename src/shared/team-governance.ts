@@ -6,6 +6,8 @@ import { teamTaskMaterialKindSchema } from './team-task-materials'
 import type { TaskInputBundle, TaskInputCandidates, TaskInputCommand, TaskInputRead, TaskInputReceipt, TaskInputScope, TaskInputDocumentView } from './team-task-inputs'
 import type { TaskMaterialInputReference } from './task-material-inputs'
 import { portableWorkflowDefinitionSchema } from './workflow/portable-definition'
+import { teamTaskRefSchema } from './team-task-execution'
+import { executionArtifactRefSchema } from './team-execution-artifacts'
 
 const counter = z.number().int().nonnegative().safe()
 const serial = counter.min(1)
@@ -40,10 +42,37 @@ export const GOVERNANCE_PRESETS = {
     { stage: 'acceptance', label: '验收', inputs: ['prd', 'delivery-note'], outputs: [], approvalRole: 'testing' }
   ]
 } as const
+/** Explicit engineering authoring preset; published settings keep the existing custom contract. */
+export function createEngineeringImplementationPreset(): Extract<GovernanceSettings, { kind: 'workflow-template' }> {
+  return governanceSettingsSchema.options[1].parse({
+    kind: 'workflow-template', preset: 'custom',
+    execution: portableWorkflowDefinitionSchema.parse({
+      contractVersion: 2, definitionId: 'engineering-implementation', revision: 1, name: '工程实施',
+      roles: [{ id: 'developer', instructions: '依据固定任务需求和工程规范完成实施，保留人工测试与验收。', requiredCapabilities: ['embeddedContext'] }],
+      nodes: [{ kind: 'agent', id: 'implement', phaseId: 'engineering', stage: 'implement', name: '实施', roleId: 'developer',
+        instruction: '完成原任务需求与验收条件要求的代码修改，执行适用检查，交付选定代码文件，并在实施报告中记录变更与检查结果。',
+        requiredCapabilities: ['embeddedContext'], outputs: [
+          { id: 'code', kind: 'selected-file', required: true },
+          { id: 'report', kind: 'implementation-report', required: true }
+        ] }]
+    }),
+    nodes: [
+      { stage: 'planning', label: '技术规划', inputs: [], outputs: [], approvalRole: 'development' },
+      { stage: 'developing', label: '开发', inputs: [], outputs: [], approvalRole: 'none' },
+      { stage: 'testing', label: '测试', inputs: [], outputs: [], approvalRole: 'testing' },
+      { stage: 'acceptance', label: '验收', inputs: [], outputs: [], approvalRole: 'testing' }
+    ]
+  })
+}
+export const governanceLessonOriginSchema = z.object({
+  task: teamTaskRefSchema, artifact: executionArtifactRefSchema,
+  base: z.object({ packageId: teamIdSchema, versionId: teamIdSchema, bodyDigest: teamDigestSchema, revision: serial }).strict()
+}).strict()
 export const governanceVersionSchema = z.object({
   packageId: teamIdSchema, versionId: teamIdSchema, number: serial, title: z.string().trim().min(1).max(300),
-  bodyDigest: teamDigestSchema, byteLength: serial.max(1024 * 1024), settings: governanceSettingsSchema, authorId: teamIdSchema, createdAt: counter
-}).strict()
+  bodyDigest: teamDigestSchema, byteLength: serial.max(1024 * 1024), settings: governanceSettingsSchema, authorId: teamIdSchema, createdAt: counter,
+  lessonOrigin: governanceLessonOriginSchema.optional()
+}).strict().refine(value => !value.lessonOrigin || value.settings.kind === 'rule', 'Only rules retain a lesson origin')
 export const governancePackageSchema = z.object({
   projectId: teamIdSchema, spaceId: governanceSpaceIdSchema, packageId: teamIdSchema, kind: z.enum(['rule', 'workflow-template']),
   ownerId: teamIdSchema, maintainerIds: people, approverIds: people, revision: serial,
@@ -57,7 +86,8 @@ const content = { title: z.string().trim().min(1).max(300), text: z.string().min
 const existing = { ...envelope, packageId: teamIdSchema, expectedRevision: serial }
 export const governanceCommandSchema = z.discriminatedUnion('action', [
   z.object({ ...envelope, action: z.literal('create'), maintainerIds: people, approverIds: people, ...content }).strict(),
-  z.object({ ...existing, action: z.literal('saveDraft'), ...content }).strict(),
+  z.object({ ...existing, action: z.literal('saveDraft'), ...content, lessonOrigin: governanceLessonOriginSchema.optional() }).strict()
+    .refine(value => !value.lessonOrigin || value.settings.kind === 'rule', 'Only a rule draft accepts a lesson origin'),
   z.object({ ...existing, action: z.literal('submit'), versionId: teamIdSchema }).strict(),
   z.object({ ...existing, action: z.literal('publish'), versionId: teamIdSchema }).strict(),
   z.object({ ...existing, action: z.literal('disable') }).strict(),
@@ -85,6 +115,7 @@ export const governanceRecoveryInputSchema = z.discriminatedUnion('lane', [gover
 export const governancePendingSchema = z.object({ commandId: teamCommandIdSchema, action: z.string().min(1).max(50), state: z.enum(['pending', 'unknown', 'rejected']), createdAt: counter, error: z.string().max(2000).nullable(), canRetry: z.boolean(), outcomeUnknown: z.boolean() }).strict()
 export type GovernanceScope = z.infer<typeof governanceScopeSchema>
 export type GovernanceSettings = z.infer<typeof governanceSettingsSchema>
+export type GovernanceLessonOrigin = z.infer<typeof governanceLessonOriginSchema>
 export type GovernanceVersion = z.infer<typeof governanceVersionSchema>
 export type GovernancePackage = z.infer<typeof governancePackageSchema>
 export type GovernanceCommand = z.infer<typeof governanceCommandSchema>

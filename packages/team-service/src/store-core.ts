@@ -20,17 +20,18 @@ import { TeamCollaboration } from './collaboration'
 import { TEAM_INVITATIONS_SQL } from './invitations-schema'
 import { TeamInvitations } from './invitations'
 import { TeamCruxWorkspace } from './crux-workspace'
-import { TEAM_CRUX_WORKSPACE_SQL, TEAM_CRUX_WORKSPACE_TRIGGERS_SQL } from './crux-workspace-schema'
+import { TEAM_CRUX_WORKSPACE_LEGACY_TRIGGERS, TEAM_CRUX_WORKSPACE_SQL, TEAM_CRUX_WORKSPACE_TRIGGERS_SQL } from './crux-workspace-schema'
 import { TeamCreations } from './creations'
 import { TEAM_CREATIONS_SQL } from './creations-schema'
 import { TEAM_LOCAL_AUTH_SQL } from './local-auth-schema'
 import { TEAM_LOCAL_ISSUER, teamLocalUsernameSchema } from '../../../src/shared/team-auth'
+import type { CruxTask } from '../../../src/shared/crux'
 import { TeamTaskProgress } from './task-progress'
-import { TEAM_TASK_PROGRESS_SQL, TEAM_TASK_PROGRESS_IDENTITIES_SQL } from './task-progress-schema'
+import { TEAM_TASK_PROGRESS_IDENTITIES_SQL, TEAM_TASK_PROGRESS_RECEIPTS_INDEX_SQL, TEAM_TASK_PROGRESS_SQL } from './task-progress-schema'
 import { TeamCodeResources } from './code-resources'
 import { TEAM_CODE_RESOURCES_SQL } from './code-resources-schema'
 import { TeamTaskMaterials, type TaskMaterialsHost } from './task-materials'
-import { TEAM_TASK_MATERIALS_SQL } from './task-materials-schema'
+import { TEAM_TASK_MATERIALS_SQL, TASK_SOURCE_PARTS_SQL } from './task-materials-schema'
 import { TeamContent } from './content'
 import { TEAM_CONTENT_SQL } from './content-schema'
 import { TeamGovernance, type GovernanceHost } from './governance'
@@ -45,6 +46,8 @@ import { teamTaskRefSchema } from '../../../src/shared/team-task-execution'
 import { TeamImports } from './imports'
 import { TeamCutovers } from './cutovers'
 import { TEAM_CUTOVERS_SQL } from './cutovers-schema'
+import { TEAM_FEISHU_MEMBERS_SQL } from './integrations/feishu-member-schema'
+import { TeamFeishuMembers, isFeishuMemberOperation } from './integrations/feishu-members'
 import { TEAM_IMPORTS_SQL } from './imports-schema'
 import { TEAM_EXECUTION_INPUTS_SQL } from './execution-inputs-schema'
 import { TeamExecutionInputs } from './execution-inputs'
@@ -75,6 +78,13 @@ const safeEqual = (left: string, right: string): boolean => { const a = Buffer.f
 const MAX_DOCUMENT_BYTES = 1024 * 1024
 const MAX_BLOB_BYTES = 1024 * 1024 * 1024
 const MAX_DIRECTORY_ENTRIES = 20_000
+const LEGACY_CRUX_TABLE_RENAMES = [
+  ['hifox_workspaces', 'crux_workspaces', 6],
+  ['hifox_inbox_preferences', 'crux_inbox_preferences', 6],
+  ['hifox_task_progress', 'crux_task_progress', 10],
+  ['hifox_task_progress_receipts', 'crux_task_progress_receipts', 10],
+  ['hifox_task_progress_commands', 'crux_task_progress_commands', 11]
+] as const satisfies readonly [legacyName: string, currentName: string, requiredSince: number][]
 
 export class TeamStoreCore {
   private readonly jiraOAuthRelay = new TeamJiraOAuthRelay({
@@ -98,7 +108,10 @@ export class TeamStoreCore {
     body: bodyDigest => this.blob(bodyDigest), persistBody: (bytes, bodyDigest) => this.persistBlob(bytes, bodyDigest),
     validateOriginBundle: this.validateTaskOutputOrigin
   }
-  private readonly governance = new TeamGovernance(this.governanceHost)
+  private readonly governance: TeamGovernance = new TeamGovernance(this.governanceHost, {
+    historyForPrincipal: (...args) => this.executions.historyForPrincipal(...args),
+    resolveOutput: (...args) => this.executions.resolveOutput(...args)
+  })
   private readonly imports = new TeamImports({
     ...this.governanceHost,
     createTask: (...args) => this.crux.importTask(...args),
@@ -207,8 +220,17 @@ export class TeamStoreCore {
     invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
     validateExecutionChanges: (...args) => this.executions.validateWorkspaceChanges(...args),
     committedTaskTransition: (...args) => this.jiraBusinessHooks.routing.committed(...args),
-    validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) }
+    validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) },
+    validateOutputReviewReference: (principal, projectId, taskId, output) => this.validateOutputReviewReference(principal, projectId, taskId, output)
   })
+  private readonly feishuMembers = new TeamFeishuMembers({
+    epoch: () => this.meta('epoch'),
+    instanceId: () => this.meta('instanceId'),
+    get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
+    transaction: action => this.transaction(action), mutationFor: (...args) => this.mutationFor(...args),
+    actor: userId => this.person(requireValue(this.get('SELECT * FROM people WHERE userId=? AND active=1', userId),
+      'FEISHU_MEMBER_NOT_AUTHORIZED', 'The bound Feishu account is unavailable', 403))
+  }, this.crux)
   private readonly jiraBusinessHooks = new TeamJiraBusinessHooks({
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
@@ -277,6 +299,7 @@ export class TeamStoreCore {
           this.db.exec(`PRAGMA user_version=${TEAM_SCHEMA_VERSION}`)
         })
       }
+      if (current >= 6) this.migrateLegacyCruxSchema(current)
       if (current === 1) this.transaction(() => {
         this.db.exec('ALTER TABLE devices RENAME TO devices_v1;')
         this.db.exec(TEAM_DEVICES_SQL)
@@ -311,6 +334,8 @@ export class TeamStoreCore {
       if (current >= 1 && current <= 20) this.transaction(() => { this.db.exec(TEAM_EXECUTION_INPUTS_SQL); this.db.exec('PRAGMA user_version=21') })
       if (current >= 1 && current <= 21) this.transaction(() => { this.db.exec(TEAM_JIRA_BUSINESS_HOOKS_SQL); this.db.exec('PRAGMA user_version=22') })
       if (current >= 1 && current <= 22) this.transaction(() => { this.db.exec(TEAM_CUTOVERS_SQL); this.db.exec('PRAGMA user_version=23') })
+      if (current >= 1 && current <= 23) this.transaction(() => { this.db.exec(TASK_SOURCE_PARTS_SQL); this.db.exec('PRAGMA user_version=24') })
+      if (current >= 1 && current <= 24) this.transaction(() => { this.db.exec(TEAM_FEISHU_MEMBERS_SQL); this.db.exec('PRAGMA user_version=25') })
       this.meta('instanceId'); this.meta('epoch'); this.meta('cursorSecret'); this.meta('authorizationRevision')
       const blobPath = join(this.directory, 'blobs')
       mkdirSync(blobPath, { mode: 0o700, recursive: true })
@@ -337,6 +362,34 @@ export class TeamStoreCore {
     if (!existsSync(this.lockPath)) return
     const value = JSON.parse(readFileSync(this.lockPath, 'utf8')) as { lockId?: unknown }
     if (value.lockId === this.lockId) unlinkSync(this.lockPath)
+  }
+  private migrateLegacyCruxSchema(version: number): void {
+    const tables = new Set(this.all("SELECT name FROM sqlite_schema WHERE type='table' AND (name GLOB 'hifox_*' OR name GLOB 'crux_*')").map((row) => text(row, 'name')))
+    const renames = LEGACY_CRUX_TABLE_RENAMES.filter(([legacyName]) => tables.has(legacyName))
+    if (renames.length === 0) return
+    this.transaction(() => {
+      for (const [legacyName, currentName, requiredSince] of LEGACY_CRUX_TABLE_RENAMES) {
+        if (tables.has(legacyName) && tables.has(currentName)) {
+          throw new TeamServiceError('CORRUPT_STORE', `Legacy and current table names coexist for ${currentName}`, 503)
+        }
+        if (version >= requiredSince && !tables.has(legacyName) && !tables.has(currentName)) {
+          throw new TeamServiceError('CORRUPT_STORE', `Required team database table ${currentName} is missing`, 503)
+        }
+      }
+      for (const [legacyName, currentName] of renames) this.db.exec(`ALTER TABLE ${legacyName} RENAME TO ${currentName};`)
+      if (tables.has('hifox_workspaces') || tables.has('hifox_inbox_preferences')) {
+        for (const trigger of TEAM_CRUX_WORKSPACE_LEGACY_TRIGGERS) this.db.exec(`DROP TRIGGER IF EXISTS ${trigger}`)
+        this.db.exec(TEAM_CRUX_WORKSPACE_TRIGGERS_SQL)
+      }
+      if (tables.has('hifox_task_progress_receipts')) {
+        this.db.exec('DROP INDEX IF EXISTS hifox_task_progress_receipts_bound;')
+        this.db.exec(TEAM_TASK_PROGRESS_RECEIPTS_INDEX_SQL)
+      }
+      if (tables.has('hifox_task_progress_commands')) {
+        this.db.exec('DROP INDEX IF EXISTS hifox_task_progress_commands_scope;')
+        this.db.exec(TEAM_TASK_PROGRESS_IDENTITIES_SQL)
+      }
+    })
   }
   private get(sql: string, ...values: SQLInputValue[]): Row | undefined { return this.db.prepare(sql).get(...values) }
   private all(sql: string, ...values: SQLInputValue[]): Row[] { return this.db.prepare(sql).all(...values) }
@@ -395,11 +448,17 @@ export class TeamStoreCore {
     return { person: this.person(row), actor, deviceId: text(row, 'deviceId'), projectId: text(row, 'projectId'), csrfToken: null }
   }
   private mutation<T>(actor: StoreActor, commandId: string, kind: string, input: unknown, authorize: (principal: StorePrincipal) => void, apply: (principal: StorePrincipal) => T, authorizeReplay?: (principal: StorePrincipal, result: T) => void): TeamCommandReply<T> {
+    return this.mutationFor(() => this.authenticate(actor), commandId, kind, input, authorize, apply, authorizeReplay)
+  }
+  private mutationFor<T>(authenticate: () => StorePrincipal, commandId: string, kind: string, input: unknown, authorize: (principal: StorePrincipal) => void, apply: (principal: StorePrincipal) => T, authorizeReplay?: (principal: StorePrincipal, result: T) => void): TeamCommandReply<T> {
     const requestHash = digest(canonical({ kind, input }))
     return this.transaction(() => {
-      const principal = this.authenticate(actor); authorize(principal)
+      const principal = authenticate(); authorize(principal)
       if (['taskExecutionCommand', 'executionInputCommand', 'cutoverCommand'].includes(kind) && this.get('SELECT commandId FROM crux_task_progress_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a v1 progress operation', 409)
       if (this.get('SELECT commandId FROM team_content_commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)) throw new TeamServiceError('COMMAND_CONFLICT', 'Command UUID already belongs to a content operation', 409)
+      if (kind === 'feishuTaskCommand' && this.get("SELECT commandId FROM commands WHERE commandId=? AND kind='feishuTaskCommand' AND userId<>?", commandId, principal.person.userId)) {
+        throw new TeamServiceError('COMMAND_CONFLICT', 'This Feishu command identity already belongs to another original member', 409)
+      }
       const previous = this.get('SELECT kind,requestHash,resultJson FROM commands WHERE userId=? AND commandId=?', principal.person.userId, commandId)
       if (previous) {
         if (text(previous, 'kind') !== kind || text(previous, 'requestHash') !== requestHash) throw new TeamServiceError('COMMAND_CONFLICT', 'Command identity already describes a different request', 409)
@@ -410,7 +469,7 @@ export class TeamStoreCore {
         return { status: 'duplicate', commandId, result }
       }
       const result = apply(principal)
-      if (['cruxCommand', 'taskInputCommand', 'governanceCommand', 'taskMaterialCommand'].includes(kind)) this.executions.reconcileAuthorities()
+      if (['cruxCommand', 'feishuTaskCommand', 'taskInputCommand', 'governanceCommand', 'taskMaterialCommand'].includes(kind)) this.executions.reconcileAuthorities()
       this.run('INSERT INTO commands(userId,commandId,kind,requestHash,resultJson,createdAt) VALUES(?,?,?,?,?,?)', principal.person.userId, commandId, kind, requestHash, JSON.stringify(result), now())
       return { status: 'committed', commandId, result }
     })
@@ -659,8 +718,30 @@ export class TeamStoreCore {
     return teamTaskDevelopmentContextSchema.parse({ version: 1, snapshot, inputs, codeResource, creations })
   }
 
+  private validateOutputReviewReference(principal: StorePrincipal, projectId: string, taskId: string, output: import('../../../src/shared/crux').CruxTaskOutputReviewOutput): void {
+    if (!output) throw new TeamServiceError('INVALID_INPUT', 'Shared output review is missing')
+    this.project(principal, projectId)
+    const snapshot = this.crux.read(principal, { projectId }).snapshot
+    const task = snapshot.tasks.find((item) => item.id === taskId)
+    if (!task) throw new TeamServiceError('OUTPUT_REVIEW_TASK_CONFLICT', 'Output review task is unavailable', 409)
+    const space = snapshot.spaces.find((item) => item.id === task.spaceId)
+    if (!space || space.archived || !space.memberIds.includes(principal.person.userId)) throw new TeamServiceError('OUTPUT_REVIEW_FORBIDDEN', 'Output review requires current membership in the task space', 403)
+    const row = requireValue(this.get(`SELECT c.spaceId,c.published,json_extract(v.value,'$.number') AS revisionNumber,
+      json_extract(v.value,'$.title') AS title,json_extract(v.value,'$.bodyDigest') AS bodyDigest,json_extract(a.value,'$.taskId') AS taskId
+      FROM creations c,json_each(c.recordJson,'$.revisions') v,json_each(c.recordJson,'$.adoptions') a
+      WHERE c.projectId=? AND c.creationId=? AND json_extract(v.value,'$.revisionId')=?
+        AND a.key=(SELECT MAX(latest.key) FROM json_each(c.recordJson,'$.adoptions') latest WHERE json_extract(latest.value,'$.taskId')=?)
+        AND json_extract(a.value,'$.revisionId')=? AND json_extract(a.value,'$.bodyDigest')=?`,
+      projectId, output.creationId, output.revisionId, taskId, output.revisionId, output.bodyDigest),
+      'OUTPUT_REVIEW_REFERENCE_CONFLICT', '此版本不是当前任务采用的共享成果', 409)
+    if (text(row, 'spaceId') !== task.spaceId || text(row, 'taskId') !== task.id || row.published !== 1 || Number(row.revisionNumber) !== output.revisionNumber || text(row, 'title') !== output.title || text(row, 'bodyDigest') !== output.bodyDigest) {
+      throw new TeamServiceError('OUTPUT_REVIEW_REFERENCE_CONFLICT', 'Shared output adoption metadata does not match this task', 409)
+    }
+  }
+
   private domain(operation: StoreOperation, actor: StoreActor, raw: Record<string, unknown>): unknown {
     const principal = this.authenticate(actor)
+    if (isFeishuMemberOperation(operation)) return this.feishuMembers.dispatch(operation, principal, raw)
     if (operation === 'taskDevelopmentContext') return this.taskDevelopmentContext(principal, raw)
     if (operation === 'contentConfigRead') return this.content.configRead(principal, raw)
     if (operation === 'contentConfigure') return this.content.configure(actor, raw)
@@ -696,6 +777,8 @@ export class TeamStoreCore {
     if (operation === 'importBatch') return this.imports.batchRead(principal, raw)
     if (operation === 'taskMaterialList') return this.taskMaterials.list(principal, raw)
     if (operation === 'taskMaterialRead') return this.taskMaterials.read(principal, raw)
+    if (operation === 'taskSourcePartRead') return this.taskMaterials.sourcePart(principal, raw, false)
+    if (operation === 'taskSourcePartPut') return this.transaction(() => this.taskMaterials.sourcePart(principal, raw, true))
     if (operation === 'taskMaterialVersions') return this.taskMaterials.versions(principal, raw)
     if (operation === 'taskMaterialSubmissions') return this.taskMaterials.submissions(principal, raw)
     if (operation === 'taskMaterialCommand') return this.taskMaterials.command(actor, raw)
@@ -767,6 +850,7 @@ export class TeamStoreCore {
       else if (kind === 'approveDevice') { if (actor.kind !== 'session') forbidden(); this.project(principal, id(result.projectId)) }
       else if (kind === 'revokeDevice') { const device = requireValue(this.get('SELECT ownerId FROM devices WHERE deviceId=?', id(result.deviceId)), 'NOT_FOUND', 'Device unavailable'); if (actor.kind !== 'session' || text(device, 'ownerId') !== principal.person.userId) forbidden() }
       else if (kind === 'createTeam') { if (actor.kind !== 'session' || !this.teamMembership(principal.person.userId, resultId('teamId'))) forbidden() }
+      else if (kind === 'createOrganization') { if (actor.kind !== 'session' || !this.projectMembership(principal.person.userId, resultId('projectId'))) forbidden() }
       else if (kind === 'setPersonActive') { if (actor.kind !== 'session' || !principal.person.isPlatformAdmin) forbidden() }
       else forbidden()
       return { commandId, kind, status: 'committed', recordedAt: integer(command, 'createdAt'), result }
@@ -808,6 +892,22 @@ export class TeamStoreCore {
         this.bumpAuthorization(); this.event('team.created', 'team', teamId, null, { teamId, name: input.name })
         return { teamId, name: input.name }
       }, (p, result) => { if (!this.teamMembership(p.person.userId, result.teamId)) forbidden() })
+    }
+    if (operation === 'createOrganization') {
+      const input = createTeamSchema.parse(raw.body)
+      return this.mutation(actor, input.commandId, operation, input, (p) => { if (p.actor.kind !== 'session') forbidden() }, (p) => {
+        const timestamp = now()
+        const teamId = randomUUID(), projectId = randomUUID()
+        this.run('INSERT INTO teams(teamId,name,createdAt) VALUES(?,?,?)', teamId, input.name, timestamp)
+        this.run('INSERT INTO team_members(teamId,userId,rolesJson,active,revision) VALUES(?,?,?,1,1)', teamId, p.person.userId, JSON.stringify(['owner']))
+        this.run('INSERT INTO projects(projectId,teamId,name,createdAt) VALUES(?,?,?,?)', projectId, teamId, input.name, timestamp)
+        this.run('INSERT INTO project_members(projectId,userId,rolesJson,active,revision) VALUES(?,?,?,1,1)', projectId, p.person.userId, JSON.stringify(['admin']))
+        const spaceId = this.crux.bootstrapDefaultSpace(p, projectId, input.commandId)
+        this.bumpAuthorization()
+        this.event('team.created', 'team', teamId, null, { teamId, name: input.name })
+        this.event('project.created', 'project', projectId, projectId, { projectId, teamId, name: input.name })
+        return { teamId, projectId, spaceId, name: input.name }
+      }, (p, result) => { if (p.actor.kind !== 'session' || !this.projectMembership(p.person.userId, result.projectId)) forbidden() })
     }
     if (operation === 'teamMembers') {
       const teamId = id(raw.teamId); this.teamAdmin(principal, teamId)

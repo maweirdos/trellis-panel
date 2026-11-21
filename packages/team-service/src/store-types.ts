@@ -1,4 +1,5 @@
 import type { TeamPerson } from '../../../src/shared/team-platform'
+import type { FeishuMemberOperation } from './integrations/feishu-members'
 
 export type StoreActor = { kind: 'session' | 'device'; credentialHash: string }
 export type StorePrincipal = {
@@ -7,19 +8,20 @@ export type StorePrincipal = {
 }
 export type StoreOptions = { dataDir: string; issuer: string; bootstrapSubject: string; identityProvider?: 'oidc' | 'gitlab'; sessionTtlMs: number; pairingTtlMs: number; onlineTtlMs: number }
 export type StoreOperation = 'health' | 'createLogin' | 'consumeLogin' | 'completeLogin' | 'authenticate' | 'logout'
-  | 'people' | 'setPersonActive' | 'teams' | 'createTeam' | 'teamMembers' | 'setTeamMember' | 'projects' | 'createProject' | 'projectMembers' | 'setProjectMember'
+  | 'people' | 'setPersonActive' | 'teams' | 'createTeam' | 'createOrganization' | 'teamMembers' | 'setTeamMember' | 'projects' | 'createProject' | 'projectMembers' | 'setProjectMember'
   | 'publish' | 'materials' | 'versions' | 'document' | 'recordFeedback' | 'feedback' | 'events' | 'command'
   | 'enrollDevice' | 'pairing' | 'approveDevice' | 'pairingStatus' | 'devices' | 'revokeDevice' | 'heartbeat'
   | 'backup' | 'close'
   | 'jiraOAuthRelayCreate' | 'jiraOAuthRelayPoll' | 'jiraOAuthRelayCancel' | 'jiraOAuthRelayCallback'
   | 'createInvitation' | 'invitations' | 'inspectInvitation' | 'acceptInvitation' | 'revokeInvitation' | 'identity'
   | 'cruxSnapshot' | 'cruxCommand' | 'cruxHead' | 'taskDevelopmentContext'
+  | FeishuMemberOperation
   | 'taskProgressRead' | 'taskProgressCommand' | 'taskProgressReceipt'
   | 'taskExecutionRead' | 'taskExecutionCommand' | 'taskExecutionReconcile' | 'taskExecutionHistory' | 'taskExecutionArtifact'
   | 'executionInputRead' | 'executionInputResource' | 'executionInputCommand' | 'executionInputReconcile'
   | 'cutoverCommand' | 'cutoverReconcile' | 'cutoverRead' | 'cutoverTask'
   | 'importCommand' | 'importReconcile' | 'importNamespaces' | 'importItems' | 'importRead' | 'importBatch'
-  | 'taskMaterialList' | 'taskMaterialRead' | 'taskMaterialVersions' | 'taskMaterialSubmissions' | 'taskMaterialCommand' | 'taskMaterialReceipt'
+  | 'taskMaterialList' | 'taskMaterialRead' | 'taskMaterialVersions' | 'taskMaterialSubmissions' | 'taskMaterialCommand' | 'taskMaterialReceipt' | 'taskSourcePartRead' | 'taskSourcePartPut'
   | 'governanceList' | 'governanceRead' | 'governanceCommand' | 'governanceReceipt'
   | 'taskInputRead' | 'taskInputCandidates' | 'taskInputRevision' | 'taskInputReadDocument' | 'taskInputCommand' | 'taskInputReceipt'
   | 'codeResourceList' | 'codeResourceCommand' | 'taskCodeResourceRead'

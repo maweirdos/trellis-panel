@@ -128,13 +128,14 @@ function freezeLegacyPorts(snapshot = true): void {
 }
 
 /** GUI mutations cross the native broker. A lost result never silently retries. */
-export async function writeNativeSettings(patch: Partial<Settings>): Promise<Settings> {
+export async function writeNativeSettings(patch: Partial<Settings> | ((current: Settings) => Partial<Settings>)): Promise<Settings> {
   const client = await pooledDaemonClient()
   const metadata = await client.request('native.state', {})
   if (!metadata.ok) throw new DaemonError(metadata.code, metadata.error, metadata.outcome)
   if (!metadata.data.revision || metadata.data.phase !== 'daemon') throw new DaemonError('E_UNAVAILABLE', 'Complete native settings ownership before changing runtime settings.')
+  const resolved = typeof patch === 'function' ? patch(getSettings()) : patch
   const commandId = randomUUID()
-  const result = await client.request('native.settings.write', { expectedRevision: metadata.data.revision, patch: Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) }, { commandId })
+  const result = await client.request('native.settings.write', { expectedRevision: metadata.data.revision, patch: Object.fromEntries(Object.entries(resolved).filter(([, value]) => value !== undefined)) }, { commandId })
   if (!result.ok) throw Object.assign(new DaemonError(result.code, `${result.error.slice(0, 320)} 原命令：${commandId}`, result.outcome), { commandId })
   try { return getSettings() }
   catch {

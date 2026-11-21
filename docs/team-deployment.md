@@ -63,9 +63,11 @@ docker compose --env-file "$HOME/.config/trellis-team/config.env" stop team
 
 ## Accounts, teams and desktop pairing
 
-On the Web sign-in page select **创建独立账号**, enter your own username, display
-name and password, then choose **注册并登录**. Usernames contain 3–64 letters,
-digits, dots, underscores or hyphens; passwords require at least 10 characters.
+In the desktop app, open the bottom-left avatar → **登录 / 注册**. Choose **注册**,
+enter your username, display name and password, then choose **注册并继续**.
+The Web sign-in page also supports **创建独立账号** → **注册并登录**.
+Both clients use the same service accounts. Usernames contain 3–64 letters,
+digits, dots, underscores or hyphens. A single digit, letter or symbol is enough for a password.
 Local registration creates an ordinary account. It does not grant platform
 administration, and the first visitor has no special privileges.
 
@@ -78,12 +80,18 @@ and a Compose `up -d`; existing accounts can still log in. New local users must
 register while registration is enabled. Password recovery and email delivery
 are not configured.
 
-On each desktop, open **团队** → **选择本机或共享协作空间**, enter the same external
-origin under **团队服务地址**, and choose **连接并在浏览器登录**. In the browser,
-sign in, select an authorized workspace, verify the desktop name and pairing code,
-then approve. Return to the desktop, refresh the connection if needed, and select
-**进入团队工作区**. A pending pairing expires after five minutes by default; start
-again when expired. Device credentials remain in the desktop's protected store.
+Set the desktop build environment variable `CRUX_TEAM_SERVICE_ORIGIN` to the
+same public HTTPS origin as the server's `TEAM_PUBLIC_ORIGIN` before `npm run dist`.
+This puts the public address into the desktop installer. Users can choose
+**登录团队账号**, select an authorized workspace, and connect their computer.
+Keep database and OIDC secrets in the server environment.
+
+On a generic installer, enter the organization's HTTPS origin in **服务设置**
+the first time. To pair through a browser, open **团队共享** → **使用浏览器配对**, check the service
+address, and choose **保存配对并打开浏览器**. Sign in, choose an authorized
+workspace, and confirm the desktop name and pairing code. The desktop retains
+the device credential in its protected store. Start a new pairing if the
+five-minute default expires.
 
 For a different computer use the server's HTTPS origin, not `127.0.0.1`.
 Shared workspace membership is separate from a developer's local repository

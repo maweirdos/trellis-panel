@@ -15,7 +15,7 @@ import { requirementPredecessorSchema } from './conversation-requirements'
 import { runRefSchema } from './workflow'
 import { nativeWorkflowCutoverRequestSchema } from './native-workflow-cutover'
 import { nativeTaskPreparationRequestSchema } from './native-task-preparation'
-import { nativeTaskExecutionRequestSchema } from './native-task-execution'
+import { nativeTaskExecutionRequestSchema, nativeTaskStartSchema } from './native-task-execution'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
@@ -34,6 +34,7 @@ export const runtimeBodies = {
   'runtime.workflowCutover': nativeWorkflowCutoverRequestSchema,
   'runtime.taskPreparation': nativeTaskPreparationRequestSchema,
   'runtime.taskExecution': nativeTaskExecutionRequestSchema,
+  'runtime.taskExecutionPlan': z.object({ engine: nativeTaskStartSchema.shape.engine }).strict(),
   'runtime.privateRead': privateNativeReadSchema,
   'runtime.privateSend': privateNativeSendSchema,
   'runtime.privateCancel': privateNativeControlSchema,

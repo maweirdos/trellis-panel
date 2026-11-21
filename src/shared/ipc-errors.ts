@@ -6,6 +6,8 @@
  * 不应在新代码中出现。
  */
 
+import type { NativeTaskFailure } from './native-task-failure'
+
 export const IpcErrorCode = {
   Unavailable: 'E_UNAVAILABLE',
   Version: 'E_VERSION',
@@ -40,6 +42,7 @@ export interface IpcFail {
   ok: false
   code: IpcErrorCode
   error: string
+  taskFailure?: NativeTaskFailure
 }
 
 export function ipcFail(code: IpcErrorCode, error: string, extra?: Record<string, unknown>): IpcFail & Record<string, unknown> {

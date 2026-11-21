@@ -10,6 +10,7 @@ type Pending = { resolve(value: unknown): void; reject(error: Error): void; byte
 const reads = new Set(['health', 'accounts', 'account', 'invitation-intent', 'connections', 'connection', 'connection-by-approval-command', 'command', 'outbox', 'cached-document', 'sync-read', 'snapshot-read'])
 reads.add('execution-intent')
 reads.add('execution-pending')
+reads.add('organization-intent')
 export class DesktopTeamStore {
   private worker: Worker | null = null
   private readonly pending = new Map<number, Pending>()

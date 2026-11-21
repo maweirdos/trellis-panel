@@ -1,3 +1,4 @@
+import { effectiveTaskDescription } from '../../../src/shared/crux'
 import type { TeamContentJob, TeamContentKind, TeamContentSource } from '../../../src/shared/team-content'
 import { contentDigest, type ContentProviderEnvelope } from './content-provider'
 import type { TaskContentRule } from './task-inputs'
@@ -9,7 +10,7 @@ const instructions: Record<TeamContentKind, string> = {
 }
 export interface ContentMaterialEvidence { documentId: string; version: number; title: string; bodyDigest: string; text: string }
 export function contentMessages(kind: TeamContentJob['kind'], task: { id: string; title: string; description?: string; createdAt: string; updatedAt: string } | null, text: string, capturedAt: number, materials: ContentMaterialEvidence[] = [], rules: TaskContentRule[] = []): { messages: ContentProviderEnvelope['messages']; sources: TeamContentSource[]; estimatedInputTokens: number; inputBytes: number; evidenceCoverage: TeamContentJob['evidenceCoverage']; missingEvidence: TeamContentJob['missingEvidence'] } {
-  const taskBody = task ? JSON.stringify({ taskId: task.id, title: task.title, description: task.description ?? '', createdAt: task.createdAt, updatedAt: task.updatedAt }) : null
+  const taskBody = task ? JSON.stringify({ taskId: task.id, title: task.title, description: effectiveTaskDescription(task), createdAt: task.createdAt, updatedAt: task.updatedAt }) : null
   const sources: TeamContentSource[] = []
   if (task && taskBody) sources.push({ kind: 'task-snapshot', sourceId: task.id, title: task.title.slice(0, 300), digest: contentDigest(taskBody), byteLength: Buffer.byteLength(taskBody), capturedAt, taskCreatedAt: task.createdAt, taskUpdatedAt: task.updatedAt })
   if (text || kind === 'probe') sources.push({ kind: kind === 'probe' ? 'probe' : 'explicit-text', sourceId: kind === 'probe' ? 'administrator-probe-v1' : 'explicit-input', title: kind === 'probe' ? '管理员模型检测' : '客户诉求与附加文本', digest: contentDigest(text), byteLength: Buffer.byteLength(text), capturedAt, taskCreatedAt: null, taskUpdatedAt: null })

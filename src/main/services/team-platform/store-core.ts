@@ -5,9 +5,10 @@ import { join, resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { TEAM_MAX_DOCUMENT_BYTES, TEAM_MAX_REQUEST_BYTES, publicationInputSchema, teamDeviceSchema, teamFeedbackInputSchema, teamFeedbackSchema, teamMaterialVersionSchema, teamPublishedDocumentSchema } from '../../../shared/team-platform'
+import { desktopTeamAccountIdSchema } from '../../../shared/team-desktop-account'
 import { teamInvitationSchema } from '../../../shared/team-invitations'
 import { type DesktopTeamOutboxPage, type DesktopTeamSnapshot } from '../../../shared/team-desktop'
-import { DesktopTeamError, MAX_CACHE_BYTES, MAX_OUTBOX_BYTES, accountRecordSchema, bindingSchema, connectionRecordSchema, invitationIntentRecordSchema, outboxInputSchema, publicOutbox, type AccountRecord, type CachedDocument, type ConnectionRecord, type InvitationIntentRecord, type OutboxBinding, type OutboxRecord, type WorkerOperation } from './types'
+import { DesktopTeamError, MAX_CACHE_BYTES, MAX_OUTBOX_BYTES, accountRecordSchema, bindingSchema, connectionRecordSchema, invitationIntentRecordSchema, organizationIntentRecordSchema, outboxInputSchema, publicOutbox, type AccountRecord, type CachedDocument, type ConnectionRecord, type InvitationIntentRecord, type OrganizationIntentRecord, type OutboxBinding, type OutboxRecord, type WorkerOperation } from './types'
 import { canonicalTeamJson, verifyTeamDocument } from './codec'
 import { desktopExecutionIntentSchema, desktopExecutionPendingInputSchema, desktopExecutionPendingPageSchema, DESKTOP_EXECUTION_PENDING_MAX_BYTES, teamTaskIdentity } from '../../../shared/team-task-execution'
 
@@ -41,7 +42,7 @@ export class DesktopTeamStoreCore {
       this.db.exec('PRAGMA busy_timeout=50')
       const storedVersion = fresh ? 0 : Number(this.db.prepare('PRAGMA user_version').get()?.user_version)
       if (!fresh) {
-        if (this.db.prepare('PRAGMA application_id').get()?.application_id !== 0x54445431 || ![1, 2, 3, 4, 5].includes(storedVersion)) throw new DesktopTeamError('STORE_VERSION', '团队本地存储版本未知，原文件已保留')
+        if (this.db.prepare('PRAGMA application_id').get()?.application_id !== 0x54445431 || ![1, 2, 3, 4, 5, 6].includes(storedVersion)) throw new DesktopTeamError('STORE_VERSION', '团队本地存储版本未知，原文件已保留')
         if (this.db.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok') throw new DesktopTeamError('CORRUPT_STORE', '团队本地存储完整性检查失败，原文件已保留')
       }
       this.db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON')
@@ -61,6 +62,9 @@ export class DesktopTeamStoreCore {
       })
       if (storedVersion < 5) this.transaction(() => {
         this.db.exec("CREATE INDEX execution_intents_pending ON execution_intents(connectionId) WHERE json_extract(data,'$.state')<>'committed'; PRAGMA user_version=5")
+      })
+      if (storedVersion < 6) this.transaction(() => {
+        this.db.exec("CREATE TABLE organization_intents(intentKey TEXT PRIMARY KEY,accountId TEXT NOT NULL,data TEXT NOT NULL); PRAGMA user_version=6")
       })
       this.db.prepare("UPDATE execution_intents SET data=json_set(data,'$.state','acknowledgement-unknown') WHERE json_extract(data,'$.state')='dispatching'").run()
       this.transaction(() => {
@@ -100,6 +104,14 @@ export class DesktopTeamStoreCore {
     if (!row) throw new DesktopTeamError('NOT_FOUND', '未找到原邀请创建意图')
     const value = invitationIntentRecordSchema.parse(JSON.parse(String(row.data)))
     if (value.commandId !== commandId || value.accountId !== row.accountId || value.createdAt !== row.createdAt) throw new DesktopTeamError('CORRUPT_STORE', '邀请创建意图与持久化查询键不一致；原记录已保留')
+    return value
+  }
+  private organizationIntent(intentKey: string): OrganizationIntentRecord {
+    const key = z.string().regex(/^[a-f0-9]{64}$/).parse(intentKey)
+    const row = this.db.prepare('SELECT accountId,data FROM organization_intents WHERE intentKey=?').get(key)
+    if (!row) throw new DesktopTeamError('NOT_FOUND', '未找到原组织创建意图')
+    const value = organizationIntentRecordSchema.parse(JSON.parse(String(row.data)))
+    if (value.intentKey !== key || value.accountId !== row.accountId) throw new DesktopTeamError('CORRUPT_STORE', '组织创建意图与持久化查询键不一致；原记录已保留')
     return value
   }
   private connection(connectionId: string): ConnectionRecord {
@@ -171,7 +183,7 @@ export class DesktopTeamStoreCore {
   }
   dispatch(operation: WorkerOperation): unknown {
     const raw = operation.input
-    if (operation.op === 'health') return { schemaVersion: 5, storeId: this.storeId }
+    if (operation.op === 'health') return { schemaVersion: 6, storeId: this.storeId }
     if (operation.op === 'execution-intent') {
       const input = z.object({ connectionId: id, commandId: id }).strict().parse(raw); active(this.connection(input.connectionId))
       return this.executionIntent(input.connectionId, input.commandId)
@@ -210,6 +222,32 @@ export class DesktopTeamStoreCore {
       try { return this.invitationIntent(id.parse(raw)) }
       catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
     }
+    if (operation.op === 'organization-intent') {
+      const input = z.object({ intentKey: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(raw)
+      try { return this.organizationIntent(input.intentKey) }
+      catch (error) { if (error instanceof DesktopTeamError && error.code === 'NOT_FOUND') return null; throw error }
+    }
+    if (operation.op === 'save-organization-intent') return this.transaction(() => {
+      const record = organizationIntentRecordSchema.parse(raw), account = this.account(record.accountId)
+      if (account.origin !== record.origin) throw new DesktopTeamError('BINDING_CHANGED', '组织创建意图不属于原服务账号')
+      const existing = this.db.prepare('SELECT intentKey FROM organization_intents WHERE intentKey=?').get(record.intentKey)
+      if (existing) {
+        const previous = this.organizationIntent(record.intentKey)
+        if (previous.accountId !== record.accountId || previous.origin !== record.origin || previous.commandId !== record.commandId || previous.payloadDigest !== record.payloadDigest) throw new DesktopTeamError('COMMAND_CONFLICT', '同一组织创建意图不能更换账号、命令或名称摘要')
+        if (previous.updatedAt !== record.updatedAt) this.db.prepare('UPDATE organization_intents SET data=? WHERE intentKey=?').run(JSON.stringify({ ...previous, updatedAt: record.updatedAt }), record.intentKey)
+        return { ...previous, updatedAt: record.updatedAt }
+      }
+      if (Number(this.db.prepare('SELECT COUNT(*) AS count FROM organization_intents').get()?.count) >= 200) throw new DesktopTeamError('CAPACITY_EXCEEDED', '组织创建意图已达限界，请先核对历史创建结果')
+      this.db.prepare('INSERT INTO organization_intents VALUES(?,?,?)').run(record.intentKey, record.accountId, JSON.stringify(record))
+      return record
+    })
+    if (operation.op === 'clear-organization-intent') return this.transaction(() => {
+      const input = z.object({ intentKey: z.string().regex(/^[a-f0-9]{64}$/), accountId: desktopTeamAccountIdSchema, commandId: z.string().uuid() }).strict().parse(raw)
+      const previous = this.organizationIntent(input.intentKey)
+      if (previous.accountId !== input.accountId || previous.commandId !== input.commandId) throw new DesktopTeamError('COMMAND_CONFLICT', '组织创建结果不能清除其他账号或另一个原命令')
+      this.db.prepare('DELETE FROM organization_intents WHERE intentKey=?').run(input.intentKey)
+      return null
+    })
     if (operation.op === 'save-invitation-intent') return this.transaction(() => {
       const record = invitationIntentRecordSchema.parse(raw)
       const existing = this.db.prepare('SELECT commandId FROM invitation_intents WHERE commandId=?').get(record.commandId)
@@ -242,7 +280,7 @@ export class DesktopTeamStoreCore {
     if (operation.op === 'connection') return this.connection(id.parse(raw))
     if (operation.op === 'add-connection') return this.transaction(() => {
       const c = connectionRecordSchema.parse(raw)
-      if (c.state !== 'pending' || c.ownerId || c.sequence !== -1 || c.remoteDevice || c.accessLocked) throw new DesktopTeamError('INVALID_INPUT', '新配对必须保留待批准状态')
+      if (c.state !== 'pending' || c.ownerId || c.sequence !== -1 || c.accessGeneration !== 0 || c.remoteDevice || c.accessLocked) throw new DesktopTeamError('INVALID_INPUT', '新配对必须保留待批准状态')
       if ((c.accountId === null) !== (c.approvalCommandId === null)) throw new DesktopTeamError('INVALID_INPUT', '原生账号批准必须同时固定账号与命令')
       if (c.accountId !== null) {
         const account = this.account(c.accountId)
@@ -254,8 +292,10 @@ export class DesktopTeamStoreCore {
       this.saveConnection(c); return c
     })
     if (operation.op === 'update-connection') return this.transaction(() => {
-      const input = z.object({ connectionId: id, device: z.unknown().optional(), network: z.enum(['reachable', 'offline']).optional(), errorCode: z.string().max(200).nullable().optional(), lock: z.boolean().optional(), revokeOutbox: z.boolean().optional(), disconnect: z.boolean().optional(), nextPollAt: timestamp.optional() }).strict().parse(raw)
+      const input = z.object({ connectionId: id, expectedConnection: connectionRecordSchema.optional(), device: z.unknown().optional(), network: z.enum(['reachable', 'offline']).optional(), errorCode: z.string().max(200).nullable().optional(), lock: z.boolean().optional(), revokeOutbox: z.boolean().optional(), disconnect: z.boolean().optional(), nextPollAt: timestamp.optional() }).strict().parse(raw)
       const c = this.connection(input.connectionId)
+      if (input.expectedConnection && canonicalTeamJson(c) !== canonicalTeamJson(input.expectedConnection)) throw new DesktopTeamError('BINDING_CHANGED', '原连接在核对期间变化，迟到验证不能覆盖当前授权')
+      if (c.accessGeneration === Number.MAX_SAFE_INTEGER && input.device !== undefined && teamDeviceSchema.parse(input.device).status === 'active') throw new DesktopTeamError('ACCESS_LOCKED', '连接失权版本已达限界，原连接不能恢复')
       return this.updateConnection(c, input)
     })
     if (operation.op === 'reserve-heartbeat') return this.transaction(() => { const c = this.connection(id.parse(raw)); active(c); c.sequence++; if (!Number.isSafeInteger(c.sequence)) throw new DesktopTeamError('CAPACITY_EXCEEDED', '心跳序号已达限界'); this.saveConnection(c); return c })
@@ -349,8 +389,10 @@ export class DesktopTeamStoreCore {
     throw new DesktopTeamError('INVALID_INPUT', '未知团队存储操作')
   }
   private updateConnection(c: ConnectionRecord, input: { device?: unknown; network?: 'reachable' | 'offline'; errorCode?: string | null; lock?: boolean; revokeOutbox?: boolean; disconnect?: boolean; nextPollAt?: number }): ConnectionRecord {
+    let invalidated = input.lock === true || input.disconnect === true
     if (input.device !== undefined) {
       const remote = teamDeviceSchema.parse(input.device)
+      invalidated ||= remote.status === 'revoked' || remote.status === 'expired'
       if (remote.deviceId !== c.deviceId || (c.projectId && remote.projectId !== c.projectId) || (c.ownerId && remote.ownerId !== c.ownerId)) throw new DesktopTeamError('BINDING_CHANGED', '远端配对试图更换原项目或账号')
       if (c.accountId !== null && remote.status === 'active') {
         const account = this.account(c.accountId)
@@ -368,6 +410,11 @@ export class DesktopTeamStoreCore {
     if (input.lock === true) c.accessLocked = true
     if (input.disconnect) { c.state = 'disconnected'; c.accessLocked = true }
     if (input.nextPollAt !== undefined) c.nextPollAt = input.nextPollAt
+    if (invalidated) {
+      // Saturation is terminal: invalidation still persists, but no future
+      // active-device proof can clear this connection's fence.
+      if (c.accessGeneration < Number.MAX_SAFE_INTEGER) c.accessGeneration++
+    }
     this.saveConnection(c)
     if (c.state === 'disconnected' || c.state === 'revoked' || c.state === 'expired' || (input.lock === true && input.revokeOutbox !== false)) {
       for (const row of this.db.prepare('SELECT id FROM commands WHERE connectionId=?').all(c.connectionId)) {

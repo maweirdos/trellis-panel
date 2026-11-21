@@ -20,10 +20,13 @@ import type {
   CruxTaskRelation
 } from '../crux'
 import { cruxInitialTaskTypesSchema } from '../crux-schema'
+import { canConfirmTaskClarification } from '../crux'
 import { mutate, nextId, nowIso } from './store'
 import { evaluateAutomationsForComment, evaluateAutomationsForStatus, evaluateAutomationsForTaskCreated, refreshTaskDispatch as refreshDispatch, setTaskIterations } from './planning'
+import { canRestoreLightweightTask, getCruxLightweightTaskCapabilities } from './lightweight'
+import { CruxError } from './errors'
 
-export class CruxError extends Error {}
+export { CruxError } from './errors'
 
 function fail(message: string): never {
   throw new CruxError(message)
@@ -432,10 +435,26 @@ export function createTask(input: CruxTaskInput): { snapshot: CruxSnapshot; task
   const { snapshot, result } = mutate((draft) => {
     const space = spaceOf(draft, input.spaceId)
     if (!input.title.trim()) fail('任务标题不能为空')
+    if (input.lightweightSource && (!input.bindConversation || input.handoff || input.workKind !== undefined || input.acceptanceCriteria !== undefined)) fail('只有从对话直接创建的普通任务可以使用此来源')
     const eligible = draft.members.filter((m) => space.memberIds.includes(m.id))
     const creator = input.creatorId
       ? eligible.find((m) => m.id === input.creatorId) ?? fail('任务创建人不在该空间内')
       : eligible.find((m) => m.role === 'owner') ?? eligible[0] ?? fail('空间没有成员，请先添加成员再创建任务')
+    if (input.bindConversation) {
+      const original = draft.tasks.find(item => item.conversations?.some(link => link.id === input.bindConversation!.id && link.actorId === creator.id))
+      if (original) {
+        if (original.spaceId !== space.id) fail('此对话已绑定其他空间的任务')
+        return original.id
+      }
+    }
+    if (input.handoff) {
+      const original = draft.tasks.find(task => task.creatorId === creator.id && task.handoff?.id === input.handoff?.id)
+      if (original) {
+        if (original.spaceId !== space.id) fail('此交接已绑定原团队空间')
+        return original.id
+      }
+      if (!input.triagePending && !input.assigneeIds?.length) fail('直接安排需要选择负责人')
+    }
     space.taskSeq += 1
     const taskId = `${space.key}-${space.taskSeq}`
     const typeId = input.typeId ?? draft.taskTypes.find((t) => t.spaceId === space.id && t.isDefault)?.id
@@ -453,7 +472,7 @@ export function createTask(input: CruxTaskInput): { snapshot: CruxSnapshot; task
       id: taskId,
       spaceId: space.id,
       title: input.title.trim(),
-      description: input.description?.trim() || undefined,
+      description: input.handoff?.versionLabel ? input.description : input.description?.trim() || undefined,
       typeId,
       statusId: usesWorkflow ? draft.taskStatuses.find((status) => status.spaceId === space.id && status.category === 'backlog' && allowed.has(status.id))?.id ?? fail('任务类型缺少 Backlog 状态') : statusId,
       priority: input.priority ?? 'none',
@@ -466,6 +485,10 @@ export function createTask(input: CruxTaskInput): { snapshot: CruxSnapshot; task
       relations: [],
       followerIds: [],
       triagePending: input.triagePending || undefined,
+      lightweightSource: input.lightweightSource,
+      handoff: input.handoff,
+      ...(input.feishuSource ? { feishuSource: input.feishuSource } : {}),
+      ...(input.bindConversation ? { conversations: [{ ...input.bindConversation, actorId: creator.id }] } : {}),
       workKind: usesWorkflow ? input.workKind ?? 'code' : undefined,
       acceptanceCriteria: input.acceptanceCriteria,
       workflow: usesWorkflow ? { stage: 'accepted', handlerId: assigneeIds[0] ?? (input.triagePending ? undefined : creator.id), artifacts: [], history: [] } : undefined,
@@ -487,7 +510,7 @@ export function createTask(input: CruxTaskInput): { snapshot: CruxSnapshot; task
     draft.tasks.unshift(task)
     for (const assignee of task.assigneeIds) pushInbox(draft, { section: 'important', kind: 'assign', title: `${task.id} 已指派给 ${memberName(draft, assignee)}`, body: task.title, taskId: task.id, recipientIds: [assignee] })
     setTaskIterations(draft, task, input.iterationIds ?? [])
-    pushActivity(draft, taskId, 'created', '任务创建')
+    pushActivity(draft, taskId, 'created', `${creator.name} 创建了任务`)
     refreshDispatch(draft, task, '指派执行槽')
     evaluateAutomationsForTaskCreated(draft, task)
     return taskId
@@ -495,13 +518,87 @@ export function createTask(input: CruxTaskInput): { snapshot: CruxSnapshot; task
   return { snapshot, taskId: result }
 }
 
-export function updateTask(input: { id: CruxID; patch: CruxTaskPatchInput }): CruxSnapshot {
+export function updateTask(input: { id: CruxID; patch: CruxTaskPatchInput }, actorId?: string): CruxSnapshot {
   return mutate((draft) => {
     const task = taskOf(draft, input.id)
     const space = spaceOf(draft, task.spaceId)
     const patch = input.patch
     const changes: string[] = []
     const originalStatusId = task.statusId
+    if (patch.bindConversation) {
+      if (!actorId || space.archived || !space.memberIds.includes(actorId) || Object.keys(patch).length !== 1) fail('请由当前空间成员单独绑定对话')
+      const link = patch.bindConversation
+      const original = draft.tasks.find(item => item.conversations?.some(chat => chat.actorId === actorId && chat.id === link.id))
+      if (original && original.id !== task.id) fail('此对话已绑定其他任务')
+      if (!original) {
+        ;(task.conversations ??= []).push({ ...link, actorId })
+        pushActivity(draft, task.id, 'conversation', '已绑定任务对话')
+        task.updatedAt = nowIso()
+      }
+      return
+    }
+    if (patch.sharedMaterial) {
+      if (!actorId || space.archived || !space.memberIds.includes(actorId) || Object.keys(patch).length !== 1) fail('请由当前空间成员单独发布共享需求版本')
+      const material = patch.sharedMaterial
+      const materials = task.sharedMaterials ??= []
+      const existing = materials.find(item => item.bodyDigest === material.bodyDigest)
+      if (existing && (existing.documentId !== material.documentId || existing.versionId !== material.versionId || existing.title !== material.title || existing.versionLabel !== material.versionLabel)) fail('共享需求版本已存在，不能覆盖原固定版本')
+      if (!existing) {
+        materials.push({ ...material })
+        pushActivity(draft, task.id, 'material', `已共享需求版本「${material.title} · ${material.versionLabel}」`)
+        task.updatedAt = nowIso()
+      }
+      return
+    }
+    if (patch.outputReview) {
+      if (!actorId || space.archived || !space.memberIds.includes(actorId) || Object.keys(patch).length !== 1) fail('请由当前空间成员单独审阅共享成果')
+      if ((task.workflow && !canRestoreLightweightTask(task)) || ['done', 'cancelled'].includes(statusCategoryOf(draft, task.statusId) ?? '')) fail('此任务当前不能提交或修改成果审阅')
+      const action = patch.outputReview
+      const history = task.outputReview?.history ?? []
+      const submission = [...history].reverse().find((entry) => entry.kind === 'submission')
+      const confirmation = [...history].reverse().find((entry) => entry.kind === 'confirmation' && submission?.submissionId === entry.submissionId)
+      const status = submission ? confirmation?.submissionId === submission.submissionId ? 'confirmed' : submission.feedback.length ? 'changes_requested' : 'awaiting_review' : 'none'
+      const revision = submission ? history.lastIndexOf(submission) : 0
+      if (action.action === 'submit') {
+        if (submission?.creationId === action.output.creationId && submission.revisionId === action.output.revisionId) fail('此版本已提交，请选择修改后的新版本')
+        if (action.expectedRevision !== revision || action.expectedStatus !== status) fail('共享成果审阅已更新，请核对最新版本')
+        task.outputReview = { history: [...structuredClone(history), { ...structuredClone(action.output), kind: 'submission', submissionId: nextId('or'), submittedBy: actorId, submittedAt: nowIso(), feedback: [] }] }
+        pushActivity(draft, task.id, 'output-review', `${memberName(draft, actorId)} 提交共享成果「${action.output.title}」`)
+      } else if (action.action === 'requestChanges') {
+        if (!submission) fail('请先固定共享成果')
+        if (status === 'confirmed' || action.expectedSubmissionId !== submission.submissionId || action.expectedFeedbackCount !== submission.feedback.length) fail('共享成果审阅已更新，请核对最新反馈')
+        submission.feedback.push({ id: nextId('of'), body: action.feedback, actorId, at: nowIso() })
+        pushActivity(draft, task.id, 'output-review', `${memberName(draft, actorId)} 要求修改「${submission.title}」：${action.feedback}`)
+      } else {
+        if (!submission || status === 'confirmed' || action.expectedSubmissionId !== submission.submissionId || action.expectedFeedbackCount !== submission.feedback.length) fail('共享成果审阅已更新，请核对最新反馈')
+        task.outputReview = { history: [...structuredClone(history), { kind: 'confirmation', submissionId: submission.submissionId, confirmedBy: actorId, confirmedAt: nowIso() }] }
+        pushActivity(draft, task.id, 'output-review', `${memberName(draft, actorId)} 确认审阅共享成果`)
+      }
+      task.updatedAt = nowIso()
+      return
+    }
+    if (patch.clarification) {
+      const actor = draft.members.find(member => member.id === actorId)
+      if (!actor || !canConfirmTaskClarification(draft, task, actor.id)) fail('请由任务创建人、产品负责人或空间管理员确认业务补充')
+      if (Object.keys(patch).length !== 1) fail('请单独提交补充决定')
+      const { commentId, action, reason, expectedCount } = patch.clarification
+      const comment = draft.comments.find(item => item.id === commentId && item.taskId === task.id) ?? fail('原评论不属于当前任务')
+      const notes = task.clarifications ??= []
+      const history = notes.filter(note => note.commentId === commentId)
+      if (expectedCount !== history.reduce((sum, note) => sum + (note.withdrawn ? 2 : 1), 0)) fail('这条补充已更新，请重新核对')
+      const current = history.find(note => !note.withdrawn)
+      const at = nowIso()
+      if (action === 'confirm') {
+        if (current) fail('这条评论已确认为补充')
+        notes.push({ commentId, body: comment.body, authorId: comment.authorId, confirmedBy: actor.id, confirmedAt: at })
+      } else {
+        if (!current || !reason?.trim()) fail('撤回有效补充时需要说明原因')
+        current.withdrawn = { actorId: actor.id, at, reason: reason.trim() }
+      }
+      pushActivity(draft, task.id, 'clarification', `${actor.name}${action === 'confirm' ? '确认' : '撤回'}了补充：${comment.body}${reason ? `（${reason}）` : ''}`)
+      task.updatedAt = at
+      return undefined
+    }
 
     const initialTriage = task.triagePending === true && task.workflow?.stage === 'accepted' &&
       task.workflow.history.length === 0 && task.workflow.artifacts.length === 0 && !task.workflow.deliveryState &&
@@ -511,13 +608,25 @@ export function updateTask(input: { id: CruxID; patch: CruxTaskPatchInput }): Cr
     if (task.workflow && patch.statusId !== undefined && statusCategoryOf(draft, patch.statusId) !== statusCategoryOf(draft, task.statusId)) fail('交接任务请通过阶段操作修改状态类别')
     if (!task.workflow && (patch.workKind !== undefined || patch.acceptanceCriteria !== undefined)) fail('旧任务保留原有流程，不能通过字段编辑启用交接流程')
 
+    if (patch.expectedDescription !== undefined && patch.description !== undefined && patch.expectedDescription !== (task.description ?? '')) fail('任务描述已更新，请核对最新原文后重新应用')
+    if (patch.expectedDescription !== undefined) {
+      if (!canConfirmTaskClarification(draft, task, actorId) || patch.description === undefined || Object.keys(patch).length !== 2) fail('请由任务创建人、产品负责人或空间管理员采用正文建议')
+    }
+    if (patch.expectedTitle !== undefined && (patch.title === undefined || patch.expectedTitle !== task.title)) fail('标题已更新，请核对后再保存。')
+    if (patch.expectedPostDescription !== undefined && (patch.description === undefined || patch.expectedPostDescription !== (task.description ?? ''))) fail('正文已更新，请核对后再保存。')
+
     if (patch.title !== undefined && !patch.title.trim()) fail('任务标题不能为空')
+    const nextDescription = patch.expectedPostDescription !== undefined ? patch.description : patch.description?.trim()
+    if ((patch.title !== undefined && patch.title.trim() !== task.title) ||
+      (nextDescription !== undefined && nextDescription !== (task.description ?? ''))) {
+      (task.descriptionHistory ??= []).push({ title: task.title, description: task.description ?? '', at: task.updatedAt })
+    }
     if (patch.title !== undefined && patch.title.trim() !== task.title) {
       task.title = patch.title.trim()
       changes.push('标题')
     }
-    if (patch.description !== undefined) {
-      task.description = patch.description.trim() || undefined
+    if (nextDescription !== undefined && nextDescription !== (task.description ?? '')) {
+      task.description = nextDescription || undefined
       changes.push('描述')
     }
     if (patch.acceptanceCriteria !== undefined && JSON.stringify(patch.acceptanceCriteria) !== JSON.stringify(task.acceptanceCriteria)) {
@@ -631,11 +740,36 @@ export function updateTask(input: { id: CruxID; patch: CruxTaskPatchInput }): Cr
     refreshDispatch(draft, task, '执行状态更新')
 
     if (changes.length > 0) {
-      pushActivity(draft, task.id, 'field', `更新了${changes.join('、')}`)
+      const member = draft.members.find(person => person.id === actorId)
+      pushActivity(draft, task.id, 'field', `${member ? `${member.name} ` : ''}更新了${changes.join('、')}`)
       task.updatedAt = nowIso()
     }
     return undefined
   }).snapshot
+}
+
+export function restoreLightweightTask(input: { taskId: CruxID; expectedUpdatedAt: string; statusId?: CruxID; assigneeIds?: CruxID[] }, actorId?: string): CruxSnapshot {
+  const restoredAt = nowIso()
+  mutate((draft) => {
+    const task = taskOf(draft, input.taskId)
+    const space = spaceOf(draft, task.spaceId)
+    const actor = actorId ? draft.members.find((member) => member.id === actorId) : undefined
+    if (!actor || !space.memberIds.includes(actor.id)) fail('当前成员无权修改此任务')
+    if (!task.workflow) fail('任务已在普通状态流')
+    if (input.expectedUpdatedAt !== task.updatedAt) fail('任务内容已更新，请刷新后重试')
+    if (!getCruxLightweightTaskCapabilities(draft, task, actor.id).canRestore) fail('此任务需要按原阶段交接')
+    const previousStage = task.workflow.stage
+    task.lightweightRestore = { workflow: task.workflow, workKind: task.workKind, acceptanceCriteria: task.acceptanceCriteria, restoredAt }
+    task.workKind = undefined
+    task.workflow = undefined
+    task.updatedAt = nowIso()
+    pushActivity(draft, task.id, 'lightweight_restore', `${actor.name} 恢复普通状态流（原阶段 ${previousStage}）`)
+    return undefined
+  })
+  return updateTask({ id: input.taskId, patch: {
+    ...(input.statusId !== undefined ? { statusId: input.statusId } : {}),
+    ...(input.assigneeIds !== undefined ? { assigneeIds: input.assigneeIds } : {})
+  } }, actorId)
 }
 
 export function removeTask(input: { id: CruxID }): CruxSnapshot {
@@ -696,10 +830,19 @@ export function relationLabel(kind: CruxTaskRelation['kind']): string {
 
 /* ---------------- 评论（PRD 2.5） ---------------- */
 
-export function addComment(input: { taskId: CruxID; body: string; authorId: string; parentId?: CruxID }): CruxSnapshot {
+export function addComment(input: { taskId: CruxID; body: string; authorId: string; parentId?: CruxID; sourceId?: string; sourceFiles?: CruxComment['sourceFiles'] }): CruxSnapshot {
   return mutate((draft) => {
     const task = taskOf(draft, input.taskId)
     if (!input.body.trim()) fail('评论内容不能为空')
+    if (input.sourceFiles?.length && !input.sourceId) fail('共享文件需要原对话来源')
+    if (input.sourceId) {
+      if (!spaceOf(draft, task.spaceId).memberIds.includes(input.authorId)) fail('只有空间成员可以关联对话')
+      const prior = draft.comments.find(item => item.taskId === task.id && item.sourceId === input.sourceId)
+      if (prior) {
+        if (prior.authorId !== input.authorId || prior.body !== input.body.trim() || JSON.stringify(prior.sourceFiles) !== JSON.stringify(input.sourceFiles)) fail('该版本的对话已关联，补充内容请直接回复原讨论')
+        return prior.id
+      }
+    }
     if (input.parentId !== undefined) {
       const parent = draft.comments.find((c) => c.id === input.parentId) ?? fail('回复的评论不存在')
       if (parent.taskId !== task.id) fail('只能回复同一任务内的评论')
@@ -708,11 +851,13 @@ export function addComment(input: { taskId: CruxID; body: string; authorId: stri
       if (!draft.agents.some((a) => a.id === input.authorId.slice(6) && a.spaceId === task.spaceId)) fail('评论 Agent 不在该空间内')
     } else if (!draft.members.some((m) => m.id === input.authorId)) fail('评论作者不存在')
     // @提及自动识别成员姓名（PRD 2.5：@ 该看的人）
-    const mentions = draft.members.filter((m) => input.body.includes(`@${m.name}`)).map((m) => m.id)
+    const mentions = input.sourceId ? [] : draft.members.filter((m) => input.body.includes(`@${m.name}`)).map((m) => m.id)
     const comment: CruxComment = {
       id: nextId('cm'),
       taskId: task.id,
       authorId: input.authorId,
+      ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+      ...(input.sourceFiles ? { sourceFiles: input.sourceFiles } : {}),
       parentId: input.parentId,
       body: input.body.trim(),
       mentions,
@@ -733,7 +878,7 @@ export function addComment(input: { taskId: CruxID; body: string; authorId: stri
     if (task.followerIds.length > 0 && !task.followerIds.includes(input.authorId)) {
       pushInbox(draft, { section: 'other', kind: 'status', title: `已关注任务 ${task.id} 有新评论`, body: `${authorLabel}：${input.body.trim().slice(0, 60)}`, taskId: task.id, recipientIds: task.followerIds.filter((id) => id !== input.authorId) })
     }
-    evaluateAutomationsForComment(draft, task, input.body)
+    if (!input.sourceId) evaluateAutomationsForComment(draft, task, input.body)
     task.updatedAt = nowIso()
     return comment.id
   }).snapshot

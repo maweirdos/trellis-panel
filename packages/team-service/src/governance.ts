@@ -5,13 +5,14 @@ import { cruxSnapshotSchema } from '../../../src/shared/crux-schema'
 import type { CruxSpace } from '../../../src/shared/crux'
 import {
   governanceCommandSchema, governanceListQuerySchema, governancePackageSchema, governanceReceiptSchema, governanceVersionSchema,
-  type GovernanceCommand, type GovernancePackage, type GovernanceReceipt, type GovernanceVersion
+  type GovernanceCommand, type GovernancePackage, type GovernanceReceipt, type GovernanceVersion, type GovernanceLessonOrigin
 } from '../../../src/shared/team-governance'
 import { teamCommandIdSchema, teamIdSchema, type TeamCommandReply } from '../../../src/shared/team-platform'
 import { teamTaskProgressResourceIdSchema } from '../../../src/shared/team-task-progress'
 import { TeamServiceError } from './errors'
 import type { TaskMaterialsHost } from './task-materials'
 import type { StoreActor, StorePrincipal } from './store-types'
+import type { TeamTaskExecutions } from './task-executions'
 
 export type GovernanceHost = TaskMaterialsHost
 export type GovernanceContext = { principal: StorePrincipal; projectId: string; space: CruxSpace; workspaceRevision: number }
@@ -30,7 +31,8 @@ export function governanceNext(value: number): number {
 }
 
 export class TeamGovernance {
-  constructor(private readonly host: GovernanceHost) {}
+  constructor(private readonly host: GovernanceHost,
+    private readonly executions: Pick<TeamTaskExecutions, 'historyForPrincipal' | 'resolveOutput'>) {}
 
   context(principal: StorePrincipal, projectId: string, spaceId: string, writing = false): GovernanceContext {
     this.host.project(principal, teamIdSchema.parse(projectId))
@@ -148,7 +150,38 @@ export class TeamGovernance {
       (principal, result) => { this.authorizeReceipt(principal, result) })
   }
 
-  private saveVersion(ctx: GovernanceContext, packageId: string, number: number, input: Extract<GovernanceCommand, { action: 'create' | 'saveDraft' }>): GovernanceVersion {
+  private lessonOrigin(ctx: GovernanceContext, pkg: GovernancePackage, input: Extract<GovernanceCommand, { action: 'saveDraft' }>): GovernanceLessonOrigin | undefined {
+    const origin = input.lessonOrigin
+    // Omission carries historical evidence; its old base is not a new draft intent.
+    if (!origin) return pkg.draft.lessonOrigin
+    if (pkg.kind !== 'rule' || origin.task.projectId !== ctx.projectId || origin.task.spaceId !== ctx.space.id) {
+      governanceFail('GOVERNANCE_LESSON_SCOPE_CONFLICT', 'A lesson must come from the original task in this rule space')
+    }
+    if (origin.base.packageId !== pkg.packageId || origin.base.revision !== input.expectedRevision
+      || origin.base.versionId !== pkg.draft.versionId || origin.base.bodyDigest !== pkg.draft.bodyDigest) {
+      governanceFail('GOVERNANCE_LESSON_BASE_CONFLICT', 'Compare the exact current rule draft before proposing a lesson')
+    }
+    const execution = this.executions.historyForPrincipal(ctx.principal, origin.task, origin.artifact.executionId)
+    const row = this.host.get("SELECT t.value AS body FROM crux_workspaces w,json_each(w.snapshotJson,'$.tasks') t WHERE w.projectId=? AND json_extract(t.value,'$.id')=?", ctx.projectId, origin.task.taskId)
+    if (!row) governanceFail('GOVERNANCE_LESSON_UNAVAILABLE', 'Original lesson task is unavailable', 404)
+    const task = governanceStored(cruxSnapshotSchema.shape.tasks.element, row.body)
+    const status = this.host.get("SELECT json_extract(s.value,'$.category') AS category FROM crux_workspaces w,json_each(w.snapshotJson,'$.taskStatuses') s WHERE w.projectId=? AND json_extract(s.value,'$.id')=? AND json_extract(s.value,'$.spaceId')=?", ctx.projectId, task.statusId, ctx.space.id)
+    if (task.spaceId !== origin.task.spaceId || task.createdAt !== origin.task.taskCreatedAt
+      || status?.category !== 'done' || task.workflow && task.workflow.stage !== 'done') {
+      governanceFail('GOVERNANCE_LESSON_NOT_CLOSED', 'The original lesson task must be business-complete')
+    }
+    const selected = origin.artifact
+    if (execution.finalization?.outcome !== 'completed' || !execution.finalization.outputs.some(ref =>
+      ref.kind === 'confirmed-artifact' && ref.executionId === selected.executionId && ref.artifactId === selected.artifactId
+      && ref.versionId === selected.versionId && ref.bodyDigest === selected.bodyDigest)) {
+      governanceFail('GOVERNANCE_LESSON_OUTPUT_CONFLICT', 'The lesson must name an exact output of its completed finalization')
+    }
+    // Existing execution ownership verifies current source ACL and immutable bytes.
+    this.executions.resolveOutput(ctx.principal, origin.task, selected)
+    return origin
+  }
+
+  private saveVersion(ctx: GovernanceContext, packageId: string, number: number, input: Extract<GovernanceCommand, { action: 'create' | 'saveDraft' }>, lessonOrigin?: GovernanceLessonOrigin): GovernanceVersion {
     const count = this.host.get('SELECT COUNT(*) AS count FROM governance_versions WHERE packageId=?', packageId)
     if (!count || typeof count.count !== 'number' || count.count >= 1000) governanceFail('CAPACITY_EXCEEDED', 'Package version capacity reached', 413)
     const bytes = Buffer.from(input.text, 'utf8'), bodyDigest = governanceHash(bytes)
@@ -159,7 +192,8 @@ export class TeamGovernance {
     }
     this.host.persistBody(bytes, bodyDigest)
     this.host.run('INSERT INTO blobs(bodyDigest,byteLength,createdAt) VALUES(?,?,?) ON CONFLICT(bodyDigest) DO NOTHING', bodyDigest, bytes.length, Date.now())
-    const version = governanceVersionSchema.parse({ packageId, versionId: randomUUID(), number, title: input.title, bodyDigest, byteLength: bytes.length, settings: input.settings, authorId: ctx.principal.person.userId, createdAt: Date.now() })
+    const version = governanceVersionSchema.parse({ packageId, versionId: randomUUID(), number, title: input.title, bodyDigest, byteLength: bytes.length, settings: input.settings, authorId: ctx.principal.person.userId, createdAt: Date.now(),
+      ...(lessonOrigin ? { lessonOrigin } : {}) })
     this.host.run('INSERT INTO governance_versions(versionId,packageId,number,bodyDigest,recordJson) VALUES(?,?,?,?,?)', version.versionId, packageId, number, bodyDigest, JSON.stringify(version))
     return version
   }
@@ -179,7 +213,7 @@ export class TeamGovernance {
       governanceCas(pkg.revision, input.expectedRevision)
       if (input.action === 'saveDraft') {
         if (input.settings.kind !== pkg.kind) governanceFail('GOVERNANCE_KIND_CONFLICT', 'Package kind cannot change')
-        pkg.draft = this.saveVersion(ctx, pkg.packageId, governanceNext(pkg.draft.number), input)
+        pkg.draft = this.saveVersion(ctx, pkg.packageId, governanceNext(pkg.draft.number), input, this.lessonOrigin(ctx, pkg, input))
         pkg.submittedVersionId = null; pkg.status = 'draft'; versionId = pkg.draft.versionId
       } else if (input.action === 'setAccess') {
         pkg.maintainerIds = input.maintainerIds; pkg.approverIds = input.approverIds

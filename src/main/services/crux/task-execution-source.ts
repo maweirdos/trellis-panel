@@ -5,13 +5,13 @@ import { withDesktopTeamService } from '../team-desktop'
 import { selectTaskCreationReferences } from '../creations/task-references'
 import { selectTaskMaterialInputs } from './task-material-inputs'
 import { cruxWorkspaceGeneration, cruxWorkspaceStatus } from './connection-service'
-import { CruxWorkError, readCruxWorkSource, type CruxWorkSource } from './task-workspace-source'
+import { CruxWorkError, readCruxWorkSource, type CruxWorkSource, type CruxWorkSourceDependencies } from './task-workspace-source'
 
 export type TaskExecutionSource = CruxWorkSource & { codeResource: TeamTaskCodeResourceDto }
 const identity = (value: CruxWorkspaceContext): string => JSON.stringify([value.key, value.connectionId, value.actorId, value.projectId, value.origin, value.instanceId, value.epoch, value.authorizationRevision, value.state])
 
 /** A fresh server-owned projection for one read phase, never an execution grant cache. */
-export async function readTaskExecutionSource(raw: CruxWorkQuery, expected?: CruxWorkSource): Promise<TaskExecutionSource | null> {
+export async function readTaskExecutionSource(raw: CruxWorkQuery, expected?: CruxWorkSource, postAttachments?: CruxWorkSourceDependencies['postAttachments']): Promise<TaskExecutionSource | null> {
   const query = cruxWorkQuerySchema.parse(raw), generation = cruxWorkspaceGeneration(), before = await cruxWorkspaceStatus()
   if (before.state === 'local') return null
   if (before.state !== 'connected' || before.key !== query.workspaceKey || !before.connectionId || !before.instanceId || !before.epoch || !before.actorId || !before.projectId) throw new CruxWorkError('scope_changed', '请先在原团队工作区核对开发来源。')
@@ -29,7 +29,7 @@ export async function readTaskExecutionSource(raw: CruxWorkQuery, expected?: Cru
   const context: CruxWorkspaceContext = { ...before, revision: packet.revision, authorizationRevision: packet.authorizationRevision, canManage: packet.canManage }
   const status = async (): Promise<CruxWorkspaceContext> => { await guard(); return context }
   const source = await readCruxWorkSource({ workspaceStatus: status, workspaceSnapshot: async () => { await guard(); return { context, snapshot: packet.snapshot } }, workspaceGeneration: cruxWorkspaceGeneration,
-    creationReferences: async request => selectTaskCreationReferences(request, value.creations),
+    postAttachments, creationReferences: async request => selectTaskCreationReferences(request, value.creations),
     teamInputs: async scope => selectTaskMaterialInputs(scope, value.inputs)
   }, query, expected)
   await guard()

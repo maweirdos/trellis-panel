@@ -9,7 +9,7 @@ import { ipcEvent } from '../../../shared/ipc-channels'
 import type { DesktopTeamService } from '../team-platform/service'
 import { CruxRemoteClient, CruxRemoteClientError, type CruxRemoteView } from './remote'
 import { loadSnapshot, mutate, onLocalCruxAuthorityChanged, resetDemoSnapshot } from './store'
-import { executeCruxDomain } from '../../../shared/crux-domain/commands'
+import { cruxMutationInputSchemas, executeCruxDomain } from '../../../shared/crux-domain/commands'
 import type { TeamGitlabOwnerBinding, TeamGitlabConnectionStatus } from '../integrations/team-gitlab'
 import type { VerifiedGitlabIdentity } from '../integrations/types'
 
@@ -194,7 +194,11 @@ export async function pendingCruxWorkspace(expectedScopeKey = 'local'): Promise<
   // No asynchronous boundary may separate this final scope check from reading the pending row.
   const value = await instance()
   if (generation !== workspaceGeneration || value.status().key !== expectedScopeKey) throw new CruxRemoteClientError('SCOPE_CHANGED', '协作空间已切换，请核对原操作。', false, false, value.status())
-  return value.pending().map((entry) => ({ commandId: entry.commandId, operation: entry.command.operation, state: entry.state, outcomeUnknown: entry.outcomeUnknown, errorCode: entry.errorCode, createdAt: entry.createdAt }))
+  return value.pending().map((entry) => {
+    const input = entry.command.operation === 'createTask' ? cruxMutationInputSchemas.createTask.parse(entry.command.input) : undefined
+    return { commandId: entry.commandId, operation: entry.command.operation, state: entry.state, outcomeUnknown: entry.outcomeUnknown, errorCode: entry.errorCode, createdAt: entry.createdAt,
+      ...(input?.handoff ? { taskHandoff: { id: input.handoff.id, spaceId: input.spaceId, creatorId: input.creatorId } } : {}) }
+  })
 }
 export async function retryCruxWorkspace(commandId: string, scopeKey: string): Promise<WorkspaceView> {
   const generation = workspaceGeneration, value = await instance()

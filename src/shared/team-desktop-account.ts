@@ -50,6 +50,8 @@ export const desktopTeamCreateWorkspaceSchema = z.object({
 }).strict()
 export const desktopTeamCreatedOrganizationSchema = z.object({
   teamId: teamIdSchema,
+  projectId: teamIdSchema,
+  spaceId: z.string().min(1).max(256),
   name: z.string().min(1).max(200)
 }).strict()
 export const desktopTeamCreatedWorkspaceSchema = z.object({

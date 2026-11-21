@@ -16,6 +16,7 @@ import { registerGovernanceRoutes } from './governance-routes'
 import { registerImportRoutes } from './imports-routes'
 import { registerCutoverRoutes } from './cutovers-routes'
 import { registerJiraBusinessHookRoutes } from './jira-business-hooks-routes'
+import { registerFeishuMemberRoutes } from './integrations/feishu-member-routes'
 
 const noBrowser = (request: FastifyRequest): void => { if (request.headers.origin !== undefined || request.cookies.tp_team_session) throw new TeamServiceError('FORBIDDEN', 'Device enrollment must be initiated by the local desktop client', 403) }
 export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore, auth: TeamAuthentication, config: TeamServiceConfig): Promise<void> {
@@ -41,6 +42,7 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     await registerImportRoutes(api, store, auth)
     await registerCutoverRoutes(api, store, auth)
     await registerJiraBusinessHookRoutes(api, store, auth)
+    registerFeishuMemberRoutes(api, store, auth)
     api.get('/api/session', async (request) => ({ ok: true, value: auth.session(request) }))
     api.get('/api/identity', async (request) => ({ ok: true, value: await auth.identity(request) }))
     const get = (path: string, operation: StoreOperation, fields: (request: FastifyRequest) => Record<string, unknown> = () => ({})): void => {
@@ -60,6 +62,7 @@ export async function registerTeamRoutes(app: FastifyInstance, store: TeamStore,
     get('/api/people', 'people', query)
     post('/api/people/:userId/status', 'setPersonActive', parameter('userId'))
     get('/api/teams', 'teams', query); post('/api/teams', 'createTeam')
+    post('/api/organizations', 'createOrganization')
     get('/api/teams/:teamId/members', 'teamMembers', parameterQuery('teamId')); post('/api/teams/:teamId/members', 'setTeamMember', parameter('teamId'))
     get('/api/projects', 'projects', query); post('/api/projects', 'createProject')
     get('/api/projects/:projectId/members', 'projectMembers', parameterQuery('projectId')); post('/api/projects/:projectId/members', 'setProjectMember', parameter('projectId'))

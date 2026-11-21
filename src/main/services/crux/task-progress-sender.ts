@@ -4,13 +4,19 @@ import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import { readBounded, writeAtomic } from '../../daemon/files'
 import { protectSecret, revealSecret } from '../integrations/credentials'
-import { TeamHttp, type TeamFetch } from '../team-platform/http'
+import { TeamHttp, isReceivedTeamRateLimit, type TeamFetch } from '../team-platform/http'
 import { DesktopTeamError, type ConnectionRecord } from '../team-platform/types'
 import { teamCommandIdSchema, teamSessionSchema } from '../../../shared/team-platform'
 import { taskInputReadSchema, taskInputBundleDigestText } from '../../../shared/team-task-inputs'
 import { createHash } from 'node:crypto'
 import { canonicalWorkflowJson } from '../../../shared/workflow'
-import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapshotSchema } from '../../../shared/crux-remote'
+import { cruxRemoteCommandSchema, cruxRemoteCommandReplySchema, cruxRemoteSnapshotSchema, type CruxRemoteCommand } from '../../../shared/crux-remote'
+import {
+  feishuMemberBase, feishuMemberClaimReplySchema, feishuMemberCommandReplySchema, feishuMemberReadySchema, feishuMemberReceiptReplySchema,
+  feishuMemberSnapshotReplySchema, type FeishuMemberClaim, type FeishuMemberCommand, type FeishuMemberReceipt,
+  type FeishuMemberSnapshot
+} from '../../../shared/feishu-member'
+import { remoteScopeKey } from './remote-persistence'
 import { taskProgressPinSchema, type TaskProgressPin } from '../../../shared/crux-task-progress-native'
 import { teamTaskProgressDtoSchema, teamTaskProgressCommandSchema, teamTaskProgressCommandReplySchema, type TeamTaskProgressCommand } from '../../../shared/team-task-progress'
 import { proxiedFetch } from '../proxy'
@@ -96,6 +102,8 @@ export function writeBusinessHookCredential(dataDir: string, c: ConnectionRecord
 }
 
 /** Fixed-purpose protected HTTP sender. It never opens or writes the team SQLite store. */
+type TaskRead = <S extends z.ZodType>(path: string, schema: S, token: string) => Promise<z.output<S>>
+export type TaskReadRecovery = { retries: number; deadline?: number }
 export class NativeTaskProgressSender {
   private readonly http: TeamHttp
   constructor(private readonly dataDir: string, private readonly pin: TaskProgressPin, fetcher?: TeamFetch, private readonly unseal: (body: string) => string = revealSecret) {
@@ -115,9 +123,9 @@ export class NativeTaskProgressSender {
     try { if (this.credential().fingerprint === fingerprint) return } catch { /* The original in-flight POST may still have committed. */ }
     throw new DesktopTeamError('BINDING_CHANGED', '原任务进度凭据在请求期间已变化', write)
   }
-  private async authorized() {
+  private async authorized(read?: TaskRead) {
     const credential = this.credential()
-    const session = await this.http.request(this.pin.origin, '/api/session', teamSessionSchema, credential.value.token)
+    const session = await (read ?? ((path, schema, token) => this.http.request(this.pin.origin, path, schema, token)))('/api/session', teamSessionSchema, credential.value.token)
     this.current(credential.fingerprint)
     if (session.authentication !== 'device' || session.deviceId !== this.pin.deviceId || session.person.userId !== this.pin.ownerId || !session.person.active
       ) throw new DesktopTeamError('BINDING_CHANGED', '原任务进度设备或账号权限已变化')
@@ -149,9 +157,13 @@ export class NativeTaskProgressSender {
     if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.actor.id !== this.pin.ownerId) throw new DesktopTeamError('WORKSPACE_EPOCH_CHANGED', '原任务正式状态的中心身份已改变')
     return result
   }
-  async codeResource(): Promise<z.infer<typeof teamTaskCodeResourceDtoSchema>> {
-    const c = await this.authorized()
-    const result = await this.http.request(this.pin.origin, `/api/projects/${this.pin.projectId}/crux/tasks/${encodeURIComponent(this.pin.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema, c.value.token)
+  async codeResource(read?: TaskRead): Promise<z.infer<typeof teamTaskCodeResourceDtoSchema>> {
+    const c = await this.authorized(read)
+    return this.readCodeResource(c, read)
+  }
+  private async readCodeResource(c: ReturnType<NativeTaskProgressSender['credential']>, read?: TaskRead): Promise<z.infer<typeof teamTaskCodeResourceDtoSchema>> {
+    this.current(c.fingerprint)
+    const result = await (read ?? ((path, schema, token) => this.http.request(this.pin.origin, path, schema, token)))(`/api/projects/${this.pin.projectId}/crux/tasks/${encodeURIComponent(this.pin.taskId)}/code-resource`, teamTaskCodeResourceDtoSchema, c.value.token)
     this.current(c.fingerprint)
     if (result.instanceId !== this.pin.instanceId || result.epoch !== this.pin.epoch || result.projectId !== this.pin.projectId || result.taskId !== this.pin.taskId || result.spaceId !== this.pin.spaceId) {
       throw new DesktopTeamError('BINDING_CHANGED', '代码资源不属于原任务的服务与空间')
@@ -185,7 +197,7 @@ export class NativeTaskProgressSender {
       command: command => { allowed(command); return transport.command(command) }, receipt: command => { allowed(command); return transport.receipt(command) } }
   }
   /** Task-scoped v2 port using the same issued credential, with no second SQLite owner. */
-  executionRequest(raw: TeamTaskRef, assertCurrent: () => Promise<void>): TeamContentRequest {
+  executionRequest(raw: TeamTaskRef, assertCurrent: () => Promise<void>, recovery?: TaskReadRecovery): TeamContentRequest {
     const task = teamTaskRefSchema.parse(raw)
     if (task.instanceId !== this.pin.instanceId || task.projectId !== this.pin.projectId || task.taskId !== this.pin.taskId || task.spaceId !== this.pin.spaceId) throw new DesktopTeamError('BINDING_CHANGED', 'Original v2 task differs from the protected sender')
     const base = `/api/projects/${task.projectId}/crux/tasks/${encodeURIComponent(task.taskId)}`
@@ -212,15 +224,58 @@ export class NativeTaskProgressSender {
           || command.expectedDeviceId !== this.pin.deviceId || ['claim', 'transition', 'release'].includes(command.kind)) throw new DesktopTeamError('EXECUTION_SCOPE_CONFLICT', 'Native sender cannot change task ownership or business state')
       }
       await assertCurrent()
-      const c = await this.authorized()
+      const get: TaskRead | undefined = recovery && read ? (path, schema, token) => this.recoverTaskRead(path, schema, token, recovery, assertCurrent) : undefined
+      const c = await this.authorized(get)
       // This fixed task read fences actual service instance/epoch/incarnation even
       // for artifact response shapes which carry no epoch field themselves.
-      const resource = await this.codeResource()
+      const resource = await this.readCodeResource(c, get)
       if (resource.taskCreatedAt !== task.taskCreatedAt) throw new DesktopTeamError('BINDING_CHANGED', 'Original task incarnation changed')
       await assertCurrent(); this.current(c.fingerprint)
-      const result = await this.http.request(this.pin.origin, path, schema, c.value.token, body)
+      const result = read && suffix === '/code-resource' ? schema.parse(resource)
+        : get ? await get(path, schema, c.value.token) : await this.http.request(this.pin.origin, path, schema, c.value.token, body)
       this.current(c.fingerprint, body !== undefined); await assertCurrent(); validate?.(result)
       return result
+    }
+  }
+  /** Only the exact task GET can repeat; all authorization prerequisites share
+   * the same two-extra-GET/90-second recovery budget. The HTTP fetch timer has
+   * already ended before waiting, so each network attempt remains <=15 seconds. */
+  private async recoverTaskRead<S extends z.ZodType>(path: string, schema: S, token: string,
+    recovery: TaskReadRecovery, assertCurrent: () => Promise<void>): Promise<z.output<S>> {
+    const captured = this.credential()
+    if (captured.value.token !== token) throw new DesktopTeamError('BINDING_CHANGED', '原任务设备凭据已变化')
+    const guard = async (): Promise<void> => { await assertCurrent(); this.current(captured.fingerprint) }
+    let retrying = false
+    for (;;) {
+      await guard()
+      try { return await this.http.request(this.pin.origin, path, schema, token, undefined, retrying ? recovery.deadline : undefined) }
+      catch (error) {
+        if (!isReceivedTeamRateLimit(error)) throw error
+        recovery.deadline ??= Date.now() + 90_000
+        const delay = error.transport?.retryAfterMs
+        if (delay == null || recovery.retries >= 2 || Date.now() + delay >= recovery.deadline) {
+          if (error.transport) error.transport = { ...error.transport, reason: delay == null ? 'invalid-retry-after' : 'retry-budget' }
+          throw error
+        }
+        recovery.retries++
+        const until = Date.now() + delay
+        try {
+          do {
+            await guard()
+            const left = until - Date.now()
+            if (left > 0) await new Promise<void>(resolve => setTimeout(resolve, Math.min(200, left)))
+          } while (Date.now() < until)
+          await guard()
+        } catch (cause) {
+          if (cause instanceof Error && error.transport) Object.assign(cause, { taskTransport: { ...error.transport, reason: 'cancelled' } })
+          throw cause
+        }
+        if (Date.now() >= recovery.deadline) {
+          if (error.transport) error.transport = { ...error.transport, reason: 'retry-budget' }
+          throw error
+        }
+        retrying = true
+      }
     }
   }
   /** Fixed cutover/import routes through the original protected task device; no generic HTTP proxy. */
@@ -293,6 +348,72 @@ export class NativeTeamBusinessSender {
   async snapshot(): Promise<z.infer<typeof cruxRemoteSnapshotSchema>> {
     const { credential } = await this.authorized()
     return this.remoteSnapshot(credential)
+  }
+  scope(): { key: string; actorId: string; origin: string } {
+    const { value } = this.credential()
+    return { key: remoteScopeKey(value), actorId: value.ownerId, origin: value.origin }
+  }
+  async feishuOwnerSnapshot(scopeKey: string, spaceId: string) {
+    const { credential } = await this.authorized()
+    const pin = credential.value
+    if (remoteScopeKey(pin) !== scopeKey) throw new DesktopTeamError('BINDING_CHANGED', '飞书助手的原配对空间已变更')
+    const readiness = await this.http.request(pin.origin, `${feishuMemberBase(pin.projectId)}/ready`, feishuMemberReadySchema, pin.token, { spaceId })
+    this.current(credential.fingerprint)
+    if (readiness.epoch !== pin.epoch || readiness.instanceId !== pin.instanceId) throw new DesktopTeamError('BINDING_CHANGED', '飞书助手的原服务已变更')
+    return this.requireFeishuSpace(await this.remoteSnapshot(credential), spaceId)
+  }
+  private requireFeishuSpace(value: z.infer<typeof cruxRemoteSnapshotSchema>, spaceId: string) {
+    if (!value.snapshot.spaces.some(space => space.id === spaceId && !space.archived && space.memberIds.includes(value.actor.id))) {
+      throw new DesktopTeamError('SPACE_ACCESS_DENIED', '飞书助手的原空间不可用')
+    }
+    return value
+  }
+  private async feishuRequest<T extends z.ZodType>(
+    scopeKey: string, route: 'claim' | 'snapshot' | 'commands' | 'receipt', schema: T,
+    body: FeishuMemberClaim | FeishuMemberCommand | FeishuMemberReceipt | FeishuMemberSnapshot,
+    assertCurrent: () => void
+  ): Promise<z.output<T>> {
+    const { credential } = await this.authorized()
+    const pin = credential.value
+    if (remoteScopeKey(pin) !== scopeKey) throw new DesktopTeamError('BINDING_CHANGED', '飞书助手的原配对空间已变更')
+    assertCurrent()
+    const value = await this.http.request(pin.origin, `${feishuMemberBase(pin.projectId)}/${route}`, schema, pin.token, body)
+    this.current(credential.fingerprint, route === 'commands' || route === 'claim')
+    return value
+  }
+  feishuClaim(scopeKey: string, body: FeishuMemberClaim, assertCurrent: () => void) {
+    return this.feishuRequest(scopeKey, 'claim', feishuMemberClaimReplySchema, body, assertCurrent)
+  }
+  async feishuSnapshot(scopeKey: string, body: FeishuMemberSnapshot, assertCurrent: () => void) {
+    const value = await this.feishuRequest(scopeKey, 'snapshot', feishuMemberSnapshotReplySchema, body, assertCurrent)
+    this.checkFeishuResult(value.snapshot, body.spaceId, value.bindingId, body.bindingId)
+    return value
+  }
+  async feishuCommand(scopeKey: string, body: FeishuMemberCommand, actorId: string, assertCurrent: () => void) {
+    const value = await this.feishuRequest(scopeKey, 'commands', feishuMemberCommandReplySchema, body, assertCurrent)
+    try {
+      this.checkFeishuResult(value.result, body.spaceId, value.bindingId, body.bindingId)
+      if (value.commandId === body.command.commandId && value.result.actor.id === actorId) return value.result
+    } catch {
+      // The original effect may have committed before local identity changed.
+    }
+    throw new DesktopTeamError('RECEIPT_MISMATCH', '飞书任务回执不属于原命令或成员', true)
+  }
+  async feishuReceipt(scopeKey: string, body: FeishuMemberReceipt, assertCurrent: () => void) {
+    const value = await this.feishuRequest(scopeKey, 'receipt', feishuMemberReceiptReplySchema, body, assertCurrent)
+    this.checkFeishuResult(value.current, body.spaceId, value.bindingId, body.bindingId)
+    if (value.result) {
+      this.checkFeishuResult(value.result, body.spaceId, value.bindingId, body.bindingId)
+      if (value.result.actor.id !== value.current.actor.id) throw new DesktopTeamError('RECEIPT_MISMATCH', '飞书回执成员已变化')
+    }
+    return value
+  }
+  private checkFeishuResult(value: z.infer<typeof cruxRemoteSnapshotSchema>, spaceId: string, actual: string, expected?: string): void {
+    const pin = this.credential().value
+    if (value.projectId !== pin.projectId || value.instanceId !== pin.instanceId || value.epoch !== pin.epoch || expected && actual !== expected) {
+      throw new DesktopTeamError('RECEIPT_MISMATCH', '飞书任务回执不属于原配对空间或身份')
+    }
+    this.requireFeishuSpace(value, spaceId)
   }
   async command(operation: string, input: unknown, commandId: string, options: { retainUntilEffect?: boolean } = {}): Promise<z.infer<typeof cruxRemoteCommandReplySchema>> {
     const { credential } = await this.authorized(), current = await this.remoteSnapshot(credential)
