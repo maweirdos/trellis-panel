@@ -79,7 +79,7 @@ export const teamExecutionRecordSchema = z.object({
 export type TeamExecutionRecord = z.infer<typeof teamExecutionRecordSchema>
 export const teamExecutionViewSchema = z.object({ contractVersion: z.literal(2), task: teamTaskRefSchema,
   epoch: teamIdSchema, authorizationRevision: counter, generation: counter,
-  active: teamExecutionRecordSchema.nullable(), serverTime: counter }).strict()
+  active: teamExecutionRecordSchema.nullable(), latest: teamExecutionRecordSchema.nullable().optional(), serverTime: counter }).strict()
 export type TeamExecutionView = z.infer<typeof teamExecutionViewSchema>
 export const teamExecutionReceiptSchema = z.object({ contractVersion: z.literal(2), commandId: teamCommandIdSchema,
   task: teamTaskRefSchema, epoch: teamIdSchema, kind: z.enum(['claim', 'report', 'finalize', 'release', 'transition', 'save-artifact', 'seal-delivery', 'checkpoint']),

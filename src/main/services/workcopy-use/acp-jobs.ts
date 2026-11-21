@@ -28,6 +28,7 @@ const digest = (value: unknown): string => createHash('sha256').update(JSON.stri
 const same = (a: WorkcopyOwner, b: WorkcopyOwner): boolean => a.kind === b.kind && a.id === b.id && a.generation === b.generation && a.taskKey === b.taskKey
 let hostIdentity: Promise<ProcessOwner> | undefined
 const currentOwners = new Set<{ directory: string; owner: WorkcopyOwner; cleanup(): Promise<void> }>()
+const jobRecordWriteOptions = { retryWindowsRename: true }
 const nativeHost = (): Promise<ProcessOwner> => hostIdentity ??= processIdentity(process.pid).then(value => {
   if (!value) throw new DaemonError('E_UNAVAILABLE', '无法核对原生执行所有者。')
   return value
@@ -75,7 +76,7 @@ async function cleanLaunch(directory: string, state: OwnerState, launchId: strin
     catch { accept(false) }
   }))
   if (!result) throw new DaemonError('E_UNKNOWN', '原运行 Job 的完整清理尚未确认，原 nonce 和占用已保留，可重试原清理。', 'unknown')
-  writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }))
+  writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }), jobRecordWriteOptions)
 }
 
 export interface AcpJobOwner {
@@ -117,8 +118,8 @@ export async function createAcpJobOwner(directory: string, root: string, owner: 
         commandHash: digest([spec.executable, spec.args, spec.root, spec.windowsVerbatimArguments]), state: 'prepared' }
       writeExclusiveAtomic(join(target, 'launch.json'), JSON.stringify(spec))
       writeExclusiveAtomic(join(target, 'owner.json'), JSON.stringify(launchSchema.parse(record)))
+      writeAtomic(join(base, 'owner.json'), JSON.stringify({ ...original, launches: [...original.launches, launch.launchId] }), jobRecordWriteOptions)
       original.launches.push(launch.launchId)
-      writeAtomic(join(base, 'owner.json'), JSON.stringify(original))
       const child = spawn(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher, '-Mode', 'transport', '-SpecPath', join(target, 'launch.json')], {
         cwd: options.cwd, env: options.env, windowsHide: true, stdio: options.stdio
       })
@@ -135,7 +136,8 @@ export async function createAcpJobOwner(directory: string, root: string, owner: 
           try { proof = proofSchema.parse(JSON.parse(readBounded(proofPath, 4096))) } catch { /* A still-writing witness is not admission. */ }
           if (proof) {
             if (proof.nonce !== record.nonce || proof.launchId !== started.launchId || proof.helperPid !== started.pid) throw new DaemonError('E_DENIED', '原生 kernel 见证不匹配。')
-            writeAtomic(join(base, started.launchId, 'owner.json'), JSON.stringify({ ...record, state: 'running' }))
+            if (closing || readLaunch(base, started.launchId).state === 'cleaned') throw new DaemonError('E_DENIED', '原生 Job 已关闭，未接纳协议执行。')
+            writeAtomic(join(base, started.launchId, 'owner.json'), JSON.stringify({ ...record, state: 'running' }), jobRecordWriteOptions)
             return
           }
         }
@@ -173,9 +175,16 @@ export async function recoverAcpJobOwner(directory: string, owner: WorkcopyOwner
   for (const launchId of state.launches) {
     if (state.kernel && kernel && kernelReplaced(state.kernel, kernel)) {
       const base = ownerDirectory(directory, owner), record = readLaunch(base, launchId)
-      writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }))
+      writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }), jobRecordWriteOptions)
     } else await cleanLaunch(directory, state, launchId)
   }
   return true
 }
 export function hasAcpJobOwner(directory: string, owner: WorkcopyOwner): boolean { return readOwner(directory, owner) !== undefined }
+/** Historical owner files survive canonical cleanup; existence is not liveness. */
+export function isAcpJobOwnerCleaned(directory: string, owner: WorkcopyOwner): boolean {
+  const state = readOwner(directory, owner)
+  if (!state || [...currentOwners].some(item => resolve(item.directory) === resolve(directory) && same(item.owner, owner))) return false
+  const base = ownerDirectory(directory, owner)
+  return state.launches.every(launchId => readLaunch(base, launchId).state === 'cleaned')
+}

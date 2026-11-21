@@ -29,6 +29,42 @@ preload exposes no generic RPC.
 | `verify` | Rechecks the original binding against current server use authorization, physical directory, material bytes, repository, occupancy and predecessor code. Does not replace the original snapshot. |
 | `inspect` | Reads original local evidence for its exact authenticated native process and retained grant. It grants no current execution authority. |
 
+### Reopening a prepared product task
+
+An existing ready `product-managed` binding can be verified and continued from
+the original product entry after the original GUI process has demonstrably
+exited. Keep the same entry, claim/capture commands, execution generation,
+preparation UUID, input bytes, binding owner/grant and installer intent.
+
+- Require the current protected native GUI capability, the same OS user and the
+  same physical executable. This exception does not extend editor-owned or
+  unrelated database-delivery authority.
+- Query the original process identity. Only absence or reuse of its numeric PID
+  with a different birth proves exit. A live original process, failed query,
+  unknown result or empty session inventory cannot authorize recovery.
+- Capture original binding bytes, owner, grant and executable before the
+  asynchronous query; recheck them and current capability afterwards. Cache only
+  the irreversible exit fact for the complete original identity.
+- Await this authorization before normal preparation/verification, duplicate
+  preparation and cached receipt access. `RuntimeCommands.inspect` has a
+  synchronous callback: identify its actual journal method there, then await
+  preparation authorization before exposing the result and recheck the original
+  receipt. Do not place an unawaited asynchronous check inside that callback.
+- Stored workflow-package verification retains the stored original owner/grant,
+  including temporary installation scopes. Return the original binding without
+  rewriting its provenance.
+- Exit proof permits verification of the retained preparation; actual Start
+  still requires the existing facade and native checks for current task,
+  account/device/connection, inputs, resource, directory/workcopy, configuration,
+  package bytes and execution occupancy. Recovery never replays an admitted
+  launch or manufactures a stopped result.
+
+Verify original-entry continuation after process replacement without a new
+claim or preparation, and rejection for a live/unknown original owner, different
+user/executable, or binding/grant changes during the query. Cover both normal
+verification and cached receipt paths. Prepared cancellation and active-process
+handover require separate contracts; they are not implied by this exception.
+
 The dispatcher supplies the kernel-authenticated process and workspace grant;
 request bodies cannot supply them. Product origin requires `product-managed`
 ownership and the existing protected native GUI capability. Editor origin
@@ -45,6 +81,22 @@ Check native authority before returning a cached Runtime command receipt.
 A duplicate preparation receipt describes its original result. Execution must
 freshly verify and acquire the actual executor's lifecycle ownership; a ready
 binding is neither a live process nor an authorization TTL.
+
+An in-flight preparation may expose its command state before `binding.json`
+exists only to its original kernel-authenticated process and exact workspace
+grant. Retain that authority in memory for the admitted operation and remove it
+on settlement; persisted `dispatching` alone is not live authority. No result
+is fabricated for an unfinished operation. During an authorized receipt read,
+the same original command may advance from dispatching to completed or unknown;
+recheck its method and native authority before returning the newer state.
+
+The desktop's passive task read may accept a completed original preparation
+receipt and project ready state. It must preserve entry, execution, preparation
+UUID and fixed inputs, deduplicate concurrent reads, and reject stale sources
+before saving. Pending observation never calls prepare, recovery, Start or
+output retry. The UI polls only an observed pending preparation and clears a
+wait-timeout message when that original operation is observed pending or ready.
+An unknown or absent receipt retains the explicit recovery path.
 
 After awaiting a shared command result, require the original published binding
 and recheck its process/grant. Generic `runtime.command` inspection uses the
@@ -76,6 +128,13 @@ unconfirmed native execution during reconciliation.
 - Capture request, process, grant and callbacks before asynchronous reads.
   Recheck original grant, physical identity, admission and workcopy observation
   around awaits and immediately before publication.
+- During a preparation's read-only HTTP credential/session prerequisites,
+  recheck the original native capability, physical directory, admission and
+  exact held lease without starting another Git observation. The enclosing
+  logical preparation step must observe current Git identity before and after
+  awaiting its result. Installer and publication guards retain full workcopy
+  checks before filesystem effects. A lease-only check grants no filesystem or
+  execution authority, and no remote authorization result is cached.
 - Read the execution and resources through the existing protected team transport.
   Preparation submits no team mutations. Fixed input use must retain the exact
   adopted bundle, portable definition digest, source digests, byte lengths,
@@ -114,7 +173,8 @@ invoke Python/Trellis commands or write native task pointers.
 ## Occupancy and retained owners
 
 Reuse the existing workspace admission fence and workcopy-use registry. A
-temporary tree-change lease encloses awaited reads and private publication;
+temporary tree-change lease encloses awaited reads, opted-in local workflow
+installation and private publication;
 settling it asserts only that preparation ended. It proves no engine shutdown.
 Physical aliases, nested paths, active writers and unknown retained leases
 remain blockers. Lease age never clears occupancy.
@@ -136,6 +196,73 @@ Retained legacy execution continues to use its original controller, identity,
 store and bounded cleanup controls. New platform storage does not re-key or take
 over an old execution. Loss of task authority cannot manufacture a stopped
 result or authorize a replacement owner.
+
+## Ordinary project workflow package
+
+New opted-in requests carry `workflowPackagePolicy: 'fixed-context/v1'`.
+`NativeTaskBinding.workflowPackage` retains version, handler, installer operation
+UUID, release digest, installer manifest digest and private intent digest.
+Absent policy preserves the original request and binding serialization. Never
+install retrospectively while inspecting or recovering an older preparation.
+
+`buildOrdinaryPackage({ input, rules, codeResource, rootObservations })` validates
+the captured input and portable definition digests and returns the complete
+add-only installer file plan. Pass governance selections from every captured
+node with exact bodies and availability, not only the current node.
+`manifestDigest` identifies the installer plan; `manifestFileDigest` identifies
+the manifest file bytes. They are not interchangeable.
+
+Install only `.crux/workflow/releases/<releaseDigest>/manifest.json`,
+`workflow.json`, `ENTRY.md` and `rules/<bodyDigest>.md`. Definition order, role,
+gate and output instructions come from the captured portable definition.
+Canonical release content excludes its self-digest and derived path, task,
+execution, selection, bundle, session, reporter, device and timestamp fields.
+Do not write credentials, private native paths or mutable current-task pointers.
+Required missing/withdrawn bodies reject; optional unavailable sources retain
+their references and status with `inclusion: 'unavailable'` and no body path.
+Preserve available body bytes exactly. Enforce the installer's 64-file, 1 MiB
+per-file and 8 MiB total limits without truncating required content.
+
+`ProjectWorkflowInstallation` wraps the existing guarded installer inside the
+original tree-change lease. Its private `project-workflow-installations`
+directory holds intents, release ownership, plans and Hook receipts outside the
+engineering root. Preserve original process/grant, directory/workcopy,
+preparation, operation and preview identity across recovery. Reuse another
+preparation's completed release only after verifying its original journal and
+installed bytes; never adopt its incomplete operation or stage an empty plan.
+
+Observe `AGENTS.md`, `CLAUDE.md`, `.codex/config.toml`, `.codex/hooks.json`,
+`.claude/settings.json` and `.claude/settings.local.json` read-only, including
+explicit absence. Changed observations or unowned/modified release targets
+produce conflicts and preserve user bytes. Updates add releases without
+rewriting earlier pins. A crash leaving a directory without recorded ownership
+remains an explicit conflict; do not infer ownership or delete it automatically.
+
+The application-managed `fixed-context/v1` Hook verifies the retained binding,
+package pin and required fixed sources before native creation and prompt.
+Receipts fix task/execution/node/attempt, input/release/operation, native
+dispatch/session/generation, boundary and outcome. Retain at most the first pass
+and first fail for each of the two boundaries per dispatch. Repeated assertions
+do not append rows. Long-lived permission/session callbacks do not rerun this
+task-start Hook after launch; original Stop/reconciliation remain available
+even when package or installation metadata is missing.
+
+| Condition | Required result |
+| --- | --- |
+| Old request/binding without policy | Original behavior; no installation, pin or Hook record. |
+| Original interrupted install with recorded ownership | Recover the same operation and preview under current admission. |
+| Changed required source/package before creation | Failure receipt, zero native session creation. |
+| Drift after session creation but before prompt | Prompt-boundary failure receipt, zero prompts; original cleanup remains available. |
+| New adopted release | New immutable release and preparation pin; earlier release bytes/pins retained. |
+| Optional unavailable rule | Explicit unavailable manifest reference; no fabricated body or new required gate. |
+
+Verification uses actual builder, installer, preparation and execution owners.
+Cover those cases, root-file preservation, per-preparation isolation, bounded
+receipt growth and wrong-owner recovery rejection. Controlled native ports
+cannot establish real provider or native SessionStart/PreToolUse compatibility.
+Wrong: treat an existing same-named directory or an embedded context packet as
+installation/native-Hook proof. Correct: verify original installer ownership and
+bytes, and report application task-start separately from native provider events.
 
 ## Required verification
 

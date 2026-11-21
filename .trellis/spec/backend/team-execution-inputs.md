@@ -19,6 +19,10 @@ workflow-template settings accept optional `execution`. Omission preserves
 version-1 settings and canonical hashes; do not default an extra field into
 retained versions.
 
+`createEngineeringImplementationPreset()` in `src/shared/team-governance.ts`
+returns schema-validated workflow-template `GovernanceSettings` using the
+existing `preset:'custom'` contract and optional `execution` field.
+
 `src/shared/team-execution-input.ts` defines capture, input, resource, receipt
 and context-manifest validators. `executionInputAgentDigestText` is the exact
 canonical preimage for chosen instructions and ordered resolved skill contents.
@@ -142,12 +146,58 @@ restrictions return an unsupported result instead of silently dropping behavior.
   authority before returning/using prepared context.
 - A manifest's `state:prepared` records composition only. Model receipt, tool
   reading, compliance and native completion require their separate evidence.
+- Product ACP reference delivery uses one backend aggregate over the original
+  current-node input. Only designated required/full confirmed documents may
+  leave the 8192-byte control packet. Control and reference selections must be
+  disjoint and complete, with unchanged optional policies; missing, extra,
+  duplicate, wrong-scope or substituted bytes reject at the final prompt boundary.
+  One renderer accounts and emits the full ordered reference collection within
+  `PLATFORM_REFERENCE_BUDGET_BYTES` (32768 bytes), including the 256-byte framing
+  reserve. The aggregate receipt schema uses the same limit; other explicit
+  materials retain their 16384-byte budget. No private preparation paths or file-material
+  aliases enter this channel. Captured `delivery:full` is an obligation; actual
+  reference transport delivery requires the matching aggregate `written` receipt.
+  Additive receipt schemas do not change captured inputs, context packets,
+  legacy composer bytes/hashes or absent-field serialization.
+
+### Explicit engineering preset
+
+The engineering preset fixes `definitionId:'engineering-implementation'`,
+revision 1, one logical `developer` role and one Agent `implement` node with
+`stage:'implement'`. Required outputs are `code:selected-file` and
+`report:implementation-report`. Its separate business-stage settings retain
+planning, development, testing and acceptance with their approval roles and no
+mandatory formal documents.
+
+This is capability-gated portable execution. Role and node declare
+`embeddedContext`; the selected native adapter must satisfy that requirement
+through existing admission checks. Neither a preset label nor a Harness name
+proves support. Do not drop or substitute capabilities, promise universal Harness
+support, or publish a concrete model/profile, local path or account binding.
+
+`SpaceGovernancePanel` applies this preset only on explicit selection of
+“工程实施”. Complete matching settings remain recognizable after saving and
+reopening, while execution authority comes from the actual fixed definition.
+Loading, editing text, saving, publishing, adopting or reading older settings
+must not infer or insert `execution` from an existing preset name.
+
+Ordinary business-stage edits preserve an existing `execution`. Selecting a
+business-only preset explicitly labelled “移除工程实施” replaces the editable
+draft settings and removes that execution definition. Preserve existing
+published/adopted versions and their hashes in either case.
+
+Save, submit, review, publish and task adoption retain their existing grants,
+CAS and exact-version checks. Selecting the preset performs none of these
+operations automatically. Native implementation completion does not advance
+business stages, approve a plan, pass testing or accept delivery.
 
 ## 4. Validation & Error Matrix
 
 | Condition | Required behavior |
 | --- | --- |
 | New workflow fields absent on retained settings | Preserve the original version-1 canonical bytes/hash. |
+| Existing execution with ordinary business-stage edits | Preserve the complete execution definition. |
+| Explicit business-only preset replacement | Remove execution only from the edited draft; retain fixed published/adopted versions. |
 | Unsupported local capability or context transport | Reject capability resolution/composition. |
 | Capture person/device/task/execution/generation differs | Reject before creating input or blobs. |
 | Selected Agent content changed after preview | Reject expected-digest mismatch; do not capture newer content implicitly. |
@@ -192,6 +242,18 @@ Composition does not establish provider execution, installed-workcopy admission
 or company deployment.
 Cover expanded multi-role metadata, 512-character and special identifiers,
 mutation during asynchronous source reads, and returned snapshot immutability.
+For platform references, verify full PRD and plan bodies through the final
+composer, admission at 32768 aggregate bytes, rejection at 32769 before send,
+and byte-identical old valid input/aggregate/receipt serialization. Keep control
+envelopes and unrelated material budgets unchanged.
+
+For engineering preset authoring, exercise the actual selector and save action,
+then submit, publish and adopt the exact version through the real governance
+service. Assert the single role/node, required code/report outputs, zero
+mandatory documents, capability rejection and main preparation readiness.
+Verify old preset/record round-trips, existing execution preservation during
+ordinary edits, explicit replacement and unchanged published/adopted versions.
+Keep component, controlled native and actual provider evidence distinct.
 
 ## 7. Wrong vs Correct
 

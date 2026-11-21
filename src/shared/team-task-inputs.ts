@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { CruxTransitionTaskInput } from './crux'
 import { governanceIdentityShape, governanceScopeSchema, governanceVersionSchema } from './team-governance'
 import { taskMaterialInputReferenceSchema } from './task-material-inputs'
 import { teamCommandIdSchema, teamCommandReplySchema, teamDigestSchema, teamIdSchema } from './team-platform'
@@ -46,6 +47,16 @@ export type TaskInputCandidates = z.infer<typeof taskInputCandidatesSchema>
 export type TaskInputCommand = z.infer<typeof taskInputCommandSchema>
 export type TaskInputReceipt = z.infer<typeof taskInputReceiptSchema>
 export type TaskInputRead = z.infer<typeof taskInputReadSchema>
+
+/** Pins a reviewed input read to the same transaction as a business transition. */
+export function taskInputTransitionFence(read: TaskInputRead): NonNullable<CruxTransitionTaskInput['expectedInputs']> {
+  return {
+    instanceId: read.instanceId, epoch: read.epoch, projectId: read.projectId,
+    spaceId: read.spaceId, taskCreatedAt: read.taskCreatedAt,
+    authorizationRevision: read.authorizationRevision, revision: read.revision,
+    current: read.current ? { bundleId: read.current.bundleId, digest: read.current.digest } : null
+  }
+}
 
 /** Exact server digest preimage; digest itself is excluded. */
 export function taskInputBundleDigestText(bundle: TaskInputBundle): string {

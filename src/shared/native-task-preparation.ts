@@ -20,6 +20,8 @@ export const nativeTaskPrepareSchema = z.object({
   expected: z.object({ executionId: teamIdSchema, generation: count.min(1), nodeId: teamExecutionRecordSchema.shape.nodeId,
     attempt: count.min(1), inputDigest: teamDigestSchema, workcopy: workcopyObservationSchema,
     resource: nativePreparationResourceSchema.nullable() }).strict(),
+  /** Explicit opt-in; absence preserves retained preparation behavior and serialization. */
+  workflowPackagePolicy: z.literal('fixed-context/v1').optional(),
   /** Explicit receiver paths for a predecessor's selected fixed files. */
   targetPaths: z.record(z.string().uuid(), z.string().min(1).max(4096)).optional()
 }).strict()
@@ -29,6 +31,10 @@ export const nativeTaskPreparationRequestSchema = z.discriminatedUnion('operatio
 ])
 const sourceVerification = z.object({ verification: z.literal('native-read'), availability: z.literal('available'),
   application: z.enum(['not-required', 'available-not-applied', 'applied']), ready: z.boolean(), sourceDigest: teamDigestSchema, observedAt: count }).strict()
+export const nativeWorkflowPackagePinSchema = z.object({
+  version: z.literal(1), handler: z.literal('fixed-context/v1'), operationId: z.string().uuid(),
+  releaseDigest: teamDigestSchema, manifestDigest: teamDigestSchema, intentDigest: teamDigestSchema
+}).strict()
 /** Private native mapping. It is neither a shared identity nor a running-process receipt. */
 export const nativeTaskBindingSchema = z.object({
   version: z.literal(1), state: z.literal('ready'), preparationId: z.string().uuid(), request: nativeTaskPrepareSchema,
@@ -39,8 +45,10 @@ export const nativeTaskBindingSchema = z.object({
     path: z.string().min(1).max(4096).nullable() }).strict()).max(128),
   outputs: z.array(z.object({ nodeId: z.string().min(1).max(512), output: portableOutputSchema, path: z.string().min(1).max(4096) }).strict()).max(1024),
   predecessor: z.object({ executionId: teamIdSchema, checkpointVersionId: teamIdSchema, checkpointDigest: teamDigestSchema, source: sourceVerification }).strict().nullable(),
+  workflowPackage: nativeWorkflowPackagePinSchema.optional(),
   resourceRevision: nativePreparationResourceSchema.nullable(), authorizationRevision: count, preparedAt: count
 }).strict()
 export type NativeTaskPrepare = z.infer<typeof nativeTaskPrepareSchema>
 export type NativeTaskPreparationRequest = z.infer<typeof nativeTaskPreparationRequestSchema>
 export type NativeTaskBinding = z.infer<typeof nativeTaskBindingSchema>
+export type NativeWorkflowPackagePin = z.infer<typeof nativeWorkflowPackagePinSchema>

@@ -35,6 +35,15 @@ minus 64 KiB under the existing RPC limit. A valid near-2-MiB command must remai
 readable with its page/intent metadata. `TaskExecutionTransport` validates the
 original task, person/device, canonical payload digest and receipt.
 
+`TeamExecutionView.latest` is an optional nullable retained execution projection.
+Read it under the same current task/space ACL as `active`, filtering the exact
+instance/project/space/task creation identity. Select the highest retained
+generation from `recordJson`; the table has no standalone generation column.
+This field lets a receiver discover fixed outputs after handoff or release
+clears `active`. Finalization alone retains the writer until that separate
+boundary. The projection grants neither current writer authority nor native
+control.
+
 Service schema version 18 adds `team_task_execution_heads` and
 `team_task_executions`; version 19 adds the private `businessBoundaryJson` to
 separate business advancement from write/input fences. Retained v18 boundaries
@@ -108,6 +117,22 @@ Imported-task claim may carry `cutoverAdmission: {operationId,manifestDigest}`. 
   views and independently opened editors do not inherit that GUI capability.
 
 ## 4. Validation / Error Matrix
+
+Desktop plan confirmation, design submission/approval, delivery, test-pass and acceptance transitions pin the reviewed
+`TaskInputRead` through `CruxTransitionTaskInput.expectedInputs`. Compare its
+instance, epoch, project, original space/creation identity, authorization
+revision and input revision/bundle/digest inside the existing workspace command
+transaction before persisting the transition. A mismatch returns
+`TASK_INPUT_REVISION_CONFLICT`; no task, inbox/event or command receipt is
+committed. A preflight GET alone cannot enforce this boundary.
+
+The fence is optional for retained legacy commands and absent-field
+serialization remains unchanged. A committed command replay returns its original
+receipt through existing replay authorization even if inputs later change; it
+does not rerun the transition. Reusing its UUID with a different fence is a
+command conflict. Native finalization and business handoff remain separate:
+if inputs change after native finalization, retain that result and reject the
+stale business transition.
 
 | Condition | Required result |
 | --- | --- |

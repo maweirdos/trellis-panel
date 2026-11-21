@@ -4,6 +4,11 @@
 
 Use for shared cutover contracts, team activation storage and routes, the main-only workflow-cutover service, native preparation and editor admission. The cutover boundary is one quiescent physical workcopy, including every affected task and shared dispatch surface.
 
+Ordinary project packages reuse `WorkflowCutoverInstaller` through
+`ProjectWorkflowInstallation` under the [native preparation contract](./native-task-preparation.md).
+They do not fabricate a Trellis inventory, invoke the migration coordinator or
+claim shared cutover activation. Preserve the existing imported-project path.
+
 ## 2. Signatures
 
 Portable version-1 schemas live in `src/shared/team-cutover.ts` and native requests in `src/shared/native-workflow-cutover.ts`. `CutoverManifest` fixes the source import UUID/digest, native connector identity, task mappings and adopted input bundles, file before/after digests and reviewed conversions.

@@ -1,4 +1,6 @@
 import { join, relative, isAbsolute } from 'node:path'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { existsSync, lstatSync, mkdirSync, realpathSync, readdirSync } from 'node:fs'
 import { z } from 'zod'
 import { watch, type FSWatcher } from 'chokidar'
 import { runtimeBodies, runtimeRequests, RUNTIME_MUTATING_METHODS, type RuntimeMethod, type RuntimeRequest, type RuntimeResult, type RuntimeCursor, type RuntimeBodyMethod, type RuntimeWire } from '../../../shared/daemon-runtime'
@@ -34,8 +36,12 @@ import { processIdentity } from '../native'
 import { WorkflowCutoverCoordinator } from '../../services/workflow-cutover/coordinator'
 import { NativeTaskPreparation, type NativeTaskPreparationAuthority } from './task-preparation'
 import { NativeTaskExecutions } from './task-execution'
+import { BUILTINS } from '../../services/acp/runtime-definitions'
+import { PI_VERSION } from '../../services/pi/protocol'
 import { isBoundedNativeTaskControl } from '../../../shared/native-task-execution'
-import { NativeTaskProgressSender } from '../../services/crux/task-progress-sender'
+import { NativeTaskProgressSender, type TaskReadRecovery } from '../../services/crux/task-progress-sender'
+import { DesktopTeamError, teamTransportFailureSchema } from '../../services/team-platform/types'
+import { writeExclusiveAtomic } from '../files'
 import { projectDaemonActivity, sessionActivity } from './activity'
 import { LIFECYCLE_RUNTIME_CONTROLS, LIFECYCLE_SESSION_ADMISSIONS, type DaemonActivity } from '../../../shared/daemon/lifecycle'
 
@@ -73,6 +79,25 @@ export interface DaemonRuntime {
 
 /** Reuses the actual ACP and workflow controllers. No GUI state or second native transport. */
 export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
+  const taskReads = new AsyncLocalStorage<TaskReadRecovery>()
+  const recordTaskFailure = (method: string, commandId: string | undefined, error: unknown): void => {
+    if (!commandId || !['runtime.taskPreparation', 'runtime.taskExecution'].includes(method)) return
+    const transport = teamTransportFailureSchema.safeParse((error instanceof DesktopTeamError ? error.transport : undefined)
+      ?? (error && typeof error === 'object' && 'taskTransport' in error ? error.taskTransport : undefined))
+    if (!transport.success) return
+    try {
+      z.string().uuid().parse(commandId)
+      const directory = join(realpathSync.native(ports.directory), 'runtime-task-failures')
+      if (!existsSync(directory)) mkdirSync(directory)
+      if (lstatSync(directory).isSymbolicLink() || realpathSync.native(directory) !== directory || readdirSync(directory).length >= 2000) return
+      const file = join(directory, commandId + '.json')
+      if (existsSync(file)) return
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'RUNTIME_FAILURE'
+      writeExclusiveAtomic(file, JSON.stringify({ version: 1, epoch: ports.epoch, commandId, method, at: Date.now(),
+        phase: error instanceof DesktopTeamError ? error.preparationPhase ?? 'task-read' : 'operation-guard',
+        code: /^[A-Z0-9_:-]{1,100}$/.test(code) ? code : 'RUNTIME_FAILURE', transport: transport.data }))
+    } catch { process.emitWarning('Task transport diagnostics could not be retained.', { code: 'TRELLIS_TASK_DIAGNOSTIC_UNAVAILABLE' }) }
+  }
   const workcopies = installWorkcopyUse(ports.directory, ports.assertOwner)
   const processRecoveryReady = prepareAcpRecovery(ports.directory, workcopies).catch(() => {
     process.emitWarning('旧执行的 kernel 隔离见证暂不可用；原占用保留，未追认清理。', { code: 'TRELLIS_ACP_LEGACY_QUARANTINE' })
@@ -91,7 +116,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const sender = new NativeTaskProgressSender(join(ports.userData ?? ports.directory, 'team-platform'), { workspaceKey: pin.workspaceKey,
         taskId: task.taskId, spaceId: task.spaceId, connectionId: pin.connectionId, origin: pin.origin, pairingId: pin.pairingId,
         ownerId: pin.actorId, deviceId: pin.deviceId, projectId: pin.projectId, epoch: pin.epoch, instanceId: pin.instanceId, handlerId: pin.actorId })
-      return action(sender.executionRequest(task, assertCurrent))
+      return action(sender.executionRequest(task, assertCurrent, taskReads.getStore()))
     },
     assertLegacyAvailable: assertNativePreparationAvailable
   })
@@ -119,6 +144,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     } })
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
   let closed = false, released = false, stopping: Promise<void> | undefined
+  taskExecutions.startBackground()
   let operations = 0, sessionAdmissions = 0
   const activity = (): DaemonActivity => {
     const snapshot = projectDaemonActivity(acp.listOwnedAcpSessionFacts(), operations + commands.count())
@@ -223,6 +249,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       case 'runtime.workflowCutover': {
         if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Workflow cutover requires a protected native process and authenticated directory grant')
         return workflowCutover.execute(root, runtimeBodies[method].parse(raw), { ...context.native, grant: context.workspace })
+      }
+      case 'runtime.taskExecutionPlan': {
+        if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Product execution planning requires the native GUI and original workspace grant')
+        context.native.assertProduct()
+        const { engine } = runtimeBodies[method].parse(raw)
+        const plan = await acp.preparePlatformAcpLaunch(root, engine)
+        plan.assertCurrent()
+        if (!plan.options.modelId) throw new DaemonError('E_UNAVAILABLE', 'Select an explicit model in the existing engine configuration before preparing')
+        return { digest: plan.digest, adapterVersion: engine.agentId === 'pi' ? PI_VERSION : BUILTINS[engine.agentId].version,
+          capabilities: [engine.agentId === 'pi' ? 'sdkContext' : 'embeddedContext'] }
       }
       case 'runtime.taskPreparation': {
         const input = runtimeBodies[method].parse(raw)
@@ -431,6 +467,8 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     async release() { await shutdown(); ports.assertOwner(); if ((await status()).sessions || (await status()).workflows) throw new DaemonError('E_UNKNOWN', 'Runtime release has not been verified.', 'unknown'); released = true; disposeEvents() },
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
+      if (['runtime.taskPreparation', 'runtime.taskExecution'].includes(method) && !taskReads.getStore())
+        return taskReads.run({ retries: 0 }, () => this.dispatch(method, payload, context))
       ports.assertOwner()
       if (!isBoundedNativeTaskControl(method, payload) && !LIFECYCLE_RUNTIME_CONTROLS.includes(method)) ports.assertAdmission?.()
       operations++
@@ -453,15 +491,29 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
           case 'runtime.command': {
             const commandId = runtimeRequests['runtime.command'].parse(parsed).commandId
             let productReceipt = false
+            let preparationReceipt = false
             value = commands.inspect(root, commandId, originalMethod => {
               if (originalMethod === 'runtime.workflowCutover') workflowCutover.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
-              if (originalMethod === 'runtime.taskPreparation') taskPreparation.assertReceiptAuthority(root, commandId, context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined)
+              if (originalMethod === 'runtime.taskPreparation') preparationReceipt = true
               if (originalMethod === 'runtime.taskExecution') {
                 if (!context.native) throw new DaemonError('E_DENIED', 'Original product command requires native authority')
                 productReceipt = true
               }
             })
             if (productReceipt && context.native) await taskExecutions.assertReceipt(root, commandId, context.native.assertProduct, context.native.actor)
+            if (preparationReceipt) {
+              const authority = context.native && context.workspace ? { ...context.native, grant: context.workspace } : undefined
+              await taskPreparation.authorizeReceiptAuthority(root, commandId, authority)
+              ports.assertOwner(); ports.assertAuthority()
+              const current = commands.inspect(root, commandId, originalMethod => {
+                if (originalMethod !== 'runtime.taskPreparation') throw new DaemonError('E_CONFLICT', 'Original preparation command method changed.')
+                taskPreparation.assertReceiptAuthority(root, commandId, authority)
+              })
+              const completedDuringRead = value && typeof value === 'object' && 'state' in value
+                && value.state === 'dispatching' && ['completed', 'unknown'].includes(current.state)
+              if (!completedDuringRead && JSON.stringify(current) !== JSON.stringify(value)) throw new DaemonError('E_CONFLICT', 'Original preparation receipt changed during authorization.')
+              value = current
+            }
             break
           }
           case 'runtime.blob.open': value = blobs.open(root, runtimeRequests['runtime.blob.open'].parse(parsed)); break
@@ -495,13 +547,14 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
               if (!preparationAuthority) throw new DaemonError('E_DENIED', 'Native preparation requires the authenticated process and workspace grant.')
               if (preparation.operation === 'database-delivery' && preparation.commandId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Database capture must retain its original runtime command UUID.')
               if (preparation.operation === 'prepare' && preparation.preparationId !== context.commandId) throw new DaemonError('E_CONFLICT', 'Preparation must retain its original runtime command UUID.')
-              taskPreparation.assertAuthority(root, preparation, preparationAuthority)
+              await taskPreparation.authorizeAuthority(root, preparation, preparationAuthority)
             }
             const mutation = method === 'runtime.workflowCutover' ? cutover?.operation !== 'inspect' && cutover?.operation !== 'propose' : method === 'runtime.taskExecution' ? runtimeBodies['runtime.taskExecution'].parse(input).operation !== 'reconcile' : method === 'runtime.taskPreparation' ? ['prepare', 'database-delivery'].includes(runtimeBodies['runtime.taskPreparation'].parse(input).operation) : method === 'runtime.knowledge' ? KNOWLEDGE_MUTATIONS.includes(knowledgeRuntimeBody.parse(input).operation) : RUNTIME_MUTATING_METHODS.includes(method)
             if (closed && mutation && !taskControl && !['runtime.cancel', 'runtime.end', 'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision'].includes(method)) throw new DaemonError('E_UNAVAILABLE', 'Runtime admission is closed; original owners remain inspectable.')
             const action = async () => {
               try { return blobs.pack(root, await execute(bodyMethod, input, root, context)) }
               catch (error) {
+                recordTaskFailure(bodyMethod, context.commandId, error)
                 if (error instanceof DaemonError) throw error
                 if (error instanceof z.ZodError) throw new DaemonError('E_INVALID_ARG', 'Runtime input violates the original facade contract.')
                 const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
@@ -512,18 +565,23 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             }
             if (mutation) {
               if (!context.commandId) throw new DaemonError('E_INVALID_ARG', 'Runtime mutations require a stable command ID.')
-              value = method === 'runtime.workcopyUse' ? await action() : await commands.run(root, context.commandId, method, input, action)
+              value = method === 'runtime.workcopyUse' ? await action() : await commands.run(root, context.commandId, method, input, action,
+                preparation?.operation === 'prepare' && preparationAuthority
+                  ? () => taskPreparation.authorizeRecovery(root, preparation, preparationAuthority) : undefined)
             } else value = await action()
             // A concurrent duplicate may have joined the first process's pending
             // command before that process published its retained binding.
             if (cutover && cutoverAuthority && context.commandId) workflowCutover.assertReceiptAuthority(root, context.commandId, cutoverAuthority)
             if (preparation && preparationAuthority) {
-              taskPreparation.assertAuthority(root, preparation, preparationAuthority)
+              await taskPreparation.authorizeAuthority(root, preparation, preparationAuthority)
               if (preparation.operation === 'prepare') await taskPreparation.assertFreshCutover(root, preparation.preparationId, preparationAuthority)
             }
           }
         }
         return value as RuntimeResult<M>
+      } catch (error) {
+        recordTaskFailure(method, context.commandId, error)
+        throw error
       } finally { operations--; if (sessionAdmission) sessionAdmissions-- }
     }
   }

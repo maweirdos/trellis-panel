@@ -40,6 +40,7 @@ export class TaskExecutionTransport {
       throw error
     }); this.scope(value.task)
     if (value.active) { this.scope(value.active.task); if (value.active.epoch !== value.epoch || value.active.generation !== value.generation || value.active.authority !== 'active') throw new DesktopTeamError('RECEIPT_MISMATCH', '执行投影身份不一致') }
+    if (value.latest) { this.scope(value.latest.task); if (value.latest.epoch !== value.epoch || value.latest.generation > value.generation) throw new DesktopTeamError('RECEIPT_MISMATCH', '执行历史投影身份不一致') }
     return value
   }
   async captureInput(command: ExecutionInputCommand): ReturnType<ExecutionInputTransport['command']> {

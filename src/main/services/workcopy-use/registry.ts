@@ -176,10 +176,19 @@ export class WorkcopyUseRegistry {
     const original = readWorkcopyOwnerJournal(file)
     if (original.lease.token === lease.token) writeWorkcopyOwnerJournal(file, { ...original, lease: { ...lease, state: state === 'unknown' ? 'unknown' : lease.state }, state })
   }
-  assertHeld(root: string, token: string, owner: WorkcopyOwner): WorkcopyIdentity {
+  private heldLease(token: string, owner: WorkcopyOwner): WorkcopyLease {
     this.assertOwner()
     const lease = this.leases.get(token)
     if (!lease || !sameOwner(lease.owner, owner) || lease.state !== 'held') throw new DaemonError('E_DENIED', '原工作副本写入登记已失效或清理未确认。')
+    return lease
+  }
+  /** Checks the current in-memory capability only; it does not observe Git or
+   * authorize a filesystem effect. Call assertHeld at the enclosing boundary. */
+  assertLeaseHeld(token: string, owner: WorkcopyOwner): void {
+    this.heldLease(token, owner)
+  }
+  assertHeld(root: string, token: string, owner: WorkcopyOwner): WorkcopyIdentity {
+    const lease = this.heldLease(token, owner)
     const identity = resolveWorkcopy(root)
     if (identity.id !== lease.identity.id) throw new DaemonError('E_CONFLICT', '原工作副本物理身份已经变化，未执行旧操作。')
     return identity

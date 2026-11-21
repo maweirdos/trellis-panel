@@ -8,6 +8,7 @@ import { Button, Modal } from '../../my/ui'
 import { useCrux } from '../store'
 import { taskSourceKey, useTaskSource, useTaskSurfaceGeneration } from '../pages/task-detail/use-task-source'
 import { nativeDevelopmentApi } from './bridge'
+import { ProductTaskEntry, productTaskApi } from './ProductTaskEntry'
 import { DesktopTaskLocator } from './DesktopTaskLocator'
 import { claimDevelopmentCommand, finishDevelopmentCommand, releaseDevelopmentCommand, rememberDevelopmentCommand, retainedDevelopmentCommand, type DevelopmentCommand } from './command-journal'
 
@@ -18,7 +19,7 @@ const short = (value: string | null | undefined): string => value ? value.slice(
 const copyName = (root: string): string => root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || root
 const errorText = (cause: unknown): string => cause instanceof Error ? cause.message : '开发环境暂不可用，请重试。'
 
-export function TaskDevelopmentCard(props: { snapshot: CruxSnapshot; task: CruxTask; resourceRefresh?: number; openRequest?: number; onEnter(local: CruxWorkLocal): Promise<void> }): JSX.Element {
+export function TaskDevelopmentCard(props: { snapshot: CruxSnapshot; task: CruxTask; resourceRefresh?: number; planningOwnerRevision?: number; openRequest?: number; onOpenInputs?(): void; onExecutionChanged?(): void; onEnter(local: CruxWorkLocal): Promise<void> }): JSX.Element {
   const context = useCrux((state) => state.workspaceContext), surface = useTaskSurfaceGeneration()
   const revision = useCrux((state) => state.developmentRevision)
   const lifecycle = useRef(0), [generation, setGeneration] = useState(0)
@@ -29,7 +30,11 @@ export function TaskDevelopmentCard(props: { snapshot: CruxSnapshot; task: CruxT
     }
     return useCrux.subscribe((next, previous) => { if (identity(next) !== identity(previous)) { lifecycle.current++; setGeneration(lifecycle.current) } })
   }, [props.task.id, props.task.createdAt])
-  return <DevelopmentCard key={`${taskSourceKey(props.snapshot, context)}:${props.task.id}:${props.task.createdAt}:${surface}:${revision}:${generation}`} {...props} ownsSurface={() => lifecycle.current === generation} />
+  const key = `${taskSourceKey(props.snapshot, context)}:${props.task.id}:${props.task.createdAt}:${surface}:${revision}:${generation}`
+  const legacy = <DevelopmentCard {...props} ownsSurface={() => lifecycle.current === generation} />
+  return context.state !== 'local' && productTaskApi()
+    ? <ProductTaskEntry key={key} {...props} legacy={legacy} />
+    : <DevelopmentCard key={key} {...props} ownsSurface={() => lifecycle.current === generation} />
 }
 
 function DevelopmentCard({ snapshot, task, resourceRefresh = 0, openRequest = 0, onEnter, ownsSurface }: { snapshot: CruxSnapshot; task: CruxTask; resourceRefresh?: number; openRequest?: number; onEnter(local: CruxWorkLocal): Promise<void>; ownsSurface(): boolean }): JSX.Element {

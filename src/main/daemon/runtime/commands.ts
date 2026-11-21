@@ -7,7 +7,7 @@ import { DaemonError } from '../errors'
 import { readBounded, writeAtomic } from '../files'
 import { canonicalWorkflowJson } from '../../../shared/workflow'
 
-const receipt = z.object({ version: z.literal(1), epoch: z.string().uuid(), root: z.string(), method: z.string(), digest: z.string().length(64), state: z.enum(['dispatching', 'completed', 'unknown']), result: runtimeWireSchema.optional() }).strict()
+const receipt = z.object({ version: z.literal(1), epoch: z.string().uuid(), originalEpoch: z.string().uuid().optional(), root: z.string(), method: z.string(), digest: z.string().length(64), state: z.enum(['dispatching', 'completed', 'unknown']), result: runtimeWireSchema.optional() }).strict()
 /** Write-ahead dispatch receipts. A lost/restarted result never repeats native writes. */
 export class RuntimeCommands {
   private readonly pending = new Map<string, Promise<RuntimeWire>>()
@@ -23,21 +23,30 @@ export class RuntimeCommands {
     if (value.epoch !== this.epoch) return { state: 'unknown' }
     return { state: value.state, ...(value.result ? { result: value.result } : {}) }
   }
-  async run(root: string, id: string, method: string, input: unknown, action: () => Promise<RuntimeWire>): Promise<RuntimeWire> {
+  async run(root: string, id: string, method: string, input: unknown, action: () => Promise<RuntimeWire>,
+    recoverPreparation?: () => Promise<void>): Promise<RuntimeWire> {
     const path = this.path(id), digest = createHash('sha256').update(canonicalWorkflowJson(JSON.parse(JSON.stringify({ method, input })))).digest('hex')
+    let originalEpoch: string | undefined
+    let recovery: (() => Promise<void>) | undefined
     if (existsSync(path)) {
       const old = receipt.parse(JSON.parse(readBounded(path, 160 * 1024)))
       if (old.root !== root || old.method !== method || old.digest !== digest) throw new DaemonError('E_CONFLICT', 'The runtime command ID was reused with a different request.')
       const pending = this.pending.get(id)
       if (pending) return pending
       if (old.epoch === this.epoch && old.state === 'completed' && old.result) return old.result
-      throw new DaemonError('E_UNKNOWN', 'The original runtime dispatch outcome requires inspection; it cannot be recreated.', 'unknown')
+      if (method !== 'runtime.taskPreparation' || !input || typeof input !== 'object' || !('operation' in input)
+        || input.operation !== 'prepare' || !recoverPreparation)
+        throw new DaemonError('E_UNKNOWN', 'The original runtime dispatch outcome requires inspection; it cannot be recreated.', 'unknown')
+      originalEpoch = old.originalEpoch ?? old.epoch
+      recovery = recoverPreparation
     }
-    if (readdirSync(this.directory).length >= 2000) throw new DaemonError('E_BUSY', 'Runtime command retention is full. Preserve and reconcile command history before new admission.')
-    const intent = { version: 1 as const, epoch: this.epoch, root, method, digest, state: 'dispatching' as const }
+    if (!originalEpoch && readdirSync(this.directory).length >= 2000) throw new DaemonError('E_BUSY', 'Runtime command retention is full. Preserve and reconcile command history before new admission.')
+    const intent = { version: 1 as const, epoch: this.epoch, ...(originalEpoch ? { originalEpoch } : {}), root, method, digest, state: 'dispatching' as const }
     this.assertOwner(); writeAtomic(path, JSON.stringify(intent))
-    const promise = (async () => {
+    const promise = Promise.resolve().then(async () => {
       try {
+        await recovery?.()
+        this.assertOwner()
         const result = await action()
         this.assertOwner(); writeAtomic(path, JSON.stringify({ ...intent, state: 'completed', result }))
         return result
@@ -45,7 +54,7 @@ export class RuntimeCommands {
         this.assertOwner(); writeAtomic(path, JSON.stringify({ ...intent, state: 'unknown' }))
         throw error
       } finally { this.pending.delete(id); this.pendingRoots.delete(id) }
-    })()
+    })
     this.pending.set(id, promise)
     this.pendingRoots.set(id, root)
     return promise

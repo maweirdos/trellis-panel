@@ -98,3 +98,32 @@ export interface ExecutionInputSource {
   read(): Promise<ExecutionInputView>
   readResource(selectionId: string): Promise<z.infer<typeof executionInputResourceViewSchema>>
 }
+
+/** Additive native delivery evidence; captured inputs and legacy packets stay unchanged. */
+export const PLATFORM_REFERENCE_BUDGET_BYTES = 32 * 1024
+export const platformReferenceScopeSchema = z.object({ task: teamTaskRefSchema, epoch: teamIdSchema,
+  executionId: teamIdSchema, generation: count.min(1), nodeId: workflowIdSchema, attempt: count.min(1), inputDigest: teamDigestSchema }).strict()
+export const platformReferenceSourceReceiptSchema = z.object({ resource: executionInputResourceSchema,
+  sourceDigest: teamDigestSchema, sourceBytes: count, sourceChars: count,
+  renderedDigest: teamDigestSchema, renderedBytes: count, renderedChars: count }).strict()
+export const platformReferenceAggregateSchema = z.object({ version: z.literal(1), scope: platformReferenceScopeSchema,
+  controlPacketDigest: teamDigestSchema, controlInstructionDigest: teamDigestSchema, instructionDigest: teamDigestSchema,
+  sources: z.array(platformReferenceSourceReceiptSchema).max(24),
+  renderedDigest: teamDigestSchema, renderedBytes: count.max(PLATFORM_REFERENCE_BUDGET_BYTES), renderedChars: count,
+  framingBytes: count.min(256).max(16384), aggregateBytes: count.max(PLATFORM_REFERENCE_BUDGET_BYTES), digest: teamDigestSchema }).strict()
+export const platformReferenceDeliveryReceiptSchema = platformReferenceAggregateSchema.extend({
+  state: z.enum(['prepared', 'admitted', 'not-sent', 'unknown', 'written']),
+  native: z.object({ sessionId: z.string().min(1).max(512), connectionGeneration: z.string().min(1).max(512), turnId: z.string().min(1).max(512) }).strict().optional()
+}).strict().superRefine((value, ctx) => {
+  if (value.state !== 'prepared' && value.state !== 'not-sent' && !value.native) ctx.addIssue({ code: 'custom', message: 'Native delivery evidence requires its original turn identity' })
+  if (value.aggregateBytes !== value.renderedBytes + value.framingBytes) ctx.addIssue({ code: 'custom', message: 'Reference aggregate byte accounting differs' })
+  const ids = value.sources.map(item => item.resource.selection.id), orders = value.sources.map(item => item.resource.selection.order)
+  if (new Set(ids).size !== ids.length || new Set(orders).size !== orders.length || orders.some((order, i) => i > 0 && order <= orders[i - 1])) ctx.addIssue({ code: 'custom', message: 'Reference receipts must be unique and ordered' })
+  if (value.sources.some(item => item.resource.selection.nodeId !== value.scope.nodeId || item.resource.selection.source.kind !== 'confirmed-document'
+    || !item.resource.selection.required || item.resource.selection.delivery !== 'full' || item.sourceDigest !== item.resource.bodyDigest
+    || item.sourceBytes !== item.resource.byteLength || item.sourceChars > item.sourceBytes || item.renderedBytes < item.sourceBytes
+    || item.renderedChars < item.sourceChars) || value.sources.reduce((sum, item) => sum + item.renderedBytes, 0) > value.renderedBytes) ctx.addIssue({ code: 'custom', message: 'Reference receipts differ from their captured source scope or byte accounting' })
+})
+export type PlatformReferenceScope = z.infer<typeof platformReferenceScopeSchema>
+export type PlatformReferenceAggregate = z.infer<typeof platformReferenceAggregateSchema>
+export type PlatformReferenceDeliveryReceipt = z.infer<typeof platformReferenceDeliveryReceiptSchema>

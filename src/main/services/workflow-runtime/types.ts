@@ -43,6 +43,10 @@ export type WorkflowPreparedPrompt = {
   materials: PreparedMaterials
   /** Fixed shared stage context; supplied only by an authenticated backend owner. */
   executionContext?: import('../agent-rules').PreparedExecutionAgentRules
+  /** Atomic current-node input; mutually exclusive with the legacy context. */
+  platformInput?: import('../platform-reference-delivery').PlatformPreparedInput
+  /** Synchronous durable barrier immediately before the native send boundary. */
+  onPlatformDelivery?: (receipt: import('../../../shared/team-execution-input').PlatformReferenceDeliveryReceipt) => void
   assertActive: () => void
   onAdmitted?: (identity: WorkflowAcpTurnIdentity) => void
   onPromptWritten?: (identity: WorkflowAcpTurnIdentity) => void
