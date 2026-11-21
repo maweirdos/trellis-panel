@@ -1,15 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Code2, FileText, Grid2X2, Link2, List, Loader2, LockKeyhole, MessageSquare, Monitor, MousePointer2, Pencil, Plus, RefreshCw, Save, Search, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Code2, FileText, Grid2X2, LineChart, Link2, List, Loader2, LockKeyhole, MessageSquare, Monitor, MousePointer2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
 import { creationTargetSchema, type CreationComment, type CreationSummary, type CreationView } from '@shared/creations'
 import { WHITEBOARD_V2_CAPABILITIES } from '@shared/creation-whiteboard-v2'
 import { creationTargetToPreviewTarget, previewTargetToCreationTarget, type PreviewAnchorStatus, type PreviewTarget } from '@shared/creation-preview'
 import { Button, Dropdown, DropdownHeader, DropdownItem, EmptyState, Tabs } from '../my/ui'
 import { Select } from '../components/Select'
 import { CreationSource } from './CreationSource'
-import { ConversationArtifacts } from './ConversationArtifacts'
 import { PageBody, PageHeader, PageLayout, PageToolbar } from '../my/layout/PageLayout'
 import { useCrux } from '../crux/store'
-import { ConnectionPanel } from '../crux/ConnectionPanel'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { PrototypePreview } from './PrototypePreview'
@@ -22,13 +20,15 @@ import { canAccessCreationForms, creationFormsVersion, listCreationForms, subscr
 import { creationApi, useCreationCommands, useCreationList, useCreationOwner, useCreationView } from './hooks'
 import { clearCreationTarget, openCreation, useCreationNavigation, type CreationLocation } from './navigation'
 import { DesignWorkspace } from '../designs/DesignWorkspace'
-import { DesignLibraryCard, DesignNewTypes } from '../designs/DesignLibrary'
+import { DesignLibraryCard, DesignNewTypes, formatRelativeTime } from '../designs/DesignLibrary'
 import { useDesignLibrary } from '../designs/hooks'
 import { closeDesign, openDesign, useDesignNavigation } from '../designs/navigation'
 import { designClient, startDesignConversation } from '../designs/client'
 import './creation-workspace.css'
 
 type WorkspaceTab = 'edit' | 'preview' | 'review'
+type CreationCategory = 'all' | 'design' | 'document' | 'slides' | 'chart' | 'whiteboard' | 'table' | 'image'
+
 const WhiteboardEntry = lazy(() => import('./WhiteboardEntry').then((module) => ({ default: module.WhiteboardEntry })))
 
 function RevisionPicker({ view, onChange, disabled }: { view: CreationView; onChange: (revisionId?: string) => void; disabled?: boolean }): JSX.Element {
@@ -158,7 +158,6 @@ function CreationDetail({ location, onBack, onRevision }: { location: CreationLo
     }
     setSaving(false)
   }
-  // The parent command owns the selected revision and refresh; child input clears only after commit.
   const reviewCommand: typeof commands.run = async (payload) => {
     const result = await commands.run(payload)
     if (result) await query.refresh()
@@ -243,16 +242,107 @@ function CreationDetail({ location, onBack, onRevision }: { location: CreationLo
   </PageLayout>
 }
 
-function CreationListRow({ item, onOpen }: { item: CreationSummary; onOpen: () => void }): JSX.Element {
-  const members = useCrux((state) => state.snapshot?.members)
-  return <button type="button" className="creation-list-row" onClick={onOpen}>
-    <span className="creation-list-icon" aria-hidden="true">{item.kind === 'prototype' ? <Monitor size={18} /> : <FileText size={18} />}</span>
-    <span className="creation-list-title"><span className="my-item-title creation-truncate">{item.title}</span><span className="my-item-description creation-truncate">{members?.find((person) => person.id === item.ownerId)?.name ?? item.ownerId}</span></span>
-    <span className="creation-list-kind creation-meta">{item.kind === 'prototype' ? '交互原型' : '文档'} · {item.home === 'personal' ? '个人' : '空间'}</span>
-    <span className="creation-list-revision creation-meta">{item.latestPublished ? `已发布 R${item.latestPublished.number}` : '未发布'}</span>
-    <span className="creation-list-date creation-meta">更新于 {new Date(item.updatedAt).toLocaleDateString()}</span>
-    <ArrowUpRight className="creation-list-arrow" size={14} aria-hidden="true" />
-  </button>
+function CreationSummaryCard({
+  item,
+  onOpen,
+  workspaceName = 'local'
+}: {
+  item: CreationSummary
+  onOpen(): void
+  workspaceName?: string
+}): JSX.Element {
+  const relativeTime = formatRelativeTime(item.updatedAt)
+  const isDoc = item.kind === 'document'
+
+  return (
+    <article
+      className="design-library-card"
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+    >
+      <div className="design-library-artboard-wrapper">
+        <div className="design-library-artboard-sheet">
+          <div className="design-card-placeholder" aria-hidden="true">
+            <div className="design-mock-wireframe">
+              <div className="design-mock-header">
+                <div className="design-mock-dot" />
+                <div className="design-mock-bar" />
+              </div>
+              <div className="design-mock-body">
+                <div className="design-mock-line design-mock-line--lg" />
+                <div className="design-mock-line design-mock-line--sm" />
+                <div className="design-mock-card-row">
+                  <div className="design-mock-box" />
+                  <div className="design-mock-box" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="design-library-caption">
+        <div
+          className={`creation-icon-badge ${
+            isDoc ? 'creation-icon-badge--document' : 'creation-icon-badge--chart'
+          }`}
+          aria-hidden="true"
+        >
+          {isDoc ? <FileText size={14} /> : <LineChart size={14} />}
+        </div>
+        <div className="design-library-caption-text">
+          <div className="my-item-title creation-truncate">{item.title}</div>
+          <div className="my-item-description creation-truncate">{`${workspaceName} · ${relativeTime}`}</div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function CreationListRow({
+  item,
+  onOpen,
+  workspaceName = 'local'
+}: {
+  item: CreationSummary
+  onOpen: () => void
+  workspaceName?: string
+}): JSX.Element {
+  const relativeTime = formatRelativeTime(item.updatedAt)
+  const isDoc = item.kind === 'document'
+
+  return (
+    <button type="button" className="creation-list-row" onClick={onOpen}>
+      <div
+        className={`creation-icon-badge ${
+          isDoc ? 'creation-icon-badge--document' : 'creation-icon-badge--chart'
+        }`}
+        aria-hidden="true"
+      >
+        {isDoc ? <FileText size={14} /> : <LineChart size={14} />}
+      </div>
+      <span className="creation-list-title">
+        <span className="my-item-title creation-truncate">{item.title}</span>
+        <span className="my-item-description creation-truncate">{`${workspaceName} · ${relativeTime}`}</span>
+      </span>
+      <span className="creation-list-kind creation-meta">
+        {item.kind === 'prototype' ? '交互原型' : '文档'} · {item.home === 'personal' ? '个人' : '空间'}
+      </span>
+      <span className="creation-list-revision creation-meta">
+        {item.latestPublished ? `已发布 R${item.latestPublished.number}` : '未发布'}
+      </span>
+      <span className="creation-list-date creation-meta">
+        更新于 {new Date(item.updatedAt).toLocaleDateString()}
+      </span>
+      <ArrowUpRight className="creation-list-arrow" size={14} aria-hidden="true" />
+    </button>
+  )
 }
 
 export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' | 'team' }): JSX.Element {
@@ -270,23 +360,23 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
   useSyncExternalStore(subscribeCreationForms, creationFormsVersion)
   const [search, setSearch] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [kind, setKind] = useState<'all' | 'design' | 'document' | 'prototype'>('all')
+  const [category, setCategory] = useState<CreationCategory>('all')
   const [sort, setSort] = useState<'updated' | 'name'>('updated')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
-  const [showFiles, setShowFiles] = useState(false)
   const [showWhiteboard, setShowWhiteboard] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
-  const [designStarting, setDesignStarting] = useState(false), [designError, setDesignError] = useState('')
+  const [designStarting, setDesignStarting] = useState(false)
+  const [designError, setDesignError] = useState('')
   const designDocumentId = useDesignNavigation(state => state.documentId)
-  const designs = useDesignLibrary(scope === 'personal' && (kind === 'all' || kind === 'design') && !designDocumentId)
+  const designs = useDesignLibrary(scope === 'personal' && !designDocumentId)
   const listScroll = useRef(0)
   const listMarker = useRef<HTMLDivElement>(null)
   const identity = JSON.stringify([context.key, context.actorId, context.epoch, context.authorizationRevision, context.state, activeScope, spaceId])
   const showingDesign = scope === 'personal' && Boolean(designDocumentId)
-  const query = useCreationList({ scope: activeScope, spaceId, query: searchQuery, ...(kind === 'all' || kind === 'design' ? {} : { kind }), sort, enabled: !matching && kind !== 'design' && !showingDesign })
-  useEffect(() => { if (!showingDesign && kind !== 'design' && !useCrux.getState().snapshot) void bootstrap() }, [bootstrap, showingDesign, kind])
+  const query = useCreationList({ scope: activeScope, spaceId, query: searchQuery, sort, enabled: !matching && !showingDesign })
+  useEffect(() => { if (!showingDesign && !useCrux.getState().snapshot) void bootstrap() }, [bootstrap, showingDesign])
   useEffect(() => { const timer = setTimeout(() => setSearchQuery(search.trim()), 250); return () => clearTimeout(timer) }, [search])
-  useLayoutEffect(() => { setCreating(false); setResuming(null); setSearch(''); setSearchQuery(''); setKind('all'); setSort('updated'); setAccessDenied(false); setShowFiles(false); setShowWhiteboard(false); listScroll.current = 0 }, [identity])
+  useLayoutEffect(() => { setCreating(false); setResuming(null); setSearch(''); setSearchQuery(''); setCategory('all'); setSort('updated'); setAccessDenied(false); setShowWhiteboard(false); listScroll.current = 0 }, [identity])
   useLayoutEffect(() => { if (!matching && !showWhiteboard && listMarker.current?.parentElement) listMarker.current.parentElement.scrollTop = listScroll.current }, [Boolean(matching), showWhiteboard])
   const deniedByQuery = Boolean(query.error && /FORBIDDEN|REVOKED|UNAUTHORIZED/.test(query.error.code))
   useEffect(() => {
@@ -311,15 +401,44 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
   const data = accessLost ? null : query.data
   const pendingSearch = search.trim() !== searchQuery
   const loaded = data?.items ?? []
-  const items = pendingSearch || kind === 'design' ? [] : query.mode === 'fallback'
-    ? loaded.filter((item) => (kind === 'all' || item.kind === kind) && item.title.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase()))
+  const items = pendingSearch ? [] : query.mode === 'fallback'
+    ? loaded.filter((item) => item.title.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase()))
       .sort((a, b) => sort === 'name' ? a.title.localeCompare(b.title, 'zh-CN') || b.updatedAt - a.updatedAt : b.updatedAt - a.updatedAt || a.title.localeCompare(b.title, 'zh-CN'))
     : loaded
-  const filtered = Boolean(searchQuery || kind !== 'all')
-  const designItems = activeScope === 'personal' && !pendingSearch && (kind === 'all' || kind === 'design') ? designs.items.filter(item => item.title.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase())) : []
+  const filtered = Boolean(searchQuery || category !== 'all')
+  const designItems = activeScope === 'personal' && !pendingSearch ? designs.items.filter(item => item.title.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase())) : []
   const combined = [...items.map(item => ({ type: 'creation' as const, item })), ...designItems.map(item => ({ type: 'design' as const, item }))]
     .sort((a, b) => sort === 'name' ? a.item.title.localeCompare(b.item.title, 'zh-CN') || b.item.updatedAt - a.item.updatedAt : b.item.updatedAt - a.item.updatedAt || a.item.title.localeCompare(b.item.title, 'zh-CN'))
-  const initiallyLoading = pendingSearch || !combined.length && (kind !== 'design' && query.busy && !data || activeScope === 'personal' && (kind === 'all' || kind === 'design') && designs.busy && !designs.items.length)
+
+  // Filter according to selected category
+  const displayedCombined = combined.filter((entry) => {
+    if (category === 'all') return true
+    if (category === 'design') return entry.type === 'design'
+    if (category === 'document') return entry.type === 'creation' && entry.item.kind === 'document'
+    if (category === 'chart') return entry.type === 'creation' && entry.item.kind === 'prototype'
+    return false
+  })
+
+  // Dynamic counts for category pills
+  const countAll = loaded.length + designItems.length
+  const countDesign = designItems.length
+  const countDoc = loaded.filter(i => i.kind === 'document').length
+  const countChart = loaded.filter(i => i.kind === 'prototype').length
+
+  const categoryTabs: { id: CreationCategory; label: string; count: number }[] = [
+    { id: 'all', label: '全部', count: countAll },
+    { id: 'design', label: '设计稿', count: countDesign },
+    { id: 'document', label: '文档', count: countDoc },
+    { id: 'slides', label: '幻灯片', count: 0 },
+    { id: 'chart', label: '图表', count: countChart },
+    { id: 'whiteboard', label: '白板', count: 0 },
+    { id: 'table', label: '表格', count: 0 },
+    { id: 'image', label: '图片', count: 0 }
+  ]
+
+  const initiallyLoading = pendingSearch || (!combined.length && ((query.busy && !data) || (activeScope === 'personal' && designs.busy && !designs.items.length)))
+  const workspaceName = context.key || 'local'
+
   const startDesign = async (kind: 'web' | 'app' | 'prototype'): Promise<void> => {
     if (designStarting) return
     setDesignStarting(true); setDesignError('')
@@ -327,40 +446,274 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
     catch (cause) { setDesignError(cause instanceof Error ? cause.message : '新建设计未完成，请重试。') }
     finally { setDesignStarting(false) }
   }
-  return <PageLayout variant="full" className="creation-workspace">
-    <PageHeader><h1 className="creation-page-title">产物</h1><span className="creation-meta">{activeScope === 'personal' ? '个人产物' : selectedSpace ? `空间产物 · ${selectedSpace.name}` : '空间产物'}</span>{activeScope === 'personal' && hasIpc && <div className="min-w-0 max-w-64" role="group" aria-label="产物来源"><ConnectionPanel /></div>}<span className="creation-grow" />{whiteboardAvailable && <Button size="sm" onClick={() => setShowWhiteboard(true)}><Grid2X2 size={15} />本机白板</Button>}<Button size="sm" variant="primary" disabled={!canCreate} onClick={() => setCreating(true)}><Plus size={15} />新建产物</Button></PageHeader>
-    {activeScope === 'personal' && designClient() && <DesignNewTypes busy={designStarting} onStart={kind => void startDesign(kind)} onDocument={() => setCreating(true)} documentDisabled={!canCreate} />}
-    {designError && <div className="creation-error" role="alert">{designError}<Button size="sm" variant="ghost" aria-label="收起新建设计错误" onClick={() => setDesignError('')}><X size={14} /></Button></div>}
-    <PageToolbar className="creation-list-toolbar"><Select size="sm" ariaLabel="产物类型" value={kind} onChange={setKind} options={[{ value: 'all', label: '全部类型' }, ...(activeScope === 'personal' ? [{ value: 'design' as const, label: '设计' }] : []), { value: 'document', label: '文档' }, { value: 'prototype', label: '交互原型' }]} /><label className="creation-search"><Search size={15} aria-hidden="true" /><input className="my-input" type="search" maxLength={200} aria-label="搜索产物名称" placeholder="搜索产物名称…" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span className="creation-grow" /><Select size="sm" ariaLabel="产物排序" value={sort} onChange={setSort} options={[{ value: 'updated', label: '最近编辑' }, { value: 'name', label: '名称' }]} /><div className="creation-view-switch" role="group" aria-label="产物视图"><Button size="sm" variant="ghost" aria-label="网格视图" aria-pressed={layout === 'grid'} onClick={() => setLayout('grid')}><Grid2X2 size={15} /></Button><Button size="sm" variant="ghost" aria-label="列表视图" aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={15} /></Button></div><Button size="sm" variant="ghost" aria-label="刷新产物列表" disabled={query.busy || designs.busy} onClick={() => { void query.refresh(); void designs.refresh() }}><RefreshCw size={15} /></Button></PageToolbar>
-    <PageBody className="creation-list-body" onScroll={(event) => { listScroll.current = event.currentTarget.scrollTop }}>
-      <div ref={listMarker} hidden />
-      {retainedForms.length > 0 && <details className="mb-4"><summary>继续未完成 · {retainedForms.length}</summary>
-        <div className="creation-list creation-list--list">{retainedForms.map((form) => <button type="button" className="creation-list-row" key={form.creationId} onClick={() => setResuming({ identity: form.identity, creationId: form.creationId })}>
-          <span className="creation-list-icon" aria-hidden="true"><FileText size={18} /></span>
-          <span className="creation-list-title"><span className="my-item-title creation-truncate">{form.title || '未命名表单'}</span><span className="my-item-description creation-truncate">{form.identity.source ? `${form.identity.source.fileName} · ${form.identity.source.revision.slice(0, 10)}` : '新建产物'}</span></span>
-          <span className="creation-meta">{form.receipt ? '已创建' : form.pending ? '结果待确认' : '未提交'}</span>
-          <ArrowUpRight className="creation-list-arrow" size={14} aria-hidden="true" />
-        </button>)}</div>
-      </details>}
-      {activeScope === 'personal' && kind !== 'design' && hasIpc && !accessLost && context.actorId && <section className="mb-4">
-        <Button size="sm" variant="ghost" aria-expanded={showFiles} onClick={() => setShowFiles((value) => !value)}><FileText size={14} />会话文件<ChevronDown size={14} /></Button>
-        {showFiles && <div className="mt-3"><ConversationArtifacts /></div>}
-      </section>}
-      {kind !== 'design' && !context.actorId && <div className="creation-notice" role="status">{loadError ?? '正在读取工作区身份…'}{loadError && <Button size="sm" onClick={() => void bootstrap()}>重试</Button>}</div>}
-      {kind !== 'design' && context.state === 'access-revoked' && <div className="creation-error" role="alert">当前工作区访问权限已失效</div>}
-      {activeScope === 'team' && !spaceId && <EmptyState title="请选择一个空间" />}
-      {kind !== 'design' && query.error && <div className="creation-error" role="alert"><span className="creation-grow">{query.mode === 'fallback' && query.error.code === query.queryError?.code && data ? '完整查询不可用，筛选与排序仅针对已加载产物。' : `${query.error.error}${data ? ' · 显示上次已加载的结果' : ''}`}</span><Button size="sm" onClick={() => void query.refresh()}>重试</Button></div>}
-      {activeScope === 'personal' && designs.error && <div className="creation-error" role="alert"><span className="creation-grow">{designs.error}</span><Button size="sm" onClick={() => void designs.refresh()}>重新读取设计</Button></div>}
-      {initiallyLoading ? <Loading>正在读取产物…</Loading> : (data || activeScope === 'personal') && <>
-        <div className="creation-list-heading"><strong>{activeScope === 'personal' ? '个人产物' : '空间产物'}</strong><span className="creation-meta" role="status">{query.mode === 'fallback' && kind !== 'design' ? `已加载 ${loaded.length + designItems.length} 项 · 显示 ${combined.length} 项${data?.hasMore ? ' · 还有更多' : ''}` : data?.hasMore && kind !== 'design' ? `已加载 ${combined.length} 项 · 还有更多` : `显示 ${combined.length} 项`}</span></div>
-        {combined.length === 0 && (kind === 'design' || !query.error) && !designs.error && <EmptyState title={filtered ? query.mode === 'fallback' && kind !== 'design' ? '已加载的产物中没有匹配项' : '没有找到匹配的产物' : '还没有产物'} description={data?.hasMore && query.mode === 'fallback' && kind !== 'design' ? '可继续加载更多产物' : filtered ? '试试其他筛选条件' : '从新建设计开始，或导入文档与 HTML'} />}
-        {combined.length > 0 && <div className={`creation-list creation-list--${layout}`}>{combined.map(entry => entry.type === 'design' ? <DesignLibraryCard key={entry.item.id} item={entry.item} layout={layout} onOpen={() => { clearCreationTarget(); openDesign(entry.item.id) }} /> : <CreationListRow key={entry.item.creationId} item={entry.item} onOpen={() => open(entry.item)} />)}</div>}
-        {kind !== 'design' && data?.hasMore && <div className="creation-list-more"><Button disabled={query.busy} onClick={() => void query.loadMore()}>{query.busy ? '正在加载…' : '加载更多创作'}</Button></div>}
-      </>}
-    </PageBody>
-    {creating && <CreateCreationDialog key={identity} scope={activeScope} spaceId={spaceId} onClose={() => setCreating(false)} onCreated={(creationId) => { setCreating(false); open({ creationId, canEdit: true, latestPublished: null }) }} />}
-    {resuming && canResume && <CreateCreationDialog key={`resume:${resuming.creationId}:${identity}`} scope={activeScope} spaceId={spaceId} resume={resuming} onClose={() => setResuming(null)} onCreated={(creationId) => { setResuming(null); open({ creationId, canEdit: true, latestPublished: null }) }} />}
-  </PageLayout>
+
+  return (
+    <PageLayout variant="full" className="creation-workspace">
+      <PageHeader>
+        <span className="my-item-title">产物</span>
+        <span className="creation-grow" />
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label="刷新产物列表"
+          disabled={query.busy || designs.busy}
+          onClick={() => {
+            void query.refresh()
+            void designs.refresh()
+          }}
+        >
+          <RefreshCw size={14} />
+        </Button>
+      </PageHeader>
+
+      <PageBody
+        className="creation-list-body"
+        onScroll={(event) => {
+          listScroll.current = event.currentTarget.scrollTop
+        }}
+      >
+        <div ref={listMarker} hidden />
+        <div className="creation-container">
+          <div className="creation-hero">
+            <h1 className="creation-hero-title">产物</h1>
+            <p className="creation-hero-description">
+              在各个项目和会话里做出的设计稿、文档、幻灯片和白板，点开即可查看、修改或回到会话继续。
+            </p>
+          </div>
+
+          {/* Single-line compact toolbar matching Fig 2 benchmark */}
+          <div className="creation-list-toolbar">
+            <label className="creation-search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                className="my-input"
+                type="search"
+                maxLength={200}
+                aria-label="搜索产物名称"
+                placeholder="搜索产物"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <Select
+              size="sm"
+              ariaLabel="项目筛选"
+              value={activeScope}
+              onChange={() => {}}
+              options={[
+                { value: 'personal', label: '全部项目' },
+                ...(snapshot?.spaces.map((s) => ({ value: s.id, label: s.name })) ?? [])
+              ]}
+            />
+            <Select
+              size="sm"
+              ariaLabel="产物排序"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: 'updated', label: '最近编辑' },
+                { value: 'name', label: '名称' }
+              ]}
+            />
+            <div className="creation-view-switch" role="group" aria-label="产物视图">
+              <button
+                type="button"
+                aria-label="网格视图"
+                aria-pressed={layout === 'grid'}
+                onClick={() => setLayout('grid')}
+              >
+                <Grid2X2 size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="列表视图"
+                aria-pressed={layout === 'list'}
+                onClick={() => setLayout('list')}
+              >
+                <List size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* New types 5-card row */}
+          {activeScope === 'personal' && designClient() && (
+            <DesignNewTypes
+              busy={designStarting}
+              onStartDesign={() => void startDesign('web')}
+              onDocument={() => setCreating(true)}
+              onSlides={() => setCreating(true)}
+              onChart={() => setCreating(true)}
+              onWhiteboard={() => setShowWhiteboard(true)}
+              documentDisabled={!canCreate}
+            />
+          )}
+
+          {designError && (
+            <div className="creation-error" role="alert">
+              {designError}
+              <Button size="sm" variant="ghost" aria-label="收起新建设计错误" onClick={() => setDesignError('')}>
+                <X size={14} />
+              </Button>
+            </div>
+          )}
+
+          {/* Category Tabs */}
+          <div className="creation-category-pills">
+            <Tabs<CreationCategory>
+              tabs={categoryTabs}
+              active={category}
+              onChange={setCategory}
+              ariaLabel="产物分类筛选"
+            />
+          </div>
+
+          {retainedForms.length > 0 && (
+            <details className="mb-4">
+              <summary>继续未完成 · {retainedForms.length}</summary>
+              <div className="creation-list creation-list--list">
+                {retainedForms.map((form) => (
+                  <button
+                    type="button"
+                    className="creation-list-row"
+                    key={form.creationId}
+                    onClick={() => setResuming({ identity: form.identity, creationId: form.creationId })}
+                  >
+                    <div className="creation-icon-badge creation-icon-badge--document" aria-hidden="true">
+                      <FileText size={14} />
+                    </div>
+                    <span className="creation-list-title">
+                      <span className="my-item-title creation-truncate">{form.title || '未命名表单'}</span>
+                      <span className="my-item-description creation-truncate">
+                        {form.identity.source
+                          ? `${form.identity.source.fileName} · ${form.identity.source.revision.slice(0, 10)}`
+                          : '新建产物'}
+                      </span>
+                    </span>
+                    <span className="creation-meta">
+                      {form.receipt ? '已创建' : form.pending ? '结果待确认' : '未提交'}
+                    </span>
+                    <ArrowUpRight className="creation-list-arrow" size={14} aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {!context.actorId && (
+            <div className="creation-notice" role="status">
+              {loadError ?? '正在读取工作区身份…'}
+              {loadError && <Button size="sm" onClick={() => void bootstrap()}>重试</Button>}
+            </div>
+          )}
+
+          {context.state === 'access-revoked' && (
+            <div className="creation-error" role="alert">当前工作区访问权限已失效</div>
+          )}
+
+          {activeScope === 'team' && !spaceId && <EmptyState title="请选择一个空间" />}
+
+          {query.error && (
+            <div className="creation-error" role="alert">
+              <span className="creation-grow">
+                {query.mode === 'fallback' && query.error.code === query.queryError?.code && data
+                  ? '完整查询不可用，筛选与排序仅针对已加载产物。'
+                  : `${query.error.error}${data ? ' · 显示上次已加载的结果' : ''}`}
+              </span>
+              <Button size="sm" onClick={() => void query.refresh()}>重试</Button>
+            </div>
+          )}
+
+          {activeScope === 'personal' && designs.error && (
+            <div className="creation-error" role="alert">
+              <span className="creation-grow">{designs.error}</span>
+              <Button size="sm" onClick={() => void designs.refresh()}>重新读取设计</Button>
+            </div>
+          )}
+
+          {initiallyLoading ? (
+            <Loading>正在读取产物…</Loading>
+          ) : (
+            (data || activeScope === 'personal') && (
+              <>
+                {displayedCombined.length === 0 && !designs.error && (
+                  <EmptyState
+                    title={filtered ? '没有找到匹配的产物' : '还没有产物'}
+                    description={filtered ? '试试其他筛选条件' : '从新建设计开始，或导入文档与 HTML'}
+                  />
+                )}
+                {displayedCombined.length > 0 && (
+                  <div className={`creation-list creation-list--${layout}`}>
+                    {displayedCombined.map((entry) =>
+                      entry.type === 'design' ? (
+                        <DesignLibraryCard
+                          key={entry.item.id}
+                          item={entry.item}
+                          layout={layout}
+                          workspaceName={workspaceName}
+                          onOpen={() => {
+                            clearCreationTarget()
+                            openDesign(entry.item.id)
+                          }}
+                        />
+                      ) : layout === 'grid' ? (
+                        <CreationSummaryCard
+                          key={entry.item.creationId}
+                          item={entry.item}
+                          workspaceName={workspaceName}
+                          onOpen={() => open(entry.item)}
+                        />
+                      ) : (
+                        <CreationListRow
+                          key={entry.item.creationId}
+                          item={entry.item}
+                          workspaceName={workspaceName}
+                          onOpen={() => open(entry.item)}
+                        />
+                      )
+                    )}
+                  </div>
+                )}
+                {data?.hasMore && (
+                  <div className="creation-list-more">
+                    <Button disabled={query.busy} onClick={() => void query.loadMore()}>
+                      {query.busy ? '正在加载…' : '加载更多创作'}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )
+          )}
+        </div>
+      </PageBody>
+
+      {creating && (
+        <CreateCreationDialog
+          key={identity}
+          scope={activeScope}
+          spaceId={spaceId}
+          onClose={() => setCreating(false)}
+          onCreated={(creationId) => {
+            setCreating(false)
+            open({ creationId, canEdit: true, latestPublished: null })
+          }}
+        />
+      )}
+
+      {resuming && canResume && (
+        <CreateCreationDialog
+          key={`resume:${resuming.creationId}:${identity}`}
+          scope={activeScope}
+          spaceId={spaceId}
+          resume={resuming}
+          onClose={() => setResuming(null)}
+          onCreated={(creationId) => {
+            setResuming(null)
+            open({ creationId, canEdit: true, latestPublished: null })
+          }}
+        />
+      )}
+    </PageLayout>
+  )
 }
 
 export default CreationWorkspace

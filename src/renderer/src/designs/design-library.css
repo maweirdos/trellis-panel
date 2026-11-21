@@ -1,78 +1,338 @@
-.design-new-type {
-  cursor: pointer;
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+/* Design library & creation cards styling matching benchmark standard */
+
+.design-new-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+  margin-bottom: var(--my-space-16);
 }
 
-.design-new-type > .design-new-icon {
+.design-new-heading {
+  font-size: var(--my-text-xs);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-tertiary);
+  letter-spacing: 0.02em;
+}
+
+.design-new-grid {
   display: grid;
-  flex: none;
-  place-items: center;
-  width: var(--my-space-40);
-  height: var(--my-space-40);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: var(--my-space-10);
+}
+
+.design-new-card {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-10);
+  height: var(--my-space-48);
+  padding: var(--my-space-8) var(--my-space-12);
+  border: var(--my-space-1) solid var(--my-border-subtle);
   border-radius: var(--my-radius-base);
-  background: var(--my-bg-layer-3);
-  color: var(--my-txt-icon-secondary);
-}
-
-.design-new-type > .design-new-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.design-new-copy > span {
-  overflow-wrap: anywhere;
-}
-
-.design-new-action {
-  flex: none;
-  color: var(--my-txt-icon-tertiary);
-}
-
-.design-new-type:not(:disabled):hover {
-  background: var(--my-bg-layer-1-hover);
-  border-color: var(--my-border-strong);
-}
-
-.design-new-type:not(:disabled):active {
-  background: var(--my-bg-layer-1-active);
-}
-
-.design-new-type:disabled:hover {
   background: var(--my-bg-panel);
-  border-color: var(--my-border-subtle);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--my-motion-fast) var(--my-ease-out),
+    border-color var(--my-motion-fast) var(--my-ease-out),
+    box-shadow var(--my-motion-fast) var(--my-ease-out),
+    background-color var(--my-motion-fast) var(--my-ease-out);
 }
 
+.design-new-card:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: var(--my-border-strong);
+  background: var(--my-bg-panel);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.04);
+}
+
+.design-new-card:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.design-new-card:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.design-new-badge {
+  display: grid;
+  place-items: center;
+  width: var(--my-space-32);
+  height: var(--my-space-32);
+  min-width: var(--my-space-32);
+  min-height: var(--my-space-32);
+  flex: 0 0 var(--my-space-32);
+  border-radius: var(--my-radius-base);
+  transition: transform var(--my-motion-fast);
+}
+
+.design-new-card:not(:disabled):hover .design-new-badge {
+  transform: scale(1.05);
+}
+
+/* Strategic 5% Accent Tint Badges */
+.design-new-badge--design {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.design-new-badge--document {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.design-new-badge--slides {
+  background: rgba(249, 115, 22, 0.12);
+  color: #f97316;
+}
+
+.design-new-badge--chart {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.design-new-badge--whiteboard {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.design-new-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.design-new-title {
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-primary);
+  line-height: var(--my-line-heading);
+}
+
+.design-new-desc {
+  font-size: var(--my-text-xs);
+  color: var(--my-txt-tertiary);
+  line-height: var(--my-line-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Matted Artboard Cards (Linear / Figma Benchmark) */
 .design-library-card {
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
-}
-
-.design-library-card:has(.design-library-open:hover) {
-  background: var(--my-bg-layer-1-hover);
-}
-
-.design-library-card:has(.design-library-open:active) {
-  background: var(--my-bg-layer-1-active);
-}
-
-.design-library-open:focus-visible {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: var(--my-space-1) solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 4px 12px rgba(0, 0, 0, 0.02);
+  cursor: pointer;
   outline: none;
+  transition: transform var(--my-motion-normal) var(--my-ease-out),
+    box-shadow var(--my-motion-normal) var(--my-ease-out),
+    border-color var(--my-motion-normal) var(--my-ease-out);
 }
 
-.design-library-caption > svg {
-  flex: none;
-  color: var(--my-txt-icon-secondary);
+.design-library-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--my-border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
-.design-library-caption > svg:last-child {
-  color: var(--my-txt-icon-tertiary);
+.design-library-card:focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-2);
 }
 
-.design-library-row:active {
-  background: var(--my-bg-layer-1-active);
+.design-library-artboard-wrapper {
+  position: relative;
+  height: var(--my-space-176);
+  padding: var(--my-space-10) var(--my-space-12);
+  background: var(--my-bg-canvas);
+  border-bottom: var(--my-space-1) solid var(--my-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.design-library-artboard-sheet {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  border: var(--my-space-1) solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.design-library-cover {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.design-library-cover > .design-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+.design-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--my-bg-panel);
+  padding: var(--my-space-16);
+}
+
+.design-mock-wireframe {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+  opacity: 0.65;
+}
+
+.design-mock-header {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  padding-bottom: var(--my-space-6);
+  border-bottom: var(--my-space-1) dashed var(--my-border-subtle);
+}
+
+.design-mock-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--my-radius-round);
+  background: var(--my-border-strong);
+}
+
+.design-mock-bar {
+  width: 40%;
+  height: 6px;
+  border-radius: var(--my-radius-base);
+  background: var(--my-border-subtle);
+}
+
+.design-mock-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-6);
+}
+
+.design-mock-line {
+  height: 5px;
+  border-radius: var(--my-radius-base);
+  background: var(--my-border-subtle);
+}
+
+.design-mock-line--lg {
+  width: 70%;
+}
+
+.design-mock-line--sm {
+  width: 50%;
+}
+
+.design-mock-card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--my-space-6);
+  margin-top: var(--my-space-4);
+}
+
+.design-mock-box {
+  height: 36px;
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-canvas);
+  border: var(--my-space-1) solid var(--my-border-subtle);
+}
+
+/* Card Caption Footer */
+.design-library-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-10);
+  padding: var(--my-space-10) var(--my-space-14);
+  background: var(--my-bg-panel);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.design-library-caption-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.design-library-caption-text .my-item-title {
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-primary);
+}
+
+.design-library-caption-text .my-item-description {
+  font-size: var(--my-text-xs);
+  color: var(--my-txt-secondary);
+}
+
+/* Circular Tint Badges - strictly circular and never stretched */
+.creation-icon-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  flex: 0 0 28px !important;
+  border-radius: var(--my-radius-round) !important;
+  box-sizing: border-box;
+  aspect-ratio: 1 / 1;
+}
+
+.creation-icon-badge--design {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.creation-icon-badge--document {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.creation-icon-badge--chart,
+.creation-icon-badge--prototype {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.creation-icon-badge--whiteboard {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .design-new-type, .design-library-card {
+  .design-new-card,
+  .design-library-card {
     transition: none;
   }
 }
