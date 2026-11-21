@@ -1410,3 +1410,25 @@ GUI 在 Windows Job 中挂起创建，先发布原生范围见证再恢复执行
 ### Status
 
 [OK] **Completed**
+
+
+## Session 42: ACP 控制面投影基础
+<!-- trellis-session: v=2 fp=00a4d2497635a733 -->
+
+**Date**: 2026-11-21
+**Task**: ACP 控制面投影基础
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+落地 Conversation/Turn/TurnItem 只读投影、幂等历史迁移、快照/增量 API 与 typed cursor reset，独立检查通过并沉淀规范。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `84e6e78` | feat(acp): 建立会话控制面投影基础 |
+
+### Status
+
+[OK] **Completed**
