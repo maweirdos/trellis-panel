@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Check, ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -405,19 +405,30 @@ export function Dropdown({
 
 export function DropdownItem({
   children,
+  description,
   onClick,
   selected,
   danger,
   icon,
-  disabled
+  disabled,
+  shortcut,
+  hasSubmenu,
+  trailing,
+  className
 }: {
   children: ReactNode
+  description?: ReactNode
   onClick?: () => void
   selected?: boolean
   danger?: boolean
   icon?: ReactNode
   disabled?: boolean
+  shortcut?: string
+  hasSubmenu?: boolean
+  trailing?: ReactNode
+  className?: string
 }): JSX.Element {
+  const multiline = Boolean(description)
   return (
     <button
       type="button"
@@ -428,14 +439,30 @@ export function DropdownItem({
       onClick={disabled ? undefined : onClick}
       className={clsx(
         'my-menu-item',
-        disabled && 'cursor-default'
+        multiline && 'my-menu-item-multiline',
+        disabled && 'cursor-default',
+        className
       )}
     >
-      {icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {selected && <Check size={13} className="shrink-0" aria-hidden="true" />}
+      {icon && <span className="my-menu-icon" aria-hidden="true">{icon}</span>}
+      <span className={clsx('min-w-0 flex-1', !multiline && 'truncate')}>
+        {multiline ? (
+          <>
+            <span className="my-item-title block truncate">{children}</span>
+            <span className="my-item-description mt-0.5 block truncate">{description}</span>
+          </>
+        ) : children}
+      </span>
+      {shortcut && <span className="my-menu-shortcut">{shortcut}</span>}
+      {hasSubmenu && <ChevronRight size={13} className="my-menu-chevron shrink-0" aria-hidden="true" />}
+      {trailing}
+      {selected && <Check size={14} className="my-menu-check shrink-0 text-my-primary" aria-hidden="true" />}
     </button>
   )
+}
+
+export function DropdownDivider(): JSX.Element {
+  return <div className="my-menu-divider" role="separator" />
 }
 
 export function DropdownHeader({ children }: { children: ReactNode }): JSX.Element {
@@ -801,28 +828,34 @@ export function SearchInput({
 export function Tabs<T extends string>({
   tabs,
   active,
-  onChange
+  onChange,
+  className,
+  ariaLabel
 }: {
   tabs: Array<{ id: T; label: string; count?: number }>
   active: T
   onChange: (id: T) => void
+  className?: string
+  ariaLabel?: string
 }): JSX.Element {
   return (
-    <div className="flex items-center gap-1">
+    <div className={clsx("flex items-center gap-1", className)} role="tablist" aria-label={ariaLabel}>
       {tabs.map((t) => (
         <button
           key={t.id}
           type="button"
+          role="tab"
+          aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={clsx(
-            'my-control my-control-sm rounded-my-md',
+            'my-control my-control-sm rounded-my-md font-medium transition-colors select-none',
             active === t.id
               ? 'bg-[var(--my-bg-layer-transparent-active)] text-[var(--my-txt-primary)]'
               : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)]'
           )}
         >
-          {t.label}
-          {t.count !== undefined && <span className="text-my-xs opacity-70">{t.count}</span>}
+          <span>{t.label}</span>
+          {t.count !== undefined && <span className="ml-1 text-my-xs opacity-70 tabular-nums">{t.count}</span>}
         </button>
       ))}
     </div>

@@ -66,6 +66,7 @@
   --my-radius-4xl: var(--my-radius-base);
   --my-radius-full: 9999px;
   --my-radius-round: 50%;
+  --my-radius-composer: 16px;
   --my-space-0: 0px;
   --my-space-1: 1px;
   --my-space-2: 2px;
@@ -125,6 +126,8 @@
   --my-context-used: var(--my-txt-secondary);
   --my-context-warning: var(--my-txt-warning-primary);
   --my-context-critical: var(--my-txt-danger-primary);
+  --my-composer-send-background: #3a83f7;
+  --my-composer-stop-background: #ef5a53;
   --my-icon-control-size: 28px;
   --my-chip-height: 20px;
   --my-checkbox-size: 16px;

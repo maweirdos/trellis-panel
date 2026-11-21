@@ -14,8 +14,9 @@ The only bootstrap imports are `my/my.css` then `styles.css` in `main.tsx`.
   spacing, radii, control/layout metrics, shadows, motion and stacking levels.
 - `my-components.css`: shared control, field, menu, tooltip, modal, focus and
   selection rules. Values come from the token file.
-- `my-feedback.css`: neutral activity/result cards, semantic icon tiles and real
-  trailing actions; imported by the same global `my.css` entry.
+- `my-feedback.css`: neutral activity/result cards, `FeedbackNotice`, and
+  `NotificationCard`; imported by the global `my.css` entry. Choose the
+  surface with the [feedback mapping](./components.md#feedback-and-recovery).
 - `my-shell.css`: shell composition and responsive geometry using those tokens.
 
 `styles.css` owns Tailwind directives, reset/native-window rules and Markdown/
@@ -202,7 +203,8 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   and message bubbles may retain their own functional dimensions.
 - `Avatar({ tone?: 'color'|'accent' })`: use `tone="accent"` with a neutral
   accent background. Arbitrary user identity colors retain semantic on-color ink.
-- `BrandMark({ size?: number, className?: string })` uses the canonical SVG.
+- `BrandMark`, `BrandWordmark` and `BrandMotion` consume canonical Crux assets.
+  Product activity uses the state and lifecycle contracts in [brand-system.md](./brand-system.md).
 
 Example:
 
@@ -251,19 +253,20 @@ Example:
   controls. Hover must not move adjacent controls; open/pressed and keyboard-focus
   feedback remain visible. Disabled controls do not acquire enabled hover states.
   Never apply a blanket background that overrides danger/filled/button variants.
-- Composer model/strength popups share a 256px width and prefer placement above
-  the visual trigger with an 8px gap. Align their right edge to the composer right
-  control group, including Send, not just to the model caption. Shared
+- The shared model selection panel has a preferred width of 340px and opens
+  above the composer with an 8px gap. Align its right edge to the composer right
+  control group, including Send. Shared
   `Dropdown({ positionAnchorRef?, placement?: 'auto'|'top'|'bottom', gap? })`
   preserves the default auto/4px behavior for other callers. Use measured popup
   dimensions and the actual trigger bounds; negative trigger margins and entry
   animation transforms must not corrupt alignment. Clamp to 8px viewport gutters,
   shrinking to viewport width minus 16px where necessary.
-- Model choices have one scrolling owner: `.acp-model-menu.acp-model-choices`.
-  Allocate scrollbar space symmetrically (`stable both-edges`), and keep the
-  inner `.acp-model-list` free of a second scrollbar/gutter. Short and overflowing
-  lists must have equal visual row insets on both sides; an auto-hidden scrollbar
-  can still reserve layout width. The compact strength view has no list gutter.
+- Model choices have one scroll owner, `.acp-unified-picker-content`.
+  Keep search and applicable footer actions available as the results shrink.
+  Place model-specific configuration after its model row inside the results.
+  Let the category rail scroll if the available height cannot fit its controls.
+  Use the shared popup bounds and keep selection, favorites and configuration
+  independently focusable.
 - The context ring has a quiet pale base (`--my-context-track`), never a dark
   full ring or a center minus that resembles “full/disabled”. Unknown reports use
   a static open outline and a `暂无数据` accessible description; a reported zero

@@ -172,29 +172,84 @@
   display: flex; flex-direction: column;
   scrollbar-gutter: auto;
   max-width: calc(100vw - var(--my-space-16));
-  z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-6);
-  border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-menu);
-  background: var(--my-bg-elevated); box-shadow: var(--my-shadow-overlay-200);
+  z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-4);
+  border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base);
+  background: color-mix(in oklab, var(--my-bg-elevated) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--my-shadow-overlay-200);
 }
 .my-root .my-menu > .my-scrollbar { min-height: 0; flex-shrink: 1; }
 .my-root .my-menu-item {
   display: flex; width: 100%; align-items: center; gap: var(--my-space-8);
-  min-height: var(--my-control-height-sm); padding: var(--my-space-6) var(--my-space-10);
+  height: 30px; min-height: 30px; padding: 0 var(--my-space-8);
   border-radius: var(--my-control-radius); text-align: left;
-  font-size: var(--my-menu-option-size); color: var(--my-menu-option-color);
+  font-size: var(--my-text-sm); color: var(--my-txt-primary);
+  background: transparent;
   transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-menu-item:hover:not(:disabled):not([aria-disabled='true']):not(:where([data-selected='true'], [aria-pressed='true'], [aria-selected='true'])) { background: var(--my-bg-layer-transparent-hover); }
-.my-root .my-menu-item:hover:not(:disabled):not([aria-disabled='true']):not([data-danger='true']) { color: var(--my-txt-primary); }
-.my-root .my-menu-item:is([data-selected='true'], [aria-pressed='true'], [aria-selected='true']) { background: var(--my-bg-layer-transparent-selected); color: var(--my-txt-primary); }
-.my-root .my-menu-item:active:not(:disabled):not([aria-disabled='true']):not(:where([data-selected='true'], [aria-pressed='true'], [aria-selected='true'])) { background: var(--my-bg-layer-transparent-active); }
+.my-root .my-menu-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--my-space-16); height: var(--my-space-16); flex-shrink: 0;
+  color: var(--my-txt-secondary);
+  transition: color var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-menu-icon svg { width: 14px; height: 14px; flex-shrink: 0; }
+.my-root .my-menu-item:hover:not(:disabled) .my-menu-icon { color: var(--my-txt-primary); }
+.my-root .my-menu-item:hover:not(:disabled):not([aria-disabled='true']):not(:where([data-selected='true'], [aria-pressed='true'], [aria-selected='true'])) {
+  background: color-mix(in oklab, var(--my-txt-primary) 6%, transparent);
+  color: var(--my-txt-primary);
+}
+.my-root .my-menu-item:is([data-selected='true'], [aria-pressed='true'], [aria-selected='true']) {
+  background: color-mix(in oklab, var(--my-txt-primary) 10%, transparent);
+  color: var(--my-txt-primary);
+}
+.my-root .my-menu-item:active:not(:disabled):not([aria-disabled='true']) {
+  background: color-mix(in oklab, var(--my-txt-primary) 12%, transparent);
+}
 .my-root :is(.my-menu-item, .my-select-option):focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
-.my-root .my-menu-item[data-danger='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-subtle-hover); }
-.my-root .my-menu-item[data-danger='true']:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-subtle-active); }
+.my-root .my-menu-item[data-danger='true'] .my-menu-icon { color: var(--my-txt-danger-primary); }
+.my-root .my-menu-item[data-danger='true']:hover:not(:disabled):not([aria-disabled='true']) {
+  background: color-mix(in oklab, var(--my-txt-danger-primary) 8%, transparent);
+  color: var(--my-txt-danger-primary);
+}
+.my-root .my-menu-item[data-danger='true']:active:not(:disabled):not([aria-disabled='true']) {
+  background: color-mix(in oklab, var(--my-txt-danger-primary) 14%, transparent);
+}
 .my-root .my-menu-item:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); background: var(--my-bg-layer-transparent); }
 .my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-6); font-size: var(--my-menu-title-size); color: var(--my-menu-title-color); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); cursor: default; }
 .my-root .my-menu-header:not(:first-child) { margin-top: var(--my-space-6); }
+.my-root .my-menu-divider { height: 1px; margin: var(--my-space-4) 0; background: var(--my-border-subtle); }
+.my-root .my-menu-shortcut { margin-left: auto; padding-left: var(--my-space-14); font-size: var(--my-text-xs); color: var(--my-txt-tertiary); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.my-root .my-menu-chevron { margin-left: auto; color: var(--my-txt-tertiary); flex-shrink: 0; }
+.my-root .my-menu-item.my-menu-item-multiline,
+.my-root .my-menu-item:has(.my-item-description) {
+  height: auto;
+  min-height: var(--my-space-48);
+  padding: var(--my-space-8) var(--my-space-10);
+  gap: var(--my-space-10);
+  align-items: flex-start;
+}
+.my-root .my-menu-item.my-menu-item-multiline .my-menu-icon,
+.my-root .my-menu-item:has(.my-item-description) .my-menu-icon {
+  margin-top: var(--my-space-2);
+  width: var(--my-space-18);
+  height: var(--my-space-18);
+}
+.my-root .my-menu-item.my-menu-item-multiline .my-menu-icon svg,
+.my-root .my-menu-item:has(.my-item-description) .my-menu-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.my-root .my-menu-item.my-menu-item-multiline .my-menu-check,
+.my-root .my-menu-item:has(.my-item-description) .my-menu-check {
+  margin-top: var(--my-space-3);
+  align-self: flex-start;
+}
+.my-root .my-menu-item:is([data-selected='true'], [aria-pressed='true'], [aria-selected='true']) .my-item-description {
+  color: var(--my-txt-secondary);
+}
 .my-root :where(.my-select-host) { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
 .my-root :where(.my-select-trigger) {
   display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: var(--my-space-8);

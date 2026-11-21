@@ -39,6 +39,13 @@ identity, theme/settings actions and controlled `ConnectionPanel` with its dirty
 handling. The rail keeps its module order and Settings entry; do not duplicate the
 account owner. Its menu opens upward within the window.
 
+The desktop rail opens the integration directory and the current team's
+automation rules directly. Jira belongs under integrations. Opening the
+directory requires no local project; importing Jira issues retains its project
+guard. Changing the selected team space on Automations switches the rule list,
+without starting a rule or navigating to team tasks. The desktop team shortcut
+and command search open the same Automations page; team Web keeps its space route.
+
 The top-bar context control expands or collapses the entire second-level sidebar.
 The module icon rail remains visible. Do not add a second collapse control inside
 the sidebar or replace the collapsed sidebar with another icon rail.

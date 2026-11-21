@@ -13,11 +13,44 @@ Markdown table headers and floating-window content. Do not apply user-select:non
 to body, application roots or modal containers. Keep exclusions local to actual
 drag handles, decorative icons and line-number gutters.
 
-Use `CopyableError({message, summary?})` for upstream failures: a short summary,
-selectable bounded raw detail and an explicit copy action. Copy success follows
-clipboard completion; retain status/code/body for diagnosis after native redaction of authentication material. Shared
-window setup exposes native Copy/Select All and editable-field actions using
-Electron's actual edit flags.
+Shared window setup exposes native Copy/Select All and editable-field actions
+using Electron's actual edit flags.
+
+## Feedback and recovery
+
+Choose a surface from the affected scope, how long the user needs the message,
+and whether work requires an explicit decision.
+
+| Trigger | Shared surface | Behavior |
+| --- | --- | --- |
+| Field validation | Text beside the field | Associate it through `aria-describedby` and `aria-invalid`. Preserve the value and focus the first invalid field on submit. |
+| Recorded failure in a conversation | `FeedbackNotice variant="inline"` at the event | Show a semantic icon and a short outcome. The title row opens details and reveals diagnostic copy. Without details, show a static status. |
+| Operation failure or ongoing degradation | `FeedbackNotice` beside the action, optionally inside `PageNotice` | Use `compact` in a constrained composer strip and `card` for a broader section error. Keep applicable recovery actions visible while the condition persists. |
+| A page becomes unusable | `ErrorBoundary` with `FeedbackNotice` in the affected area | Keep the available shell and navigation. Retry render failures in place. For rejected lazy loading, reload the renderer document on user action. |
+| Authorization, destructive confirmation, or discarding unsaved work | `Modal` / `DialogHost` | Capture an explicit decision. Errors from work inside a modal stay in that modal. |
+| A short result independent of further action | `Toasts` / `NotificationCard`, or feedback at the triggering control | Use the existing queue or local receipt after the outcome is confirmed. Follow the [toast lifecycle](./css-design.md#8-foreground-and-desktop-notifications). |
+| Searchable choice near its trigger | `Dropdown` | Keep the choice and the relevant loading, empty, or failed state in the same nonmodal panel. |
+
+`FeedbackNotice` takes a short `title`, optional `description`, `diagnostic`, and
+`actions`. Use a semantic icon, a neutral frame for cards, and a transparent
+status row for `inline`. Pass supporting content such as recorded duration
+through `details` on the inline variant. Keep the disclosure keyboard operable
+with a visible focus ring and an arrow that indicates its state in reduced
+motion. Show available recovery actions directly. Default diagnostics to
+collapsed and keep the same bounded, redacted text available for selection and
+copying. Use `CopyableError({ message,
+summary? })` for upstream failures that just need a heading and diagnostic.
+Set `announcement={false}` for recorded failures that are already in history.
+Emit one primary notice for an operation. Keep separate incidents with different
+owners independently actionable.
+
+Pass an analyzable dynamic import closure to `lazyPage` when a route should
+distinguish module-load failure. React keeps a rejected lazy payload even after
+the boundary state resets. Fall back locally, retain draft recovery and startup
+readiness, and make reloading explicit. Validate both a real rejected import
+and a recoverable render error by clicking their actions. The conversation
+workspace flushes local draft state synchronously on `pagehide`. Native creation
+requires a live renderer that can record its acknowledged conversation identity.
 
 ## Shared choices and recorded results
 
@@ -252,60 +285,6 @@ function MyScrollableList() {
 
 ---
 
-## Toast Notifications
-
-Implement a toast notification system for user feedback:
-
-### Basic Usage
-
-```tsx
-import { useToast } from '../hooks/useToast';
-
-function MyComponent() {
-  const { toast } = useToast();
-
-  const handleAction = async () => {
-    try {
-      await someAsyncOperation();
-      toast.success('Operation completed!');
-    } catch (error) {
-      toast.error('Something went wrong');
-    }
-  };
-
-  // Info toast for neutral messages
-  toast.info('Processing...');
-}
-```
-
-### Toast Types
-
-| Type                     | Usage                      | Visual       |
-| ------------------------ | -------------------------- | ------------ |
-| `toast.success(message)` | Confirm successful actions | Green accent |
-| `toast.error(message)`   | Report failures            | Red accent   |
-| `toast.info(message)`    | Neutral information        | Muted accent |
-
-### Design Principles
-
-- Semi-transparent background (glassmorphism)
-- Subtle border and shadow
-- Pill-shaped or rounded
-- Auto-dismiss after 3 seconds (configurable)
-- Stack multiple toasts vertically
-
-### Custom Duration
-
-```tsx
-// Custom duration (5 seconds)
-toast.success('Saved!', 5000);
-
-// Shorter duration (1.5 seconds)
-toast.info('Copied', 1500);
-```
-
----
-
 ## Drag and Drop (Tree Structures)
 
 When implementing drag-and-drop for tree structures, use a library like `@dnd-kit`.
@@ -536,11 +515,6 @@ The main-window navigation boundary is independently required for every app
 window, including documents, capsule and quick todo. Renderer prevention alone
 does not protect plain anchors, redirects or `window.open`.
 
-ErrorBoundary keeps the shell available, offers page retry/application reload and
-stores the real error for a default-closed details disclosure. Use neutral shared
-surfaces and semantic icons; avoid a permanent stack dump or a guessed cause as
-the main product message. Tests must include actual retry behavior, not only
-matching the error heading.
 ## Retained Markdown component identities
 
 When a retained reader consumes InteractionScope or guarded document/image link
