@@ -20,23 +20,29 @@ export function prepareWindowsTaskbarShortcut(developmentIcon: string): void {
   const productName = brandedHost ? identity.developmentProductName : 'Electron'
   const programs = join(app.getPath('appData'), 'Microsoft/Windows/Start Menu/Programs')
   const shortcutPath = join(programs, `${productName}.lnk`)
+  const managedTarget = (target: string): boolean => {
+    const cachedHost = relative(join(app.getAppPath(), 'node_modules/.cache/trellis-panel/electron-host'), target)
+    return cachedHost !== '' && !isAbsolute(cachedHost) && cachedHost !== '..' && !cachedHost.startsWith(`..${sep}`)
+  }
   try {
-    const legacyPath = join(programs, 'Electron.lnk')
-    if (brandedHost && !existsSync(shortcutPath) && existsSync(legacyPath)) {
-      const legacy = shell.readShortcutLink(legacyPath)
-      const ownTarget = resolve(legacy.target).toLowerCase() === join(app.getAppPath(), 'node_modules/electron/dist/electron.exe').toLowerCase()
-      const ownArguments = legacy.args === `"${app.getAppPath()}"`
-      const ownIdentity = legacy.appUserModelId === TASKBAR_APPLICATION_ID || legacy.appUserModelId === APPLICATION_ID
-      // Migrate only this repository's previous generic link, preserving its CLSID.
-      if (ownTarget && ownArguments && ownIdentity) renameSync(legacyPath, shortcutPath)
+    if (brandedHost && !existsSync(shortcutPath)) {
+      for (const legacyName of [...identity.legacyDevelopmentProductNames, 'Electron']) {
+        const legacyPath = join(programs, `${legacyName}.lnk`)
+        if (!existsSync(legacyPath)) continue
+        const legacy = shell.readShortcutLink(legacyPath)
+        const ownTarget = managedTarget(legacy.target) || resolve(legacy.target).toLowerCase() === join(app.getAppPath(), 'node_modules/electron/dist/electron.exe').toLowerCase()
+        const ownArguments = legacy.args === `"${app.getAppPath()}"`
+        const ownIdentity = legacy.appUserModelId === TASKBAR_APPLICATION_ID || legacy.appUserModelId === APPLICATION_ID
+        // Migrate only this repository's owned shortcut, retaining its native toast CLSID.
+        if (ownTarget && ownArguments && ownIdentity) { renameSync(legacyPath, shortcutPath); break }
+      }
     }
     const exists = existsSync(shortcutPath)
     let previous: ShortcutDetails | undefined
     if (exists) {
       previous = shell.readShortcutLink(shortcutPath)
       const sameHost = resolve(previous.target).toLowerCase() === resolve(process.execPath).toLowerCase()
-      const cachedHost = relative(join(app.getAppPath(), 'node_modules/.cache/trellis-panel/electron-host'), previous.target)
-      const managedHost = brandedHost && previous.args === `"${app.getAppPath()}"` && cachedHost !== '' && !isAbsolute(cachedHost) && cachedHost !== '..' && !cachedHost.startsWith(`..${sep}`)
+      const managedHost = brandedHost && previous.args === `"${app.getAppPath()}"` && managedTarget(previous.target)
       const ownIdentity = previous.appUserModelId === TASKBAR_APPLICATION_ID || previous.appUserModelId === APPLICATION_ID
       // Do not take over another application's Electron shortcut.
       const previousSdk = brandedHost && previous.args === `"${app.getAppPath()}"` && resolve(previous.target).toLowerCase() === join(app.getAppPath(), 'node_modules/electron/dist/electron.exe').toLowerCase()

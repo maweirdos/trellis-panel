@@ -5,8 +5,9 @@ import type { DaemonFailure } from '@shared/daemon'
 import { api, hasIpc } from '../api'
 import { BrandMark } from '../my/BrandMark'
 import { StartupSplash } from './StartupSplash'
-import { syncNativeUiFontSize, UI_PREFERENCES_KEY } from '../my/appearance'
+import { startStartupBrandHandoff } from './startup-brand-handoff'
 import { StartupContext, type StartupContentSlot } from './StartupContext'
+import { syncNativeUiFontSize, UI_PREFERENCES_KEY } from '../my/appearance'
 
 const labels: Record<BootstrapSnapshot['phase'], string> = {
   'window-ready': '正在连接后台', connecting: '正在连接后台', preparing: '正在准备本机状态',
@@ -337,7 +338,8 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
   const revealEnabled = useRef(false)
   const handoffPhase = useRef(handoff)
   const revealAttempt = useRef(0)
-  const fadeCleanup = useRef<number | undefined>(undefined)
+  const handoffRoot = useRef<HTMLDivElement>(null)
+  const handoffCleanup = useRef<(() => void) | undefined>(undefined)
   const contentSlots = useRef(new Set<StartupContentSlot>())
   const releaseFrames = useRef<{ first?: number; second?: number }>({})
 
@@ -347,9 +349,9 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
     if (frames.second !== undefined) cancelAnimationFrame(frames.second)
     releaseFrames.current = {}
   }, [])
-  const cancelFadeCleanup = useCallback(() => {
-    if (fadeCleanup.current !== undefined) window.clearTimeout(fadeCleanup.current)
-    fadeCleanup.current = undefined
+  const cancelHandoff = useCallback(() => {
+    handoffCleanup.current?.()
+    handoffCleanup.current = undefined
   }, [])
   const contentChanged = useCallback(() => {
     cancelRelease()
@@ -360,7 +362,7 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
       // Live focus/navigation can replace primary content during the first fade.
       // Revoke that attempt synchronously; ordinary revealed navigation is final.
       revealAttempt.current += 1
-      cancelFadeCleanup()
+      cancelHandoff()
       handoffPhase.current = 'covered'
       setHandoff('covered')
     }
@@ -377,7 +379,7 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
         setHandoff(next)
       })
     })
-  }, [cancelRelease, cancelFadeCleanup])
+  }, [cancelRelease, cancelHandoff])
   const registerContent = useCallback((slot: StartupContentSlot) => {
     contentSlots.current.add(slot)
     contentChanged()
@@ -387,26 +389,32 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
 
   useLayoutEffect(() => {
     revealEnabled.current = appEligible && !appFailure
+    if (!revealEnabled.current && handoffPhase.current !== 'revealed') {
+      revealAttempt.current += 1
+      cancelHandoff()
+      handoffPhase.current = 'covered'
+      setHandoff('covered')
+    }
     contentChanged()
-    return () => { revealEnabled.current = false; cancelRelease(); cancelFadeCleanup() }
-  }, [appEligible, appFailure, contentChanged, cancelRelease, cancelFadeCleanup])
+    return () => { revealEnabled.current = false; cancelRelease(); cancelHandoff() }
+  }, [appEligible, appFailure, contentChanged, cancelRelease, cancelHandoff])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (handoff !== 'revealing' || handoffPhase.current !== 'revealing' || !revealEnabled.current) return
     const attempt = revealAttempt.current
-    // Cleanup is presentation-only and pinned to this reveal. Transition events
-    // are deliberately ignored: an old transition must not finish a new attempt.
-    const cleanup = window.setTimeout(() => {
+    const finish = (): void => {
       if (attempt !== revealAttempt.current || handoffPhase.current !== 'revealing' || !revealEnabled.current) return
       if (!contentSlots.current.size || [...contentSlots.current].some(slot => slot.commits.size === 0)) { contentChanged(); return }
-      fadeCleanup.current = undefined
       handoffPhase.current = 'revealed'
       setHandoff('revealed')
-    }, 250)
-    fadeCleanup.current = cleanup
+    }
+    const root = handoffRoot.current
+    if (!root) { finish(); return }
+    const cleanup = startStartupBrandHandoff(root, finish)
+    handoffCleanup.current = cleanup
     return () => {
-      window.clearTimeout(cleanup)
-      if (fadeCleanup.current === cleanup) fadeCleanup.current = undefined
+      cleanup()
+      if (handoffCleanup.current === cleanup) handoffCleanup.current = undefined
     }
   }, [handoff, appEligible, appFailure, contentChanged])
 
@@ -493,6 +501,7 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
   const shell = (workspaceFailure?: { error: unknown }): JSX.Element => {
     const failed = !!(failure || error || !bridge || workspaceFailure || state?.phase === 'error' || state?.phase === 'incompatible')
     return <div data-my-theme={theme} className="my-root my-startup-window">
+    <div className="my-startup-backdrop" aria-hidden="true" />
     <header className="drag-region my-startup-titlebar">
       <div className="no-drag my-startup-window-controls">
         <button disabled={!bridge} aria-label="最小化" onClick={() => void action('minimize')}><span aria-hidden="true">−</span></button>
@@ -535,7 +544,7 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
         </details>}
       </section>
         : <>
-          <StartupSplash status={[labels[state?.phase ?? 'window-ready'], state?.ui.warning].filter(Boolean).join('。')} />
+          <StartupSplash status={[labels[state?.phase ?? 'window-ready'], state?.ui.warning].filter(Boolean).join('。')} active={handoff === 'covered'} />
           {state?.ui.warning && <details className="my-startup-warning">
             <summary aria-label="查看外观设置提示" title="查看外观设置提示"><Info size={16} aria-hidden="true" /></summary>
             <p>{state.ui.warning}</p>
@@ -546,7 +555,7 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
   }
   const covered = handoff !== 'revealed'
   return <StartupContext.Provider value={presentation}>
-    <div className="my-startup-handoff">
+    <div ref={handoffRoot} className="my-startup-handoff" data-startup-handoff={handoff}>
       {appEligible && !appFailure && <div className="my-startup-app-entry" aria-hidden={covered || undefined} {...(covered ? { inert: '' } : {})}>
         <BootstrapAppBoundary recovery={cause => shell({ error: cause })} onFailure={cause => { setAppFailure(previous => previous ?? { error: cause }); void bridge?.detached().catch(() => undefined) }}>
           <Suspense fallback={null}>{children}</Suspense>

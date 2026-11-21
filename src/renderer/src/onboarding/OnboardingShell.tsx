@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import { BrandMark } from '../my/BrandMark'
+import { BrandWordmark } from '../my/BrandWordmark'
 import './onboarding-shell.css'
 
 export interface OnboardingStep {
@@ -35,9 +36,9 @@ export function OnboardingShell({
     <div className="onboarding-shell">
       <div className="onboarding-shell__card">
         <aside className="onboarding-shell__sidebar">
-          <div className="onboarding-shell__brand">
-            <BrandMark size={24} />
-            <span>Trellis Panel</span>
+          <div className="onboarding-shell__brand" role="img" aria-label="Crux">
+            <BrandMark size={28} />
+            <BrandWordmark width={88} />
           </div>
           <nav className="onboarding-shell__progress" aria-label={progressLabel}>
             <ol className="onboarding-shell__steps">

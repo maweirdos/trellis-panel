@@ -5,7 +5,8 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, nativeTheme, screen, dialog } from 'electron'
 import { join, resolve, basename, dirname, sep } from 'path'
 import { pathToFileURL } from 'url'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
+import brandIdentity from '../../resources/brand/identity.json'
 import { abortAll } from './services/cli'
 import { getSettings } from './services/store'
 import { stopDiffWorker } from './services/documents'
@@ -185,7 +186,7 @@ function createWindow(): void {
     show: false,
     frame: false,
     ...mainWindowAppearance(theme),
-    title: 'Trellis Panel',
+    title: brandIdentity.name,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -338,9 +339,12 @@ function toggleQuickTodo(): void {
 
 function createTray(): void {
   if (tray) return
-  const icon = nativeImage.createFromPath(join(BRAND_RESOURCES, 'icon-32.png'))
+  const icon = nativeImage.createFromPath(join(BRAND_RESOURCES, 'icon-16.png'))
+  for (const size of [20, 24, 32, 40, 48, 64]) {
+    icon.addRepresentation({ scaleFactor: size / 16, buffer: readFileSync(join(BRAND_RESOURCES, `icon-${size}.png`)) })
+  }
   tray = new Tray(icon)
-  tray.setToolTip('Trellis Panel')
+  tray.setToolTip(brandIdentity.name)
   daemonTray = createDaemonTray({
     getMain: () => win && !win.isDestroyed() ? win : null,
     changed: rebuildTrayMenu,
@@ -834,8 +838,8 @@ if (!gotLock) {
     guiNativeStateReady = false
     try {
       if (bootstrap && win && !win.isDestroyed()) bootstrap.fail(error)
-      else dialog.showErrorBox('Trellis Panel 桌面窗口未能打开', '请退出并重新打开桌面。原有后台与本机配置已保留。')
-    } catch { console.error('Trellis Panel could not display its desktop startup failure.') }
+      else dialog.showErrorBox('Crux 桌面窗口未能打开', '请退出并重新打开桌面。原有后台与本机配置已保留。')
+    } catch { console.error('Crux could not display its desktop startup failure.') }
   })
 
   app.on('window-all-closed', () => {

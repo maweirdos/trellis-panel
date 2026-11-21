@@ -32,7 +32,7 @@
   min-height: 0;
   padding: var(--my-space-32) var(--my-space-24);
   border-right: 1px solid var(--my-border-subtle);
-  background: linear-gradient(155deg, var(--my-bg-info-subtle-1), var(--my-bg-info-subtle) 55%, var(--my-bg-sidebar));
+  background: var(--my-bg-sidebar);
 }
 
 .onboarding-shell__brand {

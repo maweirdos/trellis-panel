@@ -7,16 +7,15 @@
   opacity: 1;
   transition: none;
 }
-.my-startup-overlay[data-revealing='true'] { opacity: 0; }
-
 .my-startup-window {
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--my-bg-canvas);
+  isolation: isolate;
   color: var(--my-txt-primary);
 }
+.my-startup-backdrop { position: absolute; inset: 0; z-index: -1; background: var(--my-bg-canvas); }
 
 .my-startup-titlebar {
   display: flex;
@@ -93,33 +92,9 @@
   width: var(--my-space-96);
   height: var(--my-space-96);
 }
-.my-startup-piece { position: absolute; inset: 0; }
-.my-startup-piece .my-brand-mark { display: block; }
-/* Fixed windows meet on whole SVG units (10/32 and 16/32). Only their ink moves. */
-.my-startup-piece-cap { clip-path: inset(0 0 68.75% 0); }
-.my-startup-piece-return { clip-path: inset(31.25% 0 0 50%); }
-.my-startup-piece-stem { clip-path: inset(31.25% 50% 0 0); }
 .my-startup-wordmark {
+  display: flex;
   margin: var(--my-space-20) 0 0;
-  font-size: var(--my-text-xl);
-  font-weight: var(--my-weight-medium);
-  line-height: var(--my-line-heading);
-  letter-spacing: var(--my-tracking-tight);
-}
-.my-startup-activity {
-  width: var(--my-space-80);
-  height: var(--my-space-3);
-  margin-top: var(--my-space-32);
-  overflow: hidden;
-  border-radius: var(--my-radius-full);
-  background: var(--my-bg-layer-transparent-hover);
-}
-.my-startup-activity > span {
-  display: block;
-  width: var(--my-space-24);
-  height: 100%;
-  border-radius: inherit;
-  background: var(--my-txt-secondary);
 }
 
 .my-startup-recovery {
@@ -217,37 +192,11 @@
 .my-startup-app-entry { height: 100%; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .my-startup-overlay[data-revealing='true'] { transition: opacity var(--my-motion-normal) linear; }
-  :where(.my-startup-splash[data-entrance='true']) .my-startup-piece .my-brand-mark {
-    animation: my-startup-assemble calc(var(--my-motion-slow) * 2) var(--my-ease-out) both;
-  }
-  .my-startup-piece-cap .my-brand-mark { --startup-from-x: calc(var(--my-space-12) * -1); --startup-from-y: 0px; }
-  .my-startup-piece-return .my-brand-mark {
-    --startup-from-x: var(--my-space-12); --startup-from-y: 0px;
-    animation-delay: calc(var(--my-motion-fast) / 2);
-  }
-  .my-startup-piece-stem .my-brand-mark {
-    --startup-from-x: 0px; --startup-from-y: var(--my-space-12);
-    animation-delay: var(--my-motion-fast);
-  }
   :where(.my-startup-splash[data-entrance='true']) .my-startup-wordmark { animation: my-startup-appear calc(var(--my-motion-slow) * 2) var(--my-ease-out) var(--my-motion-normal) both; }
-  :where(.my-startup-splash[data-entrance='true']) .my-startup-activity { animation: my-startup-appear var(--my-motion-slow) var(--my-ease-out) var(--my-motion-slow) both; }
-  .my-startup-activity > span { animation: my-startup-shuttle calc(var(--my-motion-slow) * 5) ease-in-out infinite alternate; }
 }
 
-@keyframes my-startup-assemble {
-  from { opacity: 0; transform: translate(var(--startup-from-x), var(--startup-from-y)); }
-  to { opacity: 1; transform: none; }
-}
 @keyframes my-startup-appear { from { opacity: 0; } to { opacity: 1; } }
-@keyframes my-startup-shuttle {
-  0%, 8% { opacity: .45; transform: translateX(0) scaleX(.65); }
-  50% { opacity: 1; transform: translateX(var(--my-space-28)) scaleX(1); }
-  92%, 100% { opacity: .45; transform: translateX(var(--my-space-56)) scaleX(.65); }
-}
 @media (prefers-reduced-motion: reduce) {
   .my-startup-overlay { transition: none; }
-  .my-startup-activity > span { margin-inline: auto; animation: my-startup-breathe calc(var(--my-motion-slow) * 6) ease-in-out infinite alternate; }
   .my-startup-window .my-control:active:not(:disabled) { transform: none; }
 }
-@keyframes my-startup-breathe { from { opacity: .4; } to { opacity: .9; } }

@@ -42,7 +42,8 @@ applyMainWindowAppearance(
 - `resources/brand/mark.svg` owns the application glyph. Main resolves committed PNGs
   relative to `out/main` via `../../resources/brand`; electron-builder includes that
   directory inside the app and applies `icon.ico` to the Windows executable and NSIS.
-  All BrowserWindows use the application icon; the tray uses the 32px tile. Keep the
+  All BrowserWindows use the application icon; the tray provides 16/20/24/32/40/48/64px
+  tile representations for the corresponding display scales. Keep the
   packaged Windows AppUserModelID synchronized with `electron-builder.yml` appId
   (`com.mindfold.trellispanel`). Development uses the stable `.dev` suffix so the
   generic Electron host cannot seed or reuse the installed app's taskbar group.
@@ -105,7 +106,7 @@ applyMainWindowAppearance(
 | Development taskbar icon | Independent `.dev` identity; Shell properties point to the ICO and application path |
 | First development notification / restart | Owned Electron.lnk retains ICO, quoted app argument, native-compatible cwd and toast CLSID |
 | Foreign Electron shortcut | No overwrite; warn while allowing application startup |
-| Windows normal dev launch | Task Manager display metadata uses Trellis Panel for the host and its children |
+| Windows normal dev launch | Task Manager display metadata uses Crux for the host and its children |
 | Branded development host | app.isPackaged stays false; existing userData and session locations are retained |
 | Icon / identity / runtime update | New content-addressed host; previous running cache directory remains intact |
 | Development ProductName shortcut | Distinct from installed app; native notification validation preserves icon/args |

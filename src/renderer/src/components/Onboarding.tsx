@@ -3,6 +3,7 @@ import { useApp } from '../store'
 import { Button } from '../my/ui'
 import { PageBody, PageContent, PageLayout } from '../my/layout/PageLayout'
 import { BrandMark } from '../my/BrandMark'
+import { BrandWordmark } from '../my/BrandWordmark'
 
 export function Onboarding(): JSX.Element {
   const settings = useApp((s) => s.settings)
@@ -14,7 +15,7 @@ export function Onboarding(): JSX.Element {
   return <PageLayout variant="centered"><PageBody><PageContent>
     <div className="my-start"><div className="my-start-grid">
       <section className="min-w-0">
-        <div className="mb-6 flex items-center gap-3 text-my-secondary"><BrandMark size={24} /><span className="text-my-sm font-medium">Trellis Panel</span></div>
+        <div className="mb-6 flex items-center gap-3 text-my-primary" role="img" aria-label="Crux"><BrandMark size={28} /><BrandWordmark width={88} /></div>
         <h1 className="text-my-display font-semibold tracking-tight text-my-primary">工作台</h1>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button variant="primary" size="lg" onClick={() => useApp.getState().setPage('crux')}><Users size={17} />进入团队空间<ArrowRight size={15} /></Button>

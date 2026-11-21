@@ -1,4 +1,5 @@
 {
-  "name": "Trellis Panel",
-  "developmentProductName": "Trellis Panel Development"
+  "name": "Crux",
+  "developmentProductName": "Crux Development",
+  "legacyDevelopmentProductNames": ["Trellis Panel Development"]
 }

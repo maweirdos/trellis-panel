@@ -29,6 +29,7 @@
 | [components.md](./components.md)                                               | Semantic HTML, empty states, scrollbar patterns | Reference     |
 | [Task conversation contracts](../backend/task-conversations.md)              | Equal entry geometry, native identity, destination labels and retained request ownership | Homepage session continuation |
 | [Tool brand icons](./tool-brand-icons.md)                                     | Offline editor identities, original colors, explicit aliases and packaged attribution | Runtime and native-session brand marks |
+| [Crux brand system](./brand-system.md) | Canonical product art, optical sizes, Agent states, motion lifecycle and generated icons | Product identity / brand motion |
 | [Git viewer contracts](../backend/git-viewer.md)                              | Auxiliary history graph, unified diff, stale-result ownership and source attribution | Git viewer UI |
 | [hooks.md](./hooks.md)                                                         | Query and mutation hook patterns                | Reference     |
 | [type-safety.md](./type-safety.md)                                             | Types, import paths, module constants           | Reference     |
