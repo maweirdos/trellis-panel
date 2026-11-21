@@ -1,9 +1,10 @@
 import type { WindowDeps } from './deps'
 import { getProjectGeneration, getProjectRoot } from '../state'
-import { createDingTalkWorkspaceClient, createGitlabWorkspaceClient, createJiraWorkspaceClient } from '../services/daemon-client/provider-workspaces'
+import { createDingTalkWorkspaceClient, createFeishuWorkspaceClient, createGitlabWorkspaceClient, createJiraWorkspaceClient } from '../services/daemon-client/provider-workspaces'
 import { registerJiraIntegrationIpc } from './jira-integration'
 import { registerGitlabIntegrationIpc } from './gitlab-integration'
 import { registerDingTalkIntegrationIpc } from './dingtalk-integration'
+import { registerFeishuIntegrationIpc } from './feishu-integration'
 
 /** Native window/frame authority and GUI selection precede every provider facade.
  * All provider stores/workers remain in the single leased daemon. */
@@ -16,4 +17,5 @@ export function registerProviderWorkspacesIpc(deps: WindowDeps): void {
   registerJiraIntegrationIpc(({ signal }) => createJiraWorkspaceClient(selection, signal), isMainFrame)
   registerGitlabIntegrationIpc(createGitlabWorkspaceClient(selection), isMainFrame)
   registerDingTalkIntegrationIpc(createDingTalkWorkspaceClient(selection), isMainFrame)
+  registerFeishuIntegrationIpc(createFeishuWorkspaceClient(selection), isMainFrame)
 }

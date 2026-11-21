@@ -13,13 +13,25 @@ export interface ProviderManifest { id: ProviderId; name: string; category: Inte
 export const GITLAB_OAUTH_REDIRECT_URI = 'http://127.0.0.1:17654/oauth/callback/gitlab'
 export const JIRA_OAUTH_SCOPES = ['READ', 'WRITE'] as const
 export const JIRA_OAUTH_CALLBACK_PATH = '/auth/jira/callback'
+export const JIRA_OAUTH_REDIRECT_URI = 'http://127.0.0.1:17654/auth/jira/callback'
+/** Native and renderer callers must agree on the exact supported callback routes. */
+export function classifyJiraOAuthRedirectUri(value: string): 'local' | 'relay' | null {
+  if (value === JIRA_OAUTH_REDIRECT_URI) return 'local'
+  if (value.length > 2048 || !value.startsWith('https://') || /[\s\\?#@\u0000-\u001f\u007f]/.test(value)
+    || value.slice(value.indexOf('/', 8)) !== JIRA_OAUTH_CALLBACK_PATH) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash
+      && url.pathname === JIRA_OAUTH_CALLBACK_PATH ? 'relay' : null
+  } catch { return null }
+}
 export const GITLAB_OAUTH_SCOPES = ['read_api', 'read_user'] as const
 const baseFields: ConfigField[] = [{ key: 'baseUrl', label: '实例地址', required: true, placeholder: 'https://…' }]
 export const INTEGRATION_CATALOG: readonly ProviderManifest[] = [
   { id: 'weknora', name: 'WeKnora', category: 'knowledge', description: '项目知识检索与人工确认成果发布；不启用自动归档或规范同步。', capabilities: ['knowledge.read', 'knowledge.publish'], fields: [...baseFields, { key: 'apiKey', label: 'API Key', secret: true, required: true }] },
   { id: 'jira', name: 'Jira', category: 'tasks', description: '连接 Jira Server / Data Center，查询、导入并回写工单。', capabilities: ['task.search', 'task.import', 'task.comment', 'task.transition'], fields: [...baseFields, { key: 'jql', label: '默认 JQL', multiline: true }, { key: 'statusMap', label: '状态映射（JSON 对象）', placeholder: '{"处理中":"in_progress"}' }], authentication: [
     { id: 'token', name: '个人访问令牌（PAT）', fields: [{ key: 'token', label: '访问令牌（PAT）', secret: true, required: true }] },
-    { id: 'oauth2', name: '浏览器授权登录', fields: [{ key: 'clientId', label: 'OAuth Client ID', required: true }, { key: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true }, { key: 'redirectUri', label: '团队服务 HTTPS 回调地址', required: true, placeholder: 'https://team.example.com/auth/jira/callback' }], oauth: { registrationPath: '/plugins/servlet/applinks/listApplicationLinks', redirectUri: '', scopes: [...JIRA_OAUTH_SCOPES] } },
+    { id: 'oauth2', name: '浏览器授权登录', fields: [{ key: 'clientId', label: 'OAuth Client ID', required: true }, { key: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true }], oauth: { registrationPath: '/plugins/servlet/applinks/listApplicationLinks', redirectUri: JIRA_OAUTH_REDIRECT_URI, scopes: [...JIRA_OAUTH_SCOPES] } },
     { id: 'basic', name: '用户名和密码', fields: [{ key: 'user', label: '用户名', required: true }, { key: 'password', label: '密码', secret: true, required: true }] }
   ] },
   { id: 'github', name: 'GitHub', category: 'repositories', description: '查询仓库与 Pull Request，关联到本地工作项。', capabilities: ['repository.read'], fields: [{ key: 'baseUrl', label: 'API 地址', placeholder: 'https://api.github.com', defaultValue: 'https://api.github.com' }, { key: 'token', label: '访问令牌', secret: true, required: true }] },

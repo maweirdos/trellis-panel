@@ -70,14 +70,15 @@ export function useIntegrationSnapshot() {
   const [loading, setLoading] = useState(false)
   const [mainOutdated, setMainOutdated] = useState(false)
   const sequence = useRef(0)
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (requireSuccess = false): Promise<void> => {
     if (!current()) return
     const token = ++sequence.current
     const bridge = integrationBridgeState()
-    if (bridge !== 'ready') { errorOwner.current = current; setError(integrationBridgeMessage(bridge)); setLoading(false); return }
+    if (bridge !== 'ready') { errorOwner.current = current; setError(integrationBridgeMessage(bridge)); setLoading(false); if (requireSuccess) throw new Error(integrationBridgeMessage(bridge)); return }
     setLoading(true)
     try {
       const result = await api.integrations.list()
+      if (requireSuccess && !result.ok) throw new Error(result.error)
       if (token !== sequence.current || !current()) return
       errorOwner.current = current
       setMainOutdated(false)
@@ -89,6 +90,7 @@ export function useIntegrationSnapshot() {
         setMainOutdated(outdated)
         setError(outdated ? '窗口已加载新接口，但主进程仍是旧版本。请完整退出并重新打开桌面应用；刷新页面不能加载新主进程。' : '无法读取集成配置，请重新打开此页面')
       }
+      if (requireSuccess) throw error
     }
     finally { if (token === sequence.current && current()) setLoading(false) }
   }, [current])

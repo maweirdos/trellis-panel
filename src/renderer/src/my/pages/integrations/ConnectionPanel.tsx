@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import { useLayoutEffect, useState, type JSX } from 'react'
 import { ArrowRight, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { IntegrationBinding, IntegrationConnection, ProviderManifest, RemoteRepository } from '../../../../../shared/integrations'
 import { api } from '../../../api'
@@ -80,60 +80,65 @@ interface ConnectionPanelProps {
   provider: ProviderManifest
   connection?: IntegrationConnection
   root: string | null
-  bindings: IntegrationBinding[]
+  bindings: readonly IntegrationBinding[]
   authorizationAvailable: boolean
   workspaceEnabled?: boolean
   nativeAvailable?: boolean
   loaded?: boolean
   title?: string
+  allowCreate?: boolean
   connections?: readonly IntegrationConnection[]
   onSelectConnection?: (id: string) => void
   onConnect?: () => void
   onEditConnection?: () => void
   onBindProject?: (binding?: IntegrationBinding) => void
   onSaved: () => Promise<void>
+  onAuthorizationSaved?: () => Promise<void>
 }
 
 /** One instance card. Generic capabilities live in focused sections and dialogs. */
-export function ConnectionPanel(props: ConnectionPanelProps): JSX.Element {
+export function ConnectionPanel(props: ConnectionPanelProps): JSX.Element | null {
   const [adding, setAdding] = useState(false)
-  if (props.connection) return <ConnectedPanel key={JSON.stringify([props.root, props.connection.id, props.connection.revision])} {...props} connection={props.connection} />
-  return <IntegrationSection title={props.title ?? connectionTitle(props.provider)}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="my-item-description">{props.loaded === false ? '连接尚未读取' : props.provider.id === 'jira' || props.provider.id === 'gitlab' ? '尚未绑定实例' : '尚未连接'}</p><Button variant="primary" size="sm" onClick={props.onConnect ?? (() => setAdding(true))}>{props.provider.id === 'jira' || props.provider.id === 'gitlab' ? `绑定 ${props.provider.name}` : connectionTitle(props.provider)}</Button></div>
-    {props.provider.id === 'weknora' && props.root && <KnowledgeLegacyImportAction key={props.root} root={props.root} nativeAvailable={props.nativeAvailable} onSaved={props.onSaved} />}
-    {adding && <ConnectionEditor provider={props.provider} authorizationAvailable={props.authorizationAvailable} onClose={() => setAdding(false)} onSaved={props.onSaved} />}
-  </IntegrationSection>
+  if (!props.connection && props.allowCreate === false) return null
+  return <>
+    {props.connection ? <ConnectedPanel key={JSON.stringify([props.root, props.connection.id])} {...props} connection={props.connection} /> : <IntegrationSection title={props.title ?? connectionTitle(props.provider)}>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="my-item-description">{props.loaded === false ? '连接尚未读取' : props.provider.id === 'jira' || props.provider.id === 'gitlab' ? '尚未绑定实例' : '尚未连接'}</p><Button variant="primary" size="sm" onClick={props.onConnect ?? (() => setAdding(true))}>{props.provider.id === 'jira' || props.provider.id === 'gitlab' ? '绑定 ' + props.provider.name : connectionTitle(props.provider)}</Button></div>
+      {props.provider.id === 'weknora' && props.root && <KnowledgeLegacyImportAction key={props.root} root={props.root} nativeAvailable={props.nativeAvailable} onSaved={props.onSaved} />}
+    </IntegrationSection>}
+    {adding && <ConnectionEditor provider={props.provider} connections={props.connections} authorizationAvailable={props.authorizationAvailable} onClose={() => setAdding(false)} onSaved={props.provider.id === 'jira' ? props.onAuthorizationSaved ?? props.onSaved : props.onSaved} />}
+  </>
 }
 
 type WorkspaceDialog = { kind: 'repositories' | 'work-items' | 'diagnostics' | 'remove' } | { kind: 'pull-requests'; binding: IntegrationBinding }
-function ConnectedPanel({ provider, connection, root, bindings, authorizationAvailable, workspaceEnabled = true, nativeAvailable = true, title, connections, onSelectConnection, onConnect, onEditConnection, onBindProject, onSaved }: ConnectionPanelProps & { connection: IntegrationConnection }): JSX.Element {
-  const [editing, setEditing] = useState<'new' | 'edit' | null>(null)
+function ConnectedPanel({ provider, connection, root, bindings, authorizationAvailable, workspaceEnabled = true, nativeAvailable = true, title, allowCreate = true, connections, onSelectConnection, onConnect, onEditConnection, onBindProject, onSaved, onAuthorizationSaved = onSaved }: ConnectionPanelProps & { connection: IntegrationConnection }): JSX.Element {
+  const [editing, setEditing] = useState<{ kind: 'new' | 'edit'; connection?: IntegrationConnection } | null>(null)
   const [bindingEdit, setBindingEdit] = useState<{ binding?: IntegrationBinding; repo?: RemoteRepository } | null>(null)
   const [inspection, setInspection] = useState('')
   const [dialog, setDialog] = useState<WorkspaceDialog | null>(null)
   const [task, setTask] = useState('')
+  useLayoutEffect(() => { setBindingEdit(null); setInspection(''); setDialog(null); setTask('') }, [connection.revision])
   const snapshot = useApp((s) => s.snapshot)
   const action = useIntegrationAction(`${connection.id}:${connection.revision}`)
   const selectedBindings = bindings.filter((binding) => binding.connectionId === connection.id && Boolean(root) && projectRootKey(binding.root) === projectRootKey(root))
   const displayName = connectionDisplayName(connection, provider)
   const host = connectionHost(connection, provider)
   const bind = (binding?: IntegrationBinding): void => { if (action.current()) { if (onBindProject) onBindProject(binding); else setBindingEdit({ binding }) } }
-  const add = (): void => { if (action.current()) { if (onConnect) onConnect(); else setEditing('new') } }
-  const edit = (): void => { if (action.current()) { if (onEditConnection) onEditConnection(); else setEditing('edit') } }
+  const add = (): void => { if (action.current()) { if (onConnect) onConnect(); else setEditing({ kind: 'new' }) } }
+  const edit = (): void => { if (action.current()) { if (onEditConnection) onEditConnection(); else setEditing({ kind: 'edit', connection }) } }
   const open = (next: WorkspaceDialog): void => { if (action.current()) setDialog(next) }
   const dialogTitle = dialog?.kind === 'repositories' ? '浏览仓库' : dialog?.kind === 'pull-requests' ? 'Pull Request / Merge Request' : dialog?.kind === 'work-items' ? (provider.category === 'messaging' ? '工作项通知' : '工作项关联') : '连接详情'
   return <>
     <IntegrationSection title={title ?? connectionTitle(provider)}>
       <div className="flex flex-wrap items-center justify-between gap-4"><div className="min-w-0 flex-1">
         {connections && connections.length > 1 && onSelectConnection ? <Select ariaLabel={provider.id === 'jira' || provider.id === 'gitlab' ? '选择实例连接' : '选择连接'} className="w-full" value={connection.id} onChange={onSelectConnection} options={connections.map((item) => ({ value: item.id, label: `${connectionDisplayName(item, provider)}${item.enabled ? '' : ' · 已停用'}` }))} /> : <p className="my-item-title break-words">{displayName}</p>}
-        {!connection.legacy && <p className="my-item-description mt-1 break-all">{host || (provider.category === 'messaging' ? '群机器人' : provider.name)}</p>}
-        <p className={`mt-2 text-my-xs ${connection.check === 'failed' ? 'text-my-danger-text' : 'text-my-secondary'}`}>{connection.enabled ? checkLabels[connection.check] : '已停用'}</p>
-      </div><div className="flex flex-wrap items-center gap-2"><Button size="sm" disabled={action.busy} onClick={edit}>编辑</Button><Button size="sm" disabled={!nativeAvailable || action.busy || !connection.enabled} onClick={() => void action.run(() => api.integrations.inspect({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result && action.current()) { setInspection(result.detail); await onSaved() } })}>{action.busy ? '检查中…' : provider.category === 'messaging' ? '检查配置' : '检查连接'}</Button>
-        <Dropdown align="right" trigger={({ open: expanded, toggle }) => <Button size="sm" variant="ghost" aria-label="更多连接操作" aria-expanded={expanded} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{(close) => <><DropdownItem disabled={action.busy} onClick={() => { close(); add() }}>{provider.id === 'jira' || provider.id === 'gitlab' ? '绑定其他实例' : '添加连接'}</DropdownItem><DropdownItem onClick={() => { close(); open({ kind: 'diagnostics' }) }}>连接详情</DropdownItem>{!connection.legacy && <DropdownItem danger disabled={!nativeAvailable || action.busy} onClick={() => { close(); open({ kind: 'remove' }) }}>移除连接</DropdownItem>}</>}</Dropdown>
+        {!connection.legacy && (host || allowCreate) && <p className="my-item-description mt-1 break-all">{host || (provider.category === 'messaging' ? '群机器人' : provider.name)}</p>}
+        <p className={`mt-2 text-my-xs ${connection.check === 'failed' ? 'text-my-danger-text' : 'text-my-secondary'}`}>{connection.enabled ? provider.id === 'jira' && connection.check === 'authenticated' && connection.config.authMethod !== 'oauth2' ? connection.detail || checkLabels[connection.check] : checkLabels[connection.check] : '已停用'}</p>
+      </div><div className="flex flex-wrap items-center gap-2"><Button size="sm" disabled={action.busy || (!allowCreate && !nativeAvailable)} onClick={edit}>编辑</Button><Button size="sm" disabled={!nativeAvailable || action.busy || !connection.enabled} onClick={() => void action.run(() => api.integrations.inspect({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result && action.current()) { setInspection(result.detail); await onSaved() } })}>{action.busy ? '检查中…' : provider.category === 'messaging' ? '检查配置' : '检查连接'}</Button>
+        <Dropdown align="right" trigger={({ open: expanded, toggle }) => <Button size="sm" variant="ghost" aria-label="更多连接操作" aria-expanded={expanded} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{(close) => <>{allowCreate && <DropdownItem disabled={action.busy} onClick={() => { close(); add() }}>{provider.id === 'jira' || provider.id === 'gitlab' ? '绑定其他实例' : '添加连接'}</DropdownItem>}<DropdownItem onClick={() => { close(); open({ kind: 'diagnostics' }) }}>连接详情</DropdownItem>{!connection.legacy && <DropdownItem danger disabled={!nativeAvailable || action.busy} onClick={() => { close(); open({ kind: 'remove' }) }}>移除连接</DropdownItem>}</>}</Dropdown>
       </div></div>
       {connection.check === 'failed' && (inspection || connection.detail) && <details className="integration-disclosure text-my-sm"><summary>查看失败详情</summary><p className="mt-2 break-words text-my-danger-text">{inspection || connection.detail}</p></details>}
       {inspection && connection.check !== 'failed' && <p role="status" className="break-words text-my-sm text-my-secondary">{inspection}</p>}
-      <ConnectionAuthorization provider={provider} connection={connection} available={authorizationAvailable && nativeAvailable} onSaved={onSaved} />
+      <ConnectionAuthorization provider={provider} connection={connection} connections={connections} available={authorizationAvailable && nativeAvailable} onSaved={onAuthorizationSaved} />
       {action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}
     </IntegrationSection>
     {workspaceEnabled && <>
@@ -147,12 +152,12 @@ function ConnectedPanel({ provider, connection, root, bindings, authorizationAva
       </IntegrationSection>
       {provider.category !== 'tasks' && provider.category !== 'knowledge' && <IntegrationSection title={provider.category === 'messaging' ? '工作项通知' : '工作项关联'} action={{ label: provider.category === 'messaging' ? '预览通知' : '关联 PR / MR', disabled: !root || !nativeAvailable || !connection.enabled, onClick: () => open({ kind: 'work-items' }) }}><p className="my-item-description">{provider.category === 'messaging' ? '选择工作项与目的地，确认内容后发送。' : '将 Pull Request 或 Merge Request 关联到工作项。'}</p></IntegrationSection>}
     </>}
-    {editing && <ConnectionEditor provider={provider} connection={editing === 'edit' ? connection : undefined} authorizationAvailable={authorizationAvailable} onClose={() => setEditing(null)} onSaved={onSaved} />}
+    {editing && <ConnectionEditor provider={provider} connection={editing.connection} connections={connections} authorizationAvailable={authorizationAvailable} onClose={() => setEditing(null)} onSaved={provider.id === 'jira' ? onAuthorizationSaved : onSaved} />}
     {bindingEdit && root && <BindingEditor root={root} connection={connection} provider={provider} {...bindingEdit} onClose={() => setBindingEdit(null)} onSaved={onSaved} />}
     {dialog?.kind === 'remove' ? <Modal open ariaLabel="移除连接" onClose={() => { if (!action.busy) setDialog(null) }}><div className="space-y-3 p-5"><h2 className="text-my-lg font-semibold">移除 {connection.name}？</h2><p className="text-my-sm text-my-secondary">此连接将无法继续使用，工作项已有的来源记录会保留。</p>{action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}</div><div className="flex justify-end gap-2 border-t border-my-line px-5 py-3"><Button disabled={action.busy} onClick={() => setDialog(null)}>取消</Button><Button variant="danger" disabled={action.busy} onClick={() => void action.run(() => api.integrations.removeConnection({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result !== undefined && action.current()) { setDialog(null); await onSaved() } })}>{action.busy ? '移除中…' : '确认移除'}</Button></div></Modal> : dialog && <Modal open ariaLabel={dialogTitle} width={720} onClose={() => setDialog(null)}><div className="flex items-center justify-between gap-3 border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{dialogTitle}</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={() => setDialog(null)}><X size={16} /></Button></div><div className="my-scrollbar max-h-[65vh] space-y-4 overflow-y-auto p-5">
       {dialog.kind === 'repositories' && root && <RepositoryBrowser root={root} connection={connection} onSelect={(repo) => { if (action.current()) { setDialog(null); setBindingEdit({ repo }) } }} />}
       {dialog.kind === 'pull-requests' && root && <PullRequestBrowser root={root} binding={dialog.binding} connection={connection} />}
-      {dialog.kind === 'work-items' && <><p className="text-my-xs text-my-secondary">可选择当前项目已启用的仓库或通知目的地。</p><Select className="w-full" ariaLabel="选择集成工作项" value={task} onChange={setTask} options={[{ value: '', label: '选择工作项' }, ...[...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].filter((item) => item.record).map((item) => ({ value: item.path, label: `${item.archived ? '已归档 · ' : ''}${item.record?.title || item.dirName}` }))]} />{task && <WorkItemIntegrations key={task} taskDir={task} />}</>}
+      {dialog.kind === 'work-items' && <>{allowCreate && <p className="text-my-xs text-my-secondary">可选择当前项目已启用的仓库或通知目的地。</p>}<Select className="w-full" ariaLabel="选择集成工作项" value={task} onChange={setTask} options={[{ value: '', label: '选择工作项' }, ...[...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].filter((item) => item.record).map((item) => ({ value: item.path, label: `${item.archived ? '已归档 · ' : ''}${item.record?.title || item.dirName}` }))]} />{task && <WorkItemIntegrations key={task} taskDir={task} connectionId={allowCreate ? undefined : connection.id} />}</>}
       {dialog.kind === 'diagnostics' && <dl className="space-y-4 text-my-sm"><div><dt className="text-my-tertiary">检查结果</dt><dd className="mt-1 break-words">{inspection || connection.detail || checkLabels[connection.check]}</dd></div>{connection.legacy && <div><dt className="text-my-tertiary">配置来源</dt><dd className="mt-1">原有设置兼容连接</dd></div>}<div><dt className="text-my-tertiary">连接标识 / 版本</dt><dd className="mt-1 break-all">{connection.id} / {connection.revision}</dd></div>{root && <div><dt className="text-my-tertiary">当前项目</dt><dd className="mt-1 break-all">{root}</dd></div>}{connection.checkedAt && <div><dt className="text-my-tertiary">上次检查</dt><dd className="mt-1">{new Date(connection.checkedAt).toLocaleString()}</dd></div>}</dl>}
     </div></Modal>}
   </>

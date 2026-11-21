@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BindingRequest, ConnectionRequest, DeliveryReceipt, IntegrationBinding, IntegrationConnection, IntegrationSnapshot, JiraContext, NotificationPreview, SaveBindingInput, SaveConnectionInput } from '../../../shared/integrations'
-import { connectionAuthentication, connectionFields, externalObjectSchema } from '../../../shared/integrations'
+import { classifyJiraOAuthRedirectUri, JIRA_OAUTH_REDIRECT_URI, connectionAuthentication, connectionFields, externalObjectSchema } from '../../../shared/integrations'
 import type { ExternalLink, ExternalObject } from '../../../shared/integrations'
 import { integrationWorkspaceRoot, integrationWorkspaceSnapshot } from './workspace-host'
 import { getSettings, setSettings } from '../store'
@@ -46,20 +46,29 @@ export function resolveConnection(input: ConnectionRequest, allowDisabled = fals
   if (!stored) throw new IntegrationError('连接不存在')
   return { public: publicConnection, secrets: Object.fromEntries(Object.entries(stored.secrets).map(([key, value]) => [key, revealSecret(value)])), instanceId: stored.providerId === 'jira' ? jiraInstanceIdFor(stored.config.baseUrl, stored.jiraSourceUser ?? stored.config.user) : `${stored.providerId}:${stored.config.baseUrl || integrationRegistry.get(stored.providerId).manifest.instanceUrl || stored.id}` }
 }
-function normalizedConfig(input: SaveConnectionInput, legacy: boolean): Record<string, string> {
+function normalizedConfig(input: SaveConnectionInput, legacy: boolean, previous?: Record<string, string>): Record<string, string> {
   const manifest = integrationRegistry.get(input.providerId).manifest
   if (!legacy && manifest.authentication && input.config.authMethod && !manifest.authentication.some((method) => method.id === input.config.authMethod)) throw new IntegrationError('不支持此认证方式')
   const selectedFields = legacy ? connectionFields(manifest, { ...input.config, ...(input.providerId === 'jira' ? { authMethod: 'basic' } : {}) }) : connectionFields(manifest, input.config)
   const fields = selectedFields.filter((f) => !f.secret).map((f) => f.key)
   if (!legacy && manifest.authentication) fields.push('authMethod')
+  if (!legacy && input.providerId === 'jira' && input.config.authMethod === 'oauth2') fields.push('redirectUri')
   if (legacy && input.providerId === 'jira' && input.config.authMethod && input.config.authMethod !== 'basic') throw new IntegrationError('原有 Jira 配置仅支持用户名和密码，请新建 PAT 或 OAuth 连接')
   if (legacy && input.providerId === 'gitlab') fields.push('user', 'project')
   const config = Object.fromEntries(Object.entries(input.config).filter(([key]) => fields.includes(key)).map(([key, value]) => [key, value.trim()]))
+  if (input.providerId === 'jira') {
+    for (const key of ['jql', 'statusMap']) if (input.config[key] === undefined && previous?.[key] !== undefined) config[key] = previous[key]
+    if (!legacy && config.authMethod === 'oauth2') {
+      config.redirectUri = input.config.redirectUri === undefined ? previous?.redirectUri ?? JIRA_OAUTH_REDIRECT_URI : input.config.redirectUri
+      if (!classifyJiraOAuthRedirectUri(config.redirectUri)) throw new IntegrationError('Jira 回调必须使用固定本机地址或团队服务的 /auth/jira/callback HTTPS 地址')
+    }
+  }
   for (const field of selectedFields) if (!field.secret && !config[field.key] && field.defaultValue) config[field.key] = field.defaultValue
   if (manifest.fields.some((field) => field.key === 'baseUrl')) {
     let url: URL
     try { url = new URL(config.baseUrl) } catch { throw new IntegrationError('请输入有效的实例地址') }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new IntegrationError('实例地址只能包含 HTTP(S) 协议、主机和路径')
+    if (input.providerId === 'jira' && (/[\s\\?#\u0000-\u001f\u007f]/.test(config.baseUrl) || /^https?:\/\/[^/]*@/i.test(config.baseUrl))) throw new IntegrationError('实例地址只能包含 HTTP(S) 协议、主机和路径')
     config.baseUrl = url.href.replace(/\/+$/, '')
     if (input.providerId === 'weknora') config.baseUrl = config.baseUrl.replace(/\/api\/v1$/i, '')
   }
@@ -77,7 +86,7 @@ function saveConnectionWithTeamBinding(input: SaveConnectionInput, trustedBindin
   if (input.id?.startsWith('legacy-') && !legacy) throw new IntegrationError('旧连接不存在，请刷新')
   if (legacy) {
     if (legacy.revision !== input.revision || legacy.providerId !== input.providerId) throw new IntegrationError('旧连接已更新，请刷新后再保存', 'conflict')
-    const config = normalizedConfig(input, true)
+    const config = normalizedConfig(input, true, legacy.config)
     if (input.enabled && !config.user) throw new IntegrationError('启用旧连接前请填写用户名')
     const patch = input.secrets.password
     let password: string | undefined
@@ -96,11 +105,11 @@ function saveConnectionWithTeamBinding(input: SaveConnectionInput, trustedBindin
     return next
   }
   const manifest = integrationRegistry.get(input.providerId).manifest
-  const config = normalizedConfig(input, false)
-  const fields = connectionFields(manifest, config)
   return updateIntegrationState((state) => {
     const previous = input.id ? state.connections.find((c) => c.id === input.id && !c.deleted) : undefined
     if (input.id && (!previous || previous.revision !== input.revision || previous.providerId !== input.providerId)) throw new IntegrationError('连接已更新或不存在，请刷新', 'conflict')
+    const config = normalizedConfig(input, false, previous?.config)
+    const fields = connectionFields(manifest, config)
     const methodChanged = previous && connectionAuthentication(manifest, previous.config)?.id !== connectionAuthentication(manifest, config)?.id
     const secrets: Record<string, string> = methodChanged ? {} : { ...previous?.secrets }
     if (previous && (previous.config.baseUrl !== config.baseUrl || previous.config.clientId !== config.clientId || previous.config.redirectUri !== config.redirectUri || input.secrets.clientSecret?.op === 'replace' || input.secrets.clientSecret?.op === 'clear')) delete secrets.oauthTokens
@@ -182,7 +191,7 @@ export function removeConnection(input: ConnectionRequest): null {
   if (!connection || connection.revision !== input.connectionRevision) throw new IntegrationError('连接已更新或不存在', 'conflict')
   if (connection.legacy) throw new IntegrationError('旧连接仍被兼容入口使用，请先停用；不删除历史设置', 'denied')
   return updateIntegrationState((state) => {
-    const stored = state.connections.find((c) => c.id === input.connectionId && c.revision === input.connectionRevision)
+    const stored = state.connections.find((c) => c.id === input.connectionId && !c.deleted && c.revision === input.connectionRevision)
     if (!stored) throw new IntegrationError('连接已更新', 'conflict')
     stored.deleted = true; stored.enabled = false; stored.revision++; stored.secrets = {}
     state.bindings.filter((b) => b.connectionId === stored.id).forEach((b) => { b.enabled = false; b.revision++ })
@@ -199,7 +208,7 @@ export async function inspectConnection(input: ConnectionRequest): Promise<Integ
     else if (provider.inspect) detail = await provider.inspect(connection)
   } catch (error) {
     if (!connection.public.legacy) updateIntegrationState((state) => {
-      const stored = state.connections.find((c) => c.id === input.connectionId && c.revision === input.connectionRevision)
+      const stored = state.connections.find((c) => c.id === input.connectionId && !c.deleted && c.revision === input.connectionRevision)
       if (stored) { stored.checkedAt = Date.now(); stored.check = 'failed'; stored.detail = '连接检查失败，请检查认证、权限与网络' }
     })
     throw error
@@ -207,7 +216,7 @@ export async function inspectConnection(input: ConnectionRequest): Promise<Integ
   resolveConnection(input, true)
   if (connection.public.legacy) return { ...connection.public, detail, check: 'authenticated', checkedAt: Date.now() }
   return updateIntegrationState((state) => {
-    const stored = state.connections.find((c) => c.id === input.connectionId && c.revision === input.connectionRevision)
+    const stored = state.connections.find((c) => c.id === input.connectionId && !c.deleted && c.revision === input.connectionRevision)
     if (!stored) throw new IntegrationError('检查期间连接已更新，请重试', 'conflict')
     stored.detail = detail.slice(0, 300); stored.checkedAt = Date.now(); stored.check = provider.notification ? 'configured' : 'authenticated'
     return toPublic(stored)

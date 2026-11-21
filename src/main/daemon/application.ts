@@ -30,6 +30,7 @@ import { DaemonWorkspaceScope } from './workspace-scope'
 import { installJiraDomain } from './jira'
 import { installGitlabDomain } from './gitlab'
 import { installDingTalkDomain } from './dingtalk-domain'
+import { installFeishuDomain } from './feishu-domain'
 import { DaemonError } from './errors'
 import { LIFECYCLE_RUNTIME_CONTROLS, LIFECYCLE_SESSION_ADMISSIONS } from '../../shared/daemon/lifecycle'
 
@@ -47,6 +48,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
   let runtime: DaemonRuntime | undefined, providers: ProviderDomain | undefined, scope: DaemonWorkspaceScope | undefined
   let jira: ReturnType<typeof installJiraDomain> | undefined, gitlab: ReturnType<typeof installGitlabDomain> | undefined
   let dingtalk: ReturnType<typeof installDingTalkDomain> | undefined
+  let feishu: ReturnType<typeof installFeishuDomain> | undefined
   let providerCommands: RuntimeCommands | undefined, scheduler: IntegrationScheduler | undefined
   let legacy: ReturnType<typeof createLegacyIntegrationActions> | undefined
   let polling: Promise<void> | undefined
@@ -96,6 +98,9 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       const ports = { context, repository, scheduler, scope, domain: providers, assertOwner }
       jira = installJiraDomain({ ...ports, assertTaskRemovable(grant) { scope?.assert(grant); if (!rollbackRoots.has(grant.root)) throw new DaemonError('E_DENIED', 'Task removal requires exclusive native workspace admission and a verified idle RuntimeHost.') } }); gitlab = installGitlabDomain(ports)
       dingtalk = installDingTalkDomain({ context, assertOwner, scope, runtime, domain: providers, currentGrant: id => repository.grant(id), assertAdmission(grant) { assertAdmission(); if (rollbackRoots.has(grant.root) || changingRoots.has(grant.root)) throw new DaemonError('E_BUSY', 'Native task intake is closed for a protected workspace ownership change.') } })
+      feishu = installFeishuDomain({ context, assertOwner, scope, domain: providers, assertWorkspaceAdmission(grant) {
+        if (closed || rollbackRoots.has(grant.root) || changingRoots.has(grant.root)) throw new DaemonError('E_BUSY', '原工作区暂不接收飞书任务操作。')
+      } })
       initialized = true
     })()
     initializing = pending
@@ -135,7 +140,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       if (rollbackRoots.has(grant.root) || changingRoots.has(grant.root)) throw new DaemonError('E_BUSY', 'Another native operation owns this workspace admission.')
       changingRoots.add(grant.root)
       try {
-        if (dingtalk?.hasActiveWork() || providerCommands?.count(grant.root) || await runtime?.ownsWorkspace(grant.root)) throw new DaemonError('E_CONFLICT', 'Original runtime/provider operations still own this grant; replacement or revocation is blocked.')
+        if (dingtalk?.hasActiveWork() || feishu?.hasActiveWork(grant.root) || providerCommands?.count(grant.root) || await runtime?.ownsWorkspace(grant.root)) throw new DaemonError('E_CONFLICT', 'Original runtime/provider operations still own this grant; replacement or revocation is blocked.')
         return change()
       } finally { changingRoots.delete(grant.root) }
     },
@@ -213,7 +218,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
           if (!grant) throw new DaemonError('E_DENIED', 'Protected rollback requires its native workspace grant.')
           rollbackRoots.add(grant.root)
           try {
-            if (dingtalk?.hasActiveWork() || providerCommands?.count(grant.root) || repository.jobs(grant.workspaceId).some(job => ['queued', 'dispatched', 'running', 'cancel-requested', 'unknown'].includes(job.state)) || await runtime.ownsWorkspace(grant.root)) throw new DaemonError('E_CONFLICT', 'Native sessions, workflows, provider jobs or pending operations still own this workspace; rollback is blocked.')
+            if (dingtalk?.hasActiveWork() || feishu?.hasActiveWork(grant.root) || providerCommands?.count(grant.root) || repository.jobs(grant.workspaceId).some(job => ['queued', 'dispatched', 'running', 'cancel-requested', 'unknown'].includes(job.state)) || await runtime.ownsWorkspace(grant.root)) throw new DaemonError('E_CONFLICT', 'Native sessions, workflows, provider jobs or pending operations still own this workspace; rollback is blocked.')
             return await scope.run(grant, () => providers?.dispatch(request, actor))
           } finally { rollbackRoots.delete(grant.root) }
         }
@@ -226,6 +231,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       polling = (async () => {
         const results = await Promise.allSettled([
           dingtalk?.poll(),
+          feishu?.poll(),
           currentJira.jira.pollDue((grant, action) => scope ? scope.run(grant, action) : Promise.reject(new DaemonError('E_UNAVAILABLE', 'Native workspace scope is unavailable.'))),
           currentGitlab.poll(binding => repository.grant(binding.plan.target.workspaceId))
         ])
@@ -241,12 +247,13 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       idleProbe = probe
       const workflows = probeWorkspaceAdmissions()
       const ding = dingtalk?.probeIdle()
+      const feishuProbe = feishu?.probeIdle()
       let stopped = false
       try {
         const assertIdle = (): void => {
           assertOwner()
           if (closed || !initialized || !runtime || !scheduler || initializing || polling || operations || rollbackRoots.size || changingRoots.size
-            || scheduler.hasRunning() || repository.allJobs().some(activeJob) || providerCommands?.count() || dingtalk?.hasActiveWork() || ding?.busy() || workflows.busy()) throw new DaemonError('E_BUSY', 'Original native application work, initialization, polling or admission is still active; idle-only shutdown was refused.')
+            || scheduler.hasRunning() || repository.allJobs().some(activeJob) || providerCommands?.count() || dingtalk?.hasActiveWork() || feishu?.hasActiveWork() || ding?.busy() || workflows.busy()) throw new DaemonError('E_BUSY', 'Original native application work, initialization, polling or admission is still active; idle-only shutdown was refused.')
         }
         assertIdle()
         // Healthy ready connections are allowed. The real RuntimeHost checks
@@ -262,7 +269,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
         stopped = true
       } finally {
         if (!closed || stopped) {
-          workflows.release(); ding?.release()
+          workflows.release(); ding?.release(); feishuProbe?.release()
           if (idleProbe === probe) idleProbe = undefined
         }
       }
@@ -276,6 +283,7 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       // stopped, and must not prevent attempting its actual shutdown below.
       const cleanup = [
         Promise.resolve().then(() => dingtalk?.closeAdmission()).then(() => dingtalk?.shutdown()),
+        Promise.resolve().then(() => feishu?.shutdown()),
         Promise.resolve().then(() => runtime?.shutdown()),
         Promise.resolve().then(() => providerCommands?.drain()),
         polling?.catch(() => { process.emitWarning('An optional provider poll failed while shutdown was waiting.', { code: 'TRELLIS_PROVIDER_POLL_FAILED' }) })

@@ -1,4 +1,3 @@
-import type { z } from 'zod'
 import { runtimeWireSchema } from '../../shared/daemon-runtime'
 import { PROVIDER_MUTATING_METHODS, type ProviderDaemonMethod } from '../../shared/daemon-domains'
 import type { DaemonRequest, ProcessOwner } from '../../shared/daemon'
@@ -13,7 +12,7 @@ import { DaemonError } from './errors'
 export class ProviderDomain {
   private readonly actions = new Map<string, (input: unknown, signal?: AbortSignal) => Promise<unknown>>()
   constructor(private readonly runtime: DaemonRuntime, private readonly commands: RuntimeCommands, private readonly cancellation: ProviderCancellation) {}
-  add<I, O>(method: ProviderDaemonMethod, request: z.ZodType<I>, response: z.ZodType<O>, action: (input: I, signal?: AbortSignal) => Promise<O>): void {
+  add<I, O>(method: ProviderDaemonMethod, request: { parse(value: unknown): I }, response: { parse(value: unknown): O }, action: (input: I, signal?: AbortSignal) => Promise<O>): void {
     if (this.actions.has(method)) throw new Error(`Duplicate native provider method: ${method}`)
     this.actions.set(method, async (raw, signal) => response.parse(await action(request.parse(raw), signal)))
   }

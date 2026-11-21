@@ -38,7 +38,7 @@ export function writeExclusiveAtomic(file: string, text: string): void {
   finally { if (existsSync(temporary)) unlinkSync(temporary) }
 }
 /** Same-directory publication; fsync before rename. No success is returned before publication. */
-export function writeAtomic(file: string, text: string): void {
+export function writeAtomic(file: string, text: string, options?: { retryWindowsRename?: boolean }): void {
   mkdirSync(dirname(file), { recursive: true })
   if (existsSync(file) && lstatSync(file).isSymbolicLink()) throw new DaemonError('E_DENIED', 'Daemon state cannot replace a symbolic link.')
   const temporary = `${file}.${randomUUID()}.tmp`
@@ -49,7 +49,17 @@ export function writeAtomic(file: string, text: string): void {
     fsyncSync(fd)
     closeSync(fd)
     fd = undefined
-    renameSync(temporary, file)
+    const retryDelays = process.platform === 'win32' && options?.retryWindowsRename ? [5, 10, 20, 40] : []
+    for (let attempt = 0; ; attempt++) {
+      try { renameSync(temporary, file); break }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        const delay = retryDelays[attempt]
+        if (delay === undefined || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error
+        // The caller must keep the commit synchronous before native spawn.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay)
+      }
+    }
   } finally {
     if (fd !== undefined) closeSync(fd)
     if (existsSync(temporary)) unlinkSync(temporary)

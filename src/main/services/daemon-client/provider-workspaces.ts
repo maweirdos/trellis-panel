@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path'
 import { JIRA_DAEMON, jiraRequests, jiraResults, type JiraIntegrationApi, type JiraMethod, type JiraRequest, type JiraData, type JiraResult } from '../../../shared/jira-integration'
 import { GITLAB_DAEMON, gitlabRequests, gitlabResults, type GitlabInput, type GitlabOutput } from '../../../shared/gitlab-integration'
 import { DINGTALK_DAEMON, dingtalkRequests, dingtalkResults, type DingInput, type DingOutput } from '../../../shared/dingtalk-integration'
+import { FEISHU_DAEMON, feishuRequests, feishuResults, type FeishuInput, type FeishuMethod, type FeishuOutput } from '../../../shared/feishu-integration'
 import type { ProviderDaemonMethod, ProviderSchemaParser, ProviderSchemaParsers } from '../../../shared/daemon-domains'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
 import type { GitlabWorkspaceActions } from '../integrations/gitlab-workspace'
@@ -11,6 +12,8 @@ import type { DingTalkActions } from '../integrations/dingtalk-workspace'
 import { DaemonError } from '../../daemon/errors'
 import { isProviderReadMethod } from '../../../shared/provider-cancellation'
 import { nativeDomainCall, nativeProviderReadCall } from './runtime'
+import { cruxStableWorkspaceGeneration, cruxWorkspaceStatus } from '../crux/connection-service'
+import { withDesktopTeamService } from '../team-desktop'
 
 /** GUI state is supplied by native composition, never by the renderer. */
 export interface ProviderWorkspaceSelection {
@@ -52,7 +55,7 @@ function capture(selection: ProviderWorkspaceSelection, expectedRoot: string | n
  * cancellation always uses its explicit feature method. */
 function workspaceForwarder(selection: ProviderWorkspaceSelection) {
   const namespaceId = randomUUID()
-  return async <I extends { expectedRoot: string | null }, O>(method: ProviderDaemonMethod, request: ProviderSchemaParser<I>, response: ProviderSchemaParser<O>, raw: I, signal?: AbortSignal): Promise<O> => {
+  return async <I extends { expectedRoot: string | null }, O>(method: ProviderDaemonMethod, request: ProviderSchemaParser<I>, response: ProviderSchemaParser<O>, raw: I, signal?: AbortSignal, ownerCurrent?: () => boolean): Promise<O> => {
     const parsed = request.safeParse(raw)
     if (!parsed.success) throw new DaemonError('E_INVALID_ARG', '集成请求参数无效。')
     const scope = capture(selection, parsed.data.expectedRoot)
@@ -60,12 +63,49 @@ function workspaceForwarder(selection: ProviderWorkspaceSelection) {
     const commandId = 'commandId' in parsed.data && typeof parsed.data.commandId === 'string' ? parsed.data.commandId
       : 'requestId' in parsed.data && typeof parsed.data.requestId === 'string' ? parsed.data.requestId : undefined
     const body = { ...parsed.data, expectedRoot: scope.root || null }
+    const isCurrent = () => scope.isCurrent() && (!ownerCurrent || ownerCurrent())
     const result = signal && isProviderReadMethod(method)
-      ? await nativeProviderReadCall<unknown>(scope.root, method, body, namespaceId, signal, commandId, scope.isCurrent)
-      : await nativeDomainCall<unknown>(scope.root, method, body, commandId, () => !signal?.aborted && scope.isCurrent())
+      ? await nativeProviderReadCall<unknown>(scope.root, method, body, namespaceId, signal, commandId, isCurrent)
+      : await nativeDomainCall<unknown>(scope.root, method, body, commandId, () => !signal?.aborted && isCurrent())
     const data = response.safeParse(result)
     if (!data.success) throw new DaemonError('E_UNKNOWN', '后台结果未满足集成契约，请读取原配置、作业或回执核实结果。', 'unknown')
     return data.data
+  }
+}
+
+export function createFeishuWorkspaceClient(selection: ProviderWorkspaceSelection) {
+  const forward = workspaceForwarder(selection)
+  const requests: ProviderSchemaParsers<typeof feishuRequests> = feishuRequests
+  const responses: ProviderSchemaParsers<typeof feishuResults> = feishuResults
+  return async <M extends FeishuMethod>(method: M, input: FeishuInput<M>): Promise<FeishuOutput<M>> => {
+    if (method !== 'beginRegistration') {
+      const scopedMethod = ['configure', 'retry', 'disconnect', 'chats', 'reconcile', 'registrationStatus', 'cancelRegistration'].includes(method)
+        || method === 'snapshot' && 'selectedScopeKey' in input && Boolean(input.selectedScopeKey)
+      if (!scopedMethod) return forward(FEISHU_DAEMON[method], requests[method], responses[method], input)
+      const generation = cruxStableWorkspaceGeneration()
+      const workspace = await cruxWorkspaceStatus().catch(() => null)
+      const selectedScopeKey = workspace?.state === 'connected' && workspace.connectionId ? workspace.key : undefined
+      const current = () => generation === cruxStableWorkspaceGeneration()
+      if ('selectedScopeKey' in input && input.selectedScopeKey && selectedScopeKey !== input.selectedScopeKey) throw new DaemonError('E_CONFLICT', '请重新选择原团队空间。')
+      if (!current()) throw new DaemonError('E_CONFLICT', '当前团队空间已切换，请重试。')
+      const result = await forward(FEISHU_DAEMON[method], requests[method], responses[method], { ...input, selectedScopeKey }, undefined, current)
+      if (!current()) throw new DaemonError('E_CONFLICT', '当前团队空间已切换，请刷新原连接状态。')
+      return result
+    }
+    const request = feishuRequests.beginRegistration.safeParse(input)
+    if (!request.success || !request.data.scopeKey) throw new DaemonError('E_DENIED', '请先选择已配对的团队空间。')
+    const nativeScope = capture(selection, request.data.expectedRoot)
+    const before = cruxStableWorkspaceGeneration()
+    if (!Number.isFinite(before)) throw new DaemonError('E_CONFLICT', '正在切换团队空间，请稍后再试。')
+    const workspace = await cruxWorkspaceStatus()
+    if (workspace.state !== 'connected' || workspace.key !== request.data.scopeKey || !workspace.connectionId) throw new DaemonError('E_DENIED', '飞书助手需要当前已连接的原团队空间。')
+    const connectionId = workspace.connectionId
+    await withDesktopTeamService(service => service.authorizeBusinessHook(connectionId))
+    const current = () => nativeScope.isCurrent() && before === cruxStableWorkspaceGeneration()
+    if (!current()) throw new DaemonError('E_CONFLICT', '飞书注册的原工作区在授权期间已改变。')
+    const result = await forward(FEISHU_DAEMON[method], requests[method], responses[method], input, undefined, current)
+    if (!current()) throw new DaemonError('E_CONFLICT', '团队空间已切换，请回到原团队核对授权。')
+    return result
   }
 }
 

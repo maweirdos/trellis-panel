@@ -29,6 +29,6 @@ export interface ProviderWorkspaceExtension {
   /** Organization/application setup, when separate from compatibility credentials. */
   BeforeConnection?: ComponentType<ProviderWorkspaceProps>
   /** Account, sync, import and assistant sections, including honest unbound states. */
-  Content: ComponentType<ProviderWorkspaceProps>
+  Content?: ComponentType<ProviderWorkspaceProps>
 }
 export type ProviderWorkspaceExtensions = Partial<Record<IntegrationDirectoryId, ProviderWorkspaceExtension>>

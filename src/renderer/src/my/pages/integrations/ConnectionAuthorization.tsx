@@ -1,103 +1,70 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { Check, ExternalLink, LoaderCircle } from 'lucide-react'
-import { connectionAuthentication, type AuthenticationMethod, type IntegrationConnection, type ProviderManifest } from '../../../../../shared/integrations'
+import { useId, useState, type JSX } from 'react'
+import { Check, Copy, ExternalLink, LoaderCircle } from 'lucide-react'
+import { JIRA_OAUTH_REDIRECT_URI, connectionAuthentication, type AuthenticationMethod, type IntegrationConnection, type ProviderManifest } from '../../../../../shared/integrations'
 import { api, hasIpc } from '../../../api'
-import { useInteractionSignal } from '../../../utils/interaction-scope'
 import { Button } from '../../ui'
-import { useIntegrationOwner } from './hooks'
+import { useConnectionBinding } from './useConnectionBinding'
 
 function supportsAuthorization(): boolean {
   return hasIpc && typeof api.integrations?.authorize === 'function' && typeof api.integrations?.cancelAuthorization === 'function'
 }
 
-export function OAuthSetup({ provider, method, baseUrl, redirectUri }: { provider: ProviderManifest; method: AuthenticationMethod; baseUrl: string; redirectUri?: string }): JSX.Element | null {
+export function OAuthSetup({ provider, method, baseUrl, redirectUri, onUseLocalCallback }: {
+  provider: ProviderManifest; method: AuthenticationMethod; baseUrl: string; redirectUri?: string; onUseLocalCallback?: () => void
+}): JSX.Element | null {
+  const id = useId()
+  const [copyStatus, setCopyStatus] = useState('')
+  const [usingLocal, setUsingLocal] = useState(false)
   const oauth = method.oauth
   if (!oauth) return null
   const jira = provider.id === 'jira'
   let registrationUrl = ''
+  let httpBase = false
   try {
-    const base = new URL(baseUrl)
-    if ((jira ? base.protocol === 'https:' : ['http:', 'https:'].includes(base.protocol)) && !base.username && !base.password && !base.search && !base.hash) registrationUrl = `${base.href.replace(/\/+$/, '')}${oauth.registrationPath}`
-  } catch { /* Instance address is validated on save. */ }
-  const callback = jira ? redirectUri?.trim() : oauth.redirectUri
-  return <details className="integration-disclosure text-my-xs text-my-secondary"><summary>OAuth 应用设置</summary><div className="mt-3 space-y-2">
-    {jira ? <>
-      <p>在 Jira 创建传入链接，使用 OAuth 2.0 保密客户端，填写 Client ID 和 Client Secret。权限：{oauth.scopes.join('、')}。</p>
-      <p>Jira 实例与回调均须使用 HTTPS。先配对团队服务，再将其地址加上 <code>/auth/jira/callback</code>，填写为回调地址，并在 Jira 中登记相同值。</p>
-    </> : <>
-      <p>在 {provider.name} 注册 Trellis Panel，填写 Application ID。</p>
+    const base = new URL(baseUrl.trim())
+    if (['http:', 'https:'].includes(base.protocol) && !base.username && !base.password && !base.search && !base.hash) {
+      registrationUrl = base.href.replace(/\/+$/, '') + oauth.registrationPath
+      httpBase = base.protocol === 'http:'
+    }
+  } catch { /* Instance address is validated by native save. */ }
+  const callback = jira ? redirectUri?.trim() || JIRA_OAUTH_REDIRECT_URI : oauth.redirectUri
+  const httpCallback = callback.startsWith('http:')
+  const relay = jira && callback !== JIRA_OAUTH_REDIRECT_URI
+  const copy = async (): Promise<void> => {
+    try { await api.copyToClipboard(callback); setCopyStatus('回调地址已复制') }
+    catch { setCopyStatus('未能复制，请选择回调地址后手动复制。') }
+  }
+  return <details className="integration-disclosure text-my-xs text-my-secondary"><summary>{jira ? '应用登记' : 'OAuth 应用设置'}</summary><div className="mt-3 space-y-3">
+    {jira ? <p>在 Jira 创建传入链接，选择 OAuth 2.0 保密客户端。登记 Client ID、Client Secret 与权限：{oauth.scopes.join('、')}。</p> : <>
+      <p>在 {provider.name} 注册 Crux，填写 Application ID。</p>
       <p>取消勾选 Confidential（保密），只勾选权限：{oauth.scopes.join('、')}。</p>
     </>}
-    {callback && <><p>Redirect URI（需与应用中登记值完全一致）：</p><code className="block select-text break-all">{callback}</code></>}
+    <div className="space-y-2"><label htmlFor={id + '-callback'} className="my-item-title block">回调地址</label><div className="flex items-center gap-2"><input id={id + '-callback'} className="my-input min-w-0 flex-1" readOnly value={callback} spellCheck={false} /><Button variant="ghost" size="sm" aria-label="复制回调地址" disabled={!hasIpc} onClick={() => void copy()}><Copy size={14} aria-hidden="true" /></Button></div><p>需与 {provider.name} 应用登记值完全一致。</p></div>
+    {relay && onUseLocalCallback && <div className="space-y-2"><p>当前保留已有团队回调。切换后需更新 Jira 应用登记并重新授权。</p><Button size="sm" onClick={() => { onUseLocalCallback(); setUsingLocal(true); setCopyStatus('') }}>改用本机回调</Button></div>}
+    {usingLocal && !relay && <p role="status">本机回调已写入草稿。请更新 Jira 应用登记后重新授权。</p>}
+    {jira && (httpBase || httpCallback) && <div className="space-y-2"><p>Jira 管理员需按实际使用的地址设置以下系统属性：</p>{httpBase && <p>实例使用 HTTP：<code className="block select-text break-all">atlassian.oauth2.provider.skip.base.url.https.requirement=true</code></p>}{httpCallback && <p>回调使用 HTTP：<code className="block select-text break-all">atlassian.oauth2.provider.skip.redirect.url.https.requirement=true</code></p>}</div>}
     <Button size="sm" disabled={!hasIpc || !registrationUrl} onClick={() => void api.openExternal(registrationUrl)}>打开 {provider.name} 应用设置 <ExternalLink size={12} aria-hidden="true" /></Button>
-    <p>保存后可通过浏览器登录并授权。</p>
+    {copyStatus && <p role="status" aria-live="polite">{copyStatus}</p>}
   </div></details>
 }
 
-interface AuthorizationAttempt { id: string; owner: () => boolean }
-interface AuthorizationState { owner: () => boolean; phase: 'idle' | 'pending' | 'cancelling' | 'authorized'; error: string }
-
-export function ConnectionAuthorization({ provider, connection, available, onSaved }: { provider: ProviderManifest; connection: IntegrationConnection; available: boolean; onSaved: () => Promise<void> }): JSX.Element | null {
-  const { current } = useIntegrationOwner(JSON.stringify([provider.id, connection.id, connection.revision]))
-  const request = useRef<AuthorizationAttempt | null>(null)
-  const [state, setState] = useState<AuthorizationState>({ owner: current, phase: 'idle', error: '' })
-  const signal = useInteractionSignal()
-  const method = connectionAuthentication(provider, connection.config)
+export function ConnectionAuthorization({ provider, connection, connections, available, onSaved }: {
+  provider: ProviderManifest; connection: IntegrationConnection; connections?: readonly IntegrationConnection[]; available: boolean; onSaved: () => Promise<void>
+}): JSX.Element | null {
   const supported = available && supportsAuthorization()
-  const active = state.owner === current && current() ? state : { phase: 'idle' as const, error: '' }
-  const busy = active.phase === 'pending' || active.phase === 'cancelling'
-  const granted = connection.hasSecrets.includes('oauthTokens') || active.phase === 'authorized'
-  useEffect(() => {
-    const abandon = (): void => {
-      const attempt = request.current
-      if (!attempt || attempt.owner !== current) return
-      request.current = null
-      if (supportsAuthorization()) void api.integrations.cancelAuthorization(attempt.id).catch(() => undefined)
-    }
-    if (signal?.aborted || !supported) {
-      abandon()
-      setState({ owner: current, phase: 'idle', error: '' })
-    }
-    signal?.addEventListener('abort', abandon, { once: true })
-    return () => { signal?.removeEventListener('abort', abandon); abandon() }
-  }, [current, signal, supported])
+  const binding = useConnectionBinding({ provider, connection, connections, authorizationAvailable: supported, followChanges: true })
+  const method = connectionAuthentication(provider, connection.config)
   if (connection.legacy || !method?.oauth) return null
-  const owns = (attempt: AuthorizationAttempt): boolean => request.current === attempt && attempt.owner === current && current()
-  const authorize = async (): Promise<void> => {
-    if (!supported || !current() || request.current) return
-    const attempt: AuthorizationAttempt = { id: crypto.randomUUID(), owner: current }
-    request.current = attempt
-    setState({ owner: current, phase: 'pending', error: '' })
-    try {
-      const result = await api.integrations.authorize({ connectionId: connection.id, connectionRevision: connection.revision, requestId: attempt.id })
-      if (!owns(attempt)) return
-      if (!result.ok) { setState({ owner: current, phase: 'idle', error: result.error }); return }
-      if (result.data.id !== connection.id || result.data.providerId !== provider.id || result.data.revision <= connection.revision) {
-        setState({ owner: current, phase: 'idle', error: '授权返回的连接已变化，请刷新后核实结果。' }); return
-      }
-      setState({ owner: current, phase: 'authorized', error: '' })
-      try { await onSaved() } catch { if (owns(attempt)) setState({ owner: current, phase: 'authorized', error: '授权已保存，连接状态刷新失败，请重新打开此页面。' }) }
-    } catch {
-      if (owns(attempt)) setState({ owner: current, phase: 'idle', error: '未能确认授权结果，请刷新连接后重试。' })
-    } finally { if (request.current === attempt) request.current = null }
-  }
-  const cancel = async (): Promise<void> => {
-    const attempt = request.current
-    if (!attempt || !owns(attempt) || active.phase === 'cancelling') return
-    setState({ owner: current, phase: 'cancelling', error: '' })
-    try {
-      const result = await api.integrations.cancelAuthorization(attempt.id)
-      if (owns(attempt) && !result.ok) setState({ owner: current, phase: 'pending', error: result.error })
-    } catch {
-      if (owns(attempt)) setState({ owner: current, phase: 'pending', error: '未能确认取消，请重试取消或等待授权结果。' })
-    }
-  }
-  const status = active.phase === 'cancelling' ? '正在取消授权…' : busy ? '请在浏览器完成授权，最多等待 5 分钟。' : granted ? '已保存浏览器授权' : '尚未授权'
+  const { state, busy } = binding
+  const value = binding.saved ?? connection
+  const granted = value.check === 'authenticated' && value.hasSecrets.includes('oauthTokens')
+  const status = state.phase === 'cancelling' ? '正在取消授权…' : state.phase === 'authorizing' ? '请在浏览器完成授权，最多等待 5 分钟。' : state.phase === 'refreshing' ? '正在刷新连接…' : granted ? value.detail || '身份已验证并保存' : '尚未授权'
+  const refreshFailed = state.phase === 'complete' && Boolean(state.error)
   return <section className="space-y-3 border-t border-my-line pt-3">
     {!supported && <p role="status" className="my-item-description">浏览器授权暂不可用，请完整退出并重新打开桌面应用。</p>}
-    <p role="status" className="flex items-center gap-2 text-my-xs text-my-secondary">{busy ? <LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" /> : granted ? <Check size={14} className="shrink-0" aria-hidden="true" /> : null}{status}</p>
-    {!granted && <p className="my-item-description">{provider.id === 'jira' ? '授权后可查询、评论及流转 Jira 工单。' : `授权将允许读取 ${provider.name} 用户信息与 API 数据。`}</p>}
-    <div className="flex flex-wrap gap-2"><Button size="sm" variant="primary" disabled={!supported || !connection.enabled || busy} onClick={() => void authorize()}>{busy ? '等待浏览器授权…' : active.error ? '重试浏览器授权' : granted ? '重新授权登录' : '浏览器授权登录'} <ExternalLink size={12} aria-hidden="true" /></Button>{busy && <Button size="sm" disabled={active.phase === 'cancelling'} onClick={() => void cancel()}>{active.phase === 'cancelling' ? '取消中…' : '取消授权'}</Button>}</div>
-    {active.error && <p role="alert" className="break-words text-my-xs text-my-danger-text">{active.error}</p>}
+    <p role="status" aria-live="polite" aria-atomic="true" className="flex items-start gap-2 break-words text-my-xs text-my-secondary">{busy ? <LoaderCircle size={14} className="mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : granted ? <Check size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> : null}{status}</p>
+    <div className="flex flex-wrap gap-2">{refreshFailed ? <Button size="sm" onClick={() => void binding.refresh(onSaved)}>刷新连接</Button> : state.phase === 'uncertain' ? <Button size="sm" onClick={() => void binding.reconcile(onSaved)}>读取连接并核实</Button> : <Button size="sm" variant="primary" disabled={!supported || !connection.enabled || busy || state.phase === 'stale'} onClick={() => void binding.run('authorize', undefined, onSaved)}>{busy ? '等待浏览器授权…' : state.error ? '重试浏览器授权' : granted ? '重新授权登录' : '浏览器授权登录'} <ExternalLink size={12} aria-hidden="true" /></Button>}{(state.phase === 'authorizing' || state.phase === 'cancelling') && <Button size="sm" disabled={state.phase === 'cancelling'} onClick={() => void binding.cancel()}>{state.phase === 'cancelling' ? '取消中…' : '取消授权'}</Button>}</div>
+    {state.phase === 'uncertain' && state.candidates?.map((item) => <Button key={item.id} size="sm" onClick={() => binding.resume(item)}>继续使用 {item.name}</Button>)}
+    {state.error && <div role="alert" className="break-words text-my-xs text-my-danger-text">{state.error.length > 180 || state.error.includes('\n') ? <><p>授权未完成，请查看详情后重试。</p><details className="integration-disclosure mt-2"><summary>错误详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{state.error}</p></details></> : <p>{state.error}</p>}</div>}
   </section>
 }

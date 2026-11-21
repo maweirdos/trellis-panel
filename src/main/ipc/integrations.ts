@@ -11,7 +11,7 @@ import { legacyIntegrationCall } from '../services/daemon-client/integration-leg
 import { broadcastToWindows } from '../services/bridge'
 import { getMainWindow, getProjectRoot, getProjectGeneration } from '../state'
 import { DaemonError } from '../daemon/errors'
-import { authorizationRequestSchema } from '../../shared/integrations'
+import { authorizationRequestSchema, classifyJiraOAuthRedirectUri } from '../../shared/integrations'
 import type { JiraOAuthRelay } from '../../shared/jira-auth'
 import { withDesktopTeamService } from '../services/team-desktop'
 import { DesktopTeamError } from '../services/team-platform/types'
@@ -88,8 +88,12 @@ export function registerIntegrationsIpc(): void {
           if (!connection?.enabled || connection.revision !== request.connectionRevision) return ipcFail(IpcErrorCode.Conflict, '连接已变更，请刷新后重新授权')
           if (connection.providerId === 'jira') {
             if (connection.config.authMethod !== 'oauth2' || connection.legacy) return ipcFail(IpcErrorCode.Denied, '请选择 Jira 浏览器授权连接')
-            jiraRelay = await withDesktopTeamService(service => service.createJiraOAuthRelay({ connectionId: connection.id, revision: connection.revision, baseUrl: connection.config.baseUrl, clientId: connection.config.clientId, redirectUri: connection.config.redirectUri }, isCurrent))
-            input = { ...request, jiraRelay } as LegacyIntegrationInput<M>
+            const callback = classifyJiraOAuthRedirectUri(connection.config.redirectUri ?? '')
+            if (!callback) return ipcFail(IpcErrorCode.InvalidArg, 'Jira 回调地址无效，请检查连接配置')
+            if (callback === 'relay') {
+              jiraRelay = await withDesktopTeamService(service => service.createJiraOAuthRelay({ connectionId: connection.id, revision: connection.revision, baseUrl: connection.config.baseUrl, clientId: connection.config.clientId, redirectUri: connection.config.redirectUri }, isCurrent))
+              input = { ...request, jiraRelay } as LegacyIntegrationInput<M>
+            }
           }
           if (!isCurrent()) return ipcFail(IpcErrorCode.Denied, '授权请求已取消或来源已变化')
         }

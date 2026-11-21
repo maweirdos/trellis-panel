@@ -88,7 +88,7 @@ export class DaemonDispatcher {
     return actual
   }
   async dispatch(request: DaemonRequest, actor: ProcessOwner, nativeGui?: NativeGuiAuthority): Promise<unknown> {
-    if (request.method.startsWith('runtime.private') || request.method === 'runtime.workflowCutover' || request.method === 'runtime.taskExecution' || request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
+    if (request.method.startsWith('feishu.workspace.') || request.method.startsWith('runtime.private') || request.method === 'runtime.workflowCutover' || request.method.startsWith('runtime.taskExecution') || request.method === 'runtime.cruxProgress' || request.method === 'runtime.workcopyUse' || request.method === 'runtime.workcopyCleanup') assertNativeGuiGrant(this.context, this.lease.epoch, actor, nativeGui)
     const management = ['daemon.status', 'daemon.stop', 'daemon.lifecycle.admit', 'daemon.lifecycle.resolve', 'daemon.workcopyRecovery', 'daemon.logs', 'commands.get'].includes(request.method)
       || LIFECYCLE_RUNTIME_CONTROLS.includes(request.method)
       || isBoundedWorkcopyCleanup(request.method, request.payload)

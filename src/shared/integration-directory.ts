@@ -20,7 +20,7 @@ export const INTEGRATION_DIRECTORY: readonly IntegrationDirectoryEntry[] = [
   { id: 'gitlab-repositories', providerId: 'gitlab', category: 'repositories', kind: 'repositories', name: 'GitLab', description: '关联项目与 Merge Request。' },
   { id: 'gitee', providerId: 'gitee', category: 'repositories', kind: 'repositories', name: 'Gitee', description: '关联仓库与 Pull Request。' },
   { id: 'dingtalk', providerId: 'dingtalk', category: 'messaging', kind: 'messaging', name: '钉钉', description: '连接钉钉应用、账号与任务助手。' },
-  { id: 'feishu', providerId: 'feishu', category: 'messaging', kind: 'messaging', name: '飞书', description: '通过群机器人发送工作项通知。' },
+  { id: 'feishu', providerId: 'feishu', category: 'messaging', kind: 'messaging', name: '飞书', description: '绑定飞书应用和账号，在飞书使用任务助手与 Agent。' },
   { id: 'weknora', providerId: 'weknora', category: 'knowledge', kind: 'knowledge', name: 'WeKnora', description: '检索项目知识，发布工作成果。' }
 ]
 export const INTEGRATION_DIRECTORY_GROUPS: ReadonlyArray<{ id: IntegrationCategory; name: string; description: string }> = [
