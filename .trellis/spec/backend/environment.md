@@ -122,3 +122,44 @@ const getDbPath = () => {
 
 **Wrong**: `new Worker(join(__dirname, 'x-worker.js'))` 直接使用（asar 内路径）。
 **Correct**: `new Worker(neighborWorkerFile('x-worker.js', 'X_WORKER_FILE_ENV'))`。
+
+## Isolated build verification
+
+`electron.vite.config.ts` writes native role/worker bundles to
+`resolve(__dirname, 'out/main', filename)` and the Pi engine to
+`resolve(__dirname, 'out/pi-engine/engine.mjs')`. These custom outputs do not
+follow the electron-vite `--outDir` override. Running the repository's config
+with a TEMP output argument can still replace the daily application's bundles.
+
+- Run verification builds from a physical OS TEMP source copy containing its
+  own copied `electron.vite.config.ts`. Resolve the build configuration from that
+  copy; do not import, link or pass the original repository configuration.
+  Dependency reuse must not redirect configuration or output paths into the
+  original workspace.
+- Before building, resolve every custom output root and require it to remain
+  under the TEMP copy. Keep the daily profile, processes and build outputs
+  outside the verification write set.
+- Record relative paths and SHA-256 values for the daily output baseline and the
+  isolated build separately. After a verification build, require the daily
+  baseline to remain unchanged.
+- If an output escaped isolation, stop further builds and preserve the changed
+  bytes. Restore only from verified original snapshots or a coherent historical
+  build with matching original entry/role evidence. A previous test build is not
+  the daily baseline. Distinguish exact original-hash restoration from recovery
+  of corresponding dependencies without an original per-file hash.
+- Verify restored entrypoints and their role/worker/renderer dependencies;
+  restoring an entrypoint alone does not establish a usable build. Do not
+  mirror-delete extra files or restart daily processes to test restoration.
+
+Wrong: build from the original checkout with only `--outDir <TEMP>`.
+Correct: build using the copied configuration inside the physical TEMP source
+tree, then verify that the original output manifest did not change.
+
+An independent Windows acceptance app must use the current user's normal
+Windows environment, not inherit another coding host's private launch markers,
+session identifiers or tool pipes. Obtain that environment from Windows for the
+same user; retain the app's explicit profile, selected engine and provider
+configuration. Never change global environment settings or weaken the engine's
+sandbox/approval policy to repair a launcher mismatch. A small read-only native
+command through the selected engine must succeed before a paid implementation
+run; a version probe outside the engine's command executor is insufficient.
