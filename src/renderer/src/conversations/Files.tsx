@@ -4,9 +4,10 @@ import type { ConversationFile } from '@shared/private-conversations'
 import { Button, Modal } from '../my/ui'
 import { ConnectionNotice } from '../acp/ConnectionNotice'
 import { useInteractionGuard } from '../utils/interaction-scope'
+import { useDocumentSource } from '../reader/document-source'
 import { ArtifactDelivery } from './ArtifactDelivery'
 import { conversationClient, conversationError, conversationValue } from './client'
-import { refreshFiles, useConversations } from './workspace'
+import { refreshFiles, referenceInputFile, useConversations } from './workspace'
 
 function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -17,7 +18,7 @@ function fileSize(bytes: number): string {
 export function ConversationFiles({ entryKey, onClose }: { entryKey: string; onClose(): void }): JSX.Element | null {
   const current = useConversations((state) => state.entries[entryKey]), [delivery, setDelivery] = useState<ConversationFile | null>(null)
   const [opening, setOpening] = useState(''), [error, setError] = useState('')
-  const canInteract = useInteractionGuard()
+  const canInteract = useInteractionGuard(), source = useDocumentSource()
   useEffect(() => { void refreshFiles(entryKey) }, [entryKey])
   const conversation = current?.conversation
   if (!current || current.locked) return null
@@ -25,7 +26,7 @@ export function ConversationFiles({ entryKey, onClose }: { entryKey: string; onC
     const client = conversationClient()
     if (!client || !conversation || opening || !canInteract()) return
     setOpening(file.id); setError('')
-    try { conversationValue(await client.openFile(conversation.id, { fileId: file.id, action })) }
+    try { if (action === 'open' && source && /\.(md|txt|csv|tsv)$/i.test(file.name)) await source.openDocument(file.relativePath); else conversationValue(await client.openFile(conversation.id, { fileId: file.id, action })) }
     catch (cause) { if (canInteract()) setError(conversationError(cause)) }
     finally { if (canInteract()) setOpening('') }
   }
@@ -37,7 +38,7 @@ export function ConversationFiles({ entryKey, onClose }: { entryKey: string; onC
         {current.filesLoading && !current.filesLoaded && <p className="my-activity-note" role="status"><Loader2 size={14} className="animate-spin" />正在读取文件…</p>}
         {(['input', 'output'] as const).map((kind) => {
           const files = current.files.filter((file) => file.kind === kind)
-          return <section key={kind} className="private-file-group"><h3 className="my-item-description">{kind === 'input' ? '输入文件' : conversation?.workspace.kind === 'directory' ? '目录文件' : '产出文件'}</h3>{files.map((file) => <div key={file.id} className="private-file-row"><span className="private-file-icon">{kind === 'input' ? <FileInput size={16} /> : <File size={16} />}</span><div className="private-file-identity"><span className="my-item-title" title={file.relativePath}>{file.name}</span><span className="my-item-description" title={file.relativePath}>{file.relativePath} · {fileSize(file.bytes)}</span></div><div className="private-file-actions"><Button size="sm" variant="ghost" disabled={Boolean(opening)} onClick={() => void open(file, 'open')} aria-label={`打开 ${file.name}`} title="打开文件"><ExternalLink size={14} /></Button><Button size="sm" variant="ghost" disabled={Boolean(opening)} onClick={() => void open(file, 'reveal')} aria-label={`在文件夹中显示 ${file.name}`} title="在文件夹中显示"><FolderOpen size={14} /></Button>{conversation && /\.(md|txt|html|htm)$/i.test(file.name) && file.bytes <= 256 * 1024 && <Button size="sm" variant="outline" onClick={() => setDelivery(file)}>整理为创作</Button>}</div></div>)}{!files.length && !current.filesLoading && <p className="my-item-description private-files-empty">{kind === 'input' ? '尚未添加文件' : conversation?.workspace.kind === 'directory' ? '暂未发现可展示文件' : '暂未发现产出文件'}</p>}</section>
+          return <section key={kind} className="private-file-group"><h3 className="my-item-description">{kind === 'input' ? '输入文件' : conversation?.workspace.kind === 'directory' ? '目录文件' : '产出文件'}</h3>{files.map((file) => <div key={file.id} className="private-file-row"><span className="private-file-icon">{kind === 'input' ? <FileInput size={16} /> : <File size={16} />}</span><div className="private-file-identity"><span className="my-item-title" title={file.relativePath}>{file.name}</span><span className="my-item-description" title={file.relativePath}>{file.relativePath} · {fileSize(file.bytes)}</span></div><div className="private-file-actions">{kind === 'input' && <Button size="sm" variant="ghost" aria-pressed={Boolean(current.selectedInputIds?.includes(file.id))} title="仅影响下条消息的文件引用，不删除原文件" onClick={() => referenceInputFile(entryKey, file.id, !current.selectedInputIds?.includes(file.id))}>{current.selectedInputIds?.includes(file.id) ? '取消引用' : '引用到下条消息'}</Button>}<Button size="sm" variant="ghost" disabled={Boolean(opening)} onClick={() => void open(file, 'open')} aria-label={`打开 ${file.name}`} title="打开文件"><ExternalLink size={14} /></Button><Button size="sm" variant="ghost" disabled={Boolean(opening)} onClick={() => void open(file, 'reveal')} aria-label={`在文件夹中显示 ${file.name}`} title="在文件夹中显示"><FolderOpen size={14} /></Button>{conversation && /\.(md|txt|html|htm)$/i.test(file.name) && file.bytes <= 256 * 1024 && <Button size="sm" variant="outline" onClick={() => setDelivery(file)}>整理为创作</Button>}</div></div>)}{!files.length && !current.filesLoading && <p className="my-item-description private-files-empty">{kind === 'input' ? '尚未添加文件' : conversation?.workspace.kind === 'directory' ? '暂未发现可展示文件' : '暂未发现产出文件'}</p>}</section>
         })}
       </div>
     </Modal>

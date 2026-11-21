@@ -37,21 +37,28 @@
 .private-requirement-list { max-height: min(40vh, var(--my-composer-max-height)); overflow-y: auto; }
 .private-requirement-menu-row { display: flex; align-items: center; gap: var(--my-space-10); }
 .private-requirement-menu-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.private-home-actions { display: flex; gap: var(--my-space-10); margin-top: var(--my-space-20); }
-.private-home-action { display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; gap: var(--my-space-6); min-width: 0; padding: var(--my-space-12); text-align: start; }
-.private-home-action:disabled { color: var(--my-txt-disabled); cursor: default; }
-.private-home-action:disabled :is(.my-item-title,.my-item-description) { color: inherit; }
-.private-home-action>span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.private-home-action-kind { display: flex; align-items: center; gap: var(--my-space-6); color: var(--my-txt-tertiary); font-size: var(--my-text-xs); }
-.private-home-action-kind>svg { flex-shrink: 0; }
-.private-home-action-kind>svg:first-child { transition: scale var(--my-motion-fast) var(--my-ease-out); }
-.private-home-action-kind>svg:last-child { margin-left: auto; opacity: 0; }
-.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:last-child,.private-home-action:focus-visible .private-home-action-kind>svg:last-child { opacity: 1; }
+.private-home-actions { display: flex; gap: var(--my-space-10); margin-top: var(--my-space-10); }
+.private-home-action { display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; justify-content: center; gap: var(--my-space-4); min-width: 0; min-height: 64px; padding: var(--my-space-10) var(--my-space-12); text-align: start; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base); background: var(--my-bg-panel); box-shadow: var(--my-shadow-raised-100); transition: transform var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out); cursor: pointer; }
+.private-home-action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--my-shadow-raised-200); border-color: var(--my-border-strong-1); }
+.private-home-action:active:not(:disabled) { transform: translateY(0); box-shadow: var(--my-shadow-raised-100); }
+.private-home-action:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
+.private-home-action:disabled { color: var(--my-txt-disabled); cursor: default; box-shadow: none; opacity: .55; }
+.private-home-action:disabled :is(.private-home-title,.private-home-desc) { color: inherit; }
+.private-home-tag { display: flex; align-items: center; gap: var(--my-space-4); color: var(--my-txt-tertiary); font-size: 11px; line-height: 14px; }
+.private-home-tag svg { flex-shrink: 0; color: var(--my-txt-secondary); }
+.private-home-title { display: block; font-size: var(--my-text-sm); font-weight: var(--my-weight-medium); color: var(--my-txt-primary); line-height: var(--my-line-ui); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.private-home-desc { display: block; font-size: 11px; color: var(--my-txt-tertiary); line-height: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-width: 600px) { .private-home-actions { flex-wrap: wrap; }.private-home-action { flex-basis: 42%; } }
-@media (hover: hover) and (pointer: fine) { .private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: var(--my-icon-hover-scale); } }
-@media (prefers-reduced-motion: reduce) { .private-home-action,.private-home-action-kind>svg:first-child { transition: none; }.private-home-action:hover:not(:disabled) .private-home-action-kind>svg:first-child { scale: 1; } }
-.private-draft-controls { grid-template-columns: auto minmax(0, 1fr); }
-.private-draft-controls .acp-composer-controls-right { gap: var(--my-space-14); }
-.private-draft-controls .acp-composer-controls-right > .relative { flex: 0 1 auto; }
-.private-draft-picker-label { flex: none; color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
-.private-draft-model-unavailable { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .private-home-action { transition: none; }
+  .private-home-action:hover:not(:disabled) { transform: none; }
+}
+.private-draft-controls { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.private-draft-controls .acp-composer-controls-left { display: flex; align-items: center; gap: var(--my-space-8); }
+.private-draft-controls .acp-composer-controls-right { display: flex; align-items: center; gap: var(--my-space-8); }
+.acp-composer-entity-pill { display: inline-flex; align-items: center; gap: var(--my-space-5); height: 26px; min-height: 26px; padding: 0 var(--my-space-8); border-radius: var(--my-radius-base); background: var(--my-bg-layer-1); border: 1px solid var(--my-border-subtle); color: var(--my-txt-primary); font-size: var(--my-text-xs); font-weight: var(--my-weight-medium); cursor: pointer; transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out); }
+.acp-composer-entity-pill:hover:not(:disabled) { background: var(--my-bg-layer-2-active); border-color: var(--my-border-strong); }
+.acp-composer-perm-pill { display: inline-flex; align-items: center; gap: var(--my-space-4); height: 26px; min-height: 26px; padding: 0 var(--my-space-8); border-radius: var(--my-radius-base); background: var(--my-bg-warning-subtle); color: var(--my-txt-warning-primary); font-size: 11px; font-weight: var(--my-weight-medium); border: 1px solid color-mix(in oklab, var(--my-txt-warning-primary) 18%, transparent); cursor: pointer; transition: opacity var(--my-motion-fast) var(--my-ease-out); }
+.acp-composer-perm-pill:hover { opacity: .85; }
+.acp-composer-spark-btn { display: inline-flex; align-items: center; justify-content: center; width: var(--my-space-28); height: var(--my-space-28); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); cursor: pointer; transition: color var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out); }
+.acp-composer-spark-btn:hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }

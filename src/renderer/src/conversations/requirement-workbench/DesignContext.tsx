@@ -49,10 +49,10 @@ function SourceList<T extends RequirementDesignMaterial>({ title, options, selec
 export function DesignContext({ value, standards, materials, standardsState, materialsState, disabled, onChange }: DesignContextProps): JSX.Element {
   const directionId = useId(), count = value.standards.length + value.materials.length
   return <details className="requirement-design-context">
-    <summary className="requirement-workbench-disclosure"><Palette size={14} aria-hidden="true" /><span className="my-item-title">设计语境</span><span className="my-item-description">{count ? `已选 ${count} 项` : value.direction ? '已补充方向' : '可选'}</span><ChevronDown size={12} aria-hidden="true" /></summary>
+    <summary className="requirement-workbench-disclosure"><Palette size={14} aria-hidden="true" /><span className="my-item-title">设计参考</span><span className="my-item-description">{count ? `已选 ${count} 项` : value.direction ? '已补充方向' : '可选'}</span><ChevronDown size={12} aria-hidden="true" /></summary>
     <div className="requirement-design-context-body">
-      <SourceList title="项目设计规范" options={standards} selected={value.standards} state={standardsState} disabled={disabled} onChange={items => onChange({ ...value, standards: items })} />
-      <SourceList title="参考素材" options={materials} selected={value.materials} state={materialsState} disabled={disabled} onChange={items => onChange({ ...value, materials: items })} />
+      {(standards.length > 0 || value.standards.length > 0) && <SourceList title="项目设计规范" options={standards} selected={value.standards} state={standardsState} disabled={disabled} onChange={items => onChange({ ...value, standards: items })} />}
+      {(materials.length > 0 || value.materials.length > 0) && <SourceList title="参考素材" options={materials} selected={value.materials} state={materialsState} disabled={disabled} onChange={items => onChange({ ...value, materials: items })} />}
       <label className="requirement-design-context-direction" htmlFor={directionId}><span className="my-item-title">补充方向</span><textarea id={directionId} className="my-input" rows={3} maxLength={4000} placeholder="例如：沿用现有设置页的层级和交互" value={value.direction} disabled={disabled} onChange={event => onChange({ ...value, direction: event.target.value })} /></label>
       {(count > 0 || value.direction) && <div><Button size="sm" variant="ghost" disabled={disabled} onClick={() => onChange(emptyRequirementDesignContext())}><X size={13} />清除设计语境</Button></div>}
     </div>

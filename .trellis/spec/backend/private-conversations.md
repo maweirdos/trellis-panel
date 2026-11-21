@@ -14,6 +14,13 @@ native owner; sending requires an active record. Preview text comes from bounded
 native conversation metadata, without hydrating each transcript while listing or
 writing another catalog update for every streaming tick.
 
+A saved requirement makes its original conversation discoverable even when no
+message, imported file or native session exists. Consult the existing
+`workspaceHasRequirements` owner before filtering an otherwise empty draft.
+Listing must not start an engine or create a replacement conversation. Preserve
+creator, archive, kind/project/search filters and the exclusion of task-owned
+planning sessions.
+
 Versioned storage conversion preserves existing personal history, drafts,
 physical directories and native aliases. An old team-scoped record requires its
 original creator proof before conversion; removing a scope field is not proof of
@@ -43,6 +50,91 @@ generation. Pi preview uses the existing bounded service with a session-aware
 source resolver; it verifies the private creator before opening any file.
 Preview roots are not supplied as authority by the renderer. Preserve the
 native window/source checks, lease limits, revisions and sandbox policy.
+
+## Submission and recovery controls
+
+### Scope
+
+Apply to pending private sends, explicit native reconnection, defaults for future
+conversations, and build-compatibility recovery. Browsing history stays read-only.
+
+### Signatures
+
+- `ConversationApi.reconcileSend?(conversationId, requestId)` returns
+  `{state:'sent'|'not-sent'|'unknown', turnId?}` inside `ConversationResult`.
+- `ConversationApi.connect?(conversationId)` returns the original acknowledged
+  `AcpSessionRecord`, without submitting a prompt.
+- `setDefaultConversationModel?({modelId, expectedDefaultId?})` returns `{modelId}`;
+  `onConversationDefaultsChanged?` invalidates window-local defaults.
+- `DaemonApi.inspectRecovery?()` returns `{build:'current'|'changed'|'unknown',
+  epoch}`. The existing `restart()` owns lifecycle mutation and interruption consent.
+
+### Contracts
+
+Local submission retains UUID, captured text, draft version and pending state
+under the installation owner before releasing the unchanged composer. Image bytes
+remain in owned memory, never text preferences. Local pending display is not a
+persisted native user event. Replace it by exact request/turn proof, not matching
+text. Newer edits survive acknowledgements and failed restoration attempts.
+
+Reconciliation resolves only the persisted pending request of the authorized
+conversation. An in-flight or uncertain request cannot become an automatic retry.
+Explicit reconnect requires an existing private alias, fixed physical directory,
+and current main-window source. Reject pending dispatch, running/cleaning work,
+and unsupported resume; reuse an already-ready owner. Prepare restores the same
+native alias and saved model without writing another user message.
+
+Compare state revisions only within the same connection generation. Reads begun
+before an acknowledged replacement cannot restore the old generation. Historical
+event pages may remain readable without replacing newer live session metadata.
+
+Default updates validate the current enabled catalog and expected previous
+default after acquiring native settings revision. Patch only selector fields on
+the current settings object; preserve credentials and unrelated provider edits.
+Native CAS rejects concurrent writes. Existing conversations keep their models.
+
+Known changed builds offer restart recovery; unknown compatibility offers
+inspection, not a claim that an update exists. Reuse the exact-owner lifecycle,
+then refresh source-owned history and explicitly reconnect without prompt replay.
+Older bridges retain existing controls and require reopening the application to
+load unsupported capabilities.
+
+### Validation and errors
+
+| Condition | Result |
+| --- | --- |
+| Lost send reply | retain original UUID/text; inspect original receipt |
+| Confirmed not-sent result | retain the failed submission for explicit resend of the original payload without changing the draft |
+| Connect while sending, running or cleaning | busy result; no prompt or replacement alias |
+| Changed page, directory, creator or private source | reject; no late visible-state replacement |
+| Lower revision in an acknowledged new generation | accept; old generation's counter cannot dominate |
+| Stale read arrives after that acknowledgement | retain newer live metadata |
+| Disabled model or stale expected default | reject without changing settings |
+| Unknown build/owner | retain uncertainty and existing work; never infer idle or stop success |
+
+### Cases
+
+Good: local feedback is immediate, a lost reply is reconciled, and explicit
+reconnection returns the original conversation to ready. Base: a removed saved
+model still needs the existing explicit model-recovery flow. Bad: declaring a new
+conversation's greeting to be proof that the original conversation recovered.
+
+### Required verification
+
+Delay persistence, native admission and acknowledgement independently. Exercise
+event-before-response, reload, duplicate clicks, newer draft edits, unknown send,
+explicit reconnect without prompt emission, and stale read after generation
+replacement. Verify default persistence and concurrent credential edits in an
+isolated native profile. Separate browser/port fixtures from real SDK and native
+lifecycle observations; keep all test assets in OS TEMP.
+
+### Wrong versus correct
+
+Wrong: clear input only after the engine replies, compare revision counters
+across generations, or reconnect implicitly when history is selected.
+
+Correct: retain local recovery first, bind visible replacement to original
+receipts, and reconnect only through an explicit original-source action.
 
 ## File delivery
 
@@ -95,6 +187,11 @@ Main-only display text travels separately from the expanded native action prompt
 The public conversation Send DTO cannot provide it. New canonical user events
 display the actual user request/action name while retaining the expanded prompt
 in native diagnostics; saved earlier history is not rewritten.
+For an ordinary send, derive display text from `draftText`. When the compiled
+input has the exact file-list suffix, accept only paths registered in the same
+owned row and show their `inputFileName` values. Keep the full paths in the
+original expanded prompt. Ordinary display text has the same 200000-character
+bound as Send; design/workbench action contracts retain their narrower bounds.
 Text autosaves carrying unchanged runtime/model fields remain idempotent after
 first native binding. Actual runtime, model and directory changes retain guards.
 
@@ -105,6 +202,42 @@ replace missing/changed tasks, overwrite modified task materials, or infer succe
 from a same-name directory. Opening the task verifies its original origin and uses
 the existing project/task workbench; later stage execution keeps its own native
 identity and lifecycle authority.
+
+## Independent editor polish
+
+`requirements.polish.run/observe/cancel/apply` uses a caller-retained command UUID
+as its operation ID. The native document owner, saved requirement revision,
+document body hash, optional plan revision and exact selection witness fence all
+operations. A command cannot be reused for different input.
+
+Generation uses the existing application AI configuration and an independent
+abort signal. Only selected text, up to 512 characters on either side and the
+explicit edit instruction reach the model. It does not send a conversation turn,
+create a visible chat, append `draft.operations`, save editor text or invalidate a
+plan. Missing AI configuration fails this operation locally.
+
+Native requirement metadata retains bounded technical input, candidate hash,
+replacement, state and adoption receipt, separately from document revisions.
+Admission allows at most four concurrent requests and 32 unresolved operations
+per draft. Before new admission, cancelled, failed and adopted operations move to
+immutable per-operation metadata files; write and verify each journal entry before
+removing its inline row. Exact operation-ID lookup and adopted receipts remain
+available after compaction and restart. Pending writes cannot be compacted. A running record without its original live request becomes unknown; it is
+never automatically replayed. Cancellation discards late responses and cannot
+cancel the main conversation. Application shutdown aborts remaining requests.
+
+Apply verifies the original document, current file, base revision, selection
+coordinates, surrounding witness and exact resulting body. It uses the existing
+serialized CAS and pending-save recovery path. Repeated identical apply returns
+the original receipt; a pending write must be reconciled before reporting adoption.
+Only an adopted requirement change marks an existing plan stale.
+
+Saved plan text may be polished independently even when its business plan is
+stale. Verify the exact plan revision/body/file and retain its existing stale,
+sourceRevision and sourceDigest fields. This does not relax planning or task
+handoff checks. RequirementView.confirmationCurrent compares the saved requirement
+body and source digest to its confirmation; a plan-only metadata revision does
+not invalidate that confirmation.
 
 ## Reference patterns
 

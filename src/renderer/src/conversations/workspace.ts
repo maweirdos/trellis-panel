@@ -10,11 +10,14 @@ import { projectRootKey } from '../my/navigation'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { installationNamespace, readStoredWorkspace, writeStoredWorkspace, type StoredWorkspace } from './draft-storage'
 import { piModelChoices } from './pi-models'
+import { useApp } from '../store'
 import { modelIdWithinLimit } from '@shared/model-selection'
 
 export type ConversationKind = Conversation['kind']
 export const baseScopeKey = (kind: ConversationKind): string => kind
 export const scopeKey = (kind: ConversationKind, projectId?: string): string => `${kind}:${projectId ?? ''}`
+
+type StoredSubmission = NonNullable<StoredWorkspace['entries'][number]['submission']>
 
 export interface WorkspaceEntry {
   key: string
@@ -27,7 +30,6 @@ export interface WorkspaceEntry {
   directory?: ConversationDirectoryGrant
   text: string
   images?: AcpImageAttachment[]
-  imageVersion?: number
   runtimeId?: string
   modelId?: string
   modelTooLong?: boolean
@@ -36,20 +38,26 @@ export interface WorkspaceEntry {
   savedVersion: number
   session?: AcpSessionRecord
   events: TimelineEvent[]
+  discussion?: AcpHistoryEventPage['discussion']
   page?: AcpHistoryEventPage | null
+  fileReferenceVersion?: number
+  inputReferenceVersions?: Record<string, number>
+  selectedInputIds?: string[]
+  excludedInputIds?: string[]
   files: ConversationFile[]
   filesLoaded?: boolean
   filesLoading?: boolean
   loaded: boolean
   loading?: boolean
+  readTimings?: { metadataMs?: number; historyMs?: number; totalMs?: number }
   earlierLoading?: boolean
   error?: string
   loadError?: string
   saveError?: string
   fileError?: string
   nativeError?: string
-  action?: 'sending' | 'cancel' | 'end' | 'files' | 'directory' | 'classify' | 'configure' | 'recover-model'
-  submission?: { id: string; version: number; text: string }
+  action?: 'sending' | 'cancel' | 'end' | 'files' | 'directory' | 'classify' | 'configure' | 'recover-model' | 'connect'
+  submission?: StoredSubmission & { images?: AcpImageAttachment[] }
   request?: CurrentTurnRequest
   permissionPending: Record<string, boolean>
   permissionErrors: Record<string, string>
@@ -136,7 +144,7 @@ function ownsSession(record: { projectRoot?: string; sessionId?: string }, conve
   return Boolean(conversation.nativeRef && record.sessionId === conversation.nativeRef.sessionId && projectRootKey(record.projectRoot) === projectRootKey(conversation.workspace.root))
 }
 function newerSession(previous: AcpSessionRecord | undefined, next: AcpSessionRecord): AcpSessionRecord {
-  return previous && (previous.stateRevision ?? 0) > (next.stateRevision ?? 0) ? previous : next
+  return previous && previous.connectionGeneration === next.connectionGeneration && (previous.stateRevision ?? 0) > (next.stateRevision ?? 0) ? previous : next
 }
 function acceptRead(key: string, read: ConversationRead, loadDraft = false, readRevision = metadataRevision): void {
   const previous = entry(key)
@@ -159,7 +167,7 @@ function draftEntry(kind: ConversationKind, projectId?: string, directory?: Conv
 }
 function installDraft(kind: ConversationKind, projectId?: string, directory?: ConversationDirectoryGrant): string {
   const state = useConversations.getState(), scope = scopeKey(kind, projectId)
-  const pristine = Object.values(state.entries).find((item) => !item.locked && !item.conversation && item.kind === kind && item.projectId === projectId && !item.text && !item.images?.length && !item.directory && !item.action)
+  const pristine = Object.values(state.entries).find((item) => !item.locked && !item.conversation && item.kind === kind && item.projectId === projectId && !item.text && !item.images?.length && !item.submission && !item.directory && !item.action)
   const value = pristine ? { ...pristine, directory, composerFocus: crypto.randomUUID() } : draftEntry(kind, projectId, directory)
   useConversations.setState({ entries: { ...state.entries, [value.key]: value }, selected: { ...state.selected, [scope]: value.key }, projectScopes: { ...state.projectScopes, [baseScopeKey(kind)]: projectId ?? null } })
   return value.key
@@ -221,6 +229,11 @@ function replaceArchivedSelections(id: string): void {
     return { entries, selected }
   })
 }
+function storedSubmission(submission: WorkspaceEntry['submission']): StoredSubmission | undefined {
+  if (!submission) return
+  const { images: _images, ...stored } = submission
+  return stored
+}
 function persistLocalDrafts(): void {
   if (!nativeNamespace || restoringStorage || unreadableStorage) return
   const state = useConversations.getState()
@@ -229,9 +242,9 @@ function persistLocalDrafts(): void {
     for (const item of Object.values(state.entries)) {
       if (item.owner !== nativeNamespace || item.locked) continue
       byKey.set(item.key, { key: item.key, conversationId: item.conversation?.id, kind: item.kind, projectId: item.projectId,
-        text: item.text, runtimeId: item.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, dirty: item.version !== item.savedVersion, updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now() })
+        text: item.text, submission: storedSubmission(item.submission), excludedInputIds: item.excludedInputIds, selectedInputIds: item.selectedInputIds, fileReferenceVersion: item.fileReferenceVersion, inputReferenceVersions: item.inputReferenceVersions, runtimeId: item.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, dirty: item.version !== item.savedVersion || Boolean(item.submission), updatedAt: item.localUpdatedAt ?? item.conversation?.updatedAt ?? Date.now() })
     }
-    const values = [...byKey.values()].filter((item) => item.conversationId ? item.dirty || selectedKeys.has(item.key) : Boolean(item.text))
+    const values = [...byKey.values()].filter((item) => item.conversationId ? item.dirty || selectedKeys.has(item.key) || Boolean(item.excludedInputIds?.length) || Boolean(item.selectedInputIds?.length) : Boolean(item.text || item.submission))
     if (values.length > 200) throw new Error('本机草稿缓存已达到 200 条上限，请先保存未选择目录的 Code 草稿。')
     const keys = new Set(values.map((item) => item.key))
     const snapshot: StoredWorkspace = { version: 2, entries: values,
@@ -256,12 +269,16 @@ function restoreLocalDrafts(admittedConversationIds: ReadonlySet<string>): void 
       const existing = state.entries[item.key] ?? (item.conversationId ? existingById.get(item.conversationId) : undefined)
       if (existing) {
         aliases.set(item.key, existing.key)
-        if (item.dirty && existing.version === 0 && !existing.text && !existing.images?.length && !existing.locked) restored[existing.key] = { ...existing, text: item.text, runtimeId: item.runtimeId ?? existing.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, version: 1, savedVersion: -1 }
+        if (!existing.locked && (item.selectedInputIds && existing.selectedInputIds === undefined || item.excludedInputIds && existing.excludedInputIds === undefined || item.submission && !existing.submission)) restored[existing.key] = { ...existing,
+          selectedInputIds: existing.selectedInputIds ?? item.selectedInputIds, excludedInputIds: existing.excludedInputIds ?? item.excludedInputIds,
+          fileReferenceVersion: Math.max(existing.fileReferenceVersion ?? 0, item.fileReferenceVersion ?? 0), inputReferenceVersions: { ...item.inputReferenceVersions, ...existing.inputReferenceVersions },
+          ...(item.submission && !existing.submission ? { submission: { ...item.submission, state: item.submission.state === 'failed' ? 'failed' as const : 'unknown' as const } } : {}) }
+        if (item.dirty && existing.version === 0 && !existing.text && !existing.images?.length && !existing.locked) restored[existing.key] = { ...existing, selectedInputIds: existing.selectedInputIds ?? item.selectedInputIds, excludedInputIds: existing.excludedInputIds ?? item.excludedInputIds, fileReferenceVersion: Math.max(existing.fileReferenceVersion ?? 0, item.fileReferenceVersion ?? 0), inputReferenceVersions: { ...item.inputReferenceVersions, ...existing.inputReferenceVersions }, text: item.text, submission: item.submission ? { ...item.submission, state: item.submission.state === 'failed' ? 'failed' : 'unknown' } : undefined, runtimeId: item.runtimeId ?? existing.runtimeId, modelId: item.modelId, modelTooLong: item.modelTooLong, version: 1, savedVersion: -1 }
         continue
       }
       const projectId = conversation?.projectId ?? (item.projectId && projects.has(item.projectId) ? item.projectId : undefined)
       restored[item.key] = { key: item.key, owner: nativeNamespace, localUpdatedAt: item.updatedAt, conversation, kind: conversation?.kind ?? item.kind, projectId,
-        text: item.dirty || !conversation ? item.text : '', runtimeId: item.runtimeId ?? state.defaultRuntimeId, modelId: item.modelId, modelTooLong: item.modelTooLong,
+        selectedInputIds: item.selectedInputIds, excludedInputIds: item.excludedInputIds, fileReferenceVersion: item.fileReferenceVersion, inputReferenceVersions: item.inputReferenceVersions, text: item.dirty || !conversation ? item.text : '', submission: item.submission ? { ...item.submission, state: item.submission.state === 'failed' ? 'failed' : 'unknown' } : undefined, runtimeId: item.runtimeId ?? state.defaultRuntimeId, modelId: item.modelId, modelTooLong: item.modelTooLong,
         version: item.dirty ? 1 : 0, savedVersion: item.dirty ? -1 : 0, events: [], files: [], loaded: !conversation, permissionPending: {}, permissionErrors: {} }
       aliases.set(item.key, item.key)
     }
@@ -273,7 +290,7 @@ function restoreLocalDrafts(admittedConversationIds: ReadonlySet<string>): void 
           const value = entries[aliases.get(storedKey) ?? '']
           if (!value) continue
           const scope = scopeKey(value.kind, value.projectId), previous = entries[selected[scope] ?? '']
-          if (!previous || !previous.conversation && !previous.text && !previous.images?.length && !previous.action) selected[scope] = value.key
+          if (!previous || !previous.conversation && !previous.text && !previous.images?.length && !previous.submission && !previous.action) selected[scope] = value.key
         }
         for (const kind of ['work', 'code'] as const) if (kind in saved.projects) projectScopes[kind] = saved.projects[kind] && projects.has(saved.projects[kind] ?? '') ? saved.projects[kind] : null
       }
@@ -284,7 +301,7 @@ function restoreLocalDrafts(admittedConversationIds: ReadonlySet<string>): void 
 }
 let localFingerprint = ''
 useConversations.subscribe((state) => {
-  const fingerprint = JSON.stringify([state.selected, state.projectScopes, Object.values(state.entries).map((item) => [item.key, item.owner, item.version, item.savedVersion, item.projectId, item.conversation?.id, item.locked])])
+  const fingerprint = JSON.stringify([state.selected, state.projectScopes, Object.values(state.entries).map((item) => [item.key, item.owner, item.version, item.savedVersion, item.projectId, item.conversation?.id, item.locked, item.excludedInputIds, item.selectedInputIds, item.fileReferenceVersion, item.inputReferenceVersions])])
   if (fingerprint === localFingerprint) return
   localFingerprint = fingerprint; persistLocalDrafts()
 })
@@ -293,6 +310,7 @@ const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const creating = new Map<string, Promise<Conversation>>()
 const saving = new Map<string, Promise<void>>()
 const reading = new Map<string, number>()
+const conversationReads = new Map<string, { owner: string; promise: Promise<void> }>()
 const fileReads = new Map<string, number>()
 function stopSaveTimer(key: string): void { clearTimeout(saveTimers.get(key)); saveTimers.delete(key) }
 function queueSave(key: string): void {
@@ -306,7 +324,7 @@ export function editDraft(key: string, text: string): void {
 export function setDraftImages(key: string, images: AcpImageAttachment[], expectedOwner?: string): void {
   const current = entry(key)
   if (!current || current.owner !== expectedOwner) return
-  patchEntry(key, { images, imageVersion: (current.imageVersion ?? 0) + 1 })
+  patchEntry(key, { images })
 }
 export function requestComposerFocus(key: string): void { if (entry(key)) patchEntry(key, { composerFocus: crypto.randomUUID() }) }
 
@@ -340,17 +358,19 @@ export function acceptConversationSession(key: string, session: AcpSessionRecord
   patchEntry(key, { session: generationMayChange ? session : newerSession(current.session, session), ...(generationMayChange ? { request: undefined } : {}) })
   return true
 }
-export function setDraftRuntime(key: string, runtimeId: string): void {
+export function setDraftSelection(key: string, runtimeId: string, modelId?: string): boolean {
   const current = entry(key)
-  if (!current || current.conversation?.nativeRef || current.action || current.conversation?.archivedAt !== undefined) return
-  patchEntry(key, { runtimeId, version: current.version + 1 })
+  if (!current || current.conversation?.nativeRef || current.action || current.conversation?.archivedAt !== undefined) return false
+  const { runtimes, piModels } = useConversations.getState()
+  if (!runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available)) return false
+  if (modelId !== undefined && (runtimeId !== 'pi' || !piModels.some((model) => model.id === modelId && model.available) || !modelIdWithinLimit(modelId))) return false
+  patchEntry(key, {
+    runtimeId,
+    ...(modelId !== undefined ? { modelId, modelTooLong: false } : {}),
+    version: current.version + 1
+  })
   if (current.conversation || current.text) queueSave(key)
-}
-export function setDraftModel(key: string, modelId: string): void {
-  const current = entry(key)
-  if (!current || current.conversation?.nativeRef || current.action || current.conversation?.archivedAt !== undefined || !modelIdWithinLimit(modelId)) return
-  patchEntry(key, { modelId, modelTooLong: false, version: current.version + 1 })
-  if (current.conversation || current.text) queueSave(key)
+  return true
 }
 async function persistIdentity(key: string): Promise<Conversation> {
   const current = entry(key), client = conversationClient()
@@ -395,28 +415,58 @@ export async function saveDraft(key: string, duringSend = false): Promise<void> 
 }
 
 function validatePage(page: AcpHistoryEventPage, conversation: Conversation): void {
-  if (!ownsSession(page.session, conversation) || page.events.some((event) => !ownsSession(event, conversation))) throw new Error('会话历史来源不匹配，未应用返回内容。')
+  if (!ownsSession(page.session, conversation) || [...page.events, ...(page.discussion?.events ?? [])].some((event) => !ownsSession(event, conversation))) throw new Error('会话历史来源不匹配，未应用返回内容。')
 }
-export async function readConversation(key: string): Promise<void> {
+export function readConversation(key: string): Promise<void> {
+  const current = entry(key)
+  if (!current?.conversation) return Promise.resolve()
+  const owner = JSON.stringify([current.owner, current.conversation.id, projectRootKey(current.conversation.workspace.root)])
+  const existing = conversationReads.get(key)
+  if (existing?.owner === owner) return existing.promise
+  const promise = readConversationOwned(key).finally(() => { if (conversationReads.get(key)?.promise === promise) conversationReads.delete(key) })
+  conversationReads.set(key, { owner, promise })
+  return promise
+}
+async function readConversationOwned(key: string): Promise<void> {
   const current = entry(key), client = conversationClient()
-  if (!current?.conversation || !client || current.loading) return
+  if (!current?.conversation || !client) return
   const readRevision = metadataRevision
+  const originalGeneration = current.session?.connectionGeneration
   const id = current.conversation.id, ticket = (reading.get(key) ?? 0) + 1
-  reading.set(key, ticket); patchEntry(key, { loading: true })
+  reading.set(key, ticket); patchEntry(key, { loading: true, readTimings: {} })
   const valid = (): boolean => reading.get(key) === ticket && entry(key)?.conversation?.id === id
+  const started = performance.now()
+  let metadataError: string | undefined, historyError: string | undefined
   try {
-    const read = conversationValue(await client.read(id))
-    if (!valid()) return
-    acceptRead(key, read, !current.loaded, readRevision)
-    const page = conversationValue(await client.events(id, { limit: 120 }))
-    if (!valid()) return
-    if (page) {
-      validatePage(page, read.conversation)
-      patchEntry(key, (latest) => ({ events: mergeEvents(page.events, latest.events), page: latest.page?.beforeCursor ? { ...page, beforeCursor: latest.page.beforeCursor, hasEarlier: latest.page.hasEarlier } : page, session: newerSession(latest.session, { ...page.session, events: [] }) }))
-    }
-    patchEntry(key, { loaded: true, loadError: undefined })
-  } catch (cause) { if (valid()) patchEntry(key, { loadError: conversationError(cause) }) }
-  finally { if (valid()) patchEntry(key, { loading: false }) }
+    const metadata = Promise.resolve().then(() => client.read(id)).then(conversationValue).then(read => {
+      if (!valid()) return
+      const acknowledgedGeneration = entry(key)?.session?.connectionGeneration
+      if (acknowledgedGeneration !== originalGeneration && read.session?.connectionGeneration !== acknowledgedGeneration && !(originalGeneration === undefined && read.session?.connectionOwned === true && entry(key)?.session?.connectionOwned === false)) return
+      acceptRead(key, read, !current.loaded, readRevision)
+      patchEntry(key, latest => ({ readTimings: { ...latest.readTimings, metadataMs: performance.now() - started } }))
+    })
+    const results = await Promise.allSettled([
+      metadata,
+      Promise.resolve().then(() => client.events(id, { limit: 120 })).then(conversationValue).then(async page => {
+        if (page && !current.conversation?.nativeRef) await metadata.catch(() => undefined)
+        if (!valid()) return
+        if (page) {
+          const conversation = entry(key)?.conversation
+          if (!conversation) return
+          validatePage(page, conversation)
+          patchEntry(key, latest => ({ events: mergeEvents(page.events, latest.events), discussion: page.discussion ?? latest.discussion,
+            page: latest.page?.beforeCursor ? { ...page, beforeCursor: latest.page.beforeCursor, hasEarlier: latest.page.hasEarlier } : page,
+            ...(latest.session?.connectionGeneration !== originalGeneration && page.session.connectionGeneration !== latest.session?.connectionGeneration ? {} : { session: newerSession(latest.session, { ...page.session, events: [] }) }),
+            loaded: true, readTimings: { ...latest.readTimings, historyMs: performance.now() - started } }))
+        } else patchEntry(key, { loaded: true })
+        if (entry(key) && submittedMessageRecorded(entry(key) as WorkspaceEntry)) { consumeSubmittedReferences(key); if (entry(key)?.action !== 'sending') patchEntry(key, { submission: undefined }) }
+      })
+    ])
+    if (results[0].status === 'rejected') metadataError = conversationError(results[0].reason)
+    if (results[1].status === 'rejected') historyError = conversationError(results[1].reason)
+    if (valid()) patchEntry(key, { loadError: historyError, ...(metadataError ? { nativeError: metadataError } : {}) })
+  } catch (cause) { if (valid()) patchEntry(key, { loadError: conversationError(cause) }) } finally { if (valid()) patchEntry(key, latest => ({ loading: false, readTimings: { ...latest.readTimings, totalMs: performance.now() - started } })) }
+
 }
 export async function earlierMessages(key: string): Promise<void> {
   const current = entry(key), client = conversationClient()
@@ -442,12 +492,116 @@ export function actionablePermissions(current: WorkspaceEntry, now: number): Rec
   if (!conversation || !session?.connectionOwned || !session.connectionGeneration) return {}
   return Object.fromEntries((session.pendingPermissions ?? []).filter((permission) => ownsSession(permission, conversation) && permission.connectionGeneration === session.connectionGeneration && (!permission.turnId || permission.turnId === session.turnId) && (permission.expiresAt === undefined || permission.expiresAt > now)).map((permission) => [permission.requestId, permission]))
 }
-export async function sendMessage(key: string): Promise<void> { await submitMessage(key) }
-async function submitMessage(key: string): Promise<boolean> {
+export function retainConversationDrafts(): void {
+  persistLocalDrafts()
+  if (!nativeNamespace || useConversations.getState().storageError) throw new Error(useConversations.getState().storageError ?? '本机草稿身份尚未确认')
+}
+function settleFailedSubmission(key: string, error: string): void {
+  const submission = entry(key)?.submission
+  if (!submission) return
+  patchEntry(key, { submission: { ...submission, state: 'failed' }, error, action: undefined, request: undefined, savedVersion: -1 })
+  persistLocalDrafts()
+  queueSave(key)
+}
+export function canRetryFailedSubmission(submission: WorkspaceEntry['submission']): boolean {
+  return submission?.state === 'failed' && (Boolean(submission.images?.length) || (submission.hasImages === false && Boolean(submission.draftText.trim())))
+}
+export function dismissFailedSubmission(key: string, requestId: string): void {
+  const current = entry(key)
+  if (!current || current.action || current.submission?.state !== 'failed' || current.submission.id !== requestId) return
+  patchEntry(key, { submission: undefined, error: undefined })
+  persistLocalDrafts()
+}
+export async function reconcileSubmittedMessage(key: string): Promise<void> {
+  const current = entry(key), client = conversationClient(), requestId = current?.submission?.id
+  if (!current || !requestId || current.submission?.state !== 'unknown') return
+  if (!current.conversation) { settleFailedSubmission(key, '发送失败。'); return }
+  try {
+    if (!client?.reconcileSend) { await readConversation(key); return }
+    const receipt = conversationValue(await client.reconcileSend(current.conversation.id, requestId))
+    const latest = entry(key)?.submission
+    if (latest?.id !== requestId || latest.state !== 'unknown') return
+    if (receipt.state === 'not-sent') {
+      await readConversation(key)
+      const reviewed = entry(key)?.submission
+      if (reviewed?.id === requestId && reviewed.state === 'unknown') settleFailedSubmission(key, '发送失败。')
+      return
+    }
+    patchEntry(key, value => ({ submission: value.submission ? { ...value.submission, state: receipt.state === 'sent' ? 'accepted' : 'unknown', turnId: receipt.turnId } : undefined }))
+    if (receipt.state === 'sent') consumeSubmittedReferences(key)
+    await readConversation(key)
+  } catch (cause) { if (entry(key)?.submission?.id === requestId) patchEntry(key, { error: conversationError(cause) }) }
+  finally { persistLocalDrafts() }
+}
+function submittedReferenceIds(current: WorkspaceEntry): string[] {
+  const submitted = current.submission
+  if (!submitted?.fileIds) return []
+  if (!submitted.fileReferenceVersions) return (current.fileReferenceVersion ?? 0) === submitted.fileReferenceVersion ? submitted.fileIds : []
+  return submitted.fileIds.filter(id => (current.inputReferenceVersions?.[id] ?? 0) === submitted.fileReferenceVersions?.[id])
+}
+function consumeSubmittedReferences(key: string): void {
+  const current = entry(key)
+  if (!current) return
+  const consumed = submittedReferenceIds(current)
+  if (!consumed.length) return
+  patchEntry(key, { selectedInputIds: current.selectedInputIds?.filter(id => !consumed.includes(id)), excludedInputIds: [...new Set([...(current.excludedInputIds ?? []), ...consumed])] })
+}
+
+export function submittedMessageRecorded(current: Pick<WorkspaceEntry, 'events' | 'submission'>): boolean {
+  const pending = current.submission
+  if (!pending) return false
+  return current.events.some(event => {
+    if (event.kind !== 'message' || event.payload?.role !== 'user') return false
+    const action = event.payload.privateAction
+    return Boolean(action && typeof action === 'object' && 'requestId' in action && action.requestId === pending.id) || Boolean(pending.turnId && event.turnId === pending.turnId)
+  })
+}
+export async function sendMessage(key: string, retryRequestId?: string, taskSource?: StoredSubmission['taskSource']): Promise<void> { await submitMessage(key, retryRequestId, taskSource) }
+
+/** Only an explicit task action supplies a first request. Visiting a bound chat never sends one. */
+export async function sendTaskWorkRequest(key: string, request: 'analyze' | 'develop', source: NonNullable<StoredSubmission['taskSource']>, stillSelected: () => boolean): Promise<void> {
+  const originalText = entry(key)?.text ?? ''
+  const text = request === 'analyze'
+    ? '请结合任务正文、已确认的补充、评论和资料，分析目标和现状，给出可执行的方案。需要我决定的业务问题请直接指出。'
+    : '请依据这张任务和已选定的材料，在当前工程中查明现状、拟定方案并实施，完成后运行适用的检查，给出实际改动、检查结果和仍需测试的内容。遇到会改变业务范围的决定时，先向我确认。'
+  await readConversation(key)
+  const current = entry(key)
+  if (!stillSelected() || !current?.loaded || current.loadError || current.locked || current.conversation?.archivedAt !== undefined) {
+    throw Error('当前对话无法读取，请重新打开后再试。')
+  }
+  if (current.action || sessionRunning(current) || current.submission && current.submission.state !== 'accepted') throw Error('当前对话还有进行中的请求，请先查看它的结果。')
+  if (current.text || current.images?.length || current.selectedInputIds?.length) throw Error('已保留输入框中的草稿和附件，请在当前对话中继续。')
+  editDraft(key, text)
+  await sendMessage(key, undefined, source)
+}
+export async function reconnectConversation(key: string): Promise<void> {
+  const current = entry(key), client = conversationClient()
+  if (!current?.conversation?.nativeRef || !client?.connect || current.action || sessionRunning(current)) return
+  const owner = current.owner, id = current.conversation.id
+  patchEntry(key, { action: 'connect', error: undefined })
+  try {
+    const session = conversationValue(await client.connect(id))
+    const latest = entry(key)
+    if (!latest || latest.owner !== owner || latest.conversation?.id !== id || !ownsSession(session, latest.conversation)) return
+    patchEntry(key, { session, nativeError: undefined, modelConfirmationRequired: false })
+    await readConversation(key)
+  } catch (cause) { if (entry(key)?.owner === owner && entry(key)?.conversation?.id === id) patchEntry(key, { error: conversationError(cause) }); await readConversation(key) }
+  finally { if (entry(key)?.owner === owner && entry(key)?.conversation?.id === id) patchEntry(key, { action: undefined }) }
+}
+async function submitMessage(key: string, retryRequestId?: string, taskSource?: StoredSubmission['taskSource']): Promise<boolean> {
   const current = entry(key), client = conversationClient(), state = useConversations.getState()
   if (current?.conversation && (knownConversation(current.conversation.id)?.archivedAt !== undefined || state.managementBusy[current.conversation.id])) return false
-  if (!current || !client || current.action || !current.loaded || (!current.text.trim() && !current.images?.length) || sessionRunning(current)) return false
-  if (current.images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return false }
+  if (!current || !client || current.action || !current.loaded || sessionRunning(current)) return false
+  const retry = retryRequestId && current.submission?.id === retryRequestId && canRetryFailedSubmission(current.submission) ? current.submission : undefined
+  if (retryRequestId && !retry) return false
+  if (!retry && current.submission && current.submission.state !== 'accepted') {
+    patchEntry(key, { error: current.submission.state === 'failed' ? '请先重新发送或移除上一条未发送的消息。' : '请先检查上一条消息的发送状态。' })
+    return false
+  }
+  const draftText = retry ? retry.draftText : current.text
+  const images = retry ? retry.images : current.images?.length ? current.images : undefined
+  if (!draftText.trim() && !images?.length) return false
+  if (images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return false }
   const runtimeId = current.session?.agentId ?? current.runtimeId ?? state.defaultRuntimeId
   if (!current.conversation?.nativeRef && (!runtimeId || !state.runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available) || (runtimeId === 'pi' && !state.configuredPi))) {
     patchEntry(key, { error: runtimeId === 'pi' ? '请先在设置中配置可用模型，草稿已保留。' : '请选择可用的执行引擎，草稿已保留。' }); return false
@@ -460,12 +614,21 @@ async function submitMessage(key: string): Promise<boolean> {
   if (initialModelId && !current.modelId) patchEntry(key, { modelId: initialModelId, version })
   const readRevision = metadataRevision
   const requestId = crypto.randomUUID()
-  const images = current.images?.length ? current.images.slice() : undefined, imageVersion = current.imageVersion ?? 0
-  const inputFiles = current.files.filter((file) => file.kind === 'input')
-  const text = inputFiles.length ? `${current.text.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : current.text.trim()
+  const inputFiles = retry ? [] : selectedInputFiles(current), fileReferenceVersion = current.fileReferenceVersion ?? 0
+  const text = retry?.text ?? (inputFiles.length ? `${draftText.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : draftText.trim())
   if (text.length > 200_000) { patchEntry(key, { error: '消息与文件路径超过长度上限，请缩短消息后再发送。' }); return false }
   const ownsSubmission = (): boolean => entry(key)?.owner === current.owner && entry(key)?.submission?.id === requestId
-  stopSaveTimer(key); patchEntry(key, { action: 'sending', submission: { id: requestId, text, version }, error: undefined, following: true })
+  stopSaveTimer(key)
+  patchEntry(key, {
+    action: 'sending',
+    submission: retry
+      ? { ...retry, id: requestId, state: 'pending', turnId: undefined }
+      : { id: requestId, taskSource, text, draftText, images, hasImages: Boolean(images?.length), version, state: 'pending', fileIds: inputFiles.map(file => file.id), fileReferenceVersion, fileReferenceVersions: Object.fromEntries(inputFiles.map(file => [file.id, current.inputReferenceVersions?.[file.id] ?? 0])) },
+    ...(retry ? {} : { text: '', images: undefined }), version: version + 1, savedVersion: -1, error: undefined, following: true
+  })
+  try { retainConversationDrafts() }
+  catch (cause) { patchEntry(key, { action: undefined, submission: current.submission, text: current.text, images: current.images, version, error: conversationError(cause) }); return false }
+  let dispatching = false
   try {
     await saving.get(key)
     await saveDraft(key, true)
@@ -475,25 +638,30 @@ async function submitMessage(key: string): Promise<boolean> {
     if (session && !ownsSession(session, conversation)) throw new Error('会话来源已改变，草稿已保留。')
     const generation = session?.connectionGeneration
     patchEntry(key, { request: session ? { requestId, projectRoot: conversation.workspace.root, sessionId: session.sessionId, connectionGeneration: generation, previousTurnId: session.turnId, phase: 'submitting' } : undefined })
-    const response = conversationValue(await client.send(conversation.id, { requestId, text, draftText: current.text, images, expectedConnectionGeneration: generation }))
+    dispatching = true
+    const source = retry ? retry.taskSource : taskSource
+    const response = conversationValue(await client.send(conversation.id, { requestId, text, draftText, images, expectedConnectionGeneration: generation, ...(source && { taskSource: source }) }))
     if (!ownsSubmission()) return false
     if (response.conversation.id !== conversation.id || projectRootKey(response.conversation.workspace.root) !== projectRootKey(conversation.workspace.root) || !ownsSession(response.session, response.conversation) || conversation.nativeRef && response.session.sessionId !== conversation.nativeRef.sessionId) throw new Error('发送结果的会话来源不匹配，请核对历史后重试。')
     const metadata = keepConversation(response.conversation, readRevision)
     patchEntry(key, (value) => ({
       conversation: metadata, session: newerSession(value.session, response.session), events: mergeEvents(response.session.events ?? [], mergeEvents(value.events, buffered(response.session))),
       request: { requestId, projectRoot: response.conversation.workspace.root, sessionId: response.session.sessionId, connectionGeneration: response.session.connectionGeneration, previousTurnId: session?.turnId, turnId: response.turnId, phase: 'accepted' },
-      ...(value.version === version ? { text: '', version: version + 1, savedVersion: version + 1 } : { savedVersion: -1 }), saveError: undefined,
-      ...(images ? { images: (value.imageVersion ?? 0) === imageVersion ? [] : (value.images ?? []).filter((image) => !images.some((sent) => sent.id === image.id && sent.data === image.data)), imageVersion: (value.imageVersion ?? 0) + 1 } : {})
+      ...(value.version === version + 1 && !value.text ? { savedVersion: value.version } : { savedVersion: -1 }), action: undefined, ...{ selectedInputIds: value.selectedInputIds?.filter(id => !submittedReferenceIds(value).includes(id)), excludedInputIds: [...new Set([...(value.excludedInputIds ?? []), ...submittedReferenceIds(value)])] }, submission: value.submission ? { ...value.submission, state: 'accepted', turnId: response.turnId } : undefined, saveError: undefined
     }))
     void readConversation(key); void refreshFiles(key)
     return true
   } catch (cause) {
     if (!ownsSubmission()) return false
-    patchEntry(key, { error: `${conversationError(cause)} 未自动重发，请核对记录后再发送。`, request: undefined, savedVersion: -1 })
+    const notSent = !dispatching || Boolean(cause && typeof cause === 'object' && 'notSent' in cause && cause.notSent === true)
+    if (submittedMessageRecorded(entry(key) as WorkspaceEntry)) { consumeSubmittedReferences(key); patchEntry(key, { error: undefined, request: undefined }); return true }
+    if (notSent) settleFailedSubmission(key, `发送失败：${conversationError(cause)}`)
+    else patchEntry(key, value => ({ error: conversationError(cause), request: undefined, savedVersion: -1,
+      submission: value.submission ? { ...value.submission, state: 'unknown' } : undefined }))
     if (entry(key)?.conversation) void readConversation(key)
     return false
   } finally {
-    if (ownsSubmission()) { patchEntry(key, { action: undefined, submission: undefined }); const latest = entry(key); if (latest && latest.version !== latest.savedVersion) queueSave(key) }
+    if (ownsSubmission()) { patchEntry(key, { action: undefined }); const latest = entry(key); if (latest && submittedMessageRecorded(latest)) patchEntry(key, { submission: undefined }); persistLocalDrafts(); if (latest && latest.version !== latest.savedVersion) queueSave(key) }
   }
 }
 export async function controlConversation(key: string, action: 'cancel' | 'end'): Promise<void> {
@@ -529,18 +697,29 @@ export async function chooseDirectory(key: string): Promise<boolean> {
     if (!directory) return false
     if (current.conversation) {
       const read = conversationValue(await client.updateDraft(current.conversation.id, { directoryGrantId: directory.grantId }))
-      reading.set(key, (reading.get(key) ?? 0) + 1); patchEntry(key, { directory, loading: false }); acceptRead(key, read)
+      reading.set(key, (reading.get(key) ?? 0) + 1); patchEntry(key, { directory, loading: false, files: [], filesLoaded: false, selectedInputIds: [], excludedInputIds: [], inputReferenceVersions: {}, fileReferenceVersion: (current.fileReferenceVersion ?? 0) + 1 }); acceptRead(key, read); void refreshFiles(key)
     } else patchEntry(key, { directory })
     if (entry(key)?.text) queueSave(key)
     return Boolean(entry(key))
   } catch (cause) { patchEntry(key, { error: conversationError(cause) }); return false }
   finally { patchEntry(key, { action: undefined }) }
 }
+export function selectedInputFiles(current: Pick<WorkspaceEntry, 'files' | 'selectedInputIds'>): ConversationFile[] {
+  return current.files.filter(file => file.kind === 'input' && current.selectedInputIds?.includes(file.id))
+}
+export function referenceInputFile(key: string, fileId: string, selected: boolean): void {
+  const current = entry(key)
+  if (!current?.files.some(file => file.id === fileId && file.kind === 'input')) return
+  patchEntry(key, value => {
+    const version = (value.fileReferenceVersion ?? 0) + 1
+    return { selectedInputIds: selected ? [...new Set([...(value.selectedInputIds ?? []), fileId])] : value.selectedInputIds?.filter(id => id !== fileId), excludedInputIds: selected ? value.excludedInputIds?.filter(id => id !== fileId) : [...new Set([...(value.excludedInputIds ?? []), fileId])], inputReferenceVersions: { ...value.inputReferenceVersions, [fileId]: version }, fileReferenceVersion: version, localUpdatedAt: Date.now() }
+  })
+}
 export async function addFiles(key: string): Promise<void> {
   const current = entry(key), client = conversationClient()
   if (!current || !client || current.action) return
   patchEntry(key, { action: 'files', fileError: undefined })
-  try { const conversation = await persistIdentity(key); conversationValue(await client.pickFiles(conversation.id)); await refreshFiles(key) }
+  try { const conversation = await persistIdentity(key); const added = conversationValue(await client.pickFiles(conversation.id)); patchEntry(key, value => ({ inputReferenceVersions: { ...value.inputReferenceVersions, ...Object.fromEntries(added.map(file => [file.id, (value.fileReferenceVersion ?? 0) + 1])) }, selectedInputIds: [...new Set([...(value.selectedInputIds ?? []), ...added.map(file => file.id)])], fileReferenceVersion: (value.fileReferenceVersion ?? 0) + 1, excludedInputIds: value.excludedInputIds?.filter(id => !added.some(file => file.id === id)) })); await refreshFiles(key) }
   catch (cause) { patchEntry(key, { fileError: conversationError(cause) }) }
   finally { patchEntry(key, { action: undefined }) }
 }
@@ -605,9 +784,21 @@ const earlyEvents = new Map<string, TimelineEvent[]>()
 const eventOwner = (value: { projectRoot?: string; sessionId?: string; connectionGeneration?: string }): string => JSON.stringify([projectRootKey(value.projectRoot), value.sessionId, value.connectionGeneration])
 function buffered(session: AcpSessionRecord): TimelineEvent[] { return earlyEvents.get(eventOwner(session)) ?? [] }
 let listening = false
+let defaultsRevision = 0
+export async function refreshConversationDefaults(): Promise<void> {
+  const revision = ++defaultsRevision
+  const settings = await api.getSettings()
+  if (revision !== defaultsRevision) return
+  const choices = piModelChoices(settings.ai)
+  useConversations.setState({ piModels: choices.models, defaultPiModelId: choices.defaultId })
+  useApp.setState({ settings })
+}
 function listen(): void {
   if (listening || !hasIpc) return
   listening = true
+  api.onConversationDefaultsChanged?.(() => {
+    void refreshConversationDefaults().catch(cause => useConversations.setState({ runtimeError: conversationError(cause) }))
+  })
   api.onAcpOutput((event) => {
     const entries = Object.values(useConversations.getState().entries)
     if (entries.some((item) => item.action === 'sending' && item.conversation && projectRootKey(item.conversation.workspace.root) === projectRootKey(event.projectRoot))) {
@@ -647,25 +838,22 @@ export async function refreshWorkspace(): Promise<void> {
   const client = conversationClient()
   if (!client) { useConversations.setState({ initialized: true, loading: false }); return }
   const readRevision = metadataRevision
+  const defaultsReadRevision = defaultsRevision
   useConversations.setState({ loading: true })
   refreshing = (async (): Promise<void> => {
-    const [list, projects, runtimes, settings, archives] = await Promise.allSettled([client.list({ archive: 'all' }), client.projects(), api.acpAgents(), api.getSettings(), api.chatList()])
+    const listRead = client.list({ archive: 'all' }).then(result => { if (result.ok) { acceptCatalog(result.value, readRevision); useConversations.setState({ error: undefined }) }; return result })
+    const settingsRead = api.getSettings()
+    const otherReads = Promise.allSettled([api.acpAgents(), api.chatList()])
+    const [list, projects, settings] = await Promise.allSettled([listRead, client.projects(), settingsRead])
     if (list.status === 'fulfilled' && list.value.ok) { acceptCatalog(list.value.value, readRevision); useConversations.setState({ error: undefined }) }
     else if (list.status === 'rejected') useConversations.setState({ error: conversationError(list.reason) })
     else if (!list.value.ok) useConversations.setState({ error: list.value.error })
     if (projects.status === 'fulfilled' && projects.value.ok) useConversations.setState({ projects: projects.value.value })
     else if (projects.status === 'rejected') useConversations.setState({ error: conversationError(projects.reason) })
     else if (!projects.value.ok) useConversations.setState({ error: projects.value.error })
-    if (runtimes.status === 'fulfilled' && runtimes.value.ok) {
-      const values = runtimes.value.agents ?? [], preferred = values.find((runtime) => runtime.id === 'pi' && runtime.enabled && runtime.available) ?? values.find((runtime) => runtime.enabled && runtime.available)
-      useConversations.setState({ runtimes: values, defaultRuntimeId: preferred?.id, runtimeError: undefined })
-      for (const item of Object.values(useConversations.getState().entries)) if (!item.runtimeId && !item.conversation?.nativeRef) patchEntry(item.key, { runtimeId: preferred?.id })
-    } else useConversations.setState({ runtimeError: runtimes.status === 'rejected' ? conversationError(runtimes.reason) : runtimes.value.error ?? '执行引擎配置无法读取。' })
-    if (archives.status === 'fulfilled' && archives.value.ok) useConversations.setState({ archives: archives.value.sessions ?? [], archiveError: undefined })
-    else useConversations.setState({ archiveError: archives.status === 'rejected' ? conversationError(archives.reason) : archives.value.error ?? '旧问答记录无法读取。' })
     if (settings.status === 'fulfilled') {
       const { models: piModels, defaultId: defaultPiModelId } = piModelChoices(settings.value.ai)
-      useConversations.setState({ configuredPi: piModels.some((model) => model.available), piModels, defaultPiModelId, modelLabel: piModels.find((model) => model.id === defaultPiModelId)?.label })
+      if (defaultsReadRevision === defaultsRevision) useConversations.setState({ configuredPi: piModels.some((model) => model.available), piModels, defaultPiModelId, modelLabel: piModels.find((model) => model.id === defaultPiModelId)?.label })
       try {
         restoringStorage = true
         const nextNamespace = await installationNamespace(settings.value.bridgeToken)
@@ -677,6 +865,14 @@ export async function refreshWorkspace(): Promise<void> {
       finally { restoringStorage = false; persistLocalDrafts() }
     } else useConversations.setState({ runtimeError: conversationError(settings.reason), configuredPi: false })
     useConversations.setState({ loading: false, initialized: true })
+    const [runtimes, archives] = await otherReads
+    if (runtimes.status === 'fulfilled' && runtimes.value.ok) {
+      const values = runtimes.value.agents ?? [], preferred = values.find((runtime) => runtime.id === 'pi' && runtime.enabled && runtime.available) ?? values.find((runtime) => runtime.enabled && runtime.available)
+      useConversations.setState({ runtimes: values, defaultRuntimeId: preferred?.id, runtimeError: settings.status === 'rejected' ? conversationError(settings.reason) : undefined })
+      for (const item of Object.values(useConversations.getState().entries)) if (!item.runtimeId && !item.conversation?.nativeRef) patchEntry(item.key, { runtimeId: preferred?.id })
+    } else useConversations.setState({ runtimeError: runtimes.status === 'rejected' ? conversationError(runtimes.reason) : runtimes.value.error ?? '执行引擎配置无法读取。' })
+    if (archives.status === 'fulfilled' && archives.value.ok) useConversations.setState({ archives: archives.value.sessions ?? [], archiveError: undefined })
+    else useConversations.setState({ archiveError: archives.status === 'rejected' ? conversationError(archives.reason) : archives.value.error ?? '旧问答记录无法读取。' })
   })()
   try { await refreshing }
   catch (cause) { useConversations.setState({ loading: false, initialized: true, error: conversationError(cause) }) }
@@ -684,9 +880,16 @@ export async function refreshWorkspace(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  const flush = (): void => {
+  window.addEventListener('pagehide', () => {
     persistLocalDrafts()
-    for (const key of saveTimers.keys()) { stopSaveTimer(key); void saveDraft(key).catch(() => undefined) }
-  }
-  window.addEventListener('pagehide', flush); window.addEventListener('blur', flush)
+    for (const key of saveTimers.keys()) stopSaveTimer(key)
+  })
+  window.addEventListener('blur', () => {
+    persistLocalDrafts()
+    for (const key of saveTimers.keys()) {
+      if (!entry(key)?.conversation) continue
+      stopSaveTimer(key)
+      void saveDraft(key).catch(() => undefined)
+    }
+  })
 }

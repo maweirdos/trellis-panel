@@ -1,10 +1,17 @@
 import { z } from 'zod'
 import { modelIdWithinLimit } from '@shared/model-selection'
+import { conversationTaskSource } from '@shared/conversation-task'
 
+const referenceVersions = z.record(z.string().min(1).max(256), z.number().int().nonnegative()).refine(value => Object.keys(value).length <= 256)
 const storedDraftSchema = z.object({
   key: z.string().min(1).max(200), conversationId: z.string().uuid().optional(),
   kind: z.enum(['work', 'code']), projectId: z.string().max(256).optional(), text: z.string().max(200_000),
-  runtimeId: z.string().max(200).optional(), modelId: z.string().optional(), modelTooLong: z.boolean().optional(), dirty: z.boolean(), updatedAt: z.number().finite()
+  runtimeId: z.string().max(200).optional(), modelId: z.string().optional(), modelTooLong: z.boolean().optional(), dirty: z.boolean(), updatedAt: z.number().finite(),
+  inputReferenceVersions: referenceVersions.optional(),
+  fileReferenceVersion: z.number().int().nonnegative().optional(),
+  selectedInputIds: z.array(z.string().min(1).max(256)).max(256).optional(),
+  excludedInputIds: z.array(z.string().min(1).max(256)).max(256).optional(),
+  submission: z.object({ id: z.string().uuid(), taskSource: conversationTaskSource.optional(), text: z.string().max(200_000), draftText: z.string().max(200_000), version: z.number().int(), state: z.enum(['pending', 'accepted', 'unknown', 'failed']), turnId: z.string().optional(), hasImages: z.boolean().optional(), fileIds: z.array(z.string().min(1).max(256)).max(256).optional(), fileReferenceVersion: z.number().int().nonnegative().optional(), fileReferenceVersions: referenceVersions.optional() }).strict().optional()
 }).strict()
 const selections = z.record(z.string().max(1200), z.string().max(200))
 const projectSelections = z.record(z.string().max(1200), z.string().max(256).nullable())

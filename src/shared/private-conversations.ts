@@ -4,6 +4,8 @@ import type { AcpSessionRecord } from './types'
 import type { IpcFail } from './ipc-errors'
 import { ACP_IMAGE_MIME_TYPES, ACP_IMAGE_MAX_BASE64 } from './acp-images'
 import { modelSelectionIdSchema } from './model-selection'
+import { teamTaskRefSchema } from './team-task-execution'
+import type { ConversationTaskSource } from './conversation-task'
 
 const id = z.string().uuid()
 const name = z.string().trim().min(1).max(200)
@@ -49,6 +51,7 @@ export const conversationFileSchema = z.object({
 }).strict()
 export const conversationOpenFileSchema = z.object({ fileId: z.string().min(1).max(256), action: z.enum(['open', 'reveal']).default('open'), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
 export const conversationReadFileSchema = z.object({ fileId: z.string().min(1).max(256), expectedRevision: z.string().regex(/^[a-f0-9]{64}$/), expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
+export const conversationAttachmentReadSchema = conversationReadFileSchema.extend({ requirementId: id.optional() }).strict()
 export const conversationPreviewImageSchema = conversationReadFileSchema.extend({ expectedSourceIdentity: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 export const CONVERSATION_IMAGE_PREVIEW_MAX_BYTES = 10 * 1024 * 1024
 export const CONVERSATION_PDF_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
@@ -76,23 +79,33 @@ export interface ConversationRead {
 }
 export interface ConversationDirectoryGrant { grantId: string; path: string }
 export interface ConversationApi {
+  taskAction(id: string, input: import('./conversation-task').ConversationTaskAction): Promise<ConversationResult<import('./conversation-task').ConversationTaskResult>>
+  taskSuggestion: {
+    start(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionStart): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
+    check(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionCheck): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
+    adopt(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionAdopt): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
+    close(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionClose): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
+  }
   list(input?: ConversationList): Promise<ConversationResult<Conversation[]>>
   createDraft(input?: ConversationCreateDraft): Promise<ConversationResult<ConversationRead>>
   updateDraft(id: string, input: ConversationUpdateDraft): Promise<ConversationResult<ConversationRead>>
   read(id: string): Promise<ConversationResult<ConversationRead>>
   events(id: string, input?: { before?: string; after?: string; limit?: number }): Promise<ConversationResult<AcpHistoryEventPage | null>>
-  send(id: string, input: ConversationSend): Promise<ConversationResult<{ conversation: Conversation; session: AcpSessionRecord; turnId: string }>>
+  send(id: string, input: ConversationSend & { taskSource?: ConversationTaskSource }): Promise<ConversationResult<{ conversation: Conversation; session: AcpSessionRecord; turnId: string }>>
+  reconcileSend?(id: string, requestId: string): Promise<ConversationResult<{ state: 'sent' | 'not-sent' | 'unknown'; turnId?: string }>>
   respond(id: string, input: ConversationRespond): Promise<ConversationResult<null>>
   cancel(id: string, input?: ConversationConnection): Promise<ConversationResult<null>>
   end(id: string, input?: ConversationConnection): Promise<ConversationResult<null>>
   configure(id: string, input: import('./acp-configuration').ConversationConfigure): Promise<ConversationResult<AcpSessionRecord>>
   recoverModel(id: string, input: import('./acp-configuration').ConversationRecoverModel): Promise<ConversationResult<AcpSessionRecord>>
+  connect?(id: string): Promise<ConversationResult<AcpSessionRecord>>
   pickDirectory(input?: { purpose: 'code' | 'trellis-requirement' }): Promise<ConversationResult<ConversationDirectoryGrant | null>>
   git(id: string): Promise<ConversationResult<import('./conversation-git').ConversationGitStatus>>
   requirements: import('./conversation-requirements').ConversationRequirementsApi
   pickFiles(id: string): Promise<ConversationResult<ConversationFile[]>>
   files(id: string): Promise<ConversationResult<ConversationFile[]>>
   openFile(id: string, input: ConversationOpenFile): Promise<ConversationResult<null>>
+  readAttachment(id: string, input: z.infer<typeof conversationAttachmentReadSchema>): Promise<ConversationResult<Uint8Array>>
   readFile(id: string, input: ConversationReadFile): Promise<ConversationResult<{ name: string; body: string; kind: 'prototype' | 'document'; revision: string; modifiedAt: number }>>
   previewImage?(id: string, input: z.infer<typeof conversationPreviewImageSchema>): Promise<ConversationResult<{ name: string; revision: string; mimeType: import('./acp-images').AcpImageMimeType; data: string }>>
   previewPdf?(id: string, input: z.infer<typeof conversationPreviewImageSchema>): Promise<ConversationResult<{ name: string; revision: string; data: Uint8Array; locator?: string }>>
@@ -107,10 +120,21 @@ export interface ConversationApi {
   reclassify(id: string, input: ConversationReclassify): Promise<ConversationResult<ConversationRead>>
 }
 
+/** Main-issued restriction on one private native owner, never a renderer grant. */
+export const taskPlanningPolicySchema = z.object({
+  version: z.literal(1), task: teamTaskRefSchema,
+  sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  agentId: z.literal('codex'), modelId: modelSelectionIdSchema,
+  mode: z.literal('read-only'), collaborationMode: z.literal('plan'),
+  permissionMode: z.literal('operator-once').optional()
+}).strict()
+export type TaskPlanningPolicy = z.infer<typeof taskPlanningPolicySchema>
+
 /** Native GUI transport only; renderer methods never accept these owner/path fields. */
 export const privateNativeOwnerSchema = z.object({
   root: z.string().min(1).max(8192), sessionId: z.string().regex(/^acp-private-[a-f0-9-]{36}$/),
-  conversationId: id, creatorId: z.string().min(1).max(256)
+  conversationId: id, creatorId: z.string().min(1).max(256),
+  planningPolicy: taskPlanningPolicySchema.optional()
 }).strict()
 export const privateNativeReadSchema = privateNativeOwnerSchema.extend({
   operation: z.enum(['session', 'events', 'image', 'updates', 'receipt']),
@@ -119,7 +143,7 @@ export const privateNativeReadSchema = privateNativeOwnerSchema.extend({
   paging: z.object({ before: z.string().max(4096).optional(), after: z.string().max(4096).optional(), limit: z.number().int().min(1).max(500).optional() }).strict().optional(),
   imageId: z.string().regex(/^[a-f0-9]{64}$/).optional()
 }).strict()
-export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), initialModelId: modelSelectionIdSchema.optional(), displayText: z.string().min(1).max(16_000).optional(), input: conversationSendSchema }).strict()
+export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), initialModelId: modelSelectionIdSchema.optional(), displayText: z.string().min(1).max(200_000).optional(), input: conversationSendSchema }).strict()
 export const privateNativeControlSchema = privateNativeOwnerSchema.extend({
   expectedConnectionGeneration: z.string().min(1).max(200).optional(),
   requestId: z.string().min(1).max(200).optional(), optionId: z.string().min(1).max(1000).optional()

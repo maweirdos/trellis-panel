@@ -21,7 +21,10 @@
   padding: 0 var(--my-space-12);
   border-bottom: 1px solid var(--my-border-subtle);
 }
-.requirement-workbench-header { display: grid; grid-template-columns: minmax(0, 1fr) repeat(5, auto); background: var(--my-bg-panel-header); }
+.requirement-workbench-header { display: grid; grid-template-columns: minmax(0, 1fr) repeat(4, auto); background: var(--my-bg-panel-header); }
+.requirement-workbench-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); padding: var(--my-space-8) var(--my-space-16); border-bottom: 1px solid var(--my-border-subtle); }
+.requirement-workbench-action-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--my-space-8); margin-inline-start: auto; }
+.requirement-workbench-reference-dialog { display: flex; flex-direction: column; gap: var(--my-space-16); padding: var(--my-space-20); }
 .requirement-workbench-identity {
   min-width: 0;
   width: 100%;
@@ -107,6 +110,8 @@
 .requirement-workbench-action > svg { flex-shrink: 0; color: var(--my-txt-icon-tertiary); }
 /* The assistant shares conversation controls, but fills an editor pane rather than a chat home. */
 .requirement-workbench-assistant > .acp-content[data-empty] { padding-block: 0; overflow: hidden; }
+.requirement-workbench-assistant > .acp-content[data-empty]::before,
+.requirement-workbench-assistant > .acp-content[data-empty]::after { display: none; }
 .requirement-workbench-assistant > .acp-content[data-empty] > .acp-transcript { flex: 1; min-height: 0; margin-block-start: 0; overflow-y: auto; }
 .requirement-workbench-assistant .acp-transcript-content,
 .requirement-workbench-assistant .acp-content[data-empty] .acp-transcript-content { padding-block: var(--my-space-20) var(--my-space-16); }

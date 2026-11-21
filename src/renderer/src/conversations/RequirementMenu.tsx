@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import { ChevronDown, FilePlus2, FileText, RefreshCw } from 'lucide-react'
+import { ChevronDown, FilePlus2, FileText, ListChecks, RefreshCw } from 'lucide-react'
+import type { RequirementDocument } from '@shared/conversation-requirements'
 import type { RequirementSummary } from '@shared/conversation-requirements'
 import { Button, Dropdown, DropdownHeader, DropdownItem } from '../my/ui'
 import { useInteractionGuard } from '../utils/interaction-scope'
@@ -27,13 +28,16 @@ export function useRequirementSummaries(entry: WorkspaceEntry | undefined, activ
   return { records: state.identity === identity ? state.records : [], error: state.identity === identity ? state.error : '', loading: state.identity === identity && state.loading, refresh }
 }
 
-export function ConversationRequirementMenu({ records, error, loading, disabled, onOpen, onRefresh }: {
-  records: RequirementSummary[]; error: string; loading: boolean; disabled: boolean; onOpen(id?: string): void; onRefresh(): void
+export function ConversationRequirementMenu({ records, error, loading, disabled, preferredId, onOpen, onRefresh }: {
+  records: RequirementSummary[]; error: string; loading: boolean; disabled: boolean; preferredId?: string; onOpen(id?: string, document?: RequirementDocument): void; onRefresh(): void
 }): JSX.Element {
   const canInteract = useInteractionGuard(), [limit, setLimit] = useState(20)
+  const resume = records.find(record => record.id === preferredId) ?? records[0]
   return <div className="private-requirement-context">
-    <Button variant="ghost" size="sm" className="acp-context-action" disabled={disabled} onClick={() => { if (canInteract()) onOpen() }}><FilePlus2 size={14} aria-hidden="true" /><span>新建需求</span></Button>
-    {(records.length > 0 || error) && <Dropdown placement="top" width={300} trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="private-requirement-menu-trigger" aria-label="查看此对话的需求" aria-expanded={open} disabled={disabled} onClick={() => { setLimit(20); toggle(); if (!open) onRefresh() }}><ChevronDown size={12} /></Button>}>
+    {resume && <Button variant="ghost" size="sm" className="acp-context-action" disabled={disabled} title={resume.title} onClick={() => { if (canInteract()) onOpen(resume.id) }}><FileText size={14} aria-hidden="true" /><span>继续需求</span></Button>}
+    {resume?.hasPlan && <Button variant="ghost" size="sm" className="acp-context-action" disabled={disabled} onClick={() => { if (canInteract()) onOpen(resume.id, 'plan') }}><ListChecks size={14} aria-hidden="true" /><span>查看计划</span></Button>}
+    <Button variant="ghost" size="sm" className="acp-context-action" disabled={disabled} onClick={() => { if (canInteract()) onOpen() }}><FilePlus2 size={14} aria-hidden="true" /><span>起草需求说明</span></Button>
+    {(records.length > 1 || error) && <Dropdown placement="top" width={300} trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="private-requirement-menu-trigger" aria-label="更多已有需求" aria-expanded={open} disabled={disabled} onClick={() => { setLimit(20); toggle(); if (!open) onRefresh() }}><ChevronDown size={12} /></Button>}>
       {close => <><div className="private-git-heading px-2"><DropdownHeader>此对话的需求</DropdownHeader><Button variant="ghost" size="sm" title="刷新需求" aria-label="刷新需求" disabled={loading} onClick={onRefresh}><RefreshCw size={13} className={loading ? 'animate-spin' : undefined} /></Button></div>
         <div className="private-requirement-list my-scrollbar">{records.slice(0, limit).map(record => <DropdownItem key={record.id} icon={<FileText size={14} />} onClick={() => { close(); onOpen(record.id) }}><span className="private-requirement-menu-row"><span className="private-requirement-menu-title">{record.title}</span><span className="text-my-xs text-my-tertiary">{record.handoff?.state === 'created' ? '已交接' : record.handoff ? '待核对' : '草稿'}</span></span></DropdownItem>)}</div>
         {error && <p className="my-item-description px-3 py-2" role="alert">{error}</p>}

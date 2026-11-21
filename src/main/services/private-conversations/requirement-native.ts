@@ -1,12 +1,13 @@
 import type { RequirementOperation } from '../../../shared/conversation-requirements'
 import type { TimelineEvent } from '../../../shared/types'
+import { replayConversationTextEvents } from '../../../shared/acp-text-blocks'
 import { IpcErrorCode } from '../../../shared/ipc-errors'
 import type { RequirementNativeObservation } from './requirements'
 import { PrivateConversations, ConversationError } from './service'
 import { hash, pathKey } from './files'
 
 /** Observe the original native receipt and turn; an idle connection is not a result. */
-export async function observeRequirementNative(service: PrivateConversations, conversationId: string, operation: RequirementOperation, assertCurrent: () => void): Promise<RequirementNativeObservation> {
+export async function observeRequirementNative(service: PrivateConversations, conversationId: string, operation: Pick<RequirementOperation, 'requestId' | 'sessionId' | 'turnId' | 'connectionGeneration'>, assertCurrent: () => void, readFinalText = false): Promise<RequirementNativeObservation & { finalText?: string }> {
   assertCurrent()
   const owner = await service.workspaceAccess(conversationId)
   assertCurrent(); owner.assertCurrent()
@@ -41,6 +42,15 @@ export async function observeRequirementNative(service: PrivateConversations, co
     if (terminal) {
       const payload = terminal.payload as { result?: { status?: string } } | undefined
       const status = payload?.result?.status
+      if (readFinalText && status === 'completed') {
+        const turn = page.events.filter(event => event.sessionId === identity.sessionId && event.turnId === turnId && event.connectionGeneration === generation && event.projectRoot && pathKey(event.projectRoot) === pathKey(original.workspace.root))
+        if (!turn.some(event => event.kind === 'message' && event.payload?.role === 'user') || page.coverage.state !== 'complete' || page.historyPersistence.state !== 'saved' || page.historyPersistence.pendingCount) return { ...identity, state: 'unknown', detail: '正在核对原会话的完整回复' }
+        const outcome = terminal.payload?.result as { stopReason?: string } | undefined
+        if (terminal.payload?.hostPolicyOutcome || (outcome?.stopReason ?? terminal.payload?.stopReason) !== 'end_turn') return { ...identity, state: 'failed', detail: '原回合未正常完成，任务尚未创建。' }
+        const messages = replayConversationTextEvents(turn).filter(event => event.kind === 'message' && ['acp', 'pi'].includes(event.source ?? '') && (event.payload?.role ?? 'assistant') === 'assistant')
+        const final = messages.filter(event => (event.payload?.meta as { phase?: string } | undefined)?.phase === 'final_answer')
+        return { ...identity, state: 'completed', finalText: (final.length ? final : messages).map(event => event.text ?? '').join('') }
+      }
       if (status === 'completed' || status === 'cancelled' || status === 'failed') return { ...identity, state: status, ...(status !== 'completed' ? { detail: terminal.text?.slice(0, 2000) } : {}) }
       return { ...identity, state: 'unknown', detail: '原回合缺少可核对的结束状态' }
     }

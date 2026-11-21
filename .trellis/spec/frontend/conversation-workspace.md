@@ -42,7 +42,15 @@ owns its input and projects only receipted requirement turns; ordinary text,
 images, focus intent and viewport remain in their original slot. Preserve dirty
 documents, answers and quotes across close, source switching and Settings detours.
 Transfer ordinary input, recent conversation context and selected file revisions
-only through explicit actions. The original native model, permission and stop
+only through explicit actions. A conservative local requirement-intent projection
+may offer “整理成需求”, without a model call, draft creation or navigation.
+Its click captures bounded original text and valid selected file revisions and
+derives a stable command UUID from the native conversation, creator, text and
+fixed references, so reload/lost-reply retries reopen the original draft. Preserve the original request
+in the document and enable its selected conversation context. Missing API
+documents remain missing; quoted code and unsupported reference sets must not
+trigger a misleading automatic handoff.
+The original native model, permission and stop
 transports remain authoritative. Show real integrated-knowledge connections and
 explicit collection/source selection, never an engineering project's implicit scope.
 Keep existing drafts and handoffs reopenable from a compact menu beside New
@@ -169,8 +177,138 @@ leaves; do not render live segment wrappers or a second completion summary there
 User messages, final answers, completed
 delivery cards and pending permission choices remain outside. A successful turn
 does not acquire a red error icon or issue count from individual failed tools;
-their actual failures remain readable inside the process. A failed terminal
-retains explicit failure presentation and detail; cancellation remains distinct.
+their actual failures remain readable at their recorded position. Failed
+terminals use the inline failure disclosure described below. Cancellation
+retains its distinct `已中止` state.
+
+Keep `TranscriptTurn.entries` in recorded order. At terminal settlement, final
+answers, failures, permission requests and delivery records preserve that order;
+moving a failed terminal above an already visible answer changes its meaning.
+Private design cards use the original completed tool's exact root/source/session/
+generation/turn and the verified imported document. Render one document card at
+its first loaded producing turn, not as a footer on every new turn. Designs whose
+origin is outside the loaded page remain accessible as explicitly labelled saved
+designs above the transcript. Hidden copy actions use an overlay instead of a
+reserved row, while remaining focusable.
+
+Selected input references are separate from stored input files. `selectedInputIds`
+is an explicit, installation-owned next-message selection; a missing selection
+means none, including older caches. Import and the file-panel action select inputs;
+loading metadata never does. Cancellation never deletes the original file.
+Persist `inputReferenceVersions` and capture them in
+`submission.fileReferenceVersions`. Native user-message or original receipt proof
+consumes only captured, unchanged selections: adding B must not preserve old A,
+and reselecting A must protect the new A. Process reference consumption before
+clearing an in-flight submission, including when the event precedes the send reply.
+Root replacement resets reference state; restoring cache preserves newer selections
+and both newer text and any unresolved original request.
+
+Image history reads are lazy, shared by exact source/root/session/image, bounded
+to two concurrent native calls, and cached within 64 entries and 28 MiB of string
+storage. Retain failed reads until an explicit retry; retry only transient failures
+and preserve successful images. Missing/digest-invalid images disclose the reason
+without an ineffective Retry. Do not render the same stored image twice in one
+owned turn. A hidden or changed source cannot apply a late image result.
+
+Requirement intent may carry the original idea and bounded user follow-ups from
+loaded history. Recognize explicit business-requirement discussion and retain
+context through “继续”; quoted/code examples, rejection and unrelated greetings
+cannot trigger a handoff. The click remains the only transition into the workbench.
+Use `page.discussion` independently of visible paging. Preserve user answers with
+assistant questions/proposals; proposals are not confirmed facts. Explicit
+formulation requests have their own dismissal anchor. Memoize intent and design
+receipts across scroll-only changes. Closed process groups mount their readers
+only when expanded; actual failures and deliveries remain visible.
+
+Catalogue readiness does not wait for engine discovery or legacy archives. Read
+metadata/history independently, validate both page and discussion owners, render
+valid history first, and preserve newer edits. Coalesce reads for the same creator,
+conversation and root. Reset `readTimings` for each measured read.
+
+Private text links use `readFile` with fixed revision/source identity and the
+shared Modal. Show actual pending/error state; adoption requires verified body.
+Last-read identity and interaction epochs fence late replies; closing cannot be
+undone by a reply. Adopt selected saved drafts through existing requirement APIs
+with fixed PDF/document references. Stable adoption commands reopen saved edits.
+Do not depend on Windows Markdown associations. Pre-optimize lazy Tiptap packages
+in development and create the editor after commit (`immediatelyRender:false`).
+
+One pending-user item owns delivery feedback; CurrentTurnStatus and composer
+controls do not repeat submission progress. Configuration spinners represent actual
+configuration/startup. Request/provider/thinking/read/save labels use real events.
+Recognize `pi_model_request` and `pi_provider_response` as routine structured
+runtime progress after checking error severity. Keep their original events for
+the current-stage projector; do not duplicate them in transcript process rows.
+After 15 seconds without new displayable content, a scoped one-shot hint may offer
+waiting or stopping. Preserve the original elapsed clock; invent no percentages,
+content or hidden reasoning.
+
+### Requirement editing and team handoff
+
+Common paragraph, bold, list and undo/redo controls are visible in the document
+toolbar; narrow editor containers retain the full menu and Alt+F10. Selection
+actions expose quote and polish. Position review near the captured selection
+without changing document layout or scroll. Preserve document/version/text/anchor
+fences for replacement. A closed review cannot reopen from a late result.
+Polish uses requirements.polish with its own command identity, signal and status;
+it never calls the main conversation run/send or changes its stop state. Keep one
+local candidate review. Technical receipts remain separate from draft.operations.
+Closing a running request cancels its exact ID even if registration replies late.
+Closing an already submitted adoption preserves its original recoverable receipt.
+Delayed menu updates require a mounted, initialized editor view.
+
+Prove Markdown offsets against the original bytes by parsing candidate source
+ranges with a unique marker and comparing the resulting ProseMirror structure.
+Unrelated table/whitespace serialization cannot invalidate an unchanged paragraph.
+Require one structural match, unchanged visible body/revision and current native
+source before local replacement. Source changes offer reselect; no forced replace.
+
+Existing documents expose Continue Requirement and View Plan beside New
+Requirement. Scope remembered draft, selected document and independent rich/source
+scroll positions by creator, conversation, physical root and draft. Restore only
+an actually listed original ID; preferences cannot create a replacement document.
+Requirement/plan navigation stays in the document header.
+
+The action bar shows draft/confirmed/plan-source state and existing sources.
+The workbench's file-source panel exposes the existing private conversation
+file picker without requiring a model or leaving the draft. Reuse `addFiles`
+and its original conversation identity, pending state, refresh and error
+projection. Disable import for inactive, read-only or busy workbenches. A
+cancelled picker preserves the draft and existing references. Imported files
+remain private; fixed requirement references are selected separately and team
+sharing still requires the existing explicit publication action.
+Design references belong to the corresponding modify action; selecting sources
+does not rewrite the document. Plan generation displays the saved requirement
+version and unanswered required questions before dispatch, then requires explicit
+candidate comparison/adoption. Preserve stale-plan feedback after edits.
+
+The conversation menu offers creation and binding. Creation runs in the original
+conversation and reconciles its request after reentry. Binding selects an existing
+task without sending a model message. A confirmed receipt stays in the chat.
+Activating its number opens the post beside the same mounted composer. At narrow
+widths switch between panes while retaining both reading and input state.
+
+An independent document opens from the conversation's documents menu. Handoff
+rereads the saved revision, shows its destination and optional attachments inline,
+and uses the exact body as the task's initial text. Keep the form mounted during
+its own submission. Bind the conversation in the creation command. Later shares
+publish a named version to that task. Scope feedback to the workspace, account
+and source conversation. Only a user action opens the task.
+
+From a team post, “问 Agent” opens the current member's private conversation.
+Reading or binding never sends a question. Sending alongside the task resolves
+the authorized post, comments, active clarifications and versioned material in
+the main process. Identify unread sources. A public comment requires a separate
+send. Returning restores the originating post and list position or filter.
+
+Team handoff bootstrap shows checking before any permission conclusion. Distinguish
+offline, access-revoked, local/no connection, empty workspace and actual membership.
+Use the existing account/workspace panel and retry reads. Preserve the original
+authority/space; passive refresh cannot choose another target. A bounded unsent
+handoff form cache may survive transient revocation only under that exact original
+handoff/authority/space, and can be restored after access is verified. Keep global
+task-draft authority fences and submitted native command recovery unchanged.
+
 
 `readableTranscriptEntries(entries, events)` selects human-readable process
 records from compiled items without rewriting saved events. Activity aggregates
@@ -259,6 +397,25 @@ terminal event ends the status even if metadata still says busy; rejection, thro
 failure, disconnect and owner replacement clear it without losing the unsent draft.
 Never revive an old spinner from completed history or a foreign/stale result.
 
+Private conversation Send moves captured text into a local pending message after
+retaining recoverable text; the composer stays editable while native admission
+is delayed. Definite failure offers input recovery, and unknown delivery offers
+original-request reconciliation. Neither operation overwrites a newer draft.
+Keep live activity at the content tail; recorded process disclosures use static
+type icons. A native connection error suppresses unverifiable nested activity.
+
+Upward wheel/key intent suspends following before layout effects run. Retain a
+visible text anchor during updates and pagination; browser anchoring and manual
+compensation must not both move the transcript. Reaching a near-bottom threshold
+alone is insufficient reason to pull a reader down repeatedly.
+
+Connected reasoning changes preserve the open popover and focus after native
+acknowledgement. Display a scoped zero-effort label such as “推理关闭”. Offline
+resumable conversations expose explicit connection recovery, while actual busy
+work retains its existing wait/stop constraints. Mode descriptions use
+`DropdownItem.description` and content-sized multiline geometry. Both pickers
+offer an explicit future-default action independent of current model selection.
+
 Hide the initial empty-conversation invitation while a request is active. An
 explicit valid Send opts into following the latest content so its immediate
 status is visible. If the user then scrolls up, passive chunks/phase changes
@@ -323,9 +480,11 @@ Latest compact-presentation refinement: constant sync/available-command notifica
 
 Keep the default composer to plus/current mode at left and usage/combined model+reasoning/send at right. Existing task/machine context, actual advertised plan/collaboration choices and other parameters move into plus. No reference-only attachments, plugins or fictional plan mode. An active plan may have a small acknowledgement-backed badge, avoiding duplicate labels. The one model dropdown contains native model choices and the native reasoning selector. Exact original IDs, shared configure lock and runtime acknowledgement are unchanged.
 
-The non-actionable local-execution row is omitted from plus. Binary native default/plan choices become one on/off action, not separate choices/group titles. Turn off only to a known actual counterpart/prior native mode; never guess a permission policy. The unified model popup defaults to compact strength settings; clicking the model caption switches to the model list, with back and acknowledgement-backed return to settings. Dropdown layoutKey repositions changing views/widths while retaining menu ownership. Use a16px rail,20px visual thumb/24px hit area and3px dots rather than the earlier thick strength bar; option names remain in title/ARIA.
+The plus menu contains actionable commands. Binary native default/plan choices use one toggle and return to a known original mode. The composer model control opens the shared searchable list. Reasoning controls show options reported by the active engine and apply through its existing configuration acknowledgement.
 
 Real image attachments are available through plus, clipboard image paste and composer file drop. Show rounded thumbnails above the textarea, an accessible hover/focus remove action and explicit shared-Modal preview; sent images remain above their user message and persist in history. `useComposerImages` owns in-memory drafts per root/session, never base64 in localStorage. Async reads/file-picker completions require the exact active source/session/connection/interaction owner; switching away and back cannot revive an old operation. Hidden/unmounted sources cannot open previews or steal focus. Only accepted submitted IDs are consumed; rejected sends preserve attachments and later additions survive acknowledgement. Block submission while image reads are pending. Permit image-only input, check the actual advertised image capability and explain unsupported/unknown capability without silently dropping attachments. Share count/byte/MIME limits with main; provider-specific vision is not implied by the engine capability.
+
+In private conversations, clicking send moves the captured text and images together from the composer to one pending transcript row. Pending and recorded user messages show 96px square thumbnails above the text, right-aligned and wrapping within the message width. Replace the pending row with the matching native user message on confirmation. On confirmed non-delivery, keep the failed row and offer direct resend of its original payload when all attachments are available. Resend creates a fresh request and preserves any newer draft. Allow removal of confirmed failed rows. Keep pending image bytes in memory and preserve the original request identity while its outcome is uncertain.
 
 Filter explicitly connection-scoped events and recognized structured historical connection observations out of the transcript without deleting them. Do not hide arbitrary unknown diagnostics using broad text matching. Connection/protocol details remain available in the session inspector. The header alone shows background connection progress; no startup checklist is appended after an old answer. Track automatic attempts over the source lifetime, not individual selections; records with failed status require explicit retry, even after remount. History, draft text and source references remain readable while connecting.
 
@@ -542,11 +701,36 @@ Unloaded catalogue rows use the archive's bounded `conversationPreview`, full da
 
 The recovery region separates current connection failure, historical turn outcome, persistence degradation and cleanup ownership. A read-only history state must not imply a second transcript or silently disable drafting. Do not render raw activity/connection JSON entry points. If the only applicable header action is refresh, render a direct refresh control.
 
+When a terminal failure already presents the same connection error for the exact
+engine, project, session, generation and turn, show the current offline status
+and a recovery action beside the composer. Keep cleanup, model confirmation and
+persistence feedback tied to their own states.
+
 Keep earlier-page access and coverage in one compact boundary, visually separate from message prose. Show `加载更早消息` only when `hasEarlier` exposes a real page: use a shared neutral button with an upward arrow, small activity text and subtle horizontal separators. While loading, retain its label/width, replace the arrow with a spinner, expose `aria-busy` and disable repeated clicks. Coverage is metadata, not a second navigation action: do not show `部分历史`, `完整性待确认` or `回合中途` as persistent adjacent labels. A labelled information icon (`历史记录说明`) with `aria-expanded`/`aria-controls` exposes a `hidden` explanation to pointer and keyboard users, including when no earlier page exists. Keep the controls row stable and the explanation in a separate neutral inset row so expansion cannot move the earlier-load action. Partial coverage is `仅能确认部分历史，完整范围未确认`; it can arise from failed capture or uncertain ordering and must not imply successful recovery. Loading another page never guarantees a complete archive. Preserve real paging, source-scoped keys and reading anchors; verify light/dark, narrow, loading and keyboard disclosure states.
 
-The composer recovery strip uses the existing neutral surface, symmetric 12px insets and rounded upper corners, extending 14px behind the composer shell. The status label itself is the accessible disclosure button (`aria-expanded` / `aria-controls`); there is no separate right-aligned “详情” action. Expansion stays inside the strip and contains only the error explanation, bounded original error text and relevant connection/environment actions. Never put model-choice lists in error details. Closing hides the whole optional strip until its state changes; cleanup/storage facts remain non-dismissible. Preserve the composer's surface, shell border and `--my-shadow-composer`; indicate textarea focus on the rounded outer shell, without a second rectangular outline/shadow on the inner textarea. Verify light/dark, compact/expanded, narrow and font-scaled rendering.
+Use the [shared feedback mapping](./components.md#feedback-and-recovery) for composer
+recovery. Keep recovery actions next to the composer and bounded diagnostics in
+the shared disclosure. The model recovery action opens the composer model panel.
+An optional connection notice can be dismissed until its state changes. Cleanup
+and unconfirmed storage remain visible. The textarea uses the composer's shell
+focus treatment.
 
-Model recovery belongs to the existing composer model popup. On an eligible offline model failure it opens directly to exact saved candidates under `选择模型`; saved-candidate/validation context appears in a recovery info tooltip rather than permanent prose; selection explicitly validates and reconnects the same session through its original connection-generation contract. The shared renderer classifier handles structured and bounded legacy errors without parsing candidate lists from error prose. Missing generation, cleanup, authentication and concurrent operations prevent recovery. Offline mode/reasoning controls stay disabled. Connected configuration retains its original acknowledgement path; recovery never sends the draft.
+`ModelSelectionPanel` presents draft, connected and offline states in the same
+searchable popup. Draft choices use the loaded catalog. Connected choices use the
+current engine's reported capabilities. On an eligible model failure, show the
+original session's exact saved candidates and validate the choice with the
+existing connection-generation guard. Authentication, cleanup, missing identity,
+and concurrent operations constrain the available actions. Plain disconnection
+keeps the last confirmed model visible and offers the available connection
+action. Draft sending remains a separate user action.
+
+Keep one `FeedbackNotice variant="inline"` at the terminal event of each owned
+failed turn. Group matching retries and diagnostics by engine, project, session,
+connection generation, turn and cause. Put measured duration, the associated
+process and copyable diagnostics behind the failure row. Keep a separate
+`处理过程` disclosure where folding would move records past independent visible
+events. Preserve the terminal scroll anchor, independent tool failures, unmatched
+diagnostics, cancelled outcomes and raw event history.
 
 Completed duration belongs to the actual terminal event's position, ordinarily below its answer. When directly adjacent, target8–12 CSS px from answer to duration and24–32px between complete turns; do not move or conceal intervening tools/observations to enforce that spacing. Legacy/partial pages without reliable turn identity never receive fabricated duration or completion.
 
@@ -584,14 +768,7 @@ such as “不强制生成 PRD” into persistent navigation labels.
 
 ### Measured composer popup and context geometry
 
-The model and strength views share a 256px menu. Position it above the actual
-trigger/control group with an 8px gap and align its right edge with the right
-control group including Send. Keep this anchor when changing views/widths, and
-clamp at 8px viewport gutters; use the shared Dropdown positioning props rather
-than a page transform. Strength content has compact symmetric 6px inner padding
-inside the shared menu shell. Candidate lists use only the outer choices panel
-as the scroll owner, with symmetric scrollbar allocation; do not stack two
-`my-scrollbar` owners or leave a one-sided reserved gutter.
+Follow the [shared model panel geometry](./css-design.md#selection-hover-and-result-presentation).
 
 The context ring has a quiet pale base rather than a dark complete ring. Unknown
 reports use an unanimated open outline and `上下文用量暂无数据`; actual zero uses a

@@ -38,6 +38,7 @@ export interface RequirementHandoffPreflightProof {
   designMaterials?: Array<{ path: string; revision: string; bytes: number }>
 }
 export interface ConversationRequirementPorts {
+  polish?(input: { text: string; before: string; selection: string; after: string }, signal: AbortSignal): Promise<string>
   /** Existing app-owned userData/private-conversations directory. */
   metaDirectory(): string
   owner(conversationId: string): Promise<ConversationRequirementOwner>
@@ -62,7 +63,8 @@ const id = z.string().uuid()
 const manifestPath = 'references/conversation-requirement.json'
 const preflightProofSchema = z.object({ inputDigest: z.string().regex(/^[a-f0-9]{64}$/), workflowRevision: z.string().regex(/^[a-f0-9]{64}$/), contextDigest: z.string().regex(/^[a-f0-9]{64}$/), budgetBytes: z.number().int().min(1024).max(1024 * 1024), promptBytes: z.number().int().nonnegative(), complete: z.literal(true), designMaterials: z.array(z.object({ path: z.string().min(1).max(8192), revision: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().nonnegative().max(dto.REQUIREMENT_FILE_BYTES) }).strict()).max(16).optional() }).strict()
 const intentSchema = z.object({ commandId: id, inputDigest: z.string().length(64).optional(), knowledgeOperationIds: z.array(id).max(dto.REQUIREMENT_OPERATIONS_LIMIT).optional(), knowledgeSources: z.array(dto.requirementHandoffSourceSchema).max(128).optional(), directKnowledge: dto.requirementDirectKnowledgeSchema.optional(), designSources: z.array(requirementDesignStandardSchema).max(16).optional(), designContext: requirementDesignContextSchema.optional(), designFiles: z.array(dto.requirementDesignSnapshotSchema).max(16).optional(), predecessor: dto.requirementPredecessorSchema.optional(), preflight: preflightProofSchema.optional(), draftRevision: id, targetId: id, taskId: z.string().min(1).max(100), taskDir: z.string().min(1).max(200), started: z.boolean(), body: z.string().max(200_000), title: z.string().max(200).optional(), manifest: z.string().max(64 * 1024), references: z.array(dto.requirementReferenceSchema).max(8), plan: dto.requirementPlanSchema.optional(), confirmed: dto.requirementConfirmedSchema.optional(), blocked: z.enum(['manifest-budget', 'context-budget', 'preflight-unavailable', 'context-changed']).optional() }).strict()
-const recordSchema = z.object({ version: z.literal(1), conversationRoot: z.string().min(1).max(8192), rootIdentity: z.string().min(1), creationCommandId: id, draft: dto.requirementDraftSchema, targetIdentity: z.string().optional(), intent: intentSchema.optional(), confirmations: z.array(z.object({ commandId: id, expectedRevision: id, confirmed: dto.requirementConfirmedSchema }).strict()).max(128).default([]), rejectedHandoffs: z.array(z.object({ intent: intentSchema, inputDigest: z.string().length(64).optional(), receipt: dto.requirementReceiptSchema }).strict()).max(128).default([]), recoveredFiles: z.array(z.object({ document: dto.requirementDocumentSchema, path: z.string(), revision: z.string().length(64) }).strict()).max(128).default([]), pendingSave: z.object({ document: dto.requirementDocumentSchema, expected: z.string().length(64).nullable(), next: dto.requirementDraftSchema }).strict().optional() }).strict()
+const polishRecordSchema = z.object({ input: dto.requirementPolishRunSchema, inputDigest: z.string().length(64), sourceDigest: z.string().length(64), range: z.object({ from: z.number().int().nonnegative(), to: z.number().int().positive(), before: z.string().max(512), after: z.string().max(512) }).strict(), observation: dto.requirementPolishObservationSchema, createdAt: z.number().int().nonnegative() }).strict()
+const recordSchema = z.object({ version: z.literal(1), conversationRoot: z.string().min(1).max(8192), rootIdentity: z.string().min(1), polish: z.array(polishRecordSchema).max(32).default([]), creationCommandId: id, draft: dto.requirementDraftSchema, targetIdentity: z.string().optional(), intent: intentSchema.optional(), confirmations: z.array(z.object({ commandId: id, expectedRevision: id, confirmed: dto.requirementConfirmedSchema }).strict()).max(128).default([]), rejectedHandoffs: z.array(z.object({ intent: intentSchema, inputDigest: z.string().length(64).optional(), receipt: dto.requirementReceiptSchema }).strict()).max(128).default([]), recoveredFiles: z.array(z.object({ document: dto.requirementDocumentSchema, path: z.string(), revision: z.string().length(64) }).strict()).max(128).default([]), pendingSave: z.object({ document: dto.requirementDocumentSchema, expected: z.string().length(64).nullable(), next: dto.requirementDraftSchema }).strict().optional() }).strict()
 const createCommandSchema = z.object({ version: z.literal(1), conversationId: id, creatorId: z.string(), root: z.string(), rootIdentity: z.string(), commandId: id, inputDigest: z.string().length(64), draftId: id, createdAt: z.number().int().nonnegative(), state: z.enum(['registered', 'saved']).default('registered') }).strict()
 const successorCommandSchema = createCommandSchema.extend({ originalDraftId: id, expectedHandoffCommandId: id, targetId: id, seedDigest: z.string().length(64) }).strict()
 type Record = z.infer<typeof recordSchema>
@@ -78,6 +80,8 @@ const designTarget = (reference: dto.RequirementDesignSnapshot, index: number): 
 
 export class ConversationRequirements {
   private lanes = new Map<string, Promise<void>>()
+  private polishJobs = new Map<string, AbortController>()
+  dispose(): void { for (const controller of this.polishJobs.values()) controller.abort(); this.polishJobs.clear() }
   private documents = new AsyncLocalStorage<() => void>()
   constructor(private readonly ports: ConversationRequirementPorts) {}
   private meta(): string { return checkedDirectory(this.ports.metaDirectory()) }
@@ -208,7 +212,8 @@ export class ConversationRequirements {
       pendingSave = { document, draft: pending.next, actual }
       if (document === 'plan') { planFileRevision = actual.revision; planFileState = actual.state === 'missing' ? 'missing' : actual.state === 'unavailable' ? 'unavailable' : 'changed' }
     }
-    const result = { draft: record.draft, planFileState, planFileRevision, planFileBody, recoveredFiles: record.recoveredFiles, handoffHistory: record.rejectedHandoffs.map(value => ({ receipt: value.receipt, knowledgeOperationIds: value.intent.knowledgeOperationIds, knowledgeSources: value.intent.knowledgeSources, directKnowledge: value.intent.directKnowledge, designSources: value.intent.designSources })), ...(pendingSave ? { pendingSave, detail: '保存中断，文件与待保存内容需要核对；两份内容均已保留' } : {}) }
+    const confirmationCurrent = Boolean(record.draft.confirmed && record.draft.confirmed.bodyRevision === record.draft.bodyRevision && record.draft.confirmed.sourceDigest === requirementSourceDigest(record.draft))
+    const result = { draft: record.draft, confirmationCurrent, planFileState, planFileRevision, planFileBody, recoveredFiles: record.recoveredFiles, handoffHistory: record.rejectedHandoffs.map(value => ({ receipt: value.receipt, knowledgeOperationIds: value.intent.knowledgeOperationIds, knowledgeSources: value.intent.knowledgeSources, directKnowledge: value.intent.directKnowledge, designSources: value.intent.designSources })), ...(pendingSave ? { pendingSave, detail: '保存中断，文件与待保存内容需要核对；两份内容均已保留' } : {}) }
     try {
       const file = readOptional(record.conversationRoot, record.draft.relativePath)
       if (!file) return { ...result, fileState: 'missing', detail: '实际 Markdown 文件不存在；已保存的草稿仍保留' }
@@ -399,7 +404,7 @@ export class ConversationRequirements {
       const current = await this.fresh(owner, true)
       const body = input.body.trim() ? input.body : dto.REQUIREMENT_TEMPLATE
       const draft = dto.requirementDraftSchema.parse({ id: command.draftId, conversationId, creatorId: current.conversation.creatorId, title: input.title, body, revision: randomUUID(), bodyRevision: hash(body), relativePath, references, designContext: input.designContext, designContextFiles, createdAt: command.createdAt, updatedAt: command.createdAt })
-      const record: Record = { version: 1, conversationRoot: command.root, rootIdentity: command.rootIdentity, creationCommandId: input.commandId, draft, confirmations: [], rejectedHandoffs: [], recoveredFiles: [] }
+      const record: Record = { version: 1, polish: [], conversationRoot: command.root, rootIdentity: command.rootIdentity, creationCommandId: input.commandId, draft, confirmations: [], rejectedHandoffs: [], recoveredFiles: [] }
       this.persist(current, record, null)
       writeRevision(record.conversationRoot, relativePath, Buffer.from(body), null, current.assertCurrent)
       this.completeCreate(current, commandPath, command)
@@ -468,7 +473,7 @@ export class ConversationRequirements {
       if (hash(JSON.stringify(checked)) !== command.seedDigest) throw new RequirementError('原任务基线在创建后继草稿期间发生变化')
       const relativePath = fresh.conversation.workspace.kind === 'managed' ? `outputs/requirements/${command.draftId}/draft.md` : `.trellis-panel/conversations/${conversationId}/requirements/${command.draftId}/draft.md`
       const draft = dto.requirementDraftSchema.parse({ id: command.draftId, conversationId, creatorId: fresh.conversation.creatorId, title: seed.title, body: seed.body, revision: randomUUID(), bodyRevision: hash(seed.body), relativePath, references: seed.references, designContext: seed.designContext, designContextFiles: seed.designFiles, questions: seed.questions, predecessor: seed.predecessor, target: { id: command.targetId, root: seed.predecessor.task.root, selectedAt: command.createdAt }, createdAt: command.createdAt, updatedAt: command.createdAt })
-      const record: Record = { version: 1, conversationRoot: command.root, rootIdentity: command.rootIdentity, creationCommandId: input.commandId, draft, targetIdentity: seed.targetIdentity, confirmations: [], rejectedHandoffs: [], recoveredFiles: [] }
+      const record: Record = { version: 1, polish: [], conversationRoot: command.root, rootIdentity: command.rootIdentity, creationCommandId: input.commandId, draft, targetIdentity: seed.targetIdentity, confirmations: [], rejectedHandoffs: [], recoveredFiles: [] }
       this.persist(fresh, record, null)
       writeRevision(record.conversationRoot, relativePath, Buffer.from(seed.body), null, fresh.assertCurrent)
       this.completeSuccessor(fresh, commandPath, command)
@@ -485,6 +490,16 @@ export class ConversationRequirements {
     if (!predecessor) return
     const original = this.load(owner, predecessor.draftId), seed = this.successorSeed(owner, original, predecessor.handoffCommandId)
     if (JSON.stringify(seed.predecessor) !== JSON.stringify(predecessor) || !record.targetIdentity || seed.targetIdentity !== record.targetIdentity || !record.draft.target || !sameRoot(record.draft.target.root, predecessor.task.root)) throw new RequirementError('原任务基线或后继目标已变化，请核对原任务；未创建替代任务', 'E_DENIED')
+  }
+  async readSelectedAttachment(conversationId: string, draftId: string, fileId: string, revision: string): Promise<Uint8Array> {
+    const owner = await this.owner(conversationId)
+    const { record } = this.load(owner, draftId)
+    const file = record.draft.references.find(item => item.fileId === fileId && item.revision === revision)
+    if (!file) throw new RequirementError('所选需求附件版本已变化')
+    const { bytes } = readRegular(record.conversationRoot, file.snapshotPath, dto.REQUIREMENT_FILE_BYTES)
+    if (hash(bytes) !== revision || bytes.length !== file.bytes) throw new RequirementError('原附件快照内容已变化')
+    owner.assertCurrent()
+    return new Uint8Array(bytes)
   }
   read(conversationId: string, draftId: string, current?: () => void): Promise<RequirementResult<dto.RequirementView>> {
     return this.result(() => this.serial(conversationId, async () => {
@@ -665,7 +680,7 @@ export class ConversationRequirements {
       }
       registrationMayHaveHappened = false
       this.cas(loaded.record, input.expectedRevision); this.editable(loaded.record); this.saved(owner, loaded.record)
-      if (!dto.hasRequirementContent(loaded.record.draft.body)) throw new RequirementError('请先描述需求，空模板不能作为有效输入', 'E_INVALID_ARG')
+      if (!dto.hasRequirementContent(loaded.record.draft.body) && !(input.document === 'requirement' && input.action !== 'plan' && !input.quote && (input.text?.trim() || input.fromConversation || loaded.record.draft.references.length))) throw new RequirementError('请发送描述或选择参考文件。', 'E_INVALID_ARG')
       if (!input.quote?.comparisonOnly) await this.authorizeDesignSources(owner, loaded.record)
       const ownerAfterDesign = await this.fresh(owner, true), afterDesign = this.load(ownerAfterDesign, draftId)
       if (afterDesign.digest !== loaded.digest) throw new RequirementError('需求或设计语境在权限核对期间发生变化')
@@ -804,6 +819,139 @@ export class ConversationRequirements {
       const fresh = await this.fresh(owner), latest = this.load(fresh, draftId)
       if (latest.digest !== loaded.digest || JSON.stringify(this.sealedKnowledge(fresh, latest.record, this.operation(latest.record, operationId))) !== JSON.stringify(snapshots)) throw new RequirementError('原操作或来源在授权期间发生变化')
       return snapshots
+    }), current)
+  }
+  private polishJournalPath(conversationId: string, draftId: string, operationId: string): string {
+    return `requirements/${id.parse(conversationId)}/polish/${id.parse(draftId)}/${id.parse(operationId)}.json`
+  }
+  private polishRecord(owner: Owner, record: Record, operationId: string): z.infer<typeof polishRecordSchema> | undefined {
+    owner.assertCurrent()
+    const inline = record.polish.find(value => value.observation.id === operationId)
+    if (inline) return inline
+    const archived = readOptional(this.meta(), this.polishJournalPath(owner.conversation.id, record.draft.id, operationId), 256 * 1024)
+    if (!archived) return undefined
+    const row = polishRecordSchema.parse(JSON.parse(utf8(archived.bytes)))
+    if (row.observation.id !== operationId || row.input.commandId !== operationId || row.inputDigest !== hash(JSON.stringify(row.input)) || !['cancelled', 'failed', 'adopted'].includes(row.observation.state)) throw new RequirementError('原润色归档身份不一致', 'E_DENIED')
+    owner.assertCurrent()
+    return row
+  }
+  private compactPolish(owner: Owner, loaded: Loaded): Loaded {
+    // Pending adoption receipts belong to their original recoverable file write.
+    if (loaded.record.pendingSave) return loaded
+    const terminal = loaded.record.polish.filter(row => ['cancelled', 'failed', 'adopted'].includes(row.observation.state))
+    if (!terminal.length) return loaded
+    for (const row of terminal) {
+      const path = this.polishJournalPath(owner.conversation.id, loaded.record.draft.id, row.observation.id)
+      const bytes = Buffer.from(JSON.stringify(polishRecordSchema.parse(row)))
+      const prior = readOptional(this.meta(), path, 256 * 1024)
+      if (prior) { if (hash(prior.bytes) !== hash(bytes)) throw new RequirementError('原润色回执归档已变化', 'E_DENIED') }
+      else writeRevision(this.meta(), path, bytes, null, owner.assertCurrent)
+    }
+    loaded.record.polish = loaded.record.polish.filter(row => !terminal.includes(row))
+    return this.persist(owner, loaded.record, loaded.digest)
+  }
+  /** Editor micro-operations never enter the conversation runtime or candidate catalog. */
+  polishRun(conversationId: string, draftId: string, raw: unknown, current?: () => void): Promise<RequirementResult<dto.RequirementPolishObservation>> {
+    return this.result(() => this.serial(conversationId, async () => {
+      const input = dto.requirementPolishRunSchema.parse(raw), inputDigest = hash(JSON.stringify(input))
+      const owner = await this.owner(conversationId, true)
+      let loaded = this.load(owner, draftId)
+      const prior = this.polishRecord(owner, loaded.record, input.commandId)
+      if (prior) {
+        if (prior.inputDigest !== inputDigest) throw new RequirementError('原润色命令不能用于不同输入')
+        return prior.observation
+      }
+      this.cas(loaded.record, input.expectedRevision); this.editable(loaded.record); this.saved(owner, loaded.record)
+      loaded = this.compactPolish(owner, loaded)
+      const record = loaded.record
+      if (!this.ports.polish) throw new RequirementError('独立润色暂不可用', 'E_BUSY')
+      if (record.polish.length >= 32 || this.polishJobs.size >= 4) throw new RequirementError('润色操作达到上限，请先核对原操作', 'E_BUSY')
+      const plan = input.document === 'plan' ? record.draft.plan : undefined
+      if (input.document === 'plan' && !plan) throw new RequirementError('原计划不存在，未生成润色候选', 'E_NOT_FOUND')
+      if (plan ? input.expectedPlanRevision !== plan.revision || this.view(owner, record).planFileState !== 'saved' : input.expectedPlanRevision !== undefined) throw new RequirementError('原计划版本不一致')
+      const body = plan?.body ?? record.draft.body, bodyRevision = plan?.bodyRevision ?? record.draft.bodyRevision
+      if (input.quote.comparisonOnly || input.quote.bodyRevision !== bodyRevision) throw new RequirementError('请在当前已保存的文档上重新选择')
+      const range = quoteContext(body, input.quote)
+      const observation: dto.RequirementPolishObservation = { id: input.commandId, document: input.document, sourceRevision: input.expectedRevision, sourceBodyRevision: bodyRevision, state: 'running' }
+      record.polish.push({ input, inputDigest, sourceDigest: requirementSourceDigest(record.draft), range: { from: range.from, to: range.to, before: range.before, after: range.after }, observation, createdAt: Date.now() })
+      this.persist(owner, record, loaded.digest)
+      const controller = new AbortController(), key = JSON.stringify([conversationId, draftId, input.commandId])
+      this.polishJobs.set(key, controller)
+      const generate = this.ports.polish
+      // Start outside the document write lane; ordinary saves and the main chat stay available.
+      void Promise.resolve().then(async () => {
+        let replacement: string | undefined, detail: string | undefined
+        try {
+          owner.assertCurrent()
+          replacement = await generate({ text: input.text, selection: input.quote.text, before: range.before, after: range.after }, controller.signal)
+          if (Buffer.byteLength(replacement, 'utf8') > 64 * 1024 || replacement.length > 16000) throw new RequirementError('润色结果过长，请缩小选区')
+          owner.assertCurrent()
+        } catch (error) { detail = error instanceof Error ? error.message.slice(0, 2000) : '润色未完成' }
+        try {
+          await this.serial(conversationId, async () => {
+            const fresh = await this.fresh(owner), latest = this.load(fresh, draftId)
+            const row = latest.record.polish.find(value => value.observation.id === input.commandId)
+            if (!row || row.inputDigest !== inputDigest || row.observation.state !== 'running') return
+            if (controller.signal.aborted) row.observation.state = 'cancelled'
+            else if (detail || replacement === undefined) { row.observation.state = 'failed'; row.observation.detail = detail }
+            else { row.observation.state = 'candidate'; row.observation.replacement = replacement; row.observation.candidateRevision = hash(replacement) }
+            this.persist(fresh, latest.record, latest.digest)
+          })
+        } catch { /* A released source cannot receive a late result. Observation exposes uncertainty. */ }
+        finally { if (this.polishJobs.get(key) === controller) this.polishJobs.delete(key) }
+      })
+      return observation
+    }), current)
+  }
+  polishObserve(conversationId: string, draftId: string, operationId: string, cancel = false, current?: () => void): Promise<RequirementResult<dto.RequirementPolishObservation>> {
+    return this.result(() => this.serial(conversationId, async () => {
+      id.parse(operationId)
+      const owner = await this.owner(conversationId), loaded = this.load(owner, draftId)
+      const row = this.polishRecord(owner, loaded.record, operationId)
+      if (!row) throw new RequirementError('原润色操作不存在', 'E_NOT_FOUND')
+      const key = JSON.stringify([conversationId, draftId, operationId]), controller = this.polishJobs.get(key)
+      if (cancel && ['running', 'candidate', 'unknown'].includes(row.observation.state)) {
+        controller?.abort(); row.observation.state = 'cancelled'; row.observation.replacement = undefined; row.observation.candidateRevision = undefined
+        this.persist(owner, loaded.record, loaded.digest)
+      } else if (row.observation.state === 'running' && !controller) {
+        row.observation.state = 'unknown'; row.observation.detail = '原润色请求已中断；未采用任何正文'
+        this.persist(owner, loaded.record, loaded.digest)
+      }
+      if (loaded.record.pendingSave && row.observation.receipt) return { ...row.observation, state: 'unknown', detail: '采用写入尚待核对，请先恢复原保存' }
+      return row.observation
+    }), current)
+  }
+  polishApply(conversationId: string, draftId: string, operationId: string, raw: unknown, current?: () => void): Promise<RequirementResult<{ view: dto.RequirementView; receipt: dto.RequirementSelectionReceipt }>> {
+    return this.result(() => this.serial(conversationId, async () => {
+      id.parse(operationId)
+      const input = dto.requirementApplySelectionSchema.parse(raw), inputDigest = hash(JSON.stringify(input))
+      const owner = await this.owner(conversationId, true), loaded = this.load(owner, draftId), record = loaded.record
+      const row = this.polishRecord(owner, record, operationId)
+      if (!row) throw new RequirementError('原润色操作不存在', 'E_NOT_FOUND')
+      const result = row.observation
+      if (result.receipt) {
+        if (record.pendingSave) throw new RequirementError('采用写入尚待核对，请先恢复原保存')
+        if (result.receipt.inputDigest !== inputDigest) throw new RequirementError('原采用回执不能用于不同输入')
+        return { view: this.view(owner, record), receipt: result.receipt }
+      }
+      this.cas(record, input.expectedRevision); this.editable(record); this.saved(owner, record)
+      if (result.state !== 'candidate' || result.sourceRevision !== input.expectedRevision || row.sourceDigest !== requirementSourceDigest(record.draft) || result.candidateRevision !== input.candidateRevision || result.replacement === undefined || hash(result.replacement) !== input.candidateRevision) throw new RequirementError('原选区候选或文档版本已变化，未采用')
+      const plan = result.document === 'plan' ? record.draft.plan : undefined
+      if (result.document === 'plan' && !plan) throw new RequirementError('原计划不存在，未采用', 'E_NOT_FOUND')
+      if (plan ? input.expectedPlanRevision !== plan.revision || row.input.expectedPlanRevision !== plan.revision || this.view(owner, record).planFileState !== 'saved' : input.expectedPlanRevision !== undefined) throw new RequirementError('原计划版本或文件已变化，未采用')
+      const before = plan?.body ?? record.draft.body
+      if (hash(before) !== result.sourceBodyRevision) throw new RequirementError('原选区正文已变化，未采用')
+      const range = quoteContext(before, row.input.quote)
+      if (range.from !== row.range.from || range.to !== row.range.to || range.before !== row.range.before || range.after !== row.range.after || input.body !== before.slice(0, range.from) + result.replacement + before.slice(range.to)) throw new RequirementError('无法证明编辑结果仅替换原选区，未采用')
+      const now = Date.now(), adoptedRevision = randomUUID(), next = structuredClone(record.draft)
+      const receipt = dto.requirementSelectionReceiptSchema.parse({ operationId, expectedRevision: input.expectedRevision, candidateRevision: input.candidateRevision, inputDigest, adoptedRevision, bodyRevision: hash(input.body) })
+      next.revision = adoptedRevision; next.updatedAt = now
+      if (plan) next.plan = { ...plan, body: input.body, bodyRevision: receipt.bodyRevision, revision: randomUUID(), updatedAt: now }
+      else { next.body = input.body; next.bodyRevision = receipt.bodyRevision; if (next.plan && next.bodyRevision !== record.draft.bodyRevision) next.plan.stale = true }
+      // The receipt and pending write are persisted together by saveDocument.
+      result.state = 'adopted'; result.receipt = receipt
+      this.saveDocument(owner, loaded, next, result.document, result.sourceBodyRevision)
+      return { view: this.view(owner, record), receipt }
     }), current)
   }
   applySelection(conversationId: string, draftId: string, operationId: string, raw: unknown, current?: () => void): Promise<RequirementResult<{ view: dto.RequirementView; receipt: dto.RequirementSelectionReceipt }>> {

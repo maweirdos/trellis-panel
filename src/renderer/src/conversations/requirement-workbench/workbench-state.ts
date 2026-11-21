@@ -56,7 +56,7 @@ export interface WorkbenchBuffer {
   selectionOperations: string[]
   planSourceIntents: Array<{ commandId: string; sourceRevision: string; signature: string }>
   selectedHandoffSources: string[]
-  selectionCommand?: { operationId: string; input: z.infer<typeof requirementApplySelectionSchema> }
+  selectionCommand?: { operationId: string; kind?: 'polish'; input: z.infer<typeof requirementApplySelectionSchema> }
   automatic?: { commandId: string; requirementVersion: number; planVersion: number; sourceRevision: string; sourceCurrent(): boolean }
   runCommand?: RequirementRun
   confirmCommand?: RequirementConfirm
@@ -285,7 +285,7 @@ export function selectionRejectionProven(result: { code: string; outcome?: unkno
   return !view.pendingSave && view.draft.revision === operation.sourceRevision && view.fileState === 'saved' && (operation.document !== 'plan' || view.planFileState === 'saved') && prior?.state === 'candidate' && !prior.selectionReceipt && prior.commandId === operation.commandId && prior.candidateRevision === operation.candidateRevision
 }
 
-const commandsSchema = z.object({ run: requirementRunSchema.optional(), confirm: requirementConfirmSchema.optional(), commit: requirementCommitSchema.optional(), selections: z.array(z.string().uuid()).max(128).optional(), selection: z.object({ operationId: z.string().uuid(), input: requirementApplySelectionSchema }).strict().optional(), plans: z.array(z.object({ commandId: z.string().uuid(), sourceRevision: z.string().uuid(), signature: z.string().max(32_000) }).strict()).max(8).optional() }).strict()
+const commandsSchema = z.object({ run: requirementRunSchema.optional(), confirm: requirementConfirmSchema.optional(), commit: requirementCommitSchema.optional(), selections: z.array(z.string().uuid()).max(128).optional(), selection: z.object({ operationId: z.string().uuid(), kind: z.literal('polish').optional(), input: requirementApplySelectionSchema }).strict().optional(), plans: z.array(z.object({ commandId: z.string().uuid(), sourceRevision: z.string().uuid(), signature: z.string().max(32_000) }).strict()).max(8).optional() }).strict()
 const commandPrefix = (value: WorkbenchBuffer): string => `tpanel.requirement-workbench.v1.${encodeURIComponent(value.conversation.creatorId)}.`
 const commandKey = (value: WorkbenchBuffer): string => `${commandPrefix(value)}${value.conversation.id}.${value.view?.draft.id}`
 export function persistWorkbenchCommands(value: WorkbenchBuffer): void {

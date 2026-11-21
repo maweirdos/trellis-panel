@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type JSX } from 'react'
-import { Archive, ChevronDown, ChevronRight, Ellipsis, Folder, Loader2, Pencil, Pin, PinOff, Plus, RefreshCw, Search } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Columns2, Copy, Folder, Loader2, MessageSquareDot, MoreVertical, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Conversation } from '@shared/private-conversations'
 import { ConversationSidebar } from '../acp/ConversationSidebar'
-import { ConversationListRow, ConversationListPreview, ConversationRenameDialog, useConversationListPreview } from '../acp/ConversationListRow'
+import { ConversationListRow, ConversationListPreview, ConversationRenameDialog, useConversationListPreview, ArchiveArrowDown } from '../acp/ConversationListRow'
 import { ConversationSearch } from '../acp/ConversationSearch'
-import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
+import { Button, Dropdown, DropdownDivider, DropdownItem, Modal } from '../my/ui'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useMy } from '../my/store'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -17,7 +17,8 @@ type HistoryRow = { kind: 'conversation'; value: Conversation } | { kind: 'draft
 interface DisplayBatches { key: string; recent: number; search: number; projects: number; groups: Record<string, number> }
 const initialBatches = (key: string): DisplayBatches => ({ key, recent: HISTORY_BATCH, search: HISTORY_BATCH, projects: HISTORY_BATCH, groups: {} })
 const historyRowKey = (item: HistoryRow): string => item.kind === 'conversation' ? 'conversation:' + item.value.id : 'draft:' + item.value.key
-const historyRowTitle = (item: HistoryRow): string => item.kind === 'conversation' ? item.value.title : item.value.text.slice(0, 200).split('\n', 1)[0] || '图片草稿'
+const draftHistoryText = (entry: WorkspaceEntry): string => entry.text.trim() || entry.submission?.draftText.trim() || ''
+const historyRowTitle = (item: HistoryRow): string => item.kind === 'conversation' ? item.value.title : draftHistoryText(item.value).slice(0, 200).split('\n', 1)[0] || '图片草稿'
 const historyPreview = (conversation: Conversation): string => conversation.conversationPreview?.trim() || (conversation.nativeRef ? '摘要尚未读取' : '草稿')
 
 /** Keep a distant selection reachable without expanding its entire preceding prefix. */
@@ -63,7 +64,7 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
   const conversations = useMemo(() => state.conversations.filter((conversation) => conversation.kind === kind && conversation.archivedAt === undefined).sort((left, right) =>
     Number(right.pinnedAt !== undefined) - Number(left.pinnedAt !== undefined) || right.updatedAt - left.updatedAt || right.id.localeCompare(left.id)
   ), [state.conversations, kind])
-  const localDrafts = useMemo(() => entries.filter((item) => !item.locked && !item.conversation && item.kind === kind && (item.text || item.images?.length)), [entries, kind])
+  const localDrafts = useMemo(() => entries.filter((item) => !item.locked && !item.conversation && item.kind === kind && (item.text || item.images?.length || item.submission)), [entries, kind])
   const rows = useMemo<HistoryRow[]>(() => [...localDrafts.map((value): HistoryRow => ({ kind: 'draft', value })), ...conversations.map((value): HistoryRow => ({ kind: 'conversation', value }))], [localDrafts, conversations])
   const grouped = useMemo(() => {
     const recent: HistoryRow[] = [], projects = new Map<string, HistoryRow[]>()
@@ -74,7 +75,7 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
     }
     return { recent, projects }
   }, [rows, projectIds])
-  const matches = useMemo(() => rows.filter((item) => !search || (historyRowTitle(item) + ' ' + (item.kind === 'conversation' ? item.value.conversationPreview ?? '' : item.value.text)).toLocaleLowerCase().includes(search)), [rows, search])
+  const matches = useMemo(() => rows.filter((item) => !search || (historyRowTitle(item) + ' ' + (item.kind === 'conversation' ? item.value.conversationPreview ?? '' : draftHistoryText(item.value))).toLocaleLowerCase().includes(search)), [rows, search])
   const selectedEntry = state.entries[selected], selectedConversationId = selectedEntry?.locked ? undefined : selectedEntry?.conversation?.id
   const selectedRow = selectedConversationId ? 'conversation:' + selectedConversationId : selectedEntry && !selectedEntry.locked ? 'draft:' + selected : undefined
   const selectedGroup = selectedEntry?.locked ? undefined : selectedEntry?.projectId ?? projectId
@@ -125,19 +126,48 @@ export function ConversationHistory({ kind, selected, projectId, open, onProject
     try { await updateConversation(id, patch) }
     catch (cause) { if (ownerRef.current === currentOwner && canInteract()) setActionErrors((previous) => ({ ...previous, [id]: conversationError(cause) })) }
   }
+  const copyTitle = async (conversation: Conversation): Promise<void> => {
+    try {
+      if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(conversation.title)
+    } catch {
+      // fallback
+    }
+  }
+
   const row = (item: HistoryRow): JSX.Element => {
     if (item.kind === 'draft') return <ConversationListRow key={historyRowKey(item)} id={item.value.key} title={historyRowTitle(item)} selected={selected === item.value.key} status={<small className="text-my-xs text-my-tertiary">草稿</small>} onSelect={() => chooseRow(item)} />
     const conversation = item.value, local = entryByConversation.get(conversation.id), busy = state.managementBusy[conversation.id]
-    const waiting = local?.session?.connectionOwned && local.session.status === 'awaiting_permission'
-    const running = local?.action === 'sending' || local?.session?.connectionOwned && ['busy', 'starting', 'cancelling'].includes(local.session.status)
-    return <ConversationListRow key={historyRowKey(item)} id={conversation.id} title={conversation.title} selected={selectedConversationId === conversation.id} pinned={conversation.pinnedAt !== undefined}
-      previewId={hover.preview?.id === conversation.id ? hover.id : undefined} onPreview={(element) => hover.schedule({ id: conversation.id, title: conversation.title, summary: historyPreview(conversation), time: conversation.updatedAt, metadata: conversation.kind === 'code' ? 'Code 会话' : '对话' }, element)} onDismissPreview={hover.dismiss} onSelect={() => choose(conversation)}
-      status={waiting ? <small className="text-my-xs text-my-warning-text">待授权</small> : running ? <Loader2 size={12} className="animate-spin" aria-label="处理中" /> : !conversation.nativeRef ? <small className="text-my-xs text-my-tertiary">草稿</small> : null}
+    const waiting = Boolean(local?.session?.connectionOwned && local.session.status === 'awaiting_permission')
+    const running = Boolean(local?.action === 'sending' || (local?.session?.connectionOwned && ['busy', 'starting', 'cancelling'].includes(local.session.status)))
+    const isPinned = conversation.pinnedAt !== undefined
+    const isArchived = conversation.archivedAt !== undefined
+
+    return <ConversationListRow
+      key={historyRowKey(item)}
+      id={conversation.id}
+      title={conversation.title}
+      selected={selectedConversationId === conversation.id}
+      pinned={isPinned}
+      archived={isArchived}
+      busy={running}
+      time={conversation.updatedAt}
+      previewId={hover.preview?.id === conversation.id ? hover.id : undefined}
+      onPreview={(element) => hover.schedule({ id: conversation.id, title: conversation.title, summary: historyPreview(conversation), time: conversation.updatedAt, metadata: conversation.kind === 'code' ? 'Code 会话' : '对话' }, element)}
+      onDismissPreview={hover.dismiss}
+      onSelect={() => choose(conversation)}
+      onTogglePin={() => void manage(conversation.id, { pinned: !isPinned })}
+      onToggleArchive={() => void manage(conversation.id, { archived: !isArchived })}
+      status={waiting ? <small className="text-my-xs text-my-warning-text">待授权</small> : !conversation.nativeRef ? <small className="text-my-xs text-my-tertiary">草稿</small> : null}
       error={rename?.id === conversation.id ? undefined : actionErrors[conversation.id] || state.managementErrors[conversation.id]}
-      actions={<Dropdown align="right" width={192} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={conversation.id} className="acp-recent-menu-trigger my-icon-control" aria-label={'会话操作：' + conversation.title} aria-expanded={expanded} aria-haspopup="menu" aria-busy={busy || undefined} disabled={busy} onFocus={hover.dismiss} onMouseEnter={hover.dismiss} onClick={() => { hover.dismiss(); toggle() }}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Ellipsis size={15} />}</button>}>{(close) => <>
+      actions={<Dropdown align="left" width={196} className="acp-recent-menu" trigger={({ open: expanded, toggle }) => <button type="button" data-session-id={conversation.id} className="acp-recent-menu-trigger acp-recent-action-btn my-icon-control" aria-label={'更多会话操作：' + conversation.title} aria-expanded={expanded} aria-haspopup="menu" aria-busy={busy || undefined} disabled={busy} onFocus={hover.dismiss} onMouseEnter={hover.dismiss} onClick={(e) => { e.stopPropagation(); hover.dismiss(); toggle() }}>{busy ? <Loader2 size={13} className="animate-spin" /> : <MoreVertical size={13} strokeWidth={1.5} />}</button>}>{(close) => <>
         <DropdownItem icon={<Pencil size={14} />} disabled={busy} onClick={() => { close(); openRename(conversation) }}>重命名</DropdownItem>
-        <DropdownItem icon={conversation.pinnedAt !== undefined ? <PinOff size={14} /> : <Pin size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { pinned: conversation.pinnedAt === undefined }) }}>{conversation.pinnedAt !== undefined ? '取消置顶' : '置顶'}</DropdownItem>
-        <DropdownItem icon={<Archive size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { archived: true }) }}>归档</DropdownItem>
+        <DropdownItem icon={isPinned ? <PinOff size={14} /> : <Pin size={14} />} shortcut="Alt+Shift+P" disabled={busy} onClick={() => { close(); void manage(conversation.id, { pinned: !isPinned }) }}>{isPinned ? '取消置顶' : '置顶'}</DropdownItem>
+        <DropdownItem icon={<MessageSquareDot size={14} />} disabled={busy} onClick={() => { close() }}>标为未读</DropdownItem>
+        <DropdownItem icon={<Copy size={14} />} hasSubmenu disabled={busy} onClick={() => { close(); void copyTitle(conversation) }}>复制</DropdownItem>
+        <DropdownItem icon={<Columns2 size={14} />} hasSubmenu disabled={busy} onClick={() => { close() }}>拆分视图</DropdownItem>
+        <DropdownDivider />
+        <DropdownItem icon={isArchived ? <ArchiveRestore size={14} /> : <ArchiveArrowDown size={14} strokeWidth={1.5} />} shortcut="Ctrl+Alt+A" disabled={busy} onClick={() => { close(); void manage(conversation.id, { archived: !isArchived }) }}>{isArchived ? '取消归档' : '归档'}</DropdownItem>
+        <DropdownItem danger icon={<Trash2 size={14} />} disabled={busy} onClick={() => { close(); void manage(conversation.id, { archived: true }) }}>删除</DropdownItem>
       </>}</Dropdown>}
     />
   }

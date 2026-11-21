@@ -1,4 +1,5 @@
 import { realpathSync, statSync } from 'node:fs'
+import { samePlanningPolicy } from '../acp/task-planning-policy'
 import { isAbsolute } from 'node:path'
 import { privateNativeReadSchema, privateNativeSendSchema, privateNativeControlSchema, type PrivateNativeOwner } from '../../../shared/private-conversations'
 import { ipcFail, IpcErrorCode } from '../../../shared/ipc-errors'
@@ -15,6 +16,7 @@ export async function privateNativeSession(owner: PrivateNativeOwner) {
   assertDirectory(owner)
   if (!result.ok) return result
   const meta = result.session
+  if (!samePlanningPolicy(meta.privateConversation?.planningPolicy, owner.planningPolicy)) return ipcFail(IpcErrorCode.Denied, '原任务规划策略不一致；未授予普通发送或配置权限')
   if (meta.privateConversation?.id !== owner.conversationId || meta.privateConversation.creatorId !== owner.creatorId || canonicalDirectory(meta.projectRoot) !== canonicalDirectory(owner.root) || canonicalDirectory(meta.cwd ?? meta.projectRoot) !== canonicalDirectory(owner.root)) return ipcFail(IpcErrorCode.Denied, '此原生会话不属于当前私有会话')
   return result
 }
@@ -65,5 +67,6 @@ export async function privateNativeControl(operation: 'cancel' | 'end' | 'respon
   if (operation === 'end') return acp.killAcpSession(input.root, input.sessionId)
   const pending = (session.session.pendingPermissions ?? []).find(item => item.requestId === input.requestId && item.sessionId === input.sessionId && item.connectionGeneration === input.expectedConnectionGeneration)
   if (!pending || !input.expectedConnectionGeneration || !input.optionId || !pending.options.some(option => option.optionId === input.optionId)) return ipcFail(IpcErrorCode.Denied, '权限请求已结束或不属于原会话')
+  if (session.session.privateConversation?.planningPolicy) return acp.respondTaskPlanningPermission(input.root, pending.requestId, input.optionId)
   return acp.respondAcpPermission(input.root, pending.requestId, input.optionId)
 }

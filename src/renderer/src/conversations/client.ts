@@ -6,7 +6,7 @@ export function conversationClient(): ConversationApi | null {
 }
 
 export function conversationValue<T>(result: ConversationResult<T>): T {
-  if (!result.ok) throw new Error(result.error)
+  if (!result.ok) throw Object.assign(new Error(result.error), result)
   return result.value
 }
 

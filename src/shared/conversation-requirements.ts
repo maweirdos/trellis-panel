@@ -128,6 +128,10 @@ export type RequirementRun = z.infer<typeof requirementRunSchema>
 export type RequirementAdopt = z.infer<typeof requirementAdoptSchema>
 export type RequirementApplySelection = z.infer<typeof requirementApplySelectionSchema>
 export type RequirementSelectionReceipt = z.infer<typeof requirementSelectionReceiptSchema>
+export const requirementPolishRunSchema = z.object({ commandId: id, expectedRevision: id, expectedPlanRevision: id.optional(), document: requirementDocumentSchema, quote: requirementQuoteSchema, text: z.string().trim().min(1).max(4000) }).strict()
+export const requirementPolishObservationSchema = z.object({ id, document: requirementDocumentSchema, sourceRevision: id, sourceBodyRevision: digest, state: z.enum(['running', 'candidate', 'cancelled', 'failed', 'adopted', 'unknown']), candidateRevision: digest.optional(), replacement: body.optional(), detail: z.string().max(2000).optional(), receipt: requirementSelectionReceiptSchema.optional() }).strict()
+export type RequirementPolishRun = z.infer<typeof requirementPolishRunSchema>
+export type RequirementPolishObservation = z.infer<typeof requirementPolishObservationSchema>
 export type RequirementHandoffSource = z.infer<typeof requirementHandoffSourceSchema>
 export type RequirementDirectKnowledge = z.infer<typeof requirementDirectKnowledgeSchema>
 export type RequirementKnowledgeGrant = z.infer<typeof requirementKnowledgeGrantSchema>
@@ -135,11 +139,17 @@ export type RequirementConfirm = z.infer<typeof requirementConfirmSchema>
 export type RequirementSavePlan = z.infer<typeof requirementSavePlanSchema>
 export type RequirementTaskOrigin = z.infer<typeof requirementTaskOriginSchema>
 export type RequirementSummary = Omit<RequirementDraft, 'body' | 'references' | 'plan' | 'operations'> & { referenceCount: number; hasPlan: boolean; planStale: boolean }
-export interface RequirementView { draft: RequirementDraft; fileState: 'saved' | 'changed' | 'missing' | 'unavailable'; fileRevision?: string; fileBody?: string; detail?: string; planFileState?: 'saved' | 'changed' | 'missing' | 'unavailable'; planFileRevision?: string; planFileBody?: string; pendingSave?: { document: RequirementDocument; draft: RequirementDraft; actual: { state: 'matches-previous' | 'matches-pending' | 'changed' | 'missing' | 'unavailable'; revision?: string; body?: string; detail?: string } }; recoveredFiles?: Array<{ document: RequirementDocument; path: string; revision: string }>; handoffHistory?: Array<{ receipt: RequirementReceipt; knowledgeOperationIds?: string[]; knowledgeSources?: RequirementHandoffSource[]; directKnowledge?: RequirementDirectKnowledge; designSources?: RequirementDesignHandoffSource[] }> }
+export interface RequirementView { draft: RequirementDraft; confirmationCurrent?: boolean; fileState: 'saved' | 'changed' | 'missing' | 'unavailable'; fileRevision?: string; fileBody?: string; detail?: string; planFileState?: 'saved' | 'changed' | 'missing' | 'unavailable'; planFileRevision?: string; planFileBody?: string; pendingSave?: { document: RequirementDocument; draft: RequirementDraft; actual: { state: 'matches-previous' | 'matches-pending' | 'changed' | 'missing' | 'unavailable'; revision?: string; body?: string; detail?: string } }; recoveredFiles?: Array<{ document: RequirementDocument; path: string; revision: string }>; handoffHistory?: Array<{ receipt: RequirementReceipt; knowledgeOperationIds?: string[]; knowledgeSources?: RequirementHandoffSource[]; directKnowledge?: RequirementDirectKnowledge; designSources?: RequirementDesignHandoffSource[] }> }
 export interface RequirementObservation { operation: RequirementOperation; candidate?: RequirementCandidate }
 export type RequirementRunResult = { ok: true; value: RequirementObservation } | (IpcFail & { outcome?: 'not-admitted'; notSent?: true })
 export interface RequirementOpen { conversationId: string; draftId: string; task: RequirementTask; taskDir: string; snapshot: ProjectSnapshot }
 export interface ConversationRequirementsApi {
+  polish: {
+    run(conversationId: string, draftId: string, input: RequirementPolishRun): Promise<ConversationResult<RequirementPolishObservation>>
+    observe(conversationId: string, draftId: string, operationId: string): Promise<ConversationResult<RequirementPolishObservation>>
+    cancel(conversationId: string, draftId: string, operationId: string): Promise<ConversationResult<RequirementPolishObservation>>
+    apply(conversationId: string, draftId: string, operationId: string, input: RequirementApplySelection): Promise<ConversationResult<{ view: RequirementView; receipt: RequirementSelectionReceipt }>>
+  }
   knowledge: {
     connections(conversationId: string): Promise<ConversationResult<RequirementKnowledgeConnectionChoice[]>>
     collections(conversationId: string, input: RequirementKnowledgeConnection): Promise<ConversationResult<{ items: RequirementKnowledgeCollection[]; hasMore: boolean }>>

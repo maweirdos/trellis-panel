@@ -9,7 +9,7 @@ import type { AcpHistoryEventPage } from '../../../shared/acp-history'
 import type { RuntimeBody, RuntimeBodyMethod, RuntimeCursor } from '../../../shared/daemon-runtime'
 import { runtimeCall } from '../daemon-client/runtime'
 import { ipcEvent } from '../../../shared/ipc-channels'
-import { checkedDirectory, directoryIdentity, eligibleWorkspaceFile, FileSizeLimitError, hash, ownedDirectory, readRegular, workspaceFiles, importSelectedFiles, removeImportedFiles, pathKey } from './files'
+import { checkedDirectory, directoryIdentity, eligibleWorkspaceFile, FileSizeLimitError, hash, ownedDirectory, readRegular, workspaceFiles, importSelectedFiles, removeImportedFiles, pathKey, inputFileName } from './files'
 import { conversationConfigureSchema, conversationRecoverModelSchema } from '../../../shared/acp-configuration'
 import { ConversationStorage, ConversationStorageError as ConversationError, type ConversationRow as Row, type ConversationMigrationBatch } from './storage'
 export { ConversationStorageError as ConversationError } from './storage'
@@ -41,7 +41,31 @@ export class PrivateConversations {
     prepareSend(id: string, input: contract.ConversationSend, current?: () => void): Promise<{ input: contract.ConversationSend; displayText?: string; assertCurrent?: () => void }>
     hasConversation(id: string): boolean
   }
+  private planningHooks?: {
+    policy(id: string): contract.TaskPlanningPolicy | undefined
+    assertSend(id: string, input: contract.ConversationSend): void
+    beforeDispatch(id: string, input: contract.ConversationSend): Promise<void>
+    beforeRespond(id: string, input: contract.ConversationRespond): Promise<(() => boolean) | undefined>
+  }
   constructor(private readonly ports: PrivateConversationPorts) {}
+  setTaskPlanningHooks(hooks: NonNullable<PrivateConversations['planningHooks']>): void { this.planningHooks = hooks }
+  /** Main-only, idempotent creation under an already verified physical task source. */
+  async createTaskPlanningDraft(id: string, root: string): Promise<void> {
+    contract.conversationIdSchema.parse(id)
+    const policy = this.planningHooks?.policy(id)
+    if (!policy) throw new ConversationError('缺少 main 持有的任务规划绑定', IpcErrorCode.Denied)
+    const canonical = checkedDirectory(root)
+    try {
+      const existing = await this.owned(id)
+      if (pathKey(existing.conversation.workspace.root) !== pathKey(canonical) || existing.conversation.kind !== 'code'
+        || existing.draft.runtimeId !== policy.agentId || existing.draft.modelId !== policy.modelId) throw new ConversationError('原任务规划会话身份不一致', IpcErrorCode.Denied)
+      return
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    const now = Date.now(), creatorId = this.localCreator()
+    this.save({ version: 2, revision: 1, nativeCreatorId: creatorId, conversation: { id, creatorId, title: '任务技术方案', kind: 'code',
+      workspace: { kind: 'directory', root: canonical }, createdAt: now, updatedAt: now },
+      draft: { text: '', runtimeId: policy.agentId, modelId: policy.modelId }, rootIdentity: directoryIdentity(canonical), inputs: [] })
+  }
   /** Main-owned design intent; neither paths nor expanded display text are renderer inputs. */
   setDesignHooks(hooks: NonNullable<PrivateConversations['designHooks']>): void { this.designHooks = hooks }
   creatorIdentity(): string { return this.localCreator() }
@@ -60,6 +84,7 @@ export class PrivateConversations {
   private async owned(id: string, cleanup = false): Promise<Row> { const row = await this.catalog().load(id); await this.authorized(row, cleanup); return row }
   metadataDirectory(): string { return this.directory() }
   async workspaceAccess(id: string, writable = false): Promise<{ conversation: contract.Conversation; sourceIdentity: string; runtimeId: string; assertCurrent(): void }> {
+    if (this.planningHooks?.policy(id)) throw new ConversationError('任务规划材料由原任务持有，请回原任务继续', IpcErrorCode.Denied)
     const row = await this.owned(id)
     const root = row.conversation.workspace.root, rootKey = pathKey(root), identity = row.rootIdentity
     const creator = row.conversation.creatorId, nativeCreator = row.nativeCreatorId, nativeRef = row.conversation.nativeRef
@@ -78,7 +103,9 @@ export class PrivateConversations {
     return { root: directory.root, kind: 'directory' }
   }
   private nativeOwner(row: Row): contract.PrivateNativeOwner {
-    return { root: row.conversation.workspace.root, sessionId: row.conversation.nativeRef?.sessionId ?? `acp-private-${row.conversation.id}`, conversationId: row.conversation.id, creatorId: row.nativeCreatorId }
+    const planningPolicy = this.planningHooks?.policy(row.conversation.id)
+    return { root: row.conversation.workspace.root, sessionId: row.conversation.nativeRef?.sessionId ?? `acp-private-${row.conversation.id}`, conversationId: row.conversation.id, creatorId: row.nativeCreatorId,
+      ...(planningPolicy ? { planningPolicy } : {}) }
   }
   private async value(row: Row): Promise<contract.ConversationRead> {
     await this.authorized(row)
@@ -141,7 +168,8 @@ export class PrivateConversations {
       try { row = await this.catalog().load(name.slice(0, -5), batch) }
       catch (error) { if (error instanceof ConversationError && error.code === IpcErrorCode.Denied) continue; throw error }
       const conversation = row.conversation
-      if (!row.draft.text.trim() && !row.inputs.length && !conversation.nativeRef) continue
+      if (this.planningHooks?.policy(conversation.id)) continue
+      if (!row.draft.text.trim() && !row.inputs.length && !conversation.nativeRef && !this.ports.workspaceHasRequirements?.(conversation.id)) continue
       if (input.archive === 'active' && conversation.archivedAt !== undefined || input.archive === 'archived' && conversation.archivedAt === undefined) continue
       if (input.kind && input.kind !== conversation.kind || input.projectId && input.projectId !== conversation.projectId || input.query && !conversation.title.toLocaleLowerCase().includes(input.query.toLocaleLowerCase())) continue
       if (conversation.creatorId === this.localCreator()) result.push(conversation)
@@ -159,6 +187,7 @@ export class PrivateConversations {
     return this.value(row)
   }
   async updateDraft(id: string, raw: unknown, directoryOwner?: object): Promise<contract.ConversationRead> {
+    if (this.planningHooks?.policy(id)) throw new ConversationError('任务规划会话由原任务持有', IpcErrorCode.Denied)
     const input = contract.conversationUpdateDraftSchema.parse(raw), row = await this.owned(id)
     const before = JSON.stringify(row)
     // A text save may arrive after first-send reserved the same native engine.
@@ -257,6 +286,33 @@ export class PrivateConversations {
     return value.ok ? { ok: true, value } : value
   }
   /** Main-owned action reconciliation; the renderer cannot issue arbitrary native RPCs. */
+  async connect(id: string, assertCurrent: () => void): Promise<contract.ConversationResult<AcpSessionRecord>> {
+    assertCurrent()
+    const row = await this.reconcile(await this.owned(id)), source = await this.workspaceAccess(id, true)
+    if (!row.conversation.nativeRef) return ipcFail(IpcErrorCode.InvalidArg, '首次连接请发送消息；此操作仅恢复已有会话')
+    if (this.sending.has(id) || row.pending && ['dispatching', 'unknown'].includes(row.pending.state)) return ipcFail(IpcErrorCode.Busy, '原消息尚待核对，请先检查原会话')
+    const previous = await this.ports.native<NativeSession, 'runtime.privateRead'>('runtime.privateRead', { ...this.nativeOwner(row), operation: 'session' })
+    await this.authorized(row)
+    if (!previous.ok) return previous
+    if (previous.session.cleanupRequired || ['busy', 'awaiting_permission', 'cancelling', 'starting'].includes(previous.session.status)) return ipcFail(IpcErrorCode.Busy, '原会话仍在运行或清理，请先等待或停止原操作')
+    if (previous.session.status === 'ready' && previous.session.connectionGeneration) return { ok: true, value: previous.session }
+    if (previous.session.canResume !== true) return ipcFail(IpcErrorCode.Unavailable, '此记录暂不支持恢复连接，请核对原会话后再发送')
+    const current = (): boolean => { try { assertCurrent(); source.assertCurrent(); return !this.sending.has(id) } catch { return false } }
+    const result = await this.ports.native<NativeSend, 'runtime.privateSend'>('runtime.privateSend', { ...this.nativeOwner(row), agentId: row.conversation.nativeRef.agentId,
+      operation: 'prepare', input: { requestId: randomUUID(), text: '' } }, undefined, current)
+    await this.authorized(row)
+    if (!current()) return ipcFail(IpcErrorCode.Conflict, '原会话来源已变化，未继续配置')
+    return result.ok ? { ok: true, value: result.session } : result
+  }
+  async reconcileSend(id: string, requestId: string): Promise<{ state: 'sent' | 'not-sent' | 'unknown'; turnId?: string }> {
+    contract.conversationIdSchema.parse(requestId)
+    const row = await this.reconcile(await this.owned(id))
+    if (this.sending.has(id)) return { state: 'unknown' }
+    if (!row.conversation.nativeRef) return { state: 'not-sent' }
+    if (row.pending?.requestId !== requestId) return { state: 'unknown' }
+    if (row.pending.state === 'sent') return { state: 'sent', turnId: row.pending.turnId }
+    return { state: row.pending.state === 'preparing' ? 'not-sent' : 'unknown' }
+  }
   async requestReceipt(id: string, requestId: string): Promise<PrivateRequestReceipt | IpcFail> {
     contract.conversationIdSchema.parse(requestId)
     const row = await this.owned(id)
@@ -268,9 +324,10 @@ export class PrivateConversations {
   async send(id: string, raw: unknown, visibleText?: string, assertCurrent?: () => void, assertDispatch?: () => void): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
     assertCurrent?.()
     const original = contract.conversationSendSchema.parse(raw)
+    this.planningHooks?.assertSend(id, original)
     const prepared = visibleText === undefined && this.designHooks ? await this.designHooks.prepareSend(id, original, assertCurrent) : { input: original, displayText: visibleText }
     const ownerCurrent = (): void => { assertCurrent?.(); assertDispatch?.(); if ('assertCurrent' in prepared) prepared.assertCurrent?.() }
-    const displayText = contract.privateNativeSendSchema.shape.displayText.parse(prepared.displayText)
+    const displayText = contract.privateNativeSendSchema.shape.displayText.parse(prepared.displayText ?? await this.inputDisplayText(id, original))
     const input = contract.conversationSendSchema.parse(prepared.input), digest = hash(JSON.stringify({ text: input.text, images: input.images ?? [], ...(input.draftText === undefined ? {} : { draftText: input.draftText }), ...(displayText === undefined ? {} : { displayText }) }))
     if (this.configuring.has(id)) return ipcFail(IpcErrorCode.Busy, '请等待原会话配置结束后发送')
     const existing = this.sending.get(id)
@@ -278,6 +335,18 @@ export class PrivateConversations {
     const promise = this.sendOwned(id, input, digest, displayText, assertCurrent, ownerCurrent)
     this.sending.set(id, { requestId: input.requestId, digest, promise })
     try { return await promise } finally { if (this.sending.get(id)?.promise === promise) this.sending.delete(id); this.cancelledSends.delete(input.requestId) }
+  }
+  private async inputDisplayText(id: string, input: contract.ConversationSend): Promise<string | undefined> {
+    if (input.draftText === undefined) return
+    const plain = input.draftText.trim(), marker = `${plain}\n\n会话输入文件（工作目录内的相对路径）：\n`
+    if (!input.text.startsWith(marker)) return plain || undefined
+    let paths: unknown[]
+    try { paths = input.text.slice(marker.length).split('\n').map(line => JSON.parse(line)) } catch { return plain || undefined }
+    if (!paths.length || paths.length > 256 || !paths.every((path): path is string => typeof path === 'string')) return plain || undefined
+    const row = await this.owned(id)
+    if (!paths.every(path => row.inputs.includes(path as string))) return plain || undefined
+    const names = (paths as string[]).map(inputFileName).join('\n')
+    return `${plain}${plain ? '\n\n' : ''}附件：\n${names}`
   }
   private async sendOwned(id: string, input: contract.ConversationSend, digest: string, displayText?: string, assertCurrent?: () => void, assertDispatch?: () => void): Promise<contract.ConversationResult<{ conversation: contract.Conversation; session: AcpSessionRecord; turnId: string }>> {
     assertCurrent?.()
@@ -320,6 +389,7 @@ export class PrivateConversations {
     }
     if (!prepared.ok) return ipcFail(prepared.code, `${prepared.error}；原执行身份已保留，此会话不能切换执行引擎`, { notSent: true })
     row = await this.owned(id)
+    await this.planningHooks?.beforeDispatch(id, input)
     if (!current() || this.cancelledSends.has(input.requestId)) return ipcFail(IpcErrorCode.Conflict, '原消息已停止或来源已变化，消息未发送', { notSent: true })
     const agentId = row.conversation.nativeRef?.agentId
     if (!agentId || !prepared.session.connectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原生身份尚未确认')
@@ -356,7 +426,8 @@ export class PrivateConversations {
     await this.authorized(row, cleanup)
     if (!row.conversation.nativeRef) return { ok: true, value: null }
     const method = operation === 'cancel' ? 'runtime.privateCancel' : operation === 'end' ? 'runtime.privateEnd' : 'runtime.privateRespond'
-    const value = await this.ports.native<{ ok: true } | IpcFail, typeof method>(method, { ...this.nativeOwner(row), ...input })
+    const current = operation === 'respond' ? await this.planningHooks?.beforeRespond(id, contract.conversationRespondSchema.parse(input)) : undefined
+    const value = await this.ports.native<{ ok: true } | IpcFail, typeof method>(method, { ...this.nativeOwner(row), ...input }, undefined, current)
     await this.authorized(row, cleanup)
     return value.ok ? { ok: true, value: null } : value
   }
@@ -392,6 +463,7 @@ export class PrivateConversations {
     return files.map(({ fileIdentity, ...file }) => ({ ...file, sourceIdentity: hash(JSON.stringify([sourceIdentity, fileIdentity])) }))
   }
   async importFiles(id: string, paths: string[]): Promise<contract.ConversationFile[]> {
+    if (this.planningHooks?.policy(id)) throw new ConversationError('只读任务规划不能导入文件到工程目录', IpcErrorCode.Denied)
     const row = await this.owned(id)
     if (row.inputs.length + paths.length > 256) throw new ConversationError('会话已达到 256 个选入文件上限', IpcErrorCode.Busy)
     const directory = row.conversation.workspace.kind === 'managed' ? 'inputs' : `.trellis-panel/conversations/${id}/inputs`
@@ -490,6 +562,7 @@ export class PrivateConversations {
     return this.catalog().createProject(input.name)
   }
   async reclassify(id: string, raw: unknown): Promise<contract.ConversationRead> {
+    if (this.planningHooks?.policy(id)) throw new ConversationError('任务规划会话由原任务持有', IpcErrorCode.Denied)
     const input = contract.conversationReclassifySchema.parse(raw), row = await this.owned(id)
     await this.checkProject(input.projectId ?? undefined)
     row.conversation.projectId = input.projectId ?? undefined; row.conversation.updatedAt = Date.now(); this.save(row, row.revision)

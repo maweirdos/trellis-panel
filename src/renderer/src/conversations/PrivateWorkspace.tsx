@@ -1,16 +1,25 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ChevronDown, Files, Folder, MessageSquare, MoreHorizontal, MousePointer2, RefreshCw, Loader2, Users, X } from 'lucide-react'
 import type { RequirementDocument, RequirementView } from '@shared/conversation-requirements'
+import type { CruxTask } from '@shared/crux'
 import { lastRequirementId } from './requirement-workbench/reading-position'
 import { NewTaskModal, type NewTaskModalProps } from '../crux/pages/TaskCreateModal'
+import { ConversationTaskAction, ConversationTaskReceipt } from './ConversationTaskAction'
+import { useTaskSuggestionPort } from './useTaskSuggestionPort'
+import { ConversationTaskLayout, type TaskPane } from './ConversationTaskLayout'
+import type { TeamHandoffFeedback } from './requirement-workbench/Workbench'
+import { canReadTaskSpace } from '../crux/pages/task-detail/use-task-source'
+import { readTaskHandoffRecovery } from '../crux/pages/task-detail/task-handoff-source'
+import { consumeTaskConversationIntent, useTaskConversationIntent } from './task-navigation'
 import { conversationTeamHandoff } from './team-handoff'
+import { shareRequirementVersion } from './requirement-workbench/task-sharing'
 import type { Conversation } from '@shared/private-conversations'
 import type { PiWebPreviewArtifact } from '@shared/pi-web-preview'
 import { Button, Dropdown, DropdownHeader, DropdownItem, Modal } from '../my/ui'
-import { Select } from '../components/Select'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { useMy } from '../my/store'
+import { useCrux } from '../crux/store'
 import { useApp } from '../store'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
@@ -34,7 +43,6 @@ import { sendDesignMessage, usePendingDesignSend, type DesignConversationReferen
 import { useDesignNavigation } from '../designs/navigation'
 import type { DesignSelection } from '@shared/design-workspace'
 import type { RequirementBuildPreparation } from './requirement-workbench/useRequirementWorkbench'
-import { RequirementIntentAction } from './RequirementIntentAction'
 import { requirementIntent, requirementIntentCommandId, type RequirementSeed } from './requirement-intent'
 import type { RequirementBuildChoice } from './requirement-workbench/BuildPreparation'
 import { DocumentSourceProvider } from '../reader/document-source'
@@ -42,12 +50,13 @@ import { MarkdownView } from '../components/MarkdownView'
 import { ConnectionNotice } from '../acp/ConnectionNotice'
 import { isPrivateEntrySelected, usePrivateDocumentSource, type PrivateDocumentPreview } from './source'
 import { conversationClient, conversationError, conversationValue } from './client'
-import { addFiles, ensureConversation, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshFiles, refreshWorkspace, requestComposerFocus, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
+import { addFiles, sendMessage, sendTaskWorkRequest, ensureConversation, baseScopeKey, controlConversation, ensureScope, newDraft, readConversation, reclassifyConversation, refreshFiles, refreshWorkspace, requestComposerFocus, scopeKey, selectConversation, selectProjectScope, useConversations, type ConversationKind, type WorkspaceEntry } from './workspace'
 import '../acp/workspace.css'
 import './workspace.css'
 
 const loadRequirementWorkbench = () => import('./requirement-workbench/Workbench')
 const RequirementWorkbench = lazy(loadRequirementWorkbench)
+const EmbeddedTaskPost = lazy(() => import('../crux/pages/TaskDetailDrawer').then(module => ({ default: module.EmbeddedTaskPost })))
 const RequirementExecutionFlow = lazy(() => import('./requirement-workbench/ExecutionFlow').then(module => ({ default: module.RequirementExecutionFlow })))
 const BuildPreparation = lazy(() => import('./requirement-workbench/BuildPreparation').then(module => ({ default: module.BuildPreparation })))
 type RequirementSelection = { id?: string; commandId: string; seed?: RequirementSeed; document?: RequirementDocument }
@@ -80,14 +89,54 @@ export function PrivateWorkspace(): JSX.Element {
   const buildCompletion = useRef<{ resolve(value: RequirementBuildChoice | null): void; reject(reason: Error): void } | null>(null)
   const [requirementOpening, setRequirementOpening] = useState(false)
   const requirementRequest = useRef<symbol | null>(null)
+  const [documentsOwner, setDocumentsOwner] = useState('')
+  const documentsOpen = Boolean(selection && documentsOwner === selection)
+  const [taskAction, setTaskAction] = useState<{ owner: string; mode: 'create' | 'bind' }>()
+  const [receiptRevision, refreshReceipt] = useState(0)
   const requirementSummaries = useRequirementSummaries(current, active && !archiveId && !current?.locked)
   const historyButton = useRef<HTMLButtonElement>(null), wasActive = useRef(false)
   const directoryRequest = useRef<symbol | null>(null)
   const operationOwner = JSON.stringify([scope, selection]), currentOperationOwner = useRef(operationOwner)
   currentOperationOwner.current = operationOwner
-  const teamOwner = JSON.stringify([operationOwner, current?.owner, current?.conversation?.creatorId, current?.conversation?.id, current?.conversation?.workspace.root])
+  const teamContext = useCrux(state => state.workspaceContext)
+  const teamOwner = JSON.stringify([operationOwner, teamContext.key, teamContext.actorId, teamContext.instanceId, teamContext.epoch, current?.owner, current?.conversation?.creatorId, current?.conversation?.id, current?.conversation?.workspace.root])
   const currentTeamOwner = useRef(teamOwner); currentTeamOwner.current = teamOwner
+  const boundTask = useCrux(state => (current?.conversation && !current.locked
+    ? state.snapshot?.tasks.find(task =>
+      canReadTaskSpace(state.snapshot!, state.workspaceContext, task.spaceId) &&
+      task.conversations?.some(link => link.id === current.conversation?.id && link.actorId === state.workspaceContext.actorId))
+    : undefined) ?? null)
+  const taskOwner = JSON.stringify([teamOwner, teamContext.key, teamContext.actorId, teamContext.instanceId, teamContext.epoch, teamContext.authorizationRevision, boundTask?.spaceId, boundTask?.id, boundTask?.createdAt])
+  const receiptOwner = JSON.stringify([teamOwner, teamContext.key, teamContext.actorId, teamContext.instanceId, teamContext.epoch])
+  const taskIntent = useTaskConversationIntent()
+  const [reader, setReader] = useState<{ owner: string; activation: number; origin?: NonNullable<typeof taskIntent> }>()
+  const [pane, setPane] = useState<TaskPane>('task')
+  const readerTrigger = useRef<HTMLElement | null>(null)
+  const readerOpen = Boolean(active && !archiveId && boundTask && reader?.owner === taskOwner)
+  const openBoundTask = (taskId: string) => {
+    if (taskId !== boundTask?.id || !canInteract() || !isPrivateEntrySelected(selection)) return
+    readerTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setPane('task')
+    setReader(last => ({ owner: taskOwner, origin: last?.owner === taskOwner ? last.origin : undefined, activation: (last?.activation ?? 0) + 1 }))
+  }
+  const closeBoundTask = () => {
+    setReader(undefined)
+    const target = readerTrigger.current
+    requestAnimationFrame(() => {
+      if (!canInteract() || !isPrivateEntrySelected(selection)) return
+      if (target?.isConnected) target.focus({ preventScroll: true })
+      else requestComposerFocus(selection)
+    })
+  }
   const [documentPreview, setDocumentPreview] = useState<PrivateDocumentPreview | null>(null)
+  const returnToTask = readerOpen && reader?.origin && reader.origin.originPage !== 'chat' ? () => {
+    const origin = reader.origin!
+    if (!canInteract() || !isPrivateEntrySelected(selection)) return
+    setReader(undefined)
+    useMy.getState().setShellView(origin.originShell)
+    useCrux.getState().openTask(origin.taskId)
+    useApp.getState().setPage(origin.originPage)
+  } : undefined
   const documentSource = usePrivateDocumentSource(selection, document => { setFileOwner(null); setDocumentPreview(document) })
   useEffect(() => { setDocumentPreview(null) }, [selection, current?.owner, current?.session?.connectionGeneration, active])
   const preview = usePiWebPreviewShelf({ root: current?.conversation?.workspace.root ?? '', session: current?.locked ? null : current?.session ?? null, events: current?.events ?? [], enabled: active && !archiveId && !current?.locked, isCurrent: documentSource.isCurrent, onAutoOpen: () => setMobileHistory(false) })
@@ -98,12 +147,10 @@ export function PrivateWorkspace(): JSX.Element {
   const consumedDesignTarget = useRef('')
   const currentDesignReference = designReference?.owner === designs.ownerKey ? designReference.reference : null
   const [teamHandoff, setTeamHandoff] = useState<{ owner: string; value: NonNullable<NewTaskModalProps['handoff']> }>()
+  const [teamHandoffFeedback, setTeamHandoffFeedback] = useState<{ owner: string; value: TeamHandoffFeedback } | null>(null)
   const teamHandoffRequest = useRef<symbol>()
-  const [teamHandoffPending, setTeamHandoffPending] = useState(false)
   const teamHandoffFocus = useRef<{ owner: string; element: HTMLElement | null }>()
   const conversationMore = useRef<HTMLButtonElement>(null)
-  const [conversationHandoffSource, setConversationHandoffSource] = useState<string>()
-  const [handoffRequirementId, setHandoffRequirementId] = useState('')
   const pendingDesignSend = usePendingDesignSend(selection, current?.owner)
   const sendReference = pendingDesignSend?.reference ?? currentDesignReference
   const activeDesign = designs.documents.find(document => document.id === designs.selectedId)
@@ -132,9 +179,10 @@ export function PrivateWorkspace(): JSX.Element {
     const document = designs.documents.find(document => document.id === designTarget.documentId)
     if (!document) return
     consumedDesignTarget.current = designTarget.token
-    setRequirement(null); preview.closeWebPreview(); designs.open(document.id)
+    setReader(undefined); setRequirement(null); setTeamHandoffFeedback(null)
+    preview.closeWebPreview(); designs.open(document.id, designTarget.candidateId)
     if (designTarget.selection) setDesignRestore({ owner: designs.ownerKey, selection: designTarget.selection })
-    else setDesignReference({ owner: designs.ownerKey, reference: { documentId: document.id, revision: document.revision, title: document.title } })
+    else if (!designTarget.candidateId) setDesignReference({ owner: designs.ownerKey, reference: { documentId: document.id, revision: document.revision, title: document.title } })
     useDesignNavigation.setState({ conversationTarget: null })
   }, [active, current?.conversation?.id, designTarget, designs.documents])
   useEscLayer(mobileHistory, { kind: 'overlay', id: 'private-history', onClose: () => setMobileHistory(false), returnFocusRef: historyButton })
@@ -143,9 +191,34 @@ export function PrivateWorkspace(): JSX.Element {
   useEffect(() => () => { buildCompletion.current?.resolve(null); buildCompletion.current = null }, [])
   const requirementOwner = JSON.stringify([current?.owner, selection])
   useEffect(() => {
-    const saved = retainedRequirements.get(requirementOwner)
-    setRequirement(saved ? { entryKey: selection, ...saved } : null)
+    setRequirement(null); setDocumentsOwner(''); setTaskAction(undefined); setReader(undefined); setTeamHandoffFeedback(null)
   }, [requirementOwner])
+  useEffect(() => {
+    if (!active || !taskIntent || current?.conversation?.id !== taskIntent.conversationId ||
+      boundTask?.id !== taskIntent.taskId || boundTask?.createdAt !== taskIntent.taskCreatedAt ||
+      teamContext.key !== taskIntent.workspaceKey || teamContext.actorId !== taskIntent.teamActorId ||
+      !consumeTaskConversationIntent(taskIntent.token)) return
+    setRequirement(null)
+    setPane('chat')
+    if (taskIntent.canvas) {
+      setReader(undefined)
+      useDesignNavigation.setState({ conversationTarget: { conversationId: taskIntent.conversationId, token: taskIntent.token, ...taskIntent.canvas } })
+      return
+    }
+    setReader({ owner: taskOwner, activation: 0, origin: taskIntent })
+    requestComposerFocus(selection)
+    if (taskIntent.request) {
+      const stillSelected = () => canInteract() && useApp.getState().page === 'chat' && currentTeamOwner.current === teamOwner && isPrivateEntrySelected(selection)
+      void sendTaskWorkRequest(selection, taskIntent.request, {
+        workspaceKey: taskIntent.workspaceKey, spaceId: taskIntent.spaceId, taskId: taskIntent.taskId,
+        taskCreatedAt: taskIntent.taskCreatedAt, expectedUpdatedAt: taskIntent.expectedUpdatedAt, actorId: taskIntent.teamActorId,
+        epoch: teamContext.epoch, design: taskIntent.design
+      }, stillSelected).catch(cause => { if (stillSelected()) setError(conversationError(cause)) })
+    }
+  }, [active, taskIntent, taskOwner, current?.conversation?.id, boundTask, selection])
+  useEffect(() => {
+    if (active && current?.conversation && !useCrux.getState().snapshot) void useCrux.getState().bootstrap()
+  }, [active, current?.conversation?.id])
   useEffect(() => {
     if (active && !wasActive.current) void refreshWorkspace()
     wasActive.current = active
@@ -183,16 +256,39 @@ export function PrivateWorkspace(): JSX.Element {
     if (!canInteract()) return
     selectConversation(conversation); useMy.getState().setShellView(conversation.kind === 'code' ? 'development' : 'collaboration'); setMobileHistory(false)
   }
-  const createTeamTask = async (requirement?: RequirementView, trigger?: HTMLButtonElement): Promise<void> => {
+  const shareDocument = async (requirement: RequirementView, trigger?: HTMLButtonElement, task?: CruxTask): Promise<void> => {
     if (!canInteract() || !current?.conversation || !isPrivateEntrySelected(selection) || teamHandoffRequest.current) return
     const ticket = Symbol('team-handoff'), owner = currentTeamOwner.current, key = selection
-    teamHandoffRequest.current = ticket; setTeamHandoffPending(true)
+    teamHandoffRequest.current = ticket
     teamHandoffFocus.current = { owner, element: trigger ?? conversationMore.current }
     try {
+      setTeamHandoffFeedback({ owner, value: { state: 'working', message: task ? `正在共享到〈${task.id}〉…` : '正在共享团队任务…' } })
       const seed = await conversationTeamHandoff(current, requirement)
+      if (!canInteract() || currentTeamOwner.current !== owner || !isPrivateEntrySelected(key)) return
+      const recovery = readTaskHandoffRecovery(seed)
+      if (task?.handoff && recovery?.intent && recovery.source.id === task.handoff.id && recovery.authorityIdentity === teamContext.actorId) {
+        setTeamHandoffFeedback(null)
+        setTeamHandoff({ owner, value: recovery.source })
+        return
+      }
+      if (task) {
+        const result = await shareRequirementVersion(current, requirement, { task, conversationId: current.conversation.id, creatorId: current.conversation.creatorId })
+        if (!canInteract() || currentTeamOwner.current !== owner || !isPrivateEntrySelected(key)) return
+        setTeamHandoffFeedback({
+          owner,
+          value: result.state === 'created' ? { state: 'created', taskId: result.taskId, message: `已共享到 ${result.taskId} · ${requirement.draft.title}` } : result
+        })
+        return
+      }
+      setTeamHandoffFeedback(null)
       if (canInteract() && currentTeamOwner.current === owner && isPrivateEntrySelected(key)) setTeamHandoff({ owner, value: seed })
-    } catch (cause) { if (canInteract() && currentTeamOwner.current === owner) setError(conversationError(cause)) }
-    finally { if (teamHandoffRequest.current === ticket) { teamHandoffRequest.current = undefined; setTeamHandoffPending(false) } }
+    } catch (cause) {
+      if (canInteract() && currentTeamOwner.current === owner) {
+        if (task) setTeamHandoffFeedback({ owner, value: { state: 'failed', message: conversationError(cause) } })
+        else setError(conversationError(cause))
+      }
+    }
+    finally { if (teamHandoffRequest.current === ticket) { teamHandoffRequest.current = undefined } }
   }
   const closeTeamHandoff = (): void => {
     setTeamHandoff(undefined)
@@ -200,19 +296,6 @@ export function PrivateWorkspace(): JSX.Element {
       const target = teamHandoffFocus.current
       if (canInteract() && target?.owner === currentTeamOwner.current && target.element?.isConnected) target.element.focus({ preventScroll: true })
     })
-  }
-  const useTeamHandoffSource = async (): Promise<void> => {
-    if (!canInteract() || !current?.conversation || !isPrivateEntrySelected(selection)) return
-    const owner = currentTeamOwner.current, id = current.conversation.id
-    try {
-      const client = conversationClient()
-      if (!client?.requirements) throw new Error('需求读取功能暂不可用。')
-      const requirement = handoffRequirementId ? conversationValue(await client.requirements.read(id, handoffRequirementId)) : undefined
-      if (!canInteract() || currentTeamOwner.current !== owner) return
-      if (requirement && requirement.fileState !== 'saved') throw new Error('需求正文有未核对修改，请先打开需求工作台处理。')
-      await createTeamTask(requirement)
-      if (canInteract() && currentTeamOwner.current === owner) setConversationHandoffSource(undefined)
-    } catch (cause) { if (canInteract() && currentTeamOwner.current === owner) setError(conversationError(cause)) }
   }
   const openRequirement = (id?: string, seed?: RequirementSeed, document?: RequirementDocument): void => {
     if (!canInteract() || requirementRequest.current || !current || current.locked || current.conversation?.archivedAt !== undefined || current.kind === 'code' && !current.conversation && !current.directory || !isPrivateEntrySelected(selection)) return
@@ -277,29 +360,53 @@ export function PrivateWorkspace(): JSX.Element {
   }
   const showWebPreview = (artifact: PiWebPreviewArtifact, eventId: string): void => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
-    setRequirement(null); designs.close(); requirementSummaries.refresh(); preview.openWebPreview(artifact, eventId)
+    setReader(undefined); setRequirement(null); setTeamHandoffFeedback(null); designs.close(); requirementSummaries.refresh(); preview.openWebPreview(artifact, eventId)
   }
   const showCodePreview: OpenCodePreview = (text, language) => {
     if (!canInteract() || !isPrivateEntrySelected(selection)) return
-    setRequirement(null); designs.close(); requirementSummaries.refresh(); preview.openCodePreview(text, language)
+    setReader(undefined); setRequirement(null); setTeamHandoffFeedback(null); designs.close(); requirementSummaries.refresh(); preview.openCodePreview(text, language)
   }
-  const showDesign = (id: string, candidateId?: string): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setRequirement(null); setMobileHistory(false); preview.closeWebPreview(); designs.open(id, candidateId) } }
+  const showDesign = (id: string, candidateId?: string): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setReader(undefined); setRequirement(null); setTeamHandoffFeedback(null); setMobileHistory(false); preview.closeWebPreview(); designs.open(id, candidateId) } }
   const takeDesignReference = (reference: DesignConversationReference): void => { if (canInteract() && isPrivateEntrySelected(selection)) { setDesignReference({ owner: designs.ownerKey, reference }); setDesignRestore(null); requestComposerFocus(selection) } }
+  const taskSnapshot = useCrux(state => state.snapshot)
+  const taskSuggestion = useTaskSuggestionPort({ snapshot: taskSnapshot, task: boundTask, conversationId: current?.conversation?.id,
+    entryKey: selection, canStart: readerOpen && !sendReference && !current?.action })
   const selectedProject = projects.find((project) => project.id === current?.projectId)
+  const taskActor = teamContext.actorId
+  const taskDesign = readerOpen ? reader?.origin?.design : undefined
+  const askAboutTask = active && boundTask && taskActor ? () => sendMessage(selection, undefined, {
+    workspaceKey: teamContext.key, actorId: taskActor, epoch: teamContext.epoch,
+    spaceId: boundTask.spaceId, taskId: boundTask.id, taskCreatedAt: boundTask.createdAt, design: taskDesign
+  }) : undefined
+  const taskPost = readerOpen && boundTask && <Suspense fallback={<p role="status" className="my-activity-note">正在打开任务…</p>}>
+    <EmbeddedTaskPost key={taskOwner} taskId={boundTask.id} onClose={closeBoundTask} onContinue={() => {
+      if (canInteract() && isPrivateEntrySelected(selection)) { setPane('chat'); requestComposerFocus(selection) }
+    }} reviewSlot={taskSuggestion.reviewSlot} editorDecoration={taskSuggestion.editorDecoration} onQuote={selected => {
+      if (!canInteract() || !isPrivateEntrySelected(selection) || !taskSuggestion.selectQuote({ ...selected, taskId: boundTask.id, taskCreatedAt: boundTask.createdAt })) return false
+      setPane('chat'); requestComposerFocus(selection); return true
+    }} onPolish={selected => {
+      if (!canInteract() || !isPrivateEntrySelected(selection)) return false
+      return taskSuggestion.selectPolish(selected)
+    }} />
+  </Suspense>
   const composerContext = <>
-    {!activeRequirement && !requirementSummaries.records.length && !requirementSummaries.loading && <RequirementIntentAction key={selection} entry={current} disabled={requirementOpening || Boolean(current?.action)} onUse={seed => openRequirement(undefined, seed)} />}
+    {taskDesign && <Button size="sm" variant="ghost" aria-label={`移除设计参考：${taskDesign.title}`} onClick={() => setReader(value => value?.origin ? { ...value, origin: { ...value.origin, design: undefined } } : value)}>{taskDesign.title}<X size={12} /></Button>}
     {kind === 'work' && projects.length > 0 && current && <Dropdown placement="top" width={256} trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="acp-context-action" aria-label="整理到分组" aria-expanded={open} disabled={Boolean(current.action)} onClick={toggle}><Folder size={14} aria-hidden="true" /><span>{selectedProject?.name ?? '未分组'}</span><ChevronDown size={12} aria-hidden="true" /></Button>}>
       {(close) => <><DropdownHeader>整理到分组</DropdownHeader><DropdownItem selected={!current.projectId} onClick={() => { close(); void reclassifyConversation(current.key, null) }}>未分组</DropdownItem>{projects.map((project) => <DropdownItem key={project.id} selected={current.projectId === project.id} onClick={() => { close(); void reclassifyConversation(current.key, project.id) }}>{project.name}</DropdownItem>)}</>}
     </Dropdown>}
     <ConversationKnowledgeMenu canAddFiles={active && !archiveId && canImportFiles(current)} onAddFiles={importFiles} />
-    <ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={requirementOpening || !current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} preferredId={lastRequirementId(current?.conversation)} onOpen={(id, document) => openRequirement(id, undefined, document)} onRefresh={requirementSummaries.refresh} />
+
   </>
   return <DocumentSourceProvider client={documentSource}><section className={`acp-workspace${collapsed && !mobileHistory ? ' is-sidebar-collapsed' : ''}`} style={style} aria-label="对话工作区" onKeyDown={(event) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing || !canInteract()) return
     if ((event.ctrlKey || event.metaKey) && event.key === '.' && current) { event.preventDefault(); event.stopPropagation(); void controlConversation(current.key, 'cancel') }
   }}>
     <ContextRegion collapsed={collapsed && !mobileHistory}><div className="acp-navigation-host flex min-h-0 shrink-0"><ConversationHistory kind={kind} selected={selection} projectId={projectId} open={mobileHistory} onProject={(id) => selectProjectScope(kind, id)} onSelect={choose} onNew={startNew} onClose={() => setMobileHistory(false)} /></div></ContextRegion>
-    {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}:${activeRequirement.document ?? ''}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} initialSource={activeRequirement.seed} initialDocument={activeRequirement.document} onTeamHandoff={(view, trigger) => void createTeamTask(view, trigger)} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
+    {activeRequirement ? <main className="private-requirement-host"><Suspense fallback={<div className="acp-empty" role="status">正在打开需求工作台…</div>}><RequirementWorkbench key={`${selection}:${activeRequirement.id ?? activeRequirement.commandId}:${activeRequirement.document ?? ''}`} entryKey={selection} requirementId={activeRequirement.id} createCommandId={activeRequirement.commandId} initialSource={activeRequirement.seed} initialDocument={activeRequirement.document} boundTask={boundTask ?? undefined} arrangement={teamHandoff?.owner === teamOwner && active && !current?.locked && <NewTaskModal open triagePending handoff={teamHandoff.value} onCreated={receipt => {
+      if (currentTeamOwner.current !== teamOwner || !canInteract()) return
+      setTeamHandoffFeedback({ owner: teamOwner, value: { state: 'created', taskId: receipt.taskId, message: `已创建 ${receipt.taskId} · ${teamHandoff.value.title}` } })
+      refreshReceipt(n => n + 1)
+    }} onClose={closeTeamHandoff} />} onViewTeamTask={taskId => { if (taskId === boundTask?.id) { closeRequirement(); openBoundTask(taskId) } }} teamHandoffFeedback={teamHandoffFeedback?.owner === teamOwner ? teamHandoffFeedback.value : null} onTeamHandoff={(view, trigger, task) => void shareDocument(view, trigger, task)} onClose={closeRequirement} onOpenTask={({ snapshot, taskDir }) => {
       if (!canInteract() || !isPrivateEntrySelected(selection)) return
       useApp.getState().setSnapshot(snapshot)
       useApp.getState().expandTaskWorkspace({ fromPage: 'chat', taskDir, archived: false, scrollTop: 0 }, `.trellis/tasks/${taskDir}/prd.md`)
@@ -316,7 +423,7 @@ export function PrivateWorkspace(): JSX.Element {
       useApp.getState().setSnapshot(snapshot)
       const selectedAgent = agentId ?? (current?.conversation ? readBuildAgent(current.conversation.creatorId, current.conversation.id, draftId, planRevision) : undefined)
       setExecution({ entryKey: selection, draftId, agentId: selectedAgent })
-    }} /></Suspense></main> : <ConversationPreviewLayout ownerKey={previewKind === 'design' ? designs.ownerKey : preview.ownerKey} expanded={previewKind === 'design' ? designs.expanded : preview.expanded} onExpandedChange={previewKind === 'design' ? designs.setExpanded : preview.setExpanded} collapsed={previewKind === 'design' ? designs.collapsed : preview.collapsed} onCollapsedChange={setPreviewCollapsed} preview={previewKind ? <div className="acp-preview-tab-panels">
+    }} /></Suspense></main> : <ConversationTaskLayout task={taskPost} pane={pane} onPaneChange={setPane} activation={readerOpen ? reader!.activation : 0}><ConversationPreviewLayout ownerKey={previewKind === 'design' ? designs.ownerKey : preview.ownerKey} expanded={previewKind === 'design' ? designs.expanded : preview.expanded} onExpandedChange={previewKind === 'design' ? designs.setExpanded : preview.setExpanded} collapsed={previewKind === 'design' ? designs.collapsed : preview.collapsed} onCollapsedChange={setPreviewCollapsed} preview={!readerOpen && previewKind ? <div className="acp-preview-tab-panels">
       {canShowWeb && current?.session && <div key={preview.ownerKey} className="acp-preview-tab-panel" hidden={previewKind !== 'web'} aria-hidden={previewKind !== 'web'} {...{ inert: previewKind !== 'web' ? '' : undefined }}>
         <ConversationPreviewTabs shelf={{ ...preview, collapsed: preview.collapsed || previewKind !== 'web' }} session={current.session} />
       </div>}
@@ -325,12 +432,16 @@ export function PrivateWorkspace(): JSX.Element {
     <WorkspaceCodePreview enabled={!archiveId} openCodePreview={showCodePreview}>
     <main className="acp-main my-conversation-frame">
       <ConversationWorkspaceHeader
-        identity={<><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" /><strong title={title}>{title}</strong></>}
+        identity={<><MessageSquare size={16} className="shrink-0 text-my-icon-secondary" />{returnToTask && <Button size="sm" variant="ghost" onClick={returnToTask}>返回任务</Button>}{boundTask && !archiveId && <Button size="sm" variant="ghost" aria-label={`查看任务 ${boundTask.id}`} onClick={() => openBoundTask(boundTask.id)}>{boundTask.id}</Button>}<strong title={title}>{title}</strong></>}
         actions={!archiveId && current && !current.locked && current.conversation ? <Dropdown placement="bottom" align="right" width={224} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" ref={conversationMore} onClick={toggle} aria-expanded={open} aria-label="更多会话操作"><MoreHorizontal size={17} /></button>}>
           {(close) => <>
+            {boundTask ? <DropdownItem icon={<Folder size={14} />} onClick={() => { close(); openBoundTask(boundTask.id) }}>查看任务 {boundTask.id}</DropdownItem> : <>
+              <DropdownItem icon={<Users size={14} />} onClick={() => { close(); setTaskAction({ owner: teamOwner, mode: 'create' }) }}>将此对话转为任务</DropdownItem>
+              <DropdownItem icon={<Folder size={14} />} onClick={() => { close(); setTaskAction({ owner: teamOwner, mode: 'bind' }) }}>将此对话绑定到已有任务</DropdownItem>
+            </>}
+            <DropdownItem icon={<Files size={14} />} onClick={() => { close(); setDocumentsOwner(selection) }}>会话文档</DropdownItem>
             <DropdownItem icon={<RefreshCw size={14} />} onClick={() => { close(); void readConversation(current.key) }}>刷新此对话</DropdownItem>
             <DropdownItem icon={<Files size={14} />} onClick={() => { close(); openFiles() }}>会话文件</DropdownItem>
-            <DropdownItem icon={<Users size={14} />} disabled={teamHandoffPending} onClick={() => { close(); if (requirementSummaries.records.length) { setHandoffRequirementId(''); setConversationHandoffSource(teamOwner) } else void createTeamTask() }}>从对话创建团队任务</DropdownItem>
             {kind === 'code' && projects.length > 0 && <>
               <DropdownHeader>整理到分组</DropdownHeader>
               <DropdownItem selected={!current.projectId} disabled={Boolean(current.action)} onClick={() => { close(); void reclassifyConversation(current.key, null) }}>未分组</DropdownItem>
@@ -340,21 +451,21 @@ export function PrivateWorkspace(): JSX.Element {
           </>}
         </Dropdown> : null}
       />
+      {taskAction?.owner === teamOwner && current?.conversation && active && !archiveId && <ConversationTaskAction key={`${receiptOwner}:${taskAction.mode}`} id={current.conversation.id} entryKey={selection} mode={taskAction.mode} anchorRef={conversationMore} close={() => setTaskAction(undefined)} onCompleted={() => { setTaskAction(undefined); refreshReceipt(n => n + 1) }} />}
       {error && <div className="acp-history-note"><ConnectionNotice message={error} /><Button size="sm" variant="ghost" onClick={() => setError('')}>收起</Button></div>}
       {storageError && <ConnectionNotice message={storageError} />}
-      {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} requirements={requirementSummaries.records} requirementsError={requirementSummaries.error} requirementsLoading={requirementSummaries.loading} onRefreshRequirements={requirementSummaries.refresh} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} onRequirement={openRequirement} />} onOpenWebPreview={showWebPreview}
+      {archiveId ? <ConversationArchive key={archiveId} id={archiveId} /> : selection ? <PrivateConversation entryKey={selection} onFiles={openFiles} onNew={() => startNew()} onNewDirectory={() => void startCodeDirectory()} directoryPending={newPending} directoryFixed={requirementSummaries.records.length > 0 || Boolean(activeRequirement)} composerContext={composerContext} quickActions={<ConversationHomeActions entryKey={selection} canAddFiles={active && canImportFiles(current)} onFiles={importFiles} onSelect={choose} />} onOpenWebPreview={showWebPreview}
         transcriptHeader={designs.documents.some(document => !designs.origins.some(receipt => receipt.documentId === document.id)) ? <section aria-label="已保存的历史设计"><span className="my-item-description">已保存的设计</span><ConversationDesignCards documents={designs.documents.filter(document => !designs.origins.some(receipt => receipt.documentId === document.id))} error="" onOpen={showDesign} onRefresh={designs.refresh} /></section> : undefined}
         renderTurnArtifacts={owner => { const ids = new Set(designs.origins.filter(receipt => sameTranscriptOwner(receipt.origin, owner)).map(receipt => receipt.documentId)); return <ConversationDesignCards documents={designs.documents.filter(document => ids.has(document.id))} error="" onOpen={showDesign} onRefresh={designs.refresh} /> }}
-        transcriptFooter={<ConversationDesignCards documents={[]} error={designs.error} busy={designs.busy} notice={designs.notice} onOpen={showDesign} onRefresh={designs.refresh} />}
-        composerReferences={sendReference ? <div className="design-composer-reference my-activity-note"><MousePointer2 size={13} aria-hidden="true" /><span title={pendingDesignSend ? pendingDesignSend.text : sendReference.selection?.selector}>{pendingDesignSend ? current?.action === 'sending' ? '正在发送设计修改…' : `发送结果待核对 · ${pendingDesignSend.text.slice(0, 48)}` : `${sendReference.title}${sendReference.selection ? ` · ${sendReference.selection.tagName} · ${sendReference.selection.text?.slice(0, 48) ?? ''}` : ' · 整个设计'}`}</span>{pendingDesignSend ? <Button size="sm" disabled={Boolean(current?.action)} onClick={() => { void sendDesignMessage(selection, pendingDesignSend.reference).then(accepted => { if (accepted) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } }).catch(cause => { if (isPrivateEntrySelected(selection)) setError(conversationError(cause)) }) }}>核对原发送</Button> : <Button size="sm" variant="ghost" aria-label="移除设计引用" onClick={() => setDesignReference(null)}><X size={13} /></Button>}</div> : undefined}
-        onSendMessage={sendReference ? async () => { if (await sendDesignMessage(selection, sendReference)) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } } : undefined}
+        transcriptFooter={<>{active && current?.conversation && !current.locked && <ConversationTaskReceipt key={receiptOwner} conversationId={current.conversation.id} refreshKey={receiptRevision} onOpenTask={openBoundTask} />}<ConversationDesignCards documents={[]} error={designs.error} busy={designs.busy} notice={designs.notice} onOpen={showDesign} onRefresh={designs.refresh} /></>}
+        composerReferences={taskSuggestion.composerReference ?? (sendReference ? <div className="design-composer-reference my-activity-note"><MousePointer2 size={13} aria-hidden="true" /><span title={pendingDesignSend ? pendingDesignSend.text : sendReference.selection?.selector}>{pendingDesignSend ? current?.action === 'sending' ? '正在发送设计修改…' : `发送结果待核对 · ${pendingDesignSend.text.slice(0, 48)}` : `${sendReference.title}${sendReference.selection ? ` · ${sendReference.selection.tagName} · ${sendReference.selection.text?.slice(0, 48) ?? ''}` : ' · 整个设计'}`}</span>{pendingDesignSend ? <Button size="sm" disabled={Boolean(current?.action)} onClick={() => { void sendDesignMessage(selection, pendingDesignSend.reference).then(accepted => { if (accepted) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } }).catch(cause => { if (isPrivateEntrySelected(selection)) setError(conversationError(cause)) }) }}>核对原发送</Button> : <Button size="sm" variant="ghost" aria-label="移除设计引用" onClick={() => setDesignReference(null)}><X size={13} /></Button>}</div> : undefined)}
+        onSendMessage={taskSuggestion.onSendMessage ?? (sendReference ? async () => { if (await sendDesignMessage(selection, sendReference)) { setDesignReference(value => value?.owner === designs.ownerKey ? null : value); designs.refresh() } } : askAboutTask)}
       /> : <div className="acp-empty" role="status">正在准备输入区…</div>}
     </main>
     </WorkspaceCodePreview>
-    </ConversationPreviewLayout>}
+    </ConversationPreviewLayout></ConversationTaskLayout>}
     {documentPreview && documentPreview.conversationId === current?.conversation?.id && documentPreview.ownerKey === JSON.stringify([selection, current?.owner, current?.conversation?.id, current?.conversation?.workspace.root, current?.session?.connectionGeneration, current?.locked]) && !current?.locked && active && <Modal open ariaLabel="会话文档" width={900} onClose={closeDocumentPreview}><section><header className="private-files-heading"><strong className="my-item-title min-w-0 flex-1 break-words">{documentPreview.file.name}</strong><Button size="sm" variant="ghost" disabled={requirementOpening || Boolean(current.action) || documentPreview.pending || Boolean(documentPreview.error)} onClick={adoptDocumentPreview}>整理为需求</Button><Button size="sm" variant="ghost" aria-label="关闭会话文档" onClick={closeDocumentPreview}><X size={14} /></Button></header><div className="private-files-body my-scrollbar my-chat-prose">{documentPreview.pending ? <p className="my-activity-note" role="status"><Loader2 size={14} className="animate-spin" />正在读取文档…</p> : documentPreview.error ? <div role="alert"><p>{documentPreview.error}</p><Button size="sm" variant="ghost" onClick={() => void documentSource.openDocument(documentPreview.file.relativePath).catch(cause => setError(conversationError(cause)))}>重新读取文档</Button></div> : <MarkdownView content={documentPreview.body} />}</div></section></Modal>}
-    {teamHandoff?.owner === teamOwner && active && !current?.locked && <NewTaskModal open handoff={teamHandoff.value} onClose={closeTeamHandoff} />}
-    {conversationHandoffSource === teamOwner && active && !current?.locked && <Modal open ariaLabel="选择任务需求来源" onClose={() => setConversationHandoffSource(undefined)}><div className="flex flex-col gap-4 p-5"><h2 className="my-item-title">选择任务需求来源</h2><label className="flex flex-col gap-2"><span className="my-item-description">准备共享的需求稿</span><Select value={handoffRequirementId} onChange={setHandoffRequirementId} options={[{ value: '', label: '仅使用对话摘要' }, ...requirementSummaries.records.map(record => ({ value: record.id, label: record.title }))]} /></label><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setConversationHandoffSource(undefined)}>取消</Button><Button disabled={teamHandoffPending} onClick={() => void useTeamHandoffSource()}>核对团队任务</Button></div></div></Modal>}
+    {documentsOpen && active && !archiveId && current && !current.locked && <Modal open ariaLabel="会话文档" onClose={() => setDocumentsOwner('')}><section className="flex flex-col gap-3 p-4"><h2 className="my-item-title">会话文档</h2><ConversationRequirementMenu records={requirementSummaries.records} error={requirementSummaries.error} loading={requirementSummaries.loading} disabled={requirementOpening || !current?.loaded || Boolean(current?.action) || kind === 'code' && !current?.conversation && !current?.directory} preferredId={lastRequirementId(current?.conversation)} onOpen={(id, document) => { setDocumentsOwner(''); openRequirement(id, undefined, document) }} onRefresh={requirementSummaries.refresh} /></section></Modal>}
     {fileOwner === selection && !archiveId && <ConversationFiles key={selection} entryKey={selection} onClose={() => setFileOwner(null)} />}
     {buildPreparation?.entryKey === selection && active && activeRequirement && <Suspense fallback={<div className="acp-empty" role="status">正在打开构建准备…</div>}><BuildPreparation entryKey={selection} request={buildPreparation.request} initialAgentId={readBuildAgent(buildPreparation.creatorId, buildPreparation.conversationId, buildPreparation.request.draftId, buildPreparation.request.expectedPlanRevision)} onResolve={finishBuildPreparation} /></Suspense>}
     {execution?.entryKey === selection && active && activeRequirement && <Suspense fallback={null}><RequirementExecutionFlow entryKey={selection} draftId={execution.draftId} preferredAgentId={execution.agentId} onClose={() => setExecution(null)} /></Suspense>}

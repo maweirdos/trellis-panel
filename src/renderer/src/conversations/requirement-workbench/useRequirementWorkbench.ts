@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   REQUIREMENT_BODY_BYTES, REQUIREMENT_TEMPLATE, hasRequirementContent, requirementAdoptSchema, requirementCommitSchema, requirementConfirmSchema, requirementCreateSuccessorSchema,
   requirementRunSchema, requirementSavePlanSchema, requirementSaveSchema, requirementApplySelectionSchema, requirementResolveConflictSchema,
-  type ConversationRequirementsApi, type RequirementAction, type RequirementDocument,
+  type ConversationRequirementsApi, type RequirementAction, type RequirementDocument, type RequirementPolishObservation,
   type RequirementFileSelection, type RequirementObservation, type RequirementOperation,
   type RequirementQuestion, type RequirementReceipt, type RequirementTargetSelection, type RequirementView, type RequirementCommit, type RequirementRun, type RequirementRunResult
 } from '@shared/conversation-requirements'
@@ -14,9 +14,11 @@ import { projectRootKey } from '../../my/navigation'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../../utils/interaction-scope'
 import { conversationClient, conversationError, conversationValue } from '../client'
 import { isPrivateEntrySelected } from '../source'
-import { ensureConversation, readConversation, refreshFiles, saveDraft, sessionRunning, useConversations, type WorkspaceEntry } from '../workspace'
+import { addFiles, ensureConversation, readConversation, refreshFiles, saveDraft, sessionRunning, useConversations, type WorkspaceEntry } from '../workspace'
 import type { DocumentEditorSelection } from './DocumentEditor'
 import type { RequirementBuildChoice } from './BuildPreparation'
+import type { RequirementSeed } from '../requirement-intent'
+import { rememberRequirement, rememberRequirementReading, requirementReadingLocation } from './reading-position'
 import {
   acceptWorkbenchView, acquireWorkbench, assertWorkbenchView, assertWorkbenchSuccessor, designHandoffKey, findWorkbench, isDocumentEditInstruction, notifyWorkbench, operationPending, planSourceSignature, planSourcesMatch,
   persistWorkbenchCommands, persistWorkbenchSuccessor, readWorkbenchSuccessor, workbenchSuccessorCommandId, flushWorkbenchDraft, scheduleWorkbenchDraft, planDirty, projectRequirementEvents, rememberObservation, requirementDirty,
@@ -28,6 +30,8 @@ export interface RequirementWorkbenchOptions {
   entryKey: string
   requirementId?: string
   createCommandId: string
+  initialSource?: RequirementSeed
+  initialDocument?: RequirementDocument
   onOpenTask(result: { snapshot: ProjectSnapshot; taskDir: string }): void | Promise<void>
   onStartTrellis?(result: { snapshot: ProjectSnapshot; taskDir: string; draftId: string; agentId?: string; planRevision?: string }): void | Promise<void>
   onPrepareBuild?(result: RequirementBuildPreparation): Promise<RequirementBuildChoice | null>
@@ -69,20 +73,25 @@ export interface RequirementWorkbenchController {
   setHandoffSource(key: string, included: boolean): void
   setDesignContext(context: RequirementDesignContext): void
   quote(selection: DocumentEditorSelection, polish?: boolean): boolean
-  editSelection(selection: DocumentEditorSelection): Promise<string>
+  editSelection(selection: DocumentEditorSelection, signal?: AbortSignal): Promise<string>
+  cancelSelection(): void
+  canApplySelection(selection: DocumentEditorSelection, replacement: string): boolean
   selectionApplied(selection: DocumentEditorSelection, replacement: string, body: string): Promise<void>
   clearQuote(): void
   answer(id: string, text: string): void
   toggleReference(reference: RequirementFileSelection, checked: boolean): void
+  canImportFiles: boolean
+  importFiles(): void
   importInput(): void
   save(): Promise<void>
+  prepareTeamHandoff(): Promise<RequirementView | undefined>
   reload(): Promise<void>
   useRemote(): Promise<void>
   keepLocal(): Promise<void>
   syncFile(): Promise<void>
   resolveFileConflict(document: RequirementDocument, decision: 'keep-local' | 'use-file'): Promise<void>
   resolvePendingSave(): Promise<void>
-  runAction(action: RequirementAction): Promise<void>
+  runAction(action: RequirementAction, instruction?: string): Promise<void>
   submitAnswers(): Promise<void>
   checkOperations(): Promise<void>
   resumeOperation(): Promise<void>
@@ -124,7 +133,7 @@ function acceptReceipt(value: WorkbenchBuffer, receipt: RequirementReceipt): voi
   settleWorkbenchCommands(value)
 }
 
-export function useRequirementWorkbench({ entryKey, requirementId, createCommandId, onOpenTask, onStartTrellis, onPrepareBuild, onOpenSuccessor }: RequirementWorkbenchOptions): RequirementWorkbenchController {
+export function useRequirementWorkbench({ entryKey, requirementId, createCommandId, initialSource, initialDocument, onOpenTask, onStartTrellis, onPrepareBuild, onOpenSuccessor }: RequirementWorkbenchOptions): RequirementWorkbenchController {
   const current = useConversations(state => state.entries[entryKey])
   const active = useInteractionActive(), canInteract = useInteractionGuard(), signal = useInteractionSignal()
   const [buffer, setBuffer] = useState<WorkbenchBuffer>(), [loadIssue, setLoadIssue] = useState<WorkbenchIssue>(), [attempt, setAttempt] = useState(0)
@@ -137,8 +146,9 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
   const live = useRef({ identity, displayIdentity, signal })
   if (live.current.identity !== identity || live.current.signal !== signal) live.current = { identity, displayIdentity, signal }
   const confirmation = useRef<AbortController>()
-  const selectionResults = useRef(new Map<string, { selection: DocumentEditorSelection; operation: RequirementOperation; replacement: string; documentRevision: string; target: WorkbenchBuffer; sourceCurrent(): boolean }>())
-  const selectionStarting = useRef(false)
+  const selectionResults = useRef(new Map<string, { selection: DocumentEditorSelection; operation: RequirementPolishObservation; replacement: string; documentRevision: string; target: WorkbenchBuffer; sourceCurrent(): boolean }>())
+  const polishJob = useRef<{ id: string; conversationId: string; draftId: string; cancelled: boolean; applying?: boolean }>()
+  const initialDocumentApplied = useRef(false)
   useEffect(() => subscribeWorkbench(() => render(value => value + 1)), [])
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; confirmation.current?.abort() } }, [])
   useEffect(() => () => confirmation.current?.abort(), [identity, signal])
@@ -170,12 +180,31 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
   const readonly = Boolean(current?.locked || current?.conversation?.archivedAt !== undefined || lockedReceipt && lockedReceipt.state !== 'not-admitted' || value?.commitCommand)
 
   const read = async (target: WorkbenchBuffer, fence: SourceFence): Promise<void> => {
+    const hadView = Boolean(target.view)
     const api = requirementsApi(), id = target.view?.draft.id ?? requirementId
-    const incoming = conversationValue(id ? await api.read(fence.conversationId, id) : await api.create(fence.conversationId, { commandId: createCommandId, body: REQUIREMENT_TEMPLATE }))
+    const seed = initialSource
+    let initialBody = seed ? `# 需求草稿\n\n## 原始诉求\n\n${seed.text.split('\n').map(line => `> ${line}`).join('\n')}\n\n来源：原会话\n\n## 待澄清\n\n- 目标、范围与验收标准\n- 接口文档与交互约束\n` : REQUIREMENT_TEMPLATE
+    if (!id && seed?.initialDocument) {
+      const client = conversationClient()
+      if (!client?.readFile) throw new Error('当前版本暂不能读取原需求成稿，请重新加载应用后继续。')
+      const source = conversationValue(await client.readFile(fence.conversationId, { fileId: seed.initialDocument.fileId, expectedRevision: seed.initialDocument.revision }))
+      if (!fence.current()) return
+      if (source.kind !== 'document' || source.revision !== seed.initialDocument.revision || !source.body.trim()) throw new Error('原需求成稿已变化，请重新核对后采用。')
+      if (new TextEncoder().encode(source.body).length > REQUIREMENT_BODY_BYTES) throw new Error('需求成稿超过工作台容量，原文件已保留。')
+      initialBody = source.body
+    }
+    const incoming = conversationValue(id ? await api.read(fence.conversationId, id) : await api.create(fence.conversationId, { commandId: createCommandId, body: initialBody, references: seed?.references ?? [] }))
     if (!fence.current()) return
     assertWorkbenchView(target, incoming)
     if (id && incoming.draft.id !== id) throw new Error('需求标识不匹配。')
     acceptWorkbenchView(target, incoming)
+    rememberRequirement(target.conversation, incoming.draft.id)
+    if (!hadView || initialDocument && !initialDocumentApplied.current) {
+      const document = initialDocument ?? requirementReadingLocation(target.conversation, incoming.draft.id).document
+      target.document = document === 'plan' && incoming.draft.plan ? 'plan' : 'requirement'
+    }
+    initialDocumentApplied.current = true
+    if (!id && seed) target.fromConversation = true
     restoreWorkbenchDraft(target)
     if (!target.selectionCommand) restoreWorkbenchCommands(target)
     if (target.commandIssue) return
@@ -318,7 +347,7 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
     if (quote && (quote.document !== document || quote.documentRevision !== quoteRevision || quote.editVersion !== (document === 'requirement' ? target.requirementVersion : target.planVersion))) throw new Error('引用后文档已改变，请重新选择引用。')
     const includePlan = document === 'plan' && action !== 'plan'
     if (!await saveAll(target, api, fence, includePlan) || !target.view || !fence.current()) return
-    if (!hasRequirementContent(target.body)) throw new Error('请先描述需求，空模板不能发送给需求助手。')
+    if (!hasRequirementContent(target.body) && !(document === 'requirement' && !quote && (text.trim() || target.view.draft.references.length || target.fromConversation))) throw new Error('请发送描述或选择参考文件。')
     const captured = versions(target), textVersion = target.textVersion, savedRevision = target.view.draft.revision
     if (quote && !currentRevision(target, document)) throw new Error('请先保存被引用的文档。')
     // Persist the ordinary draft's configuration without dispatching its text or images.
@@ -337,7 +366,7 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
     const previousPlanIntents = target.planSourceIntents
     if (action === 'plan') target.planSourceIntents = [...previousPlanIntents.slice(-7), { commandId: input.commandId, sourceRevision: input.expectedRevision, signature: planSourceSignature(target) }]
     try { persistWorkbenchCommands(target) } catch (cause) { target.runCommand = undefined; target.planSourceIntents = previousPlanIntents; throw cause }
-    target.automatic = quote && action === 'revise' || action === 'discuss' ? undefined : { commandId: input.commandId, sourceRevision: input.expectedRevision, sourceCurrent: fence.interactive, ...captured }
+    target.automatic = quote && action === 'revise' || action === 'discuss' || action === 'plan' ? undefined : { commandId: input.commandId, sourceRevision: input.expectedRevision, sourceCurrent: fence.interactive, ...captured }
     notifyWorkbench()
     const result = await api.run(fence.conversationId, target.view.draft.id, input)
     // A first native binding may replace the generation before the RPC resolves.
@@ -502,64 +531,127 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
   }, [identity, value, value?.requirementVersion, value?.planVersion, value?.pending, value?.remote, value?.issue?.kind, value?.selectionCommand, readonly])
   const preparePlan = async (target: WorkbenchBuffer, api: ConversationRequirementsApi, fence: SourceFence): Promise<void> => {
     const answered = questions.map(question => ({ ...question, answer: target.answers[question.id] ?? question.answer ?? '' }))
-    if (answered.some(question => question.required && !question.answer.trim())) {
-      const controller = new AbortController(); confirmation.current = controller
-      const proceed = await confirmDialog({ title: '仍有必答问题', message: '可以先回答，也可以带着未决问题生成计划。', confirmText: '带未决问题生成' }, controller.signal)
-      if (!proceed || !fence.current()) return
-    }
+    if (!hasRequirementContent(target.body)) throw new Error('请先描述需求，再生成实施计划。')
     if (JSON.stringify(answered) !== JSON.stringify(target.questions)) { target.questions = answered; target.requirementVersion++; flushWorkbenchDraft(target) }
+    if (!await saveAll(target, api, fence, false) || !target.view || !fence.current()) return
+    const revision = target.view.draft.revision, captured = versions(target)
+    const unanswered = answered.filter(question => question.required && !question.answer.trim())
+    const controller = new AbortController()
+    confirmation.current = controller
+    const message = [
+      `依据：${target.view.draft.title} · 保存版本 ${revision.slice(0, 8)}`,
+      '将固定此需求版本并生成实施计划候选。你也可以继续编辑或先交给团队分拣。',
+      ...(unanswered.length ? [`仍有 ${unanswered.length} 项必答问题待确认：`, ...unanswered.slice(0, 5).map(question => `• ${question.question.slice(0, 240)}`)] : [])
+    ].join('\n')
+    const proceed = await confirmDialog({ title: '生成实施计划', message, confirmText: unanswered.length ? '带未决问题生成' : '生成实施计划' }, controller.signal)
+    if (!proceed || !fence.current() || !unchanged(target, captured) || target.view?.draft.revision !== revision) return
     if (!await confirmRequirement(target, api, fence)) return
     await sendOperation(target, api, fence, 'plan', '', 'plan', false)
   }
-  const editSelection = async (selection: DocumentEditorSelection): Promise<string> => {
-    if (!value || !value.view) throw new Error('请先读取文档，再润色选区。')
-    if (selectionStarting.current || value.pending && value.pending !== 'save') throw new Error('请先完成当前操作，再润色选区。')
-    const target = value, saved = value.view, fence = capture(), document = target.document
-    const captured = versions(target), body = document === 'requirement' ? target.body : target.planBody, anchor = selectionAnchor(selection, body), pendingSave = target.pending === 'save' ? target.task : undefined
-    if (!selection.text.trim() || selection.text.length > 16_000 || selection.documentKey !== `${saved.draft.id}:${document}` || !selectionVersionMatches(target, document, selection.docRevision, selection.bodyRevision)) throw new Error('选区来源已改变，请重新选择。')
-    selectionStarting.current = true
-    let claimed = false
-    try {
-      if (pendingSave) { await pendingSave; await Promise.resolve() }
-      if (!fence.current() || !unchanged(target, captured) || (document === 'requirement' ? target.body : target.planBody) !== body || target.document !== document) throw new Error('保存期间文档或来源已变化，请重新选择。')
+  const cancelSelection = (): void => {
+    const job = polishJob.current
+    if (!job) return
+    if (job.applying) return
+    job.cancelled = true
+    for (const [key, item] of selectionResults.current) if (item.operation.id === job.id) selectionResults.current.delete(key)
+    const api = conversationClient()?.requirements?.polish
+    if (typeof api?.cancel === 'function') void api.cancel(job.conversationId, job.draftId, job.id).catch(() => { /* The original operation remains queryable. */ })
+  }
+  useEffect(() => {
+    window.addEventListener('pagehide', cancelSelection)
+    return () => { window.removeEventListener('pagehide', cancelSelection); cancelSelection() }
+  }, [])
+  const editSelection = async (selection: DocumentEditorSelection, signal?: AbortSignal): Promise<string> => {
+    if (!value?.view || readonly || !canInteract()) throw new Error('请先读取可编辑文档。')
+    const target = value, saved = value.view.draft, document = target.document
+    if (target.selectionCommand) throw new Error('请先核对原选区应用回执，再开始新的润色。')
+    const body = document === 'requirement' ? target.body : target.planBody
+    const sourceBodyRevision = document === 'requirement' ? saved.bodyRevision : saved.plan?.bodyRevision
+    const documentRevision = document === 'requirement' ? saved.revision : saved.plan?.revision
+    if (!sourceBodyRevision || !documentRevision || body !== (document === 'requirement' ? saved.body : saved.plan?.body) || requirementDirty(target) || document === 'plan' && planDirty(target)) throw new Error('请先保存当前修改，再润色选区。')
+    if (selection.documentKey !== saved.id + ':' + document || !selectionVersionMatches(target, document, selection.docRevision, selection.bodyRevision)) throw new Error('选区来源已改变，请重新选择。')
+    const client = requirementsApi()
+    if (typeof client.polish?.run !== 'function') throw new Error('独立润色尚未加载，请更新并重新打开应用。')
+    const conversation = target.conversation, entryOwner = current?.owner
+    const sourceCurrent = (): boolean => {
       const entry = useConversations.getState().entries[entryKey]
-      if (target.pending || target.runCommand || target.selectionCommand || target.commandIssue || target.remote || target.operations.some(item => operationPending(item) || item.state === 'unknown') || !entry || entry.action || sessionRunning(entry)) throw new Error('请先完成当前操作，再润色选区。')
-      target.pending = 'selection'; target.issue = undefined; claimed = true; notifyWorkbench()
-      const api = requirementsApi()
-      if (!await saveAll(target, api, fence, document === 'plan') || !target.view || !unchanged(target, captured) || (document === 'requirement' ? target.body : target.planBody) !== body) throw new Error('保存期间文档已变化，请重新选择。')
-      const documentRevision = document === 'requirement' ? target.view.draft.revision : target.view.draft.plan?.revision
-      if (!documentRevision) throw new Error('原文档版本不可读取，请重新选择。')
-      const quote: WorkbenchQuote = { text: selection.text, document, documentRevision, editVersion: document === 'requirement' ? target.requirementVersion : target.planVersion, ...(anchor ? { anchor } : { comparisonOnly: true }) }
-      const commandId = await sendOperation(target, api, fence, 'revise', '仅润色所引用的内容，保留原意；返回选区替换文本。', document, false, quote)
-      if (!commandId) throw new Error('选区操作尚未派发，请检查文档与原操作状态。')
-      for (;;) {
-        if (!fence.interactive() || !target.view) throw new Error('已离开原会话，请返回后检查原操作。')
-        const operation = target.operations.find(item => item.commandId === commandId)
-        if (!operation) throw new Error('原操作尚未登记，请检查原操作。')
-        const observation = conversationValue(await api.observe(fence.conversationId, target.view.draft.id, operation.id))
-        if (!fence.interactive()) throw new Error('已离开原会话，请返回后检查原操作。')
-        rememberObservation(target, observation, operation); settleWorkbenchCommands(target); notifyWorkbench()
-        if (observation.operation.state === 'candidate') {
-          const currentEntry = useConversations.getState().entries[entryKey]
-          const actual = observation.operation
-          if (!actual.sessionId || !actual.connectionGeneration || !actual.turnId || currentEntry?.conversation?.nativeRef?.sessionId !== actual.sessionId || currentEntry.session?.connectionGeneration !== actual.connectionGeneration) throw new Error('选区候选的原生会话或生成轮次无法核对，请检查原操作。')
-          const replacement = observation.candidate?.selectionReplacement
-          if (replacement === undefined || !replacement.trim()) throw new Error('已校验候选缺少选区替换文本。')
-          selectionResults.current.set(JSON.stringify(selection), { selection, operation: actual, replacement, documentRevision, target, sourceCurrent: () => { const latest = useConversations.getState().entries[entryKey]; return fence.interactive() && latest?.conversation?.nativeRef?.sessionId === actual.sessionId && latest.session?.connectionGeneration === actual.connectionGeneration } })
-          if (selectionResults.current.size > 8) selectionResults.current.delete(selectionResults.current.keys().next().value as string)
-          return replacement
-        }
-        if (!operationPending(observation.operation)) throw new Error(observation.operation.detail || '选区操作未生成可用候选，请检查原操作。')
-        await new Promise(resolve => setTimeout(resolve, 1500))
-      }
-    } finally {
-      if (claimed && target.pending === 'selection') target.pending = undefined
-      selectionStarting.current = false
-      try { flushWorkbenchDraft(target) } catch (cause) { target.issue = { kind: 'save', message: `本地恢复稿保存失败：${conversationError(cause)}` } }
-      notifyWorkbench()
+      return canInteract() && isPrivateEntrySelected(entryKey) && !entry?.locked && entry?.owner === entryOwner &&
+        entry?.conversation?.id === conversation.id && entry.conversation.creatorId === conversation.creatorId &&
+        projectRootKey(entry.conversation.workspace.root) === projectRootKey(conversation.workspace.root) && target.view?.draft.id === saved.id
     }
+    if (!sourceCurrent() || signal?.aborted) throw new DOMException('润色已取消。', 'AbortError')
+    cancelSelection()
+    const job = { id: crypto.randomUUID(), conversationId: conversation.id, draftId: saved.id, cancelled: false }
+    polishJob.current = job
+    const abort = (): void => {
+      job.cancelled = true
+      void client.polish.cancel(job.conversationId, job.draftId, job.id).catch(() => {})
+    }
+    let rejectAbort: ((reason: Error) => void) | undefined
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
+    const onAbort = (): void => { abort(); rejectAbort?.(new DOMException('润色已取消。', 'AbortError')) }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const anchor = selectionAnchor(selection, body)
+      const pending = client.polish.run(conversation.id, saved.id, {
+        commandId: job.id, expectedRevision: saved.revision, document,
+        ...(document === 'plan' ? { expectedPlanRevision: documentRevision } : {}),
+        quote: { text: selection.text, bodyRevision: sourceBodyRevision, ...(anchor ? { anchor } : { comparisonOnly: true }) },
+        text: '仅润色选定文本，保留原意、事实和术语。只返回这一段替换文本，不加标题、解释或代码块。'
+      }).then(result => {
+        if (job.cancelled) void client.polish.cancel(conversation.id, saved.id, job.id).catch(() => {})
+        return conversationValue(result)
+      })
+      let observation = await Promise.race([pending, cancelled])
+      for (;;) {
+        if (job.cancelled || signal?.aborted) throw new DOMException('润色已取消。', 'AbortError')
+        if (!sourceCurrent()) { abort(); throw new Error('已离开原文档，请返回后重新选择。') }
+        if (observation.id !== job.id || observation.document !== document || observation.sourceRevision !== saved.revision || observation.sourceBodyRevision !== sourceBodyRevision) throw new Error('润色回执与原选区版本不一致。')
+        if (observation.state === 'candidate' && observation.replacement?.trim() && observation.candidateRevision) {
+          selectionResults.current.set(JSON.stringify(selection), { selection, operation: observation, replacement: observation.replacement, documentRevision, target, sourceCurrent })
+          if (selectionResults.current.size > 8) { const first = selectionResults.current.keys().next().value; if (first) selectionResults.current.delete(first) }
+          return observation.replacement
+        }
+        if (observation.state !== 'running') throw new Error(observation.detail || (observation.state === 'cancelled' ? '润色已取消。' : '润色尚未生成可用候选。'))
+        await Promise.race([new Promise(resolve => setTimeout(resolve, 750)), cancelled])
+        observation = conversationValue(await Promise.race([client.polish.observe(conversation.id, saved.id, job.id), cancelled]))
+      }
+    } finally { signal?.removeEventListener('abort', onAbort) }
+  }
+  const resolvePolishSelection = async (target: WorkbenchBuffer, api: ConversationRequirementsApi, fence: SourceFence): Promise<void> => {
+    const command = target.selectionCommand, saved = target.view?.draft
+    if (!command || !saved) throw new Error('选区应用记录不可读取。')
+    persistWorkbenchCommands(target)
+    const hash = async (text: string): Promise<string> => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), byte => byte.toString(16).padStart(2, '0')).join('')
+    const inputDigest = await hash(JSON.stringify(command.input)), bodyDigest = await hash(command.input.body)
+    if (!fence.current()) throw new Error('已离开原文档，选区应用保留待核对。')
+    const observation = conversationValue(await api.polish.observe(fence.conversationId, saved.id, command.operationId))
+    if (['cancelled', 'failed'].includes(observation.state) && !observation.receipt && observation.sourceRevision === command.input.expectedRevision) {
+      target.selectionCommand = undefined; persistWorkbenchCommands(target)
+      throw new Error('原选区应用未执行，本地修改已保留，请核对正文后继续。')
+    }
+    if (!fence.current() || observation.sourceRevision !== command.input.expectedRevision || observation.candidateRevision !== command.input.candidateRevision) throw new Error('选区应用来源不一致，请核对原操作。')
+    const captured = versions(target), unchangedBody = (observation.document === 'plan' ? target.planBody : target.body) === command.input.body
+    const result = await api.polish.apply(fence.conversationId, saved.id, command.operationId, command.input)
+    if (!fence.current()) throw new Error('选区应用回执待核对，请返回原文档检查。')
+    if (!result.ok) {
+      if (['E_CONFLICT', 'E_INVALID_ARG', 'E_DENIED', 'E_NOT_FOUND', 'E_BUSY'].includes(result.code)) {
+        const check = await api.polish.observe(fence.conversationId, saved.id, command.operationId)
+        if (fence.current() && check.ok && !check.value.receipt && check.value.state !== 'unknown' && check.value.state !== 'adopted') {
+          target.selectionCommand = undefined; persistWorkbenchCommands(target)
+        }
+      }
+      throw new Error('选区应用未确认，本地修改已保留。' + result.error)
+    }
+    const { view: incoming, receipt } = result.value
+    assertWorkbenchView(target, incoming)
+    if (receipt.operationId !== command.operationId || receipt.expectedRevision !== command.input.expectedRevision || receipt.candidateRevision !== command.input.candidateRevision || receipt.inputDigest !== inputDigest || receipt.bodyRevision !== bodyDigest) throw new Error('选区应用回执不匹配，保留原记录。')
+    if (incoming.draft.revision === receipt.adoptedRevision) acceptWorkbenchView(target, incoming, { ...(unchangedBody ? captured : { requirementVersion: -1, planVersion: -1 }), document: observation.document })
+    else acceptWorkbenchView(target, incoming)
+    target.selectionCommand = undefined; persistWorkbenchCommands(target); notifyWorkbench()
   }
   const resolveSelection = async (target: WorkbenchBuffer, api: ConversationRequirementsApi, fence: SourceFence): Promise<void> => {
+    if (target.selectionCommand?.kind === 'polish') return resolvePolishSelection(target, api, fence)
     const command = target.selectionCommand, saved = target.view?.draft
     if (!command || !saved) throw new Error('原选区应用请求不可读取，请检查原操作。')
     try { persistWorkbenchCommands(target) } catch { throw new Error('选区应用记录未能保存，本次尚未发送；请释放本地存储后检查原应用。') }
@@ -593,17 +685,33 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
     } else acceptWorkbenchView(target, incoming)
     target.observations.delete(operation.id); target.selectionCommand = undefined; settleWorkbenchCommands(target); for (const [key, item] of selectionResults.current) if (item.operation.id === operation.id) selectionResults.current.delete(key)
   }
+  const canImportFiles = Boolean(active && !readonly && !busy && view && current?.loaded && !current.action && !current.filesLoading && conversationClient()?.pickFiles)
   return {
     current, buffer: value, view, issue: loadIssue ?? value?.issue, loading: !view && !loadIssue, active, readOnly: readonly,
     busy, assistantPending: Boolean(value?.pending === 'run' || pendingOperations.some(operationPending)), canRun,
     dirty: Boolean(value && workbenchDirty(value)), requirementDirty: Boolean(value && requirementDirty(value)), planDirty: Boolean(value && planDirty(value)), planStale,
     events, questions, candidates, pendingOperations, comparison: value?.comparing ? value.observations.get(value.comparing) : undefined,
+    async prepareTeamHandoff() {
+      let prepared: RequirementView | undefined
+      await perform('handoff', 'team-handoff', async (target, api, fence) => {
+        if (!hasRequirementContent(target.body)) throw new Error('请先填写需求正文。')
+        const captured = versions(target)
+        if (!await saveAll(target, api, fence, false) || !target.view || !fence.current() || !unchanged(target, captured)) return
+        const draft = target.view.draft
+        const actual = conversationValue(await api.read(fence.conversationId, draft.id))
+        if (!fence.current() || !unchanged(target, captured)) return
+        assertWorkbenchView(target, actual)
+        if (actual.fileState !== 'saved' || actual.draft.revision !== draft.revision || actual.draft.bodyRevision !== draft.bodyRevision) throw new Error('需求版本已变化，请核对正文后再创建团队任务。')
+        prepared = actual
+      })
+      return prepared
+    },
     nextLabel: receipt?.task ? receipt.state === 'created' ? onStartTrellis ? '进入执行流程' : '打开任务' : '补全交接' : value?.commitCommand ? '检查本次交接' : hasPlan && !planStale ? value?.document === 'requirement' ? '查看计划' : '开始构建' : hasPlan ? '更新计划' : '下一步',
     nextDisabled: !active || !view || Boolean(view.pendingSave) || busy || Boolean(value?.commandIssue || value?.selectionCommand) || !receipt && !value?.commitCommand && (!value || !hasRequirementContent(value.body) || Boolean(value.remote) || !hasPlan && !canRun || planStale && !canRun),
     editTitle: title => edit(target => { target.title = title; target.requirementVersion++ }),
     editBody: body => edit(target => { validateBody(body); if (target.document === 'requirement') { target.body = body; target.requirementVersion++ } else { target.planBody = body; target.planVersion++ } }),
     editDocumentBody: (document, body) => edit(target => { validateBody(body); if (document === 'requirement') { target.body = body; target.requirementVersion++ } else if (target.view?.draft.plan) { target.planBody = body; target.planVersion++ } }),
-    setDocument: document => { if (value && canInteract() && (document === 'requirement' || value.view?.draft.plan)) { value.document = document; notifyWorkbench() } },
+    setDocument: document => { if (value && canInteract() && (document === 'requirement' || value.view?.draft.plan)) { value.document = document; if (value.view) rememberRequirementReading(value.conversation, value.view.draft.id, document); notifyWorkbench() } },
     setText: text => { if (text.length <= 16_000) edit(target => { target.text = text; target.textAction = isDocumentEditInstruction(text) ? 'revise' : undefined; target.textVersion++ }) },
     appendInstruction: (_action, text) => edit(target => { const next = target.text.trimEnd() ? `${target.text.trimEnd()}\n\n${text}` : text; if (next.length > 16_000) throw new Error('助手输入最多 16000 字。'); target.text = next; target.textAction = isDocumentEditInstruction(next) ? 'revise' : undefined; target.textVersion++ }),
     setTextAction: action => edit(target => { target.textAction = action }),
@@ -618,8 +726,7 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
         const document = target.document, revision = document === 'requirement' ? target.view.draft.revision : target.view.draft.plan?.revision
         if (selection.documentKey !== `${target.view.draft.id}:${document}` || selection.docRevision !== revision || selection.bodyRevision !== currentRevision(target, document)) throw new Error('选区来源已改变，请重新选择。')
         const anchor = selectionAnchor(selection, document === 'requirement' ? target.body : target.planBody)
-        if (!anchor) throw new Error('无法验证选区的 Markdown 位置，请重新选择可定位的文本。')
-        selected = { text: selection.text, document, documentRevision: revision ?? '', editVersion: document === 'requirement' ? target.requirementVersion : target.planVersion, anchor }
+        selected = { text: selection.text, document, documentRevision: revision ?? '', editVersion: document === 'requirement' ? target.requirementVersion : target.planVersion, ...(anchor ? { anchor } : { comparisonOnly: true }) }
         target.quote = selected
       })
       if (!accepted || !selected) return false
@@ -631,16 +738,28 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
       }
       return true
     },
-    editSelection,
-    selectionApplied: (selection, replacement, body) => perform('save', 'selection-receipt', async (target, api, fence) => {
-      const result = selectionResults.current.get(JSON.stringify(selection)), operation = result?.operation, saved = target.view?.draft
-      if (!result || result.target !== target || !result.sourceCurrent() || !operation || !saved || JSON.stringify(result.selection) !== JSON.stringify(selection) || result.replacement !== replacement || !operation.candidateRevision) throw new Error('选区结果与原操作不一致，已保留本地修改。')
-      if (operation.quote?.comparisonOnly || !selectionAnchor(selection, operation.document === 'plan' ? saved.plan?.body ?? '' : saved.body)) throw new Error('此候选只能比较或复制，不能自动应用。')
-      if (operation.sourceRevision !== saved.revision || selection.documentKey !== `${saved.id}:${operation.document}` || (operation.document === 'plan' ? target.planBody : target.body) !== body) throw new Error('选区应用后的文档已变化，已保留本地修改。')
+    editSelection, cancelSelection,
+    canApplySelection(selection, replacement) {
+      const result = selectionResults.current.get(JSON.stringify(selection)), saved = value?.view?.draft, operation = result?.operation
+      return Boolean(result && saved && operation && result.target === value && result.sourceCurrent() && result.replacement === replacement &&
+        value && !requirementDirty(value) && (operation.document !== 'plan' || !planDirty(value)) &&
+        operation.sourceRevision === saved.revision && operation.sourceBodyRevision === (operation.document === 'plan' ? saved.plan?.bodyRevision : saved.bodyRevision) &&
+        (operation.document !== 'plan' || result.documentRevision === saved.plan?.revision) && !value?.selectionCommand)
+    },
+    selectionApplied: async (selection, replacement, body) => {
+      if (!value?.view || !canInteract()) throw new Error('原文档暂不可操作。')
+      const target = value, fence = capture(), result = selectionResults.current.get(JSON.stringify(selection)), operation = result?.operation, saved = value.view.draft
+      if (!result || result.target !== target || !result.sourceCurrent() || !operation || JSON.stringify(result.selection) !== JSON.stringify(selection) || result.replacement !== replacement || !operation.candidateRevision) throw new Error('选区结果与原操作不一致。')
+      if (!selectionAnchor(selection, operation.document === 'plan' ? saved.plan?.body ?? '' : saved.body)) throw new Error('原选区无法确认，请重新选择。')
+      if (operation.sourceRevision !== saved.revision || selection.documentKey !== saved.id + ':' + operation.document || (operation.document === 'plan' ? target.planBody : target.body) !== body) throw new Error('选区应用后的文档已变化，本地修改保留。')
       const input = requirementApplySelectionSchema.parse({ expectedRevision: operation.sourceRevision, candidateRevision: operation.candidateRevision, body, ...(operation.document === 'plan' ? { expectedPlanRevision: result.documentRevision } : {}) })
-      target.selectionCommand = { operationId: operation.id, input }
-      await resolveSelection(target, api, fence)
-    }, true),
+      target.selectionCommand = { kind: 'polish', operationId: operation.id, input }
+      if (polishJob.current?.id === operation.id) polishJob.current.applying = true
+      persistWorkbenchCommands(target); notifyWorkbench()
+      try { await resolveSelection(target, requirementsApi(), fence) }
+      catch (cause) { target.issue = { kind: 'save', message: conversationError(cause) }; throw cause }
+      finally { if (polishJob.current?.id === operation.id && !target.selectionCommand) polishJob.current.applying = false; flushWorkbenchDraft(target); notifyWorkbench() }
+    },
     clearQuote: () => { if (value && canInteract()) { value.quote = undefined; notifyWorkbench() } },
     answer: (id, text) => { if (text.length <= 8000) edit(target => { target.answers = { ...target.answers, [id]: text } }) },
     toggleReference: (reference, checked) => edit(target => {
@@ -649,6 +768,8 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
       if (next.length > 8) throw new Error('最多引用 8 个文件版本。')
       target.references = next; target.requirementVersion++
     }),
+    canImportFiles,
+    importFiles: () => { if (canImportFiles && canInteract() && isPrivateEntrySelected(entryKey)) void addFiles(entryKey) },
     importInput: () => edit(target => { const text = useConversations.getState().entries[entryKey]?.text; if (!text?.trim()) return; const body = target.body ? `${target.body}\n\n${text}` : text; validateBody(body); target.body = body; target.requirementVersion++; target.document = 'requirement' }),
     save: () => perform('save', 'save', async (target, api, fence) => { await saveAll(target, api, fence) }),
     reload: async () => { if (!value) { setAttempt(value => value + 1); return }; await perform('load', 'read', async (target, _api, fence) => { await read(target, fence) }) },
@@ -713,9 +834,9 @@ export function useRequirementWorkbench({ entryKey, requirementId, createCommand
       const localMatches = document === 'plan' ? target.planBody === draft.plan?.body : target.body === draft.body && target.title === draft.title && JSON.stringify(target.questions) === JSON.stringify(draft.questions) && JSON.stringify(target.designContext) === JSON.stringify(draft.designContext ?? emptyRequirementDesignContext()) && JSON.stringify(target.references) === JSON.stringify(draft.references.map(({ fileId, revision }) => ({ fileId, revision })))
       acceptWorkbenchView(target, incoming, { ...(localMatches ? captured : { requirementVersion: -1, planVersion: -1 }), document })
     }),
-    runAction: action => perform('operation', 'run', async (target, api, fence) => {
+    runAction: (action, instruction) => perform('operation', 'run', async (target, api, fence) => {
       if (action === 'plan') return preparePlan(target, api, fence)
-      await sendOperation(target, api, fence, action, target.text, target.document)
+      await sendOperation(target, api, fence, action, [target.text, instruction].filter(Boolean).join('\n\n'), target.document)
     }),
     submitAnswers: () => perform('operation', 'run', async (target, api, fence) => {
       const answered = questions.map(question => ({ ...question, answer: target.answers[question.id] ?? question.answer ?? '' }))

@@ -9,6 +9,7 @@ const extensions = new Set(['.md', '.txt', '.html', '.htm', '.pdf', '.svg', '.pn
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'build', '__pycache__', 'coverage', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'auth.json', 'credentials.json', 'secrets.json'])
 export const hash = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
 export const pathKey = (value: string): string => process.platform === 'win32' ? value.toLowerCase() : value
+export function inputFileName(file: string): string { return basename(file).replace(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-/i, '') }
 function inside(root: string, value: string): boolean { const part = relative(root, value); return part === '' || !isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`) }
 export function checkedDirectory(root: string): string {
   if (!isAbsolute(root)) throw new Error('需要已授权的绝对目录')
@@ -94,7 +95,7 @@ export function readRegular(root: string, file: string, limit = FILE_LIMIT): { b
 export function fileMetadata(root: string, file: string, kind: 'input' | 'output'): ConversationFile & { fileIdentity: string } {
   const actual = readRegular(root, file)
   const storedName = basename(file)
-  const name = kind === 'input' ? storedName.replace(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-/i, '') : storedName
+  const name = kind === 'input' ? inputFileName(file) : storedName
   return { id: hash(file.replaceAll('\\', '/')), name, relativePath: file.replaceAll('\\', '/'), kind, bytes: actual.bytes.length, revision: hash(actual.bytes), modifiedAt: actual.modifiedAt, fileIdentity: actual.fileIdentity }
 }
 export function importSelectedFiles(root: string, directory: string, selected: string[]): ConversationFile[] {
