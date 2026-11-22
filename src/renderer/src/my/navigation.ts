@@ -8,10 +8,10 @@ export type TeamView = 'overview' | 'members' | 'activity' | 'reports'
 export type ToolView = 'git' | 'run' | 'architecture' | 'studio'
 export type AgentView = 'conversation' | 'roles'
 export type KnowledgeView = 'materials' | 'company'
-export const SETTINGS_VIEWS = ['preferences', 'appearance', 'engines', 'daemon', 'network', 'storage', 'about'] as const
+export const SETTINGS_VIEWS = ['preferences', 'appearance', 'engines', 'providers', 'daemon', 'network', 'storage', 'about'] as const
 export type SettingsView = typeof SETTINGS_VIEWS[number]
 export const SETTINGS_VIEW_TITLES: Record<SettingsView, string> = {
-  preferences: '通用', appearance: '外观', engines: '执行引擎', daemon: '后台服务',
+  preferences: '通用', appearance: '外观', engines: '执行引擎', providers: 'Provider', daemon: '后台服务',
   network: '网络服务', storage: '存储空间', about: '关于'
 }
 

@@ -1,5 +1,6 @@
 import type { AcpAgentConfig, AcpSessionRecord } from '../../../shared/types'
 import { OPENCODE_V2_PACKAGE } from './native-releases'
+import { validateLocalProviderSnapshot } from './local-providers'
 
 export const BUILTINS = {
   codex: { name: 'Codex', packageName: '@agentclientprotocol/codex-acp', version: '2.2.2', bin: 'codex-acp' },
@@ -33,6 +34,11 @@ export function isSupportedRuntimeSnapshot(config: AcpAgentConfig): boolean {
   return isManaged(config) || isNative(config) || isBundled(config)
     || config.id === 'pi' && config.launchKind === 'sdk' && /^Pi SDK \S+$/.test(config.command)
       && !config.executable && !config.args?.length
+    || (() => {
+      if (config.launchKind !== 'local') return false
+      validateLocalProviderSnapshot(config)
+      return true
+    })()
 }
 
 export function isRecoverableRuntimeRecord(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>, legacyIds: readonly string[]): boolean {
@@ -57,6 +63,7 @@ export function matchesHistoricalRuntimePaths(record: { agentCommand: string; ag
   const previous = record.agentArgv
   if (!previous || previous.length !== argv.length || !matchesRuntimeRecordLaunch(record, previous)) return false
   const pathPositions = isManaged(config) ? [0, 1] : isNative(config) ? [0] : isBundled(config) ? [0, 2, 4] : []
+  if (config.launchKind === 'local') return previous.every((value, index) => value === argv[index])
   if (!pathPositions.length || pathPositions.some(index => !previous[index] || !argv[index])) return false
   return previous.every((value, index) => pathPositions.includes(index) || value === argv[index])
 }

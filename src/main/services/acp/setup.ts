@@ -15,8 +15,10 @@ import { piEngineAvailable, piEngineEntry, piRuntimeDefinition } from '../pi/cat
 import { PI_VERSION } from '../pi/protocol'
 import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationIdentity } from './runtime-verification'
 import { acpExtraArgv, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
+import type { AcpRuntimeDefaults } from '../../../shared/types'
 import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, parseReleaseVersion } from './native-releases'
 import { BUILTINS, BUNDLED, NATIVES, isManaged, isNative, isBundled, isSupportedRuntimeSnapshot, type BuiltinId, type NativeId, type BundledId } from './runtime-definitions'
+import { listLocalProviders, localProviderLaunchEnvironment, resolveAdmittedLocalProvider } from './local-providers'
 export { isSupportedRuntimeSnapshot } from './runtime-definitions'
 
 export { BUILTINS }
@@ -148,6 +150,24 @@ function runtimeDefinitionsFor(settings: Settings['acp']): AcpAgentConfig[] {
     if (index >= 0) items[index] = custom
     else items.push(custom)
   }
+  let localProviders: AcpAgentConfig[] = []
+  try { localProviders = listLocalProviders().map(provider => ({
+    id: provider.id, name: provider.name, command: `${provider.agentId} · ${provider.name}`, enabled: provider.enabled,
+    launchKind: 'local' as const, executable: provider.executable, args: [...provider.argv], env: structuredClone(provider.env)
+  })) }
+  catch { /* Keep built-in engine availability independent of provider-store corruption. */ }
+  for (const provider of localProviders) {
+    items.push({
+      id: provider.id,
+      name: provider.name,
+      command: provider.command,
+      enabled: provider.enabled,
+      launchKind: provider.launchKind,
+      executable: provider.executable,
+      args: provider.args,
+      env: provider.env
+    })
+  }
   return items
 }
 
@@ -263,6 +283,10 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
     const base = { ...config, runtimeId: config.id, checkedAt: Date.now(), nodePath: node?.path }
     if (!isSupportedRuntimeSnapshot(config)) return { ...base, available: false, health: 'executable_missing', setupRequired: false,
       setupBlockedReason: LEGACY_CUSTOM_RUNTIME_ERROR, diagnostics: [LEGACY_CUSTOM_RUNTIME_ERROR] }
+    if (config.launchKind === 'local') {
+      return { ...base, available: true, health: 'not_checked', setupRequired: false,
+        diagnostics: [`本地 ACP provider：${config.executable}`, '启动、恢复和交接时会重新校验文件身份；连接检查仅发送 initialize'] }
+    }
     if (config.id === 'pi' && config.launchKind === 'sdk') {
       const compatible = !!node && Number(node.version.slice(1).split('.')[0]) >= 24 || !!node && /^v22\.(?:19|[2-9]\d)\./.test(node.version)
       return { ...base, available: compatible && piEngineAvailable(), health: !compatible ? 'executable_missing' : !piEngineAvailable() ? 'adapter_missing' : 'ready',
@@ -394,8 +418,9 @@ export async function runtimeLaunchSnapshot(config: AcpAgentConfig): Promise<{ i
     const defaults = resolveAcpLaunchOptions(selection.runtimeDefaults, undefined, process.platform)
     if (config.launchKind === 'sdk' && defaults.args?.length) throw new Error('Pi SDK 不支持额外启动参数；请清除执行引擎的参数后重试')
     const argv = [...await launchArgv(config), ...acpExtraArgv(defaults)]
-    const env = acpProcessEnv(defaults, process.platform)
-    return { identity: runtimeVerificationIdentity(config, argv, selection), argv, env }
+    const env = { ...acpProcessEnv(defaults, process.platform), ...(config.launchKind === 'local' ? localProviderLaunchEnvironment(config) : {}) }
+    const localSelection = config.launchKind === 'local' ? { ...selection, localProviderEnv: env } : selection
+    return { identity: runtimeVerificationIdentity(config, argv, localSelection), argv, env }
   } catch (error) {
     return { identity: runtimeVerificationIdentity(config, undefined, selection), error: errorMessage(error) }
   }
@@ -409,6 +434,12 @@ export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: Acp
   if (!config?.enabled) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime 未启用或不可用')
   try { return { config, argv: await launchArgv(config) } }
   catch (error) { return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error)) }
+}
+
+export function runtimeProcessEnv(config: AcpAgentConfig, options: AcpRuntimeDefaults): Record<string, string> {
+  return config.launchKind === 'local'
+    ? { ...acpProcessEnv(options, process.platform), ...localProviderLaunchEnvironment(config) }
+    : acpProcessEnv(options, process.platform)
 }
 
 export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
@@ -444,6 +475,10 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
     // translate.ts 依赖 Node 类型剥离：22.13–22.17 需显式旗标，22.18+ 冗余无害。
     return [node.path, '--experimental-strip-types', entry, '--zcode-bin', zcode.path,
       ...(bundledAutomationAllowed() ? ['--enable-automation-tools'] : [])]
+  }
+  if (config.launchKind === 'local') {
+    const provider = resolveAdmittedLocalProvider(config.id)
+    return [provider.executable, ...provider.argv]
   }
   throw new Error(LEGACY_CUSTOM_RUNTIME_ERROR)
 }

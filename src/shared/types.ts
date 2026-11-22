@@ -28,6 +28,7 @@ import type { ApplicationRuntimeApi, ApplicationInstanceApi } from './app-runtim
 import type { ApplicationTaskRuntimeApi } from './app-task-runtime'
 import type { TaskConversationsApi } from './task-conversations'
 import type { GitHistoryRequest, GitHistoryResult, GitCommitRequest, GitCommitResult, GitCommitDiffRequest, GitCommitDiffResult } from './git-readonly'
+import type { AcpCapabilityMatrixItem, AcpLocalProviderRecord, AcpRegistryAgent, AcpRegistryCatalogState } from './acp-provider-ecosystem'
 
 export const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -1455,6 +1456,12 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   acpRuntimeTestConnection: (runtimeId: string) => Promise<{ ok: boolean; error?: string; probe?: AcpConnectionProbeResult; agents?: AcpAgentStatus[] }>
   /** 配置原生直连 Runtime 的 CLI 路径；取消返回 cancelled，路径无效返回失败且不保存 */
   acpRuntimePathPick: (runtimeId: string) => Promise<{ ok: boolean; error?: string; cancelled?: boolean; agents?: AcpAgentStatus[] }>
+  acpRegistryList: (refresh?: boolean) => Promise<AcpRegistryCatalogState>
+  acpRegistrySearch: (input?: { query?: string; limit?: number }) => Promise<AcpRegistryCatalogState>
+  acpLocalProviderList: () => Promise<{ ok: true; providers: AcpLocalProviderRecord[] }>
+  acpLocalProviderSave: (input: unknown) => Promise<{ ok: true; provider: AcpLocalProviderRecord } | IpcFail>
+  acpLocalProviderDelete: (id: string) => Promise<{ ok: true } | IpcFail>
+  acpProviderCapabilities: (runtimeId: string) => Promise<{ ok: true; registry?: AcpRegistryAgent; local?: AcpLocalProviderRecord; matrix: AcpCapabilityMatrixItem[] }>
   acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
   acpSessionConfigure: (sessionId: string, input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
   acpSessionRecoverModel: (sessionId: string, input: import('./acp-recovery').AcpRecoverModelInput) => Promise<import('./acp-recovery').AcpRecoverModelResult>
@@ -1735,9 +1742,10 @@ export interface AcpAgentConfig {
    * Frozen launch provenance; legacy Settings overrides are unavailable.
    * 'bundled'：随应用 resources 打包的桥接适配器（如 ZCode），entry 由 setup.ts 收敛解析。
    */
-  launchKind?: 'managed' | 'custom' | 'native' | 'bundled' | 'sdk'
+  launchKind?: 'managed' | 'custom' | 'native' | 'bundled' | 'sdk' | 'local'
   executable?: string
   args?: string[]
+  env?: Array<{ key: string; value: string }>
 }
 
 /** 注册表条目 + 本机可用性探测结果 */

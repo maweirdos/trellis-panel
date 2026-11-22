@@ -536,6 +536,12 @@ export const ipcInvoke = {
     runtimeNodePick: 'acp:runtime.node-pick',
     runtimeTest: 'acp:runtime.test-connection',
     runtimePathPick: 'acp:runtime.path-pick',
+    registryList: 'acp:registry.list',
+    registrySearch: 'acp:registry.search',
+    localProviderList: 'acp:local-provider.list',
+    localProviderSave: 'acp:local-provider.save',
+    localProviderDelete: 'acp:local-provider.delete',
+    providerCapabilities: 'acp:provider.capabilities',
     sessionResume: 'acp:session.resume',
     sessionConfigure: 'acp:session.configure',
     sessionBindTask: 'acp:session.bind-task'

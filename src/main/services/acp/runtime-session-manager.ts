@@ -1,4 +1,5 @@
 import type { AcpAgentConfig, AcpSessionStatus } from '../../../shared/types'
+import { resolveAdmittedLocalProvider } from './local-providers'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 
 export type AcpRuntimeReleaseReason =
@@ -176,6 +177,10 @@ export function boundedProviderFamily(value: string): AcpRuntimeProviderFamily {
 }
 
 function providerFamily(runtime: AcpAgentConfig | undefined, fallbackAgentId: string): AcpRuntimeProviderFamily {
+  if (runtime?.launchKind === 'local') {
+    try { return boundedProviderFamily(resolveAdmittedLocalProvider(runtime.id).agentId) }
+    catch { return 'unknown' }
+  }
   const runtimeId = runtime?.id ?? fallbackAgentId
   return boundedProviderFamily(runtimeId)
 }

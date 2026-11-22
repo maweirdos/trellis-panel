@@ -58,6 +58,16 @@ export const SETTINGS_DESTINATIONS: readonly SettingsDestination[] = [
     keywords: ['Agent', 'ACP', 'acpx', 'CLI', '安装', '运行时', 'runtime', 'engine']
   },
   {
+    id: 'providers',
+    title: 'Provider',
+    description: '读取官方目录并管理本机 ACP provider。',
+    icon: Bot,
+    page: 'settings',
+    view: 'providers',
+    group: '智能与连接',
+    keywords: ['Agent', 'ACP', 'Registry', 'provider', '本地', '目录', '能力']
+  },
+  {
     id: 'integrations',
     title: '应用集成',
     description: '连接外部应用，管理账号、同步与通知。',

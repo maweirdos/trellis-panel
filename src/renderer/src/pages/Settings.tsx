@@ -5,6 +5,7 @@ import { useMy } from '../my/store'
 import { api, hasIpc } from '../api'
 import { Button, EmptyState, Switch } from '../my/ui'
 import { RuntimePanel } from '../acp/RuntimePanel'
+import { ProviderEcosystemPanel } from '../acp/ProviderEcosystemPanel'
 import { getRuntimeInventorySnapshot } from '../acp/useRuntimeInventoryRefresh'
 import { DaemonSettings } from '../daemon/DaemonSettings'
 import { AppearancePreferences, ThemePreferences } from '../my/AppearancePreferences'
@@ -30,6 +31,7 @@ export function SettingsPage(): JSX.Element {
   }, [settingsView, previewTheme, setTheme])
   const settings = useApp((s) => s.settings)
   if (settingsView === 'engines') return <AcpAgentsSection />
+  if (settingsView === 'providers') return <ProviderEcosystemPanel />
   if (settingsView === 'storage') return <StorageSettings />
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (

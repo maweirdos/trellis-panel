@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { noProject, ipcFail, IpcErrorCode, type IpcFail } from '../../shared/ipc-errors'
-import { getProjectRoot, getProjectGeneration } from '../state'
+import { getMainWindow, getProjectRoot, getProjectGeneration } from '../state'
 import type { AcpBindTaskInput, AcpPromptOptions } from '../../shared/types'
 import { acpHandoffPreviewInputSchema, acpHandoffCreateInputSchema, acpHandoffCancelInputSchema, acpHandoffSessionIdSchema, acpHandoffOperationIdSchema } from '../../shared/acp-handoff'
 import {
@@ -32,9 +32,13 @@ import { acpHistoryDeleteRequestSchema } from '../../shared/acp-history'
 import { approveNativeHistoryDeletion, discardNativeHistoryDeletion } from '../services/acp/history-deletion'
 import { piDocumentHref } from '../services/pi/document-path'
 import { openLocalDocumentLink } from '../services/local-document-links'
+import { listAcpRegistryCatalog, searchAcpRegistryCatalog, providerCapabilityMatrix } from '../services/acp/provider-registry'
+import { deleteLocalProvider, listLocalProviders, saveLocalProvider } from '../services/acp/local-providers'
 
 export function registerAcpIpc(): void {
   const documentOperations = new Map<string, { cancelled: boolean }>()
+  const trustedProviderSender = (event: Electron.IpcMainInvokeEvent): boolean => !event.sender.isDestroyed()
+    && getMainWindow()?.webContents.id === event.sender.id && event.senderFrame === event.sender.mainFrame
   on(ipcInvoke.acp.piDocumentCancel, (event, id: unknown) => {
     if (typeof id !== 'string') return
     const operation = documentOperations.get(`${event.sender.id}:${id}`)
@@ -251,6 +255,20 @@ export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.runtimeNodePick, () => pickAcpNode())
   handle(ipcInvoke.acp.runtimeTest, (_e, id: string) => testAcpRuntimeConnection(id))
   handle(ipcInvoke.acp.runtimePathPick, (_e, id: string) => pickAcpRuntimePath(id))
+  handle(ipcInvoke.acp.registryList, (event, refresh: unknown) => trustedProviderSender(event) ? listAcpRegistryCatalog(refresh === true) : ipcFail(IpcErrorCode.Denied, 'Provider 目录仅允许从应用主窗口访问'))
+  handle(ipcInvoke.acp.registrySearch, (event, input: unknown) => trustedProviderSender(event) ? searchAcpRegistryCatalog(input) : ipcFail(IpcErrorCode.Denied, 'Provider 目录仅允许从应用主窗口访问'))
+  handle(ipcInvoke.acp.localProviderList, event => trustedProviderSender(event) ? { ok: true as const, providers: listLocalProviders() } : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
+  handle(ipcInvoke.acp.localProviderSave, (event, input: unknown) => trustedProviderSender(event) ? saveLocalProvider(input) : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
+  handle(ipcInvoke.acp.localProviderDelete, (event, id: unknown) => {
+    if (!trustedProviderSender(event)) return ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理')
+    if (typeof id !== 'string' || !/^local-[a-z0-9][a-z0-9._-]*$/i.test(id)) return ipcFail(IpcErrorCode.InvalidArg, '本地 provider ID 无效')
+    return deleteLocalProvider(id)
+  })
+  handle(ipcInvoke.acp.providerCapabilities, (event, id: unknown) => {
+    if (!trustedProviderSender(event)) return ipcFail(IpcErrorCode.Denied, 'Provider 能力仅允许从应用主窗口读取')
+    if (typeof id !== 'string' || !id.trim()) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime ID 无效')
+    return providerCapabilityMatrix(id)
+  })
   handle(ipcInvoke.acp.sessionResume, (_e, id: string) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => resumeAcpSession(root, id)) })
   handle(ipcInvoke.acp.sessionConfigure, (_e, id: string, input) => { const root = getProjectRoot() ?? ''; return connection(root, { sessionId: id }, () => configureAcpSession(root, id, input)) })
 }

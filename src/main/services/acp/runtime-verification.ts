@@ -20,7 +20,7 @@ function currentVerification(id: string): Verification | undefined {
 
 /** In-memory only. File replacement and changed launch selection invalidate prior evidence. */
 export function runtimeVerificationIdentity(config: AcpAgentConfig, argv: string[] | undefined, selection: {
-  nodePath?: string; nativePath?: string; enableAutomationTools?: boolean; runtimeDefaults?: AcpRuntimeDefaults
+  nodePath?: string; nativePath?: string; enableAutomationTools?: boolean; runtimeDefaults?: AcpRuntimeDefaults; localProviderEnv?: Record<string, string>
 }): string {
   const files = argv?.filter(isAbsolute).map(path => {
     try {
@@ -64,4 +64,8 @@ export function applyRuntimeVerification(agent: AcpAgentStatus, identity: string
       : probe.protocolVersion !== undefined && probe.protocolVersion !== 1 ? 'incompatible' : 'launch_error',
     diagnostics: [...(agent.diagnostics ?? []), `${new Date(checkedAt).toISOString()} · ${detail}`]
   }
+}
+
+export function runtimeVerificationEvidence(id: string): RuntimeConnectionProbeResult | undefined {
+  return currentVerification(id)?.probe
 }

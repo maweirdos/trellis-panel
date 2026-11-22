@@ -968,3 +968,90 @@ candidate selected by multiple callers, or telemetry that exposes provider text.
 Correct: explicit family capability, atomic release claims, protected-work
 classification, bounded typed telemetry, and canonical cleanup through the
 existing process owner.
+
+## Provider ecosystem
+
+### 1. Scope / Trigger
+
+Read this section when changing `src/shared/acp-provider-ecosystem.ts`,
+`src/main/services/acp/provider-registry.ts`,
+`src/main/services/acp/local-providers.ts`, provider ecosystem IPC/preload,
+or the Engine Settings provider catalog.
+
+### 2. Signatures
+
+```ts
+acpProviderCatalog(input?: { query?: string; refresh?: boolean })
+  -> AcpProviderCatalogSnapshot | IpcFail
+acpLocalProviderList()
+  -> AcpLocalProviderSnapshot[] | IpcFail
+acpLocalProviderSave(input)
+  -> AcpLocalProviderSnapshot | IpcFail
+acpLocalProviderDelete(id)
+  -> { ok: true, id } | IpcFail
+```
+
+Registry metadata and local provider definitions are additive identities. They
+never replace built-in `AcpAgentConfig` IDs or infer runtime capabilities from
+provider names.
+
+### 3. Contracts
+
+- The registry endpoint is the official HTTPS ACP Registry index. Discovery may
+  fetch only that endpoint, with a fixed timeout, a streamed body limit, strict
+  full-index validation, and an atomic app-data cache.
+- A corrupt cache is ignored. A failed refresh may return the last complete
+  cache only with an explicit stale/offline state; it never disables installed
+  built-in engines.
+- Catalog list/search/refresh does not spawn, install, authenticate, prompt, or
+  alter runtime settings.
+- A local provider stores a stable instance ID, display name, bounded agent ID,
+  canonical absolute executable path, literal bounded argv, bounded environment
+  snapshot, enablement, and file provenance. Renderer input supplies fields, not
+  a trusted project root or shell command.
+- Local executables must be regular local-disk executable files. Reject relative
+  paths, UNC/remote paths, directories, symlinks/junctions, and Windows formats
+  that cannot be launched through the existing batch wrapper.
+- Local provider persistence is app-data scoped and atomically written. Startup,
+  resume, restore, selection, family resolution, and historical matching compare
+  executable identity plus recorded size/mtime/digest and reject drift.
+- Capability evidence remains one of registry-declared, negotiated initialize
+  evidence, or unknown. Registry declarations never become runtime capabilities.
+- Current protocol negotiation remains ACP v1. Do not advertise v2 until a real
+  protocol boundary exists; upgrading `acpx` alone does not provide v2.
+
+### 4. Validation / Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Non-HTTPS, oversized, malformed, or partial registry body | Typed catalog failure; no cache overwrite |
+| Refresh fails after a valid prior cache | Return cached rows marked stale; built-ins remain available |
+| Corrupt local provider store | Visible storage failure; built-in runtime list remains readable |
+| Relative/UNC/link/junction/directory executable | Reject save and admission |
+| Local provider ID collides with built-in or another agent identity | Reject without overwriting either identity |
+| Recorded executable size/mtime/digest changes | Reject launch/resume/restore; require explicit re-save |
+| Registry-declared capability lacks initialize evidence | Display unknown/unverified, not enabled capability |
+
+### 5. Good / Base / Bad Cases
+
+Good: a local absolute executable with literal args starts after provenance
+revalidation and reports only initialize-confirmed capabilities. Base: registry
+refresh fails offline, so the stale catalog remains visible while installed
+runtimes stay usable. Bad: accepting a shell command string, launching through a
+replaced symlink, or presenting registry metadata as negotiated capability.
+
+### 6. Tests Required
+
+Use OS TEMP fixtures. Exercise malformed/oversized registry responses, cache
+schema/corruption/offline fallback, local executable rejection matrix, provenance
+drift, ID collisions, environment/argv bounds, capability unknown state, and the
+initialize-only probe cleanup path. Run `npm run check:acpx`,
+`npm run typecheck`, `npm run build`, and `npm run check:ui`.
+
+### 7. Wrong vs Correct
+
+Wrong: introducing arbitrary custom commands again, allowing a provider catalog
+read to install or launch an agent, or labeling `acpx` upgrade as ACP v2.
+Correct: validate bounded metadata separately, persist an explicit local
+provider identity with immutable-enough provenance, and admit it only through
+the existing launch/security boundary.

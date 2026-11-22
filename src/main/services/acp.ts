@@ -27,7 +27,7 @@ import { bindTaskSchema, configureSchema, errorMessage, idSchema, newSessionSche
 import { activeTaskExists, preparePromptMaterials, sourceBelongs } from './acp/materials'
 import { canAccessPrivateAcpRecord } from './acp/private-access'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
-import { launchArgv, LEGACY_CUSTOM_RUNTIME_ERROR, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC } from './acp/setup'
+import { launchArgv, LEGACY_CUSTOM_RUNTIME_ERROR, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC, runtimeProcessEnv } from './acp/setup'
 import { isRecoverableRuntimeRecord, matchesHistoricalRuntimePaths, matchesRuntimeRecordLaunch } from './acp/runtime-definitions'
 import { runtimeRecordStore } from './acp/runtime-record-store'
 import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHandoffArchive, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory, drainAcpHistory, deleteAcpHistoryArchive, readAcpTitleMaterial } from './acp/history-service'
@@ -1373,7 +1373,7 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
       }
       if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') setStatus(session, 'disconnected', 'Pi 进程已退出；请结束原会话核验子进程清理', true) }
   }) : createAcpRuntime({ cwd: meta.cwd ?? meta.projectRoot,
-    agentProcessEnv: { ...acpProcessEnv(launchOptions, process.platform),
+    agentProcessEnv: { ...runtimeProcessEnv(config, launchOptions),
       ...(zcodeDiagnosticDirectory(meta) ? { TRELLIS_ZCODE_DIAGNOSTICS_DIR: zcodeDiagnosticDirectory(meta),
         TRELLIS_ZCODE_STARTUP_CACHE_DIR: zcodeStartupCacheDirectory() } : {}) },
     agentRegistry: createAgentRegistry({ overrides: { [config.id]: effectiveArgv } }),
@@ -1902,7 +1902,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
       agentRulesManifest: rules?.manifest, taskProgress: taskOwner?.task,
       ...(platform ? { platformExecution: platform.owner.metadata } : {}),
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
-      runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
+      runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args, env: config.env }, historyKind: 'live', canResume: false }
     const providerFamily = providerFamilyForRuntime(config, runtimeId)
     reserveForSession(slot, meta.sessionId)
     const session = await createSessionRuntime(meta, config, argv)
