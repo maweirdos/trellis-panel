@@ -8,7 +8,6 @@ import {
   acpRegistryAgentSchema,
   acpRegistryCacheSchema,
   acpRegistryIndexSchema,
-  acpLocalProviderStoreSchema,
   type AcpCapabilityMatrixItem,
   type AcpRegistryAgent,
   type AcpRegistryCatalogState,
@@ -16,7 +15,7 @@ import {
 } from '../../../shared/acp-provider-ecosystem'
 import { acpRegistryQuerySchema } from '../../../shared/acp-provider-ecosystem'
 import { proxiedFetch } from '../proxy'
-import { listLocalProviders } from './local-providers'
+import { readLocalProviderStore } from './provider-store'
 import { runtimeVerificationEvidence } from './runtime-verification'
 
 const MAX_REGISTRY_BYTES = 2 * 1024 * 1024
@@ -128,7 +127,7 @@ export function registryAgent(runtimeId: string): AcpRegistryAgent | undefined {
 }
 
 export function providerCapabilityMatrix(runtimeId: string): { registry?: AcpRegistryAgent; local?: AcpLocalProviderRecord; matrix: AcpCapabilityMatrixItem[] } {
-  const local = listLocalProviders().find(provider => provider.id === runtimeId)
+  const local = readLocalProviderStore().providers.find(provider => provider.id === runtimeId)
   const registry = registryAgent(local ? local.agentId : runtimeId)
   const evidence = runtimeVerificationEvidence(runtimeId)
   const negotiatedCapabilities = evidence?.capabilitiesSummary ?? []
@@ -141,33 +140,4 @@ export function providerCapabilityMatrix(runtimeId: string): { registry?: AcpReg
     { key: 'mcp', registry: '未声明', status: has('MCP') ? 'negotiated' : 'unknown' }
   ]
   return { ...(registry ? { registry } : {}), ...(local ? { local } : {}), matrix: items }
-}
-
-export function providerStorePath(): string {
-  return join(app.getPath('userData'), 'acp', 'providers.json')
-}
-
-export function readLocalProviderStore(): { schemaVersion: 1; providers: AcpLocalProviderRecord[] } {
-  const path = ensureWithinUserData(providerStorePath())
-  if (!existsSync(path)) return { schemaVersion: 1, providers: [] }
-  const value = JSON.parse(readFileSync(path, 'utf8'))
-  const store = acpLocalProviderStoreSchema.parse(value)
-  if (new Set(store.providers.map(provider => provider.id.toLowerCase())).size !== store.providers.length) throw new Error('本地 provider 存储存在重复 ID')
-  if (new Set(store.providers.map(provider => provider.agentId.toLowerCase())).size !== store.providers.length) throw new Error('本地 provider 存储存在重复 agent ID')
-  return store
-}
-
-export function writeProviderStore(store: { schemaVersion: 1; providers: AcpLocalProviderRecord[] }): void {
-  const path = ensureWithinUserData(providerStorePath())
-  const temporary = `${path}.${process.pid}-${randomUUID()}.tmp`
-  mkdirSync(dirname(path), { recursive: true })
-  try {
-    writeFileSync(temporary, JSON.stringify(store, null, 2), 'utf8')
-    renameSync(temporary, path)
-  } finally { if (existsSync(temporary)) rmSync(temporary, { force: true }) }
-}
-
-export function providerCatalogIdentity(): string {
-  try { return createHash('sha256').update(readFileSync(ensureWithinUserData(cachePath()))).digest('hex') }
-  catch { return 'missing' }
 }

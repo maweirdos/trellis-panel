@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { accessSync, constants, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { extname, isAbsolute, parse, resolve } from 'node:path'
-import { BUILTINS, BUNDLED, NATIVES } from './runtime-definitions'
+import { RESERVED_RUNTIME_IDS } from './runtime-catalog'
 import { acpLocalProviderSaveSchema, type AcpLocalProviderRecord, type AcpLocalProviderSaveInput, type AcpProviderLaunchProvenance } from '../../../shared/acp-provider-ecosystem'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
-import { readLocalProviderStore, writeProviderStore } from './provider-registry'
+import { readLocalProviderStore, writeLocalProviderStore } from './provider-store'
 
 const MAX_PROVIDERS = 64
-const BUILTIN_IDS = new Set<string>([...Object.keys(BUILTINS), ...Object.keys(NATIVES), ...Object.keys(BUNDLED), 'pi'].map(id => id.toLowerCase()))
+const RESERVED_PROVIDER_IDS = RESERVED_RUNTIME_IDS
 const WINDOWS_EXECUTABLE_EXTENSIONS = new Set(['.exe', '.cmd', '.bat'])
 
 export class LocalProviderValidationError extends Error {
@@ -75,7 +75,7 @@ export function saveLocalProvider(input: unknown): { ok: true; provider: AcpLoca
   try {
     const value = normalize(input)
     const store = readLocalProviderStore()
-    if (BUILTIN_IDS.has(value.agentId.toLowerCase())) return ipcFail(IpcErrorCode.InvalidArg, '本地 provider 不能覆盖内置执行引擎 ID')
+    if (RESERVED_PROVIDER_IDS.has(value.agentId.toLowerCase())) return ipcFail(IpcErrorCode.InvalidArg, '本地 provider 不能覆盖内置执行引擎 ID')
     if (store.providers.some(item => item.agentId.toLowerCase() === value.agentId.toLowerCase() && item.id !== value.id)) return ipcFail(IpcErrorCode.Conflict, '本地 provider agent ID 与现有记录冲突')
     if (value.argv.some(arg => /\0/.test(arg))) return ipcFail(IpcErrorCode.InvalidArg, '启动参数不能包含空字节')
     const executable = canonicalExecutable(value.executable)
@@ -99,7 +99,7 @@ export function saveLocalProvider(input: unknown): { ok: true; provider: AcpLoca
     else store.providers.push(record)
     if (new Set(store.providers.map(item => item.id)).size !== store.providers.length) return ipcFail(IpcErrorCode.Conflict, 'provider ID 已存在')
     if (new Set(store.providers.map(item => item.agentId)).size !== store.providers.length) return ipcFail(IpcErrorCode.Conflict, 'provider agent ID 已存在')
-    writeProviderStore(store)
+    writeLocalProviderStore(store)
     return { ok: true, provider: structuredClone(record) }
   } catch (error) {
     return ipcFail(IpcErrorCode.InvalidArg, error instanceof Error ? error.message : '本地 provider 保存失败')
@@ -110,7 +110,7 @@ export function deleteLocalProvider(id: string): { ok: true } | IpcFail {
   const store = readLocalProviderStore()
   const next = store.providers.filter(item => item.id !== id)
   if (next.length === store.providers.length) return ipcFail(IpcErrorCode.NotFound, '本地 provider 不存在')
-  writeProviderStore({ schemaVersion: 1, providers: next })
+  writeLocalProviderStore({ schemaVersion: 1, providers: next })
   return { ok: true }
 }
 
@@ -142,7 +142,7 @@ export function localProviderLaunchEnvironment(runtime: { id?: string; launchKin
 }
 
 export function validateSavedProviderRecordShape(record: AcpLocalProviderRecord): void {
-  if (BUILTIN_IDS.has(record.agentId.toLowerCase())) throw new LocalProviderValidationError('本地 provider 记录覆盖了内置 ID，已拒绝执行')
+  if (RESERVED_PROVIDER_IDS.has(record.agentId.toLowerCase())) throw new LocalProviderValidationError('本地 provider 记录覆盖了内置 ID，已拒绝执行')
   if (!isAbsolute(record.executable)) throw new LocalProviderValidationError('本地 provider 记录缺少绝对路径，已拒绝执行')
   if (parse(record.executable).root === '\\\\') throw new LocalProviderValidationError('本地 provider 记录使用远程路径，已拒绝执行')
 }

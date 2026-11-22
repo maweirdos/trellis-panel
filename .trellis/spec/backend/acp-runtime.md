@@ -1055,3 +1055,95 @@ read to install or launch an agent, or labeling `acpx` upgrade as ACP v2.
 Correct: validate bounded metadata separately, persist an explicit local
 provider identity with immutable-enough provenance, and admit it only through
 the existing launch/security boundary.
+
+## Daemon runtime service boundaries
+
+### 1. Scope / Trigger
+
+Read this section when changing `src/main/daemon/runtime/` or code imported by
+the daemon runtime.
+
+### 2. Signatures
+
+```ts
+AdmissionService
+  .classify(method, payload): RuntimeAdmissionClass
+  .assertIntakeAdmitted(method, payload): void
+  .assertWorkspaceAdmitted(method, root): void
+  .assertCommand(method, commandId, payload): void
+
+ConversationReadService.handles(method): boolean
+ConversationReadService.execute(method, raw, root): Promise<unknown>
+
+RuntimeSessionService.handles(method): boolean
+RuntimeSessionService.execute(method, raw, root, context): Promise<unknown>
+
+LifecycleService.status(): Promise<RuntimeStatus>
+LifecycleService.shutdown(): Promise<void>
+LifecycleService.release(): Promise<void>
+```
+
+### 3. Contracts
+
+- The daemon remains one physical authority. A service split must not add a
+  daemon process, socket, ACP transport, prompt queue, or process killer.
+- `runtime/index.ts` is composition only: wire/blob parsing, command receipt
+  execution, and explicit special native routing belong there; domain behavior
+  belongs to its services.
+- `ConversationReadService` owns projection, legacy history, Pi image, and
+  session inventory reads. These calls must not start, resume, authenticate,
+  probe, cancel, disconnect, or kill a provider.
+- `RuntimeSessionService` owns ordinary ACP session/profile/history mutations,
+  prompt, permission, handoff, signals, and workflow application calls. It must
+  run the admission prologue before a domain switch.
+- `AdmissionService` owns method classification, retained command-ID policy,
+  intake/workspace admission, lifecycle-control exemption, and global/profile
+  scope policy. It never executes provider operations.
+- `LifecycleService` owns status, blockers, activity, idle assertions, workspace
+  ownership, shutdown, and release. Shutdown closes ACP/workflow admission and
+  stops knowledge reads synchronously before its first await.
+- Runtime and read services must not import integration adapter internals.
+  Integration adapters remain explicitly composed by the daemon application.
+- Runtime catalog constants and local-provider persistence must stay in
+  dependency-free modules. `local-providers`, `provider-registry`, and
+  `runtime-definitions` must not reintroduce an import cycle.
+- A local provider is supported only when its saved snapshot revalidates the
+  admitted provider record. Historical local argv must match exactly.
+- Optional renderer inputs entering typed daemon schemas must be normalized by
+  the daemon-client facade; `undefined` must not cross the wire where the
+  schema requires an object.
+
+### 4. Validation / Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| New or removed runtime method | Update the method contract and route comparison; no silent fallback |
+| Conversation read calls a runtime-control facade | Reject as a service-boundary violation |
+| Mutation lacks a stable UUID | `E_INVALID_ARG`; no provider operation admitted |
+| Shutdown encounters rejected cleanup | Preserve unknown ownership as `E_UNKNOWN` |
+| Local provider snapshot or provenance drifts | Reject launch/resume/restore |
+| Optional projection-list input is omitted | Send `{}` so the daemon schema defaults apply |
+
+### 5. Good / Base / Bad Cases
+
+Good: projection list/detail/events return bounded snapshots without a runtime
+owner. Base: shutdown closes admission synchronously, tries every owned cleanup
+domain, and retains uncertain ownership. Bad: moving a provider call into
+`ConversationReadService` to reuse a transport queue.
+
+### 6. Tests Required
+
+Use OS TEMP fixtures. Compare old/new body-method routes; exercise read
+zero-side-effect, admission classification, mutation command identity, closed
+admission, cursor reset, lifecycle close-before-await, and uncertain cleanup.
+Run a static import-cycle check. For release, run an isolated real GUI profile
+through authenticated `daemon.status` and projection list/detail/events through
+the production preload API, then stop only the isolated processes. Production
+gates are `npm run check:acpx`, `npm run typecheck`, `npm run build`, and
+`npm run check:ui`.
+
+### 7. Wrong vs Correct
+
+Wrong: treating a module split as a second owner or letting a read service
+resume a session for convenience. Correct: keep authority, ownership, cleanup,
+and transport semantics unchanged while making each service port explicit.

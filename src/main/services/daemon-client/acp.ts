@@ -33,7 +33,7 @@ export const saveAcpProfile = (root: string, input: unknown) => call<'saveAcpPro
 export const deleteAcpProfile = (root: string, profileId: string) => call<'deleteAcpProfile', 'runtime.profileDelete'>(root, 'runtime.profileDelete', { profileId })
 export const listAcpHistorySessions = (root: string, input?: unknown) => call<'listAcpHistorySessions', 'runtime.historyList'>(root, 'runtime.historyList', { input: input as RuntimeBody<'runtime.historyList'>['input'] })
 export async function listAcpConversationProjections(root: string, input?: unknown): Promise<AcpConversationListSnapshot | IpcFail> {
-  return runtimeCall<AcpConversationListSnapshot | IpcFail, 'runtime.conversationProjectionList'>(root, 'runtime.conversationProjectionList', { input: input as RuntimeBody<'runtime.conversationProjectionList'>['input'] })
+  return runtimeCall<AcpConversationListSnapshot | IpcFail, 'runtime.conversationProjectionList'>(root, 'runtime.conversationProjectionList', { input: (input ?? {}) as RuntimeBody<'runtime.conversationProjectionList'>['input'] })
 }
 export async function getAcpConversationProjection(root: string, sessionId: string): Promise<AcpConversationDetailSnapshot | IpcFail> {
   return runtimeCall<AcpConversationDetailSnapshot | IpcFail, 'runtime.conversationProjectionDetail'>(root, 'runtime.conversationProjectionDetail', { sessionId })

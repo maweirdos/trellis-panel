@@ -1,19 +1,10 @@
 import type { AcpAgentConfig, AcpSessionRecord } from '../../../shared/types'
 import { OPENCODE_V2_PACKAGE } from './native-releases'
+import { BUILTINS, BUNDLED, NATIVES, type BuiltinId, type BundledId, type NativeId } from './runtime-catalog'
 import { validateLocalProviderSnapshot } from './local-providers'
 
-export const BUILTINS = {
-  codex: { name: 'Codex', packageName: '@agentclientprotocol/codex-acp', version: '2.2.2', bin: 'codex-acp' },
-  claude: { name: 'Claude Code', packageName: '@agentclientprotocol/claude-agent-acp', version: '0.91.0', bin: 'claude-agent-acp' }
-} as const
-export const BUNDLED = { zcode: { name: 'ZCode', commandName: 'zcode' } } as const
-export const NATIVES = {
-  opencode: { name: 'OpenCode', commandName: 'opencode', launchArgs: ['acp'], npmPackage: OPENCODE_V2_PACKAGE, installHint: `npm install -g ${OPENCODE_V2_PACKAGE}`, missingHint: `未找到 opencode；可通过「安装」安装 OpenCode v2（npm install -g ${OPENCODE_V2_PACKAGE}）或使用官方安装方式` },
-  dsh: { name: 'DeepSeek DSH', commandName: 'dsh', launchArgs: ['--profile', 'acp'], npmPackage: '@deepseek-ai/dsh', installHint: 'npm install -g @deepseek-ai/dsh', missingHint: '未找到 dsh；可通过「安装执行引擎」（npm install -g @deepseek-ai/dsh）安装（需要 Node >=22.19）' }
-} as const
-export type BuiltinId = keyof typeof BUILTINS
-export type NativeId = keyof typeof NATIVES
-export type BundledId = keyof typeof BUNDLED
+export { BUILTINS, BUNDLED, NATIVES } from './runtime-catalog'
+export type { BuiltinId, BundledId, NativeId } from './runtime-catalog'
 
 export function isManaged(config: AcpAgentConfig): config is AcpAgentConfig & { id: BuiltinId } {
   if (!Object.hasOwn(BUILTINS, config.id) || config.launchKind === 'custom') return false
@@ -34,11 +25,7 @@ export function isSupportedRuntimeSnapshot(config: AcpAgentConfig): boolean {
   return isManaged(config) || isNative(config) || isBundled(config)
     || config.id === 'pi' && config.launchKind === 'sdk' && /^Pi SDK \S+$/.test(config.command)
       && !config.executable && !config.args?.length
-    || (() => {
-      if (config.launchKind !== 'local') return false
-      validateLocalProviderSnapshot(config)
-      return true
-    })()
+    || (config.launchKind === 'local' ? !!validateLocalProviderSnapshot(config) : false)
 }
 
 export function isRecoverableRuntimeRecord(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>, legacyIds: readonly string[]): boolean {
@@ -62,8 +49,8 @@ export function runtimeArgvIdentity(argv: readonly string[]): string {
 export function matchesHistoricalRuntimePaths(record: { agentCommand: string; agentArgv?: string[] }, argv: readonly string[], config: AcpAgentConfig): boolean {
   const previous = record.agentArgv
   if (!previous || previous.length !== argv.length || !matchesRuntimeRecordLaunch(record, previous)) return false
-  const pathPositions = isManaged(config) ? [0, 1] : isNative(config) ? [0] : isBundled(config) ? [0, 2, 4] : []
   if (config.launchKind === 'local') return previous.every((value, index) => value === argv[index])
+  const pathPositions = isManaged(config) ? [0, 1] : isNative(config) ? [0] : isBundled(config) ? [0, 2, 4] : []
   if (!pathPositions.length || pathPositions.some(index => !previous[index] || !argv[index])) return false
   return previous.every((value, index) => pathPositions.includes(index) || value === argv[index])
 }
