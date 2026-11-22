@@ -1498,3 +1498,25 @@ Implemented bounded ACP Registry catalog with atomic cache/offline fallback, con
 ### Status
 
 [OK] **Completed**
+
+
+## Session 46: ACP daemon modular split
+<!-- trellis-session: v=2 fp=ee2917bb19efc5d9 -->
+
+**Date**: 2026-11-22
+**Task**: ACP daemon modular split
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Split daemon runtime into admission, conversation read, session runtime, and lifecycle services while preserving transport, ownership, cleanup, and security semantics. Removed provider module cycles, normalized projection list input, completed real authenticated isolated daemon smoke, updated the backend contract, and passed all production gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b72af9b` | feat(acp): 拆分后台运行时服务边界 |
+
+### Status
+
+[OK] **Completed**
