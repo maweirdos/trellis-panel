@@ -1454,3 +1454,25 @@ GUI 在 Windows Job 中挂起创建，先发布原生范围见证再恢复执行
 ### Status
 
 [OK] **Completed**
+
+
+## Session 44: Conversation UX control plane milestone
+<!-- trellis-session: v=2 fp=6be2ad2062059782 -->
+
+**Date**: 2026-11-22
+**Task**: Conversation UX control plane milestone
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Implemented projection-cached switching, immediate optimistic sends with exact failure restoration, authoritative deduplication, row-level updates, runtime contract spec updates, focused TEMP validation, and full production checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f38854` | feat(acp): 建立会话乐观交互控制面 |
+
+### Status
+
+[OK] **Completed**
