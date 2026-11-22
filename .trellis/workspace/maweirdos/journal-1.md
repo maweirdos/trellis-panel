@@ -1476,3 +1476,25 @@ Implemented projection-cached switching, immediate optimistic sends with exact f
 ### Status
 
 [OK] **Completed**
+
+
+## Session 45: ACP provider ecosystem milestone
+<!-- trellis-session: v=2 fp=25972a71361370c7 -->
+
+**Date**: 2026-11-22
+**Task**: ACP provider ecosystem milestone
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Implemented bounded ACP Registry catalog with atomic cache/offline fallback, controlled local providers with canonical launch provenance and revalidation, capability evidence separation, provider settings UI, spec contract updates, focused TEMP validation, and full production checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0bcaa8b` | feat(acp): 建立受控 Provider 生态 |
+
+### Status
+
+[OK] **Completed**
