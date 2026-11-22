@@ -101,6 +101,13 @@ function itemVariant(event: TimelineEvent): AcpTurnItemVariant {
     return { kind: 'permission', title: boundedText(title ?? event.text, 'Permission'), pending: event.payload?.pending === true }
   }
   if (event.kind === 'plan') return { kind: 'plan', text: boundedText(event.text) }
+  if (event.kind === 'session-status' && event.payload?.runtimeTelemetry instanceof Object) {
+    const telemetry = event.payload.runtimeTelemetry as Record<string, unknown>
+    const providerFamily = typeof telemetry.providerFamily === 'string' ? telemetry.providerFamily : 'unknown'
+    const cause = typeof telemetry.cause === 'string' ? telemetry.cause : 'unknown'
+    const reason = typeof telemetry.reason === 'string' ? telemetry.reason : 'unknown'
+    return { kind: 'system-marker', text: `runtime ${providerFamily} ${cause} ${reason}`.slice(0, 2000) }
+  }
   if (event.kind === 'turn-done' || event.kind === 'session-status' || event.kind === 'task-status' || event.kind === 'material-change') return { kind: 'status', text: boundedText(event.text) }
   if (event.kind === 'message' || event.kind === 'diagnostic') return { kind: 'diagnostic', text: boundedText(event.text ?? event.payload) }
   return { kind: 'system-marker', text: boundedText(event.text ?? event.kind, event.kind) }

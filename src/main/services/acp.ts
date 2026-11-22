@@ -75,6 +75,7 @@ import { hasLegacyAcpCleanupReceipt, recoverInactiveAcpUses } from './workcopy-u
 import { readWorkcopyOwnerJournal, workcopyOwnerJournalPath } from './workcopy-use/owner-journal'
 import { runOwnedProbe } from './workcopy-use/owned-probe'
 import { hasAcpJobOwner, recoverAcpJobOwner } from './workcopy-use/acp-jobs'
+import { disconnectTelemetry, IDLE_RELEASE_POLL_MS, RuntimeSessionManager, runtimeFailureCause, runtimeTelemetryCause, type AcpRuntimeCapacityFailure, type AcpRuntimeCapacityOwnerView, type AcpRuntimeProviderFamily, type AcpRuntimeReleaseReason, type AcpRuntimeReservationView, type AcpRuntimeTelemetryEvent } from './acp/runtime-session-manager'
 import { reserveTaskSessionIntent, claimTaskSessionIntent, completeTaskSessionIntent, enterTaskSessionNativeBoundary, readTaskSessionIntent, saveTaskSessionIntent, markTaskSessionPrompt, taskSessionExpectedSchema, type TaskSessionExpected } from './workcopy-use/task-session-intent'
 export type { TaskSessionExpected } from './workcopy-use/task-session-intent'
 export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
@@ -84,7 +85,6 @@ export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence,
 // acpx reads this host flag during runtime construction, not from child overlays.
 // Inherit local user/project Claude settings without copying credential values.
 process.env.ACPX_CLAUDE_INCLUDE_USER_SETTINGS = '1'
-const MAX_ACTIVE = 4
 const MAX_RECORD_EVENTS = 800
 const PERMISSION_TIMEOUT_MS = 120_000
 const CANCEL_TIMEOUT_MS = 10_000
@@ -92,6 +92,7 @@ const sessions = new Map<string, ActiveSession>()
 // Reserve before discovery yields so two restores cannot replace one owner.
 const resuming = new Set<string>()
 const connectionReservations = new Set<symbol>()
+const connectionReservationOwners = new Map<symbol, AcpRuntimeReservationView>()
 const cancelledResumes = new Set<string>()
 type ResumeResult = { ok: true; sessionId: string } | IpcFail
 const resumeRequests = new Map<string, { root: string; promise: Promise<ResumeResult> }>()
@@ -102,6 +103,12 @@ const handoffRequests = new Set<Promise<AcpHandoffOperationResult | IpcFail>>()
 let shuttingDown = false
 let eventSeq = 0
 let lastWorkflowObserverWarningAt = 0
+const runtimeSessionManager = new RuntimeSessionManager(
+  () => [...sessions.values()].map(runtimeOwnerView),
+  () => [...connectionReservationOwners.values()],
+)
+const idleReleaseTimer = setInterval(() => { void releaseVerifiedIdleRuntimes() }, IDLE_RELEASE_POLL_MS)
+idleReleaseTimer.unref()
 
 const sessionDeletion = new SessionDeletion({
   userData: () => app.getPath('userData'), drain: drainAcpHistory, eraseArchive: deleteAcpHistoryArchive,
@@ -261,7 +268,7 @@ const acpHandoffs = new AcpHandoffs({
     if (!target) return
     if (!belongs(root, target.meta) || target.meta.handoff?.operationId !== operationId) throw new Error('目标连接不属于此交接操作，未执行停止')
     const turn = target.turn
-    const stopped = await killOwned(target, 'Runtime 接续已取消，保留目标历史')
+    const stopped = await stopRuntimeOwner(target, 'user', 'Runtime 接续已取消，保留目标历史')
     if (!stopped.ok) throw new Error(stopped.error)
     if (turn) await turn.promptStarted.catch(() => {})
   },
@@ -473,6 +480,11 @@ function holdCleanupBarrier(session: ActiveSession): void {
   session.leaseHeld = true; session.leaseMode = 'exclusive'; session.leaseKey = lease.identity.id
 }
 function release(session: ActiveSession, cleanupConfirmed = false): void {
+  const providerFamily = providerFamilyFor(session.meta)
+  const reason: AcpRuntimeReleaseReason = session.meta.status === 'starting' || session.meta.status === 'error'
+    ? 'startup-failed-verified'
+    : cleanupConfirmed && session.disconnected ? 'process-exit-verified' : 'turn-settled'
+  const releaseResult = runtimeSessionManager.release(runtimeOwnerView(session), { providerFamily, reason })
   cleanupConfirmed ||= session.processCleanupConfirmed === true && !session.hasProcess
   // A settled turn is not the product execution's native cleanup boundary.
   if (session.meta.platformExecution && !cleanupConfirmed) return
@@ -505,26 +517,107 @@ function release(session: ActiveSession, cleanupConfirmed = false): void {
   session.leaseKey = undefined
   session.uncertainWork = false
   delete session.meta.directoryLeaseReason
+  if (releaseResult.classification === 'released-clean' && cleanupConfirmed && session.disconnected && !session.closing) {
+    emit(session, 'session-status', '运行连接已释放，历史保留可显式恢复', {
+      activityScope: 'connection',
+      runtimeTelemetry: { event: 'release', cause: 'process-exit', providerFamily, conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason, cleanupConfirmed: true, occurredAt: Date.now() },
+    })
+  }
 }
 
-async function reserveConnectionSlot(excludedSessionId?: string): Promise<symbol | IpcFail> {
-  while (!shuttingDown && sessions.size + connectionReservations.size >= MAX_ACTIVE) {
-    const idle = [...sessions.values()].filter((session) => session.meta.sessionId !== excludedSessionId
-      && session.meta.canResume === true && session.meta.backendSessionId && session.meta.runtimeSnapshot && runtimeRecordAvailable(session.meta)
-      // ZCode advertises load for new empty sessions that exist only in RAM.
-      // Capability/snapshots alone cannot make that owner safe to discard.
-      && (session.meta.runtimeSnapshot.id !== 'zcode' || session.meta.runtimeSnapshot.launchKind !== 'bundled' || session.nativePersistenceConfirmed)
-      && session.meta.status === 'ready' && !session.turn && !session.accepting && !session.closing && !session.settling
-      && !session.backgroundWork && !session.uncertainWork && !session.cleanupRequired && !session.leaseHeld && session.pendingPermissions.size === 0)
-      .sort((left, right) => left.lastUsedAt - right.lastUsedAt || left.meta.sessionId.localeCompare(right.meta.sessionId))[0]
-    if (!idle) return ipcFail(IpcErrorCode.Conflict, `运行连接已达 ${MAX_ACTIVE} 个，暂无可安全释放的空闲连接；输入已保留，请稍后重试或结束不用的会话`)
-    const result = await killOwned(idle, '空闲连接已释放，发送消息时会自动连接原会话', 'disconnected')
-    if (!result.ok) return result
+async function releaseVerifiedIdleRuntimes(): Promise<void[]> {
+  if (shuttingDown) return []
+  const candidates = runtimeSessionManager.idleReleaseCandidates()
+    .map(sessionId => sessions.get(sessionId))
+    .filter((session): session is ActiveSession => Boolean(session))
+  return Promise.all(candidates.map(async session => {
+    if (sessions.get(session.meta.sessionId) !== session) return
+    const providerFamily = providerFamilyFor(session.meta)
+    const classification = runtimeSessionManager.release(runtimeOwnerView(session), { providerFamily, reason: 'idle-verified' }).classification
+    if (classification !== 'released-clean') return
+    const stopStartedAt = Date.now()
+    const result = await stopRuntimeOwner(session, 'idle', '空闲连接已按时间释放，历史保留可显式恢复', 'disconnected')
+    if (!result.ok) {
+      emit(session, 'session-status', '空闲连接释放需人工确认', { activityScope: 'connection', runtimeTelemetry: disconnectTelemetry({ event: 'release', cause: 'cleanup-uncertain', providerFamily, conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'idle-verified', cleanupConfirmed: false, occurredAt: Date.now(), durationMs: Date.now() - stopStartedAt }) })
+    }
+  }))
+}
+
+async function reserveConnectionSlot(family: AcpRuntimeProviderFamily, excludedSessionId?: string): Promise<symbol | AcpRuntimeCapacityFailure> {
+  while (!shuttingDown) {
+    const admitted = runtimeSessionManager.reserve(family, excludedSessionId)
+    if (admitted.ok) break
+    if (!('candidateId' in admitted) || !admitted.candidateId) return admitted
+    const idle = sessions.get(admitted.candidateId)
+    if (!idle || providerFamilyFor(idle.meta) !== family || sessions.get(idle.meta.sessionId) !== idle) {
+      runtimeSessionManager.completeCapacityReleaseClaim(admitted.candidateId)
+      continue
+    }
+    markProviderCapacityWait(idle)
+    const stopStartedAt = Date.now()
+    try {
+      const result = await stopRuntimeOwner(idle, 'capacity', '空闲连接已释放，发送消息时会自动连接原会话', 'disconnected', stopStartedAt)
+      if (!result.ok) return { ...admitted, ...ipcFail(result.code, result.error) }
+    } finally {
+      runtimeSessionManager.completeCapacityReleaseClaim(admitted.candidateId)
+    }
   }
-  if (shuttingDown) return ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新连接')
+  if (shuttingDown) return { ...ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新连接'), family: runtimeSessionManager.usage(family), capacityReason: 'capacity-reserved' }
   const reservation = Symbol('native-connection')
   connectionReservations.add(reservation)
+  connectionReservationOwners.set(reservation, { providerFamily: family, sessionId: excludedSessionId ?? `pending-${randomUUID()}` })
   return reservation
+}
+
+
+function reserveForSession(reservation: symbol, sessionId: string): void {
+  const reservationView = connectionReservationOwners.get(reservation)
+  if (reservationView) connectionReservationOwners.set(reservation, { ...reservationView, sessionId })
+}
+
+function markProviderCapacityWait(session: ActiveSession): void {
+  emit(session, 'session-status', 'Runtime 容量已满，释放最旧空闲连接', {
+    activityScope: 'connection',
+    runtimeTelemetry: disconnectTelemetry({ event: 'capacity-wait', cause: 'capacity-release', providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'capacity-verified', cleanupConfirmed: true, occurredAt: Date.now(), durationMs: 0 }),
+  })
+}
+
+function completeReservation(reservation: symbol): void {
+  connectionReservations.delete(reservation)
+  connectionReservationOwners.delete(reservation)
+}
+
+function providerFamilyFor(meta: Pick<AcpSessionRecord, 'agentId' | 'runtimeSnapshot'>): AcpRuntimeProviderFamily {
+  return providerFamilyForRuntime(meta.runtimeSnapshot, meta.agentId)
+}
+
+function providerFamilyForRuntime(runtime: AcpSessionRecord['runtimeSnapshot'], agentId: string): AcpRuntimeProviderFamily {
+  return runtimeSessionManager.familyFor(runtime, agentId)
+}
+
+function runtimeOwnerView(session: ActiveSession): AcpRuntimeCapacityOwnerView {
+  return {
+    sessionId: session.meta.sessionId,
+    providerFamily: providerFamilyFor(session.meta),
+    lastUsedAt: session.lastUsedAt,
+    canResume: session.meta.canResume === true,
+    hasNativeIdentity: !!session.meta.backendSessionId,
+    nativePersistenceConfirmed: session.nativePersistenceConfirmed === true,
+    runtimeRecordAvailable: runtimeRecordAvailable(session.meta),
+    platformOwned: !!session.meta.platformExecution,
+    managedTaskOwner: !!session.meta.taskProgress,
+    status: session.meta.status,
+    accepting: session.accepting,
+    turnActive: !!session.turn,
+    closing: session.closing,
+    settling: session.settling,
+    backgroundWork: session.backgroundWork,
+    uncertainWork: session.uncertainWork,
+    cleanupRequired: session.cleanupRequired === true,
+    leaseHeld: session.leaseHeld,
+    pendingPermissions: session.pendingPermissions.size > 0,
+    unfinishedTools: [...session.toolStates.values()].some((state) => state === 'unfinished'),
+  }
 }
 function projectConnectionOwnership(session: ActiveSession): void {
   session.meta.connectionOwned = sessions.get(session.meta.sessionId) === session
@@ -930,6 +1023,7 @@ function adapterForensicsSuffix(session: ActiveSession, error: unknown): string 
 }
 
 async function closeAfterFailure(session: ActiveSession, error: unknown, remove: boolean): Promise<void> {
+  const providerFamily = providerFamilyFor(session.meta)
   session.nativeStatus?.exited()
   session.runtimeRetry = undefined
   session.knowledge?.revoke()
@@ -956,6 +1050,34 @@ async function closeAfterFailure(session: ActiveSession, error: unknown, remove:
       : '清理未确认，目录占用保留；请显式停止 Runtime 后重试'
   } finally { session.canonicalCleanup = false }
   captureConnectionTimings(session)
+  emit(session, 'session-status', 'Runtime 连接失败', {
+    activityScope: 'connection',
+    runtimeTelemetry: disconnectTelemetry({
+      event: 'disconnect',
+      cause: runtimeFailureCause(error),
+      providerFamily,
+      conversationId: session.meta.sessionId,
+      runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId,
+      reason: 'startup-failed-verified',
+      cleanupConfirmed: session.processCleanupConfirmed === true,
+      occurredAt: Date.now(),
+    }),
+  })
+  if (session.cleanupRequired) {
+    emit(session, 'session-status', 'Runtime 失败清理待确认', {
+      activityScope: 'connection',
+      runtimeTelemetry: disconnectTelemetry({
+        event: 'cleanup',
+        cause: 'cleanup-uncertain',
+        providerFamily,
+        conversationId: session.meta.sessionId,
+        runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId,
+        reason: 'startup-failed-verified',
+        cleanupConfirmed: false,
+        occurredAt: Date.now(),
+      }),
+    })
+  }
   setStatus(session, 'error', message, true)
 }
 /** SDK state/IO failure cannot substitute for, or invalidate, an actual owned-job proof. */
@@ -966,6 +1088,10 @@ async function drainSessionRuntime(session: ActiveSession): Promise<void> {
     await session.nativeJobs.cleanupAll()
     session.hasProcess = false; session.disconnected = true
     session.unverifiedProcessExit = false; session.processCleanupConfirmed = true
+      emit(session, 'session-status', 'Runtime 清理已确认', {
+        activityScope: 'connection',
+        runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'provider-error', providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'turn-settled', cleanupConfirmed: true, occurredAt: Date.now() }),
+      })
   }
   if (failure !== undefined) throw failure
 }
@@ -1215,15 +1341,35 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     onState: (state, mode) => { session.meta.currentModeId = mode; projectPiState(session.meta, state) },
     onBeforeSpawn: () => { if (shuttingDown || session.closing) throw new Error('会话已停止'); if (!runtimeRecordAvailable(session.meta)) throw new Error(LEGACY_CUSTOM_RUNTIME_ERROR); const conflict = acquire(session); if (conflict) throw new Error(conflict.error); session.lastStatusAt.set('process-start', Date.now()); observe(session, '启动 Pi 原生引擎') },
     onSpawned: () => { session.hasProcess = true; session.disconnected = false; observe(session, 'Pi 执行进程已启动', session.lastStatusAt.get('process-start')) },
-    onCleanupFailure: message => { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = message },
+    onCleanupFailure: message => {
+      session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = message
+      emit(session, 'session-status', 'Pi 进程清理失败', {
+        activityScope: 'connection',
+        runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'cleanup-uncertain', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: false, occurredAt: Date.now() }),
+      })
+    },
     onExit: async () => { session.knowledge?.disconnect(); session.hasProcess = false; session.disconnected = true; settlePermissions(session, 'disconnected');
+      emit(session, 'session-status', 'Pi 进程已退出', {
+        activityScope: 'connection',
+        runtimeTelemetry: disconnectTelemetry({ event: 'disconnect', cause: 'process-exit', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: false, occurredAt: Date.now() }),
+      })
       if (session.leaseHeld) { session.cleanupRequired = true; holdCleanupBarrier(session) }
       if (nativeJobs) {
         try {
           await nativeJobs.cleanupAll(); session.processCleanupConfirmed = true; session.cleanupRequired = false; session.uncertainWork = false
           session.backgroundWork = false; session.toolStates.clear()
+          emit(session, 'session-status', 'Pi 进程清理已确认', {
+            activityScope: 'connection',
+            runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'process-exit', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: true, occurredAt: Date.now() }),
+          })
           if (!session.turn && !session.accepting && !session.closing && !session.settling) release(session, true)
-        } catch (error) { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error) }
+        } catch (error) {
+          session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error)
+          emit(session, 'session-status', 'Pi 进程清理失败', {
+            activityScope: 'connection',
+            runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'cleanup-uncertain', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: false, occurredAt: Date.now() }),
+          })
+        }
       }
       if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') setStatus(session, 'disconnected', 'Pi 进程已退出；请结束原会话核验子进程清理', true) }
   }) : createAcpRuntime({ cwd: meta.cwd ?? meta.projectRoot,
@@ -1273,13 +1419,27 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
         // Root exit is only an observation. Canonical runtime.shutdown() must
         // verify its retained descendants before this lease may be released.
         if (session.leaseHeld) { session.cleanupRequired = true; holdCleanupBarrier(session) }
+        emit(session, 'session-status', 'Runtime 进程已退出', {
+          activityScope: 'connection',
+          runtimeTelemetry: disconnectTelemetry({ event: 'disconnect', cause: 'process-exit', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: false, occurredAt: Date.now() }),
+        })
         if (nativeJobs) {
           try {
             await nativeJobs.cleanup(exited)
             session.unverifiedProcessExit = false; session.processCleanupConfirmed = true; session.cleanupRequired = false
             session.backgroundWork = false; session.toolStates.clear(); session.uncertainWork = false
+            emit(session, 'session-status', 'Runtime 进程清理已确认', {
+              activityScope: 'connection',
+              runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'process-exit', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: true, occurredAt: Date.now() }),
+            })
             if (!session.turn && !session.accepting && !session.closing && !session.settling && session.meta.status !== 'starting') release(session, true)
-          } catch (error) { session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error) }
+          } catch (error) {
+            session.cleanupRequired = true; holdCleanupBarrier(session); session.meta.directoryLeaseReason = errorMessage(error)
+            emit(session, 'session-status', 'Runtime 进程清理失败', {
+              activityScope: 'connection',
+              runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'cleanup-uncertain', providerFamily: providerFamilyFor(meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'process-exit-verified', cleanupConfirmed: false, occurredAt: Date.now() }),
+            })
+          }
         }
         if (!session.turn && !session.closing && !session.settling && session.meta.status !== 'starting') setStatus(session, 'disconnected', 'Runtime 进程已退出；请结束原会话核验子进程清理', true)
       }
@@ -1430,7 +1590,7 @@ async function newOwnedTaskAcpSession(root: string, input: { agentId: string; ta
   if (!owner) return ipcFail(IpcErrorCode.Conflict, '原任务会话未建立')
   await owner.preparing
   if (owner.meta.status !== 'ready' || owner.disconnected || owner.closing || !owner.meta.connectionGeneration || !owner.meta.backendSessionId) return ipcFail(IpcErrorCode.Unavailable, '原任务 Runtime 未确认就绪；绑定已保留')
-  if (owner.meta.engine !== engine) { await killOwned(owner, '任务 Runtime 配置已变化'); return ipcFail(IpcErrorCode.Conflict, '任务 Runtime 配置在启动期间已变化，未发送任务') }
+  if (owner.meta.engine !== engine) { await stopRuntimeOwner(owner, 'user', '任务 Runtime 配置已变化'); return ipcFail(IpcErrorCode.Conflict, '任务 Runtime 配置在启动期间已变化，未发送任务') }
   const session = { sessionId: owner.meta.sessionId, backendSessionId: owner.meta.backendSessionId, connectionGeneration: owner.meta.connectionGeneration,
     projectRoot: owner.meta.projectRoot, cwd: owner.meta.cwd ?? root, taskDir: owner.meta.taskDir ?? null, engine }
   completeTaskSessionIntent(workcopyUseDirectory(), root, sessionId, session)
@@ -1484,11 +1644,11 @@ export async function reconcileTaskSession(root: string, nativeAlias: string, ra
     if (intent?.phase === 'cleaned') return { status: 'settled', outcome: intent.settledOutcome ?? 'cleaned', dispatch }
     if (intent?.nativeBoundary === 'not-entered') {
       saveTaskSessionIntent(directory, { ...intent, phase: 'cleaned', settledOutcome: 'not-created' })
-      if (active) { const stopped = await killOwned(active, '原创建未进入外部执行，已收束原 alias'); if (!stopped.ok) return unknown(stopped.error) }
+      if (active) { const stopped = await stopRuntimeOwner(active, 'user', '原创建未进入外部执行，已收束原 alias'); if (!stopped.ok) return unknown(stopped.error) }
       return { status: 'settled', outcome: 'not-created', dispatch: 'not-sent' }
     }
     if (active) {
-      const stopped = await killOwned(active, '核对原任务创建的受控进程')
+      const stopped = await stopRuntimeOwner(active, 'user', '核对原任务创建的受控进程')
       if (!stopped.ok) return unknown(stopped.error)
     }
     const owner = meta ? workcopyOwnerForMeta(meta) : intent ? { kind: 'agent' as const, id: nativeAlias, generation: intent.generation,
@@ -1649,7 +1809,7 @@ export async function stopPlatformAcpSession(root: string, alias: string, dispat
   const directory = workcopyUseDirectory(), intent = readTaskSessionIntent(directory, root, alias, { engine })
   const active = sessions.get(alias)
   if (active) {
-    const result = await killOwned(active, 'Product execution stopped; original native cleanup confirmed')
+    const result = await stopRuntimeOwner(active, 'user', 'Product execution stopped; original native cleanup confirmed')
     if (!result.ok) throw new Error('Original product native cleanup remains unconfirmed')
   } else if (intent?.phase !== 'cleaned' && intent?.nativeBoundary !== 'not-entered') {
     const generation = meta?.connectionGeneration ?? intent?.generation
@@ -1729,7 +1889,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) return ipcFail(IpcErrorCode.NotFound, '工作目录不可用')
     if (!platform) await recoverOriginalAcpUses(cwd)
     if (taskDir && !await activeTaskExists(projectRoot, taskDir)) return ipcFail(IpcErrorCode.InvalidArg, '绑定任务不属于当前项目的活动任务目录或记录不可读')
-    const slot = await reserveConnectionSlot()
+    const slot = await reserveConnectionSlot(providerFamilyForRuntime(config, runtimeId))
     if (typeof slot !== 'symbol') return slot
     reservation = slot
     handoff?.assertCurrent()
@@ -1743,6 +1903,8 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
       ...(platform ? { platformExecution: platform.owner.metadata } : {}),
       profileSnapshot: profile ? structuredClone(profile) : undefined, launchOptionsSnapshot, handoff: handoff?.origin,
       runtimeSnapshot: { id: config.id, name: config.name, command: config.command, enabled: config.enabled, launchKind: config.launchKind, executable: config.executable, args: config.args }, historyKind: 'live', canResume: false }
+    const providerFamily = providerFamilyForRuntime(config, runtimeId)
+    reserveForSession(slot, meta.sessionId)
     const session = await createSessionRuntime(meta, config, argv)
     if (platform) { session.platformOwner = platform.owner; session.platformLaunch = platform.launch; session.workcopyLease = platform.owner.lease; session.workcopyBaseline = platform.owner.lease.identity }
     if (taskOwner && readTaskSessionIntent(workcopyUseDirectory(), projectRoot, taskOwner.sessionId)?.phase !== 'creating') { session.knowledge?.revoke(); await drainSessionRuntime(session); return ipcFail(IpcErrorCode.Conflict, '原任务创建已被收束，未启动执行') }
@@ -1752,7 +1914,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     const conflict = acquire(session)
     if (conflict) { session.knowledge?.revoke(); await session.runtime.shutdown(); return conflict }
     sessions.set(meta.sessionId, session)
-    connectionReservations.delete(reservation); reservation = undefined
+    completeReservation(reservation); reservation = undefined
     session.lastStatusAt.set('connection-start', Date.now())
     observe(session, '开始准备会话')
     describeClientServices(session)
@@ -1786,6 +1948,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
         observe(session, session.meta.engine === 'pi' ? 'Pi 原生会话已就绪' : 'ACP 会话已就绪', session.lastStatusAt.get('connection-start'))
         release(session)
         setStatus(session, 'ready')
+        emit(session, 'session-status', '新会话已启动', { activityScope: 'connection', runtimeTelemetry: disconnectTelemetry({ event: 'startup', cause: 'startup', providerFamily, conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'startup-verified', cleanupConfirmed: true, occurredAt: Date.now() }) })
       } catch (error) {
         if (session.closing) return
         observe(session, `会话准备失败：${errorMessage(error)}`, meta.startedAt, true)
@@ -1801,7 +1964,7 @@ async function newOwnedAcpSession(projectRoot: string, input: unknown, handoff?:
     }
     return failure(error)
   }
-  finally { if (reservation) connectionReservations.delete(reservation) }
+  finally { if (reservation) completeReservation(reservation) }
 }
 
 function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
@@ -2209,7 +2372,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
 
 async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok: true } | IpcFail> {
   if (session.closing) return { ok: true }
-  if (session.meta.status === 'starting') return killOwned(session, reason)
+  if (session.meta.status === 'starting') return stopRuntimeOwner(session, 'user', reason)
   const turn = session.turn
   if (!turn && session.promptAbort) { session.promptAbort.abort(); return { ok: true } }
   if (!turn) return ipcFail(IpcErrorCode.Conflict, '当前没有运行中的回合')
@@ -2223,11 +2386,11 @@ async function cancelOwned(session: ActiveSession, reason: string): Promise<{ ok
   let timer: NodeJS.Timeout | undefined
   try {
     await Promise.race([turn.cancel({ reason }).then(() => turn.result), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('取消超过 10 秒，正在停止 Runtime')), CANCEL_TIMEOUT_MS) })])
-    if (session.nativeJobs) return killOwned(session, '回合已取消，原生 Job 与子进程已核对清理', 'disconnected')
+    if (session.nativeJobs) return stopRuntimeOwner(session, 'user', '回合已取消，原生 Job 与子进程已核对清理', 'disconnected')
     return { ok: true }
   } catch (error) {
     emit(session, 'diagnostic', errorMessage(error))
-    return killOwned(session, '取消未及时确认，已停止 Runtime')
+    return stopRuntimeOwner(session, 'user', '取消未及时确认，已停止 Runtime')
   } finally { if (timer) clearTimeout(timer) }
 }
 export async function cancelAcpSession(projectRoot: string, sessionId: string): Promise<{ ok: true } | IpcFail> {
@@ -2256,6 +2419,19 @@ async function killOwned(session: ActiveSession, reason: string, finalState: 'cl
     return result
   })
   return session.closingTask
+}
+
+async function stopRuntimeOwner(session: ActiveSession, trigger: 'user' | 'capacity' | 'shutdown' | 'idle', reason: string, finalState: 'closed' | 'disconnected' = 'closed', stopStartedAt: number = Date.now()): Promise<{ ok: true } | IpcFail> {
+  const result = await killOwned(session, reason, finalState)
+  if (result.ok) {
+    const telemetryReason: AcpRuntimeReleaseReason = trigger === 'capacity' ? 'capacity-verified' : trigger === 'idle' ? 'idle-verified' : session.meta.canResume === true ? 'explicit-stop-verified' : 'turn-settled'
+    const event: AcpRuntimeTelemetryEvent = trigger === 'capacity' || trigger === 'idle' ? 'release' : 'disconnect'
+    emit(session, 'session-status', reason, {
+      activityScope: 'connection',
+      runtimeTelemetry: disconnectTelemetry({ event, cause: runtimeTelemetryCause(trigger), providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: telemetryReason, cleanupConfirmed: true, occurredAt: Date.now(), durationMs: Date.now() - stopStartedAt }),
+    })
+  }
+  return result
 }
 async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok: true } | IpcFail> {
   setStatus(session, 'cancelling')
@@ -2286,7 +2462,19 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
       setStatus(session, 'error', message)
       return ipcFail(IpcErrorCode.Io, message)
     }
+    if (session.processCleanupConfirmed) {
+      emit(session, 'session-status', 'Runtime 清理已确认', {
+        activityScope: 'connection',
+        runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'process-exit', providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: session.meta.canResume === true ? 'explicit-stop-verified' : 'turn-settled', cleanupConfirmed: true, occurredAt: Date.now() }),
+      })
+    }
     emit(session, 'session-status', reason, { activityScope: 'connection' })
+    if (!session.processCleanupConfirmed) {
+      emit(session, 'session-status', 'Runtime 清理待确认', {
+        activityScope: 'connection',
+        runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'cleanup-uncertain', providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'turn-settled', cleanupConfirmed: false, occurredAt: Date.now() }),
+      })
+    }
     save(session)
     await flushAcpHistory().catch(() => {})
     return { ok: true }
@@ -2297,6 +2485,10 @@ async function closeOwned(session: ActiveSession, reason: string): Promise<{ ok:
       ? '原执行器异常退出，完整子进程清理无法核实；占用已保留，可选择另一工作副本'
       : '停止清理尚未确认，目录占用保留；请重试结束会话'
     setStatus(session, 'error', `停止失败：${errorMessage(error)}`)
+    emit(session, 'session-status', 'Runtime 清理失败', {
+      activityScope: 'connection',
+      runtimeTelemetry: disconnectTelemetry({ event: 'cleanup', cause: 'cleanup-uncertain', providerFamily: providerFamilyFor(session.meta), conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'turn-settled', cleanupConfirmed: false, occurredAt: Date.now() }),
+    })
     return failure(error)
   } finally { session.canonicalCleanup = false }
 }
@@ -2352,7 +2544,7 @@ export async function killAcpSession(projectRoot: string, sessionId: string, pla
     } catch (error) { return failure(error) }
   }
   const session = owned(projectRoot, sessionId)
-  return 'ok' in session ? session : killOwned(session, '会话已停止')
+  return 'ok' in session ? session : stopRuntimeOwner(session, 'user', '会话已停止')
 }
 
 export function resumeAcpSession(projectRoot: string, sessionId: string): Promise<ResumeResult> {
@@ -2455,7 +2647,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
     if ((existing.meta.status === 'error' || existing.meta.status === 'disconnected') && !existing.meta.restorePending) {
       if (!runtimeRecordAvailable(existing.meta)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
       if (!existing.meta.canResume) return ipcFail(IpcErrorCode.InvalidArg, '此记录仅供查看，不支持原会话恢复')
-      const stopped = await killOwned(existing, '停止旧连接，显式恢复原会话')
+      const stopped = await stopRuntimeOwner(existing, 'user', '停止旧连接，显式恢复原会话')
       if (!stopped.ok) return stopped
       return resumeOwnedSession(projectRoot, sessionId, recovery)
     }
@@ -2485,9 +2677,10 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
     }
     await recoverOriginalAcpUses(meta.cwd ?? meta.projectRoot, sessionId)
     if (shuttingDown || cancelledResumes.has(sessionId) || recovery?.cancelled || recovery?.isCurrent?.() === false) return ipcFail(IpcErrorCode.Conflict, '项目已改变或会话连接已停止')
-    const slot = await reserveConnectionSlot(sessionId)
+    const slot = await reserveConnectionSlot(providerFamilyFor(meta), sessionId)
     if (typeof slot !== 'symbol') return slot
     reservation = slot
+    reserveForSession(slot, sessionId)
     if (cancelledResumes.has(sessionId)) return ipcFail(IpcErrorCode.Conflict, '原会话连接已停止')
     const runtimeId = meta.runtimeSnapshot.id
     session = await createSessionRuntime({ ...meta, connectionGeneration: randomUUID(), status: 'starting', historyKind: 'live', endedAt: undefined, turnId: undefined, agentContext: undefined, connectionTimings: undefined, restorePending: false, startup: [], recovery: recovery && !meta.recovery?.commitPending ? undefined : meta.recovery, connectionOwned: false, cleanupRequired: false }, meta.runtimeSnapshot, argv, recovery?.input.modelId, true)
@@ -2495,7 +2688,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
     const conflict = acquire(session)
     if (conflict) { session.knowledge?.revoke(); await session.runtime.shutdown(); return conflict }
     sessions.set(sessionId, session)
-    connectionReservations.delete(reservation); reservation = undefined
+    completeReservation(reservation); reservation = undefined
     resuming.delete(sessionId)
     session.lastStatusAt.set('connection-start', Date.now())
     observe(session, '开始恢复原会话')
@@ -2579,6 +2772,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
         if (restoring.durableRecoveryFinalization) setRecoveryFinalStatus(restoring, 'ready')
         else setStatus(restoring, 'ready')
         observe(restoring, '原会话已连接，可以继续对话', restoring.lastStatusAt.get('connection-start'))
+        emit(restoring, 'session-status', '原会话恢复完成', { activityScope: 'connection', runtimeTelemetry: disconnectTelemetry({ event: 'resume', cause: 'resume', providerFamily: providerFamilyFor(restoring.meta), conversationId: restoring.meta.sessionId, runtimeSessionId: restoring.meta.connectionGeneration ?? restoring.meta.sessionId, reason: 'resume-verified', cleanupConfirmed: true, occurredAt: Date.now() }) })
       } catch (error) {
         preparationError = error
         if (!restoring.closing) await closeAfterFailure(restoring, error, true)
@@ -2591,7 +2785,7 @@ async function resumeOwnedSession(projectRoot: string, sessionId: string, recove
   } catch (error) {
     if (session && !session.closing) await closeAfterFailure(session, error, true)
     return failure(error)
-  } finally { resuming.delete(sessionId); if (reservation) connectionReservations.delete(reservation) }
+  } finally { resuming.delete(sessionId); if (reservation) completeReservation(reservation) }
 }
 
 export async function configureAcpSession(projectRoot: string, sessionId: string, input: AcpConfigureInput): Promise<{ ok: true; session: AcpSessionRecord } | IpcFail> {
@@ -2637,7 +2831,7 @@ export async function configureAcpSession(projectRoot: string, sessionId: string
 export function closeAcpAdmission(): void { shuttingDown = true }
 export async function shutdownAcp(): Promise<void> {
   shuttingDown = true
-  const results = await Promise.all([...sessions.values()].map((session) => killOwned(session, '应用退出')))
+  const results = await Promise.all([...sessions.values()].map((session) => stopRuntimeOwner(session, 'shutdown', '应用退出')))
   const failed = results.find((result) => result.ok === false)
   await knowledgeMcpBridge.close()
   await shutdownAcpJobs()

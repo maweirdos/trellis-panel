@@ -859,3 +859,88 @@ renderer-supplied roots, or collapsing cursor resets into `E_IO`.
 Correct: preserve the authoritative archive, migrate read-only/idempotently,
 return bounded snapshots plus a monotonic cursor, and require a fresh snapshot
 on any unresumable cursor state.
+
+## Runtime session manager
+
+### 1. Scope / Trigger
+
+Read this section when changing `src/main/services/acp/runtime-session-manager.ts`,
+connection reservation, idle release, runtime telemetry, or the runtime marker
+projection in `control-plane-store.ts`.
+
+### 2. Signatures
+
+`RuntimeSessionManager` owns provider-family capability lookup, family usage,
+connection reservations, verified-idle candidates, recent-use pinning, and an
+atomic release claim. Existing `killOwned` / `closeOwned` / acpx shutdown /
+Windows Job cleanup remain the only process-termination authorities.
+
+Current family declarations are explicit for Codex, Claude, OpenCode, DSH,
+ZCode, Pi, and unknown/legacy records. All currently supported launch paths use
+independent process owners (`sharedProcess:false`,
+`runtimeThreadCapacity:1`). Shared-process or multi-thread capacity may only be
+enabled by an explicit future capability declaration; it must never be inferred
+from a provider name or protocol version.
+
+### 3. Contracts
+
+- Capacity is counted per provider family. Asynchronous startup reserves a
+  placeholder before the real native session id exists and atomically replaces
+  it once known.
+- Capacity release selects a verified-idle owner and atomically claims it before
+  awaiting canonical stop. Concurrent reservations must not stop several idle
+  owners when one release is sufficient. A stale claim is released and selection
+  retried; stop failure retains ownership and reports cleanup uncertainty.
+- Verified-idle release starts after 30 idle minutes. A ten-minute recent-use
+  pin prevents rapid switching from thrashing owners. Protected work never
+  depends on this timer.
+- Active/admitting turns, live permissions, unfinished tools/background work,
+  managed/platform task owners, directory leases, uncertain cleanup,
+  nonrecoverable records, transient states, and ZCode owners without confirmed
+  native persistence are not capacity-release candidates.
+- Capacity failures carry the bounded family, typed capacity reason, and family
+  usage; generic "capacity reached" text is insufficient.
+- Runtime telemetry covers startup, resume, capacity release, idle release,
+  provider/auth/protocol/process-exit failures, and cleanup pending/succeeded/
+  failed. Duration is bounded to `[0, 86400000]` ms; family labels are a fixed
+  bounded union. Never emit credentials, tokens, or raw provider frames.
+- Projection list/detail/events never enter startup, resume, authentication,
+  model probing, or capacity-release paths.
+
+### 4. Validation / Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| One family full while another has capacity | Reject only the full family with typed reason |
+| Concurrent capacity reservations | At most the required idle owner is claimed/stopped |
+| Claimed owner disappears or is replaced | Release stale claim and reselect without recursive stop |
+| Canonical stop fails | Retain owner, emit cleanup uncertain, do not retry blindly |
+| Timer observes protected owner | Do not release; report its typed blocking classification |
+| Recent verified-idle owner | Honor recent-use pin before idle release |
+| Runtime telemetry payload is not an object | Ignore rather than project malformed telemetry |
+| Projection read | Zero runtime side effects and zero disconnects |
+
+### 5. Good / Base / Bad Cases
+
+Good: eight archived conversations switch repeatedly from projections while all
+runtimes remain untouched. Base: a verified-idle owner is released after its pin
+and idle windows with a recorded reason and recoverable conversation projection.
+Bad: evicting an owner with an unfinished tool, stopping multiple owners for one
+capacity slot, or labeling every provider error as a protocol error.
+
+### 6. Tests Required
+
+Use OS TEMP and the real service/daemon path. Exercise the provider-family
+capability matrix, atomic concurrent claims, stale-owner retry, every protected
+classification, telemetry bounds, projection zero-side-effect switching across
+at least eight conversations, and real duplicate resume/end behavior with a
+supported authenticated provider. Run `npm run check:acpx`, `npm run typecheck`,
+`npm run build`, and `npm run check:ui`.
+
+### 7. Wrong vs Correct
+
+Wrong: a global owner count, inferred shared-process capacity, a non-atomic idle
+candidate selected by multiple callers, or telemetry that exposes provider text.
+Correct: explicit family capability, atomic release claims, protected-work
+classification, bounded typed telemetry, and canonical cleanup through the
+existing process owner.
