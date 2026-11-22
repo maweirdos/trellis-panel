@@ -1432,3 +1432,25 @@ GUI 在 Windows Job 中挂起创建，先发布原生范围见证再恢复执行
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: ACP 运行时会话管理器
+<!-- trellis-session: v=2 fp=8158ebf755694f73 -->
+
+**Date**: 2026-11-22
+**Task**: ACP 运行时会话管理器
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+落地 provider family 容量、原子释放 claim、verified-idle 策略、typed telemetry 与真实 daemon 验收，并修复 daemon 认证 proof 版本缺失。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0590c20` | feat(acp): 建立运行时会话管理器 |
+
+### Status
+
+[OK] **Completed**
