@@ -109,6 +109,15 @@ export function useComposerImages({ root, sessionId, generation, isCurrent, draf
       writeImages(sessionId, imagesFor(sessionId).filter((image) => image.id !== imageId))
       source.errors.delete(sessionId); notify()
     },
+    replace: (id: string, images: AcpImageAttachment[]): void => {
+      if (sourceRef.current !== source) return
+      writeImages(id, images); source.errors.delete(id); notify()
+    },
+    removeSubmitted: (id: string, submitted: AcpImageAttachment[]): void => {
+      if (sourceRef.current !== source) return
+      const sent = new Set(submitted.map((image) => image.id))
+      writeImages(id, imagesFor(id).filter((image) => !sent.has(image.id))); notify()
+    },
     consume: (id: string, submitted: AcpImageAttachment[]): void => {
       if (sourceRef.current !== source) return
       const sent = new Set(submitted.map((image) => image.id))

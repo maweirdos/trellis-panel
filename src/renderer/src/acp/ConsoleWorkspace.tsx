@@ -49,6 +49,7 @@ import { useComposerImages } from './useComposerImages'
 import { ConnectionNotice, ConnectionRecovery } from './ConnectionNotice'
 import { isRecordedTurnFailure } from './conversation-transcript'
 import { compareConversationSessions, conversationManagement, useConversationHistory, type ConversationUpdate } from './useConversationHistory'
+import { useConversationProjection } from './useConversationProjection'
 import { captureTranscriptAnchor, restoreTranscriptAnchor, type TranscriptScrollAnchor } from './transcript-scroll'
 import { JiraPickerModal } from './JiraPicker'
 import { compileItems, isLiveStatus, mergeEvents, SESSION_LABEL } from './timeline'
@@ -65,6 +66,7 @@ import { partitionConversationEvents } from './conversation-convenience'
 import { readActiveSession, readSessionView, readWorkspaceView, writeWorkspaceView, writeActiveSession, writeSessionView, forgetSessionView, type WorkspaceView, type DraftIntent } from './view-state'
 import type { AcpAgentProfile, AcpAgentStatus, AcpMaterialChange, AcpPermissionPayload, AcpSessionRecord, AcpSourceReference, AcpStartupObservation, AcpStateEvent, TimelineEvent } from '../../../shared/types'
 import type { AcpHandoffOperation } from '../../../shared/acp-handoff'
+import type { AcpImageAttachment } from '../../../shared/acp-images'
 import './workspace.css'
 import { TaskConversationWorkspace } from '../crux/TaskConversationWorkspace'
 
@@ -100,11 +102,17 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const [sessions, setSessions] = useState<AcpSessionRecord[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const history = useConversationHistory(root, activeId)
+  const projection = useConversationProjection(root, activeId)
+  const projectionCache = projection.details
   const [events, setEvents] = useState<Record<string, TimelineEvent[]>>({})
   const [view, setView] = useState<WorkspaceView>('agents')
   const [input, setInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState<Record<string, boolean>>({})
+  const [pendingSends, setPendingSends] = useState<Record<string, { requestId: string; turnId?: string; event: TimelineEvent }>>({})
+  const [failedSends, setFailedSends] = useState<Record<string, { draft: string; references: AcpSourceReference[]; knowledge: KnowledgeDraftReference[]; images: AcpImageAttachment[]; intent: DraftIntent }>>({})
+  const pendingSendsRef = useRef(pendingSends)
+  pendingSendsRef.current = pendingSends
   const [turnRequests, setTurnRequests] = useState<Record<string, CurrentTurnRequest>>({})
   const turnRequestsRef = useRef(turnRequests)
   const [terminalTurns, setTerminalTurns] = useState<CurrentTurnIdentity[]>([])
@@ -231,6 +239,33 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const composerImages = useComposerImages({ root, sessionId: view === 'conversation' ? activeId ?? undefined : undefined, generation: activeSession?.connectionGeneration, isCurrent })
   const activeSelection = useRef({ id: activeId, generation: activeSession?.connectionGeneration, view })
   activeSelection.current = { id: activeId, generation: activeSession?.connectionGeneration, view }
+  const projectionEvents = useMemo(() => {
+    const result: Record<string, TimelineEvent[]> = {}
+    for (const [sessionId, detail] of projectionCache) {
+      result[sessionId] = detail.turnItems.map((entry) => {
+        const occurredAt = entry.occurredAt
+        const payload = entry.item.kind === 'user-message' || entry.item.kind === 'assistant-message' || entry.item.kind === 'reasoning' || entry.item.kind === 'plan' || entry.item.kind === 'status' || entry.item.kind === 'diagnostic' || entry.item.kind === 'system-marker' || entry.item.kind === 'usage'
+          ? { text: entry.item.text }
+          : entry.item.kind === 'tool-call' || entry.item.kind === 'permission'
+            ? { title: entry.item.title, ...(entry.item.kind === 'permission' ? { pending: entry.item.pending } : {}) }
+            : { count: entry.item.count }
+        return {
+          id: entry.sourceEventId,
+          ts: occurredAt,
+          source: detail.conversation.sourceEngine,
+          sessionId,
+          projectRoot: detail.conversation.root,
+          kind: entry.item.kind === 'user-message' || entry.item.kind === 'assistant-message'
+            ? 'message'
+            : entry.item.kind === 'reasoning' ? 'thought' : entry.item.kind === 'tool-call' ? 'tool-call' : entry.item.kind === 'permission' ? 'permission' : entry.item.kind === 'plan' ? 'plan' : entry.item.kind === 'image' ? 'message' : 'session-status',
+          text: entry.item.kind === 'user-message' || entry.item.kind === 'assistant-message' || entry.item.kind === 'reasoning' || entry.item.kind === 'plan' || entry.item.kind === 'status' || entry.item.kind === 'diagnostic' || entry.item.kind === 'system-marker' || entry.item.kind === 'usage' ? entry.item.text : entry.item.kind === 'tool-call' || entry.item.kind === 'permission' ? entry.item.title : `${entry.item.count} 张图片`,
+          payload: { ...(entry.item.kind === 'user-message' ? { role: 'user' } : entry.item.kind === 'assistant-message' ? { role: 'assistant' } : {}), ...payload },
+          turnId: entry.turnId,
+        }
+      })
+    }
+    return result
+  }, [projectionCache, projection.version])
   useLayoutEffect(() => {
     const intent = newComposerFocus.current
     if (!intent) return
@@ -255,7 +290,12 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     document.addEventListener('keydown', cancelFocus, true)
     return () => { document.removeEventListener('pointerdown', cancelFocus, true); document.removeEventListener('keydown', cancelFocus, true) }
   }, [])
-  const activeEvents = useMemo(() => activeSession ? mergeEvents(history.events[activeSession.sessionId] ?? [], events[activeSession.sessionId] ?? []) : [], [events, history.events, activeSession])
+  const activeEvents = useMemo(() => {
+    const pending = activeSession ? pendingSends[activeSession.sessionId] : undefined
+    const cached = activeSession ? projectionEvents[activeSession.sessionId] ?? [] : []
+    const recorded = activeSession ? mergeEvents(history.events[activeSession.sessionId] ?? [], cached) : []
+    return activeSession ? mergeEvents(recorded, [...(events[activeSession.sessionId] ?? []), ...(pending ? [pending.event] : [])]) : []
+  }, [events, history.events, activeSession, pendingSends, projectionEvents])
   const projectedEvents = useMemo(() => activeSession ? partitionConversationEvents(activeEvents, activeSession) : { transcript: [], background: [] }, [activeEvents, activeSession])
   const items = useMemo(() => compileItems(projectedEvents.transcript), [projectedEvents.transcript])
   const revealWebPreview = useCallback((): void => { setInspectorVisible(false) }, [])
@@ -435,6 +475,12 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
       const id = event.sessionId
       const knownGeneration = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (knownGeneration && event.connectionGeneration && knownGeneration !== event.connectionGeneration) return
+      if (event.kind === 'message' && event.payload?.role === 'user' && event.turnId && event.connectionGeneration) {
+        const pending = pendingSendsRef.current[id]
+        if (pending && (!pending.turnId || pending.turnId === event.turnId) && pending.event.connectionGeneration === event.connectionGeneration) {
+          pendingSendsRef.current = { ...pendingSendsRef.current }; delete pendingSendsRef.current[id]; setPendingSends(pendingSendsRef.current)
+        }
+      }
       if (isConversationRuntimeEvent(event)) recordTurnFact({ ...event, sessionId: id }, event.kind === 'turn-done')
       scope.sessionIds.add(id)
       setEvents((previous) => ({ ...previous, [id]: mergeEvents(previous[id] ?? [], [event]) }))
@@ -645,6 +691,17 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
       }
     } catch (error) { setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } })); return }
     const request: CurrentTurnRequest = { requestId: crypto.randomUUID(), projectRoot: root, sessionId: id, connectionGeneration: activeSession.connectionGeneration, previousTurnId: activeSession.turnId, phase: 'submitting' }
+    const submissionId = `optimistic:${request.requestId}`
+    const submissionAt = Date.now()
+    const optimisticEvent: TimelineEvent = { id: submissionId, ts: submissionAt, source: activeSession.engine ?? 'acp', sessionId: id, projectRoot: root, kind: 'message', text, payload: { role: 'user', delivery: 'preparing', promptRequestId: request.requestId, ...(submittedImages.length ? { images: submittedImages } : {}) } }
+    pendingSendsRef.current = { ...pendingSendsRef.current, [id]: { requestId: request.requestId, event: optimisticEvent } }
+    setPendingSends(pendingSendsRef.current)
+    setFailedSends(previous => { const next = { ...previous }; delete next[id]; return next })
+    draftsRef.current[id] = ''; draftReferencesRef.current[id] = []
+    writeSessionView(root, id, { draft: '', sourceReferences: [], intent: 'plain' })
+    writeKnowledgeReferences(root, id, [])
+    composerImages.removeSubmitted(id, submittedImages)
+    if (activeSelection.current.id === id) { setInput(''); setReferences([]); setKnowledgeReferences([]); setDraftIntent('plain') }
     const controller = new AbortController()
     scope.sendControllers.set(id, controller)
     const valid = (): boolean => isCurrent() && !controller.signal.aborted && scope.sendControllers.get(id) === controller
@@ -653,7 +710,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     // still obey onScroll if the reader chooses to leave the bottom again.
     earlierAnchor.current = null; followRef.current = true; setAtBottom(true)
     writeSessionView(root, id, { follow: true })
-    scope.sends.add(id); setSending((previous) => ({ ...previous, [id]: true })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '请求确认中，草稿暂时保留。' } }))
+    scope.sends.add(id); setSending((previous) => ({ ...previous, [id]: true })); setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '正在提交指令…' } }))
     setOperations((previous) => ({ ...previous, [id]: 'prepare-send' }))
     try {
       // Preparation owns one composer status until a verified live generation
@@ -704,26 +761,47 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
       const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
       if (generation !== request.connectionGeneration) { clearRequest(); return }
       if (response.ok) {
+        const pending = pendingSendsRef.current[id]
+        if (pending?.requestId === request.requestId) {
+          pendingSendsRef.current = { ...pendingSendsRef.current, [id]: { requestId: request.requestId, turnId: response.turnId, event: { ...pending.event, turnId: response.turnId, connectionGeneration: request.connectionGeneration, payload: { ...pending.event.payload, delivery: 'sent' } } } }
+          setPendingSends(pendingSendsRef.current)
+        }
         changeTurnRequest(id, (current) => {
           if (current?.requestId !== request.requestId) return current
           const turnId = current.turnId ?? response.turnId
           return turnId ? { ...current, phase: 'accepted', turnId } : undefined
         })
         composerImages.consume(id, submittedImages)
-        const latestDraft = draftsRef.current[id] ?? readSessionView(root, id).draft
-        const latestReferences = draftReferencesRef.current[id] ?? readSessionView(root, id).sourceReferences ?? []
-        const latestKnowledge = readKnowledgeReferences(root, id)
-        if (latestDraft === submittedDraft && JSON.stringify(latestReferences) === JSON.stringify(submittedReferences) && JSON.stringify(latestKnowledge) === JSON.stringify(submittedKnowledge)) {
-          draftsRef.current[id] = ''; draftReferencesRef.current[id] = []; writeSessionView(root, id, { draft: '', sourceReferences: [], intent: 'plain' })
-          writeKnowledgeReferences(root, id, [])
-          if (activeSelection.current.id === id) { setInput(''); setReferences([]); setKnowledgeReferences([]); setDraftIntent('plain') }
-        }
         setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
-      } else { clearRequest(); setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。草稿与原版本引用已保留，请查看变化后重新引用。${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : response.error ?? '发送被拒绝，草稿已保留。' } })) }
+      } else {
+        clearRequest()
+        const restoreExact = draftsRef.current[id] === '' && JSON.stringify(readKnowledgeReferences(root, id)) === '[]' && (draftReferencesRef.current[id] === undefined || draftReferencesRef.current[id].length === 0)
+        if (restoreExact) {
+          draftsRef.current[id] = submittedDraft; draftReferencesRef.current[id] = submittedReferences
+          writeSessionView(root, id, { draft: submittedDraft, sourceReferences: submittedReferences, intent: draftIntent })
+          writeKnowledgeReferences(root, id, submittedKnowledge)
+          if (activeSelection.current.id === id) { setInput(submittedDraft); setReferences(submittedReferences); setKnowledgeReferences(submittedKnowledge); setDraftIntent(draftIntent) }
+          composerImages.replace(id, submittedImages)
+        } else setFailedSends(previous => ({ ...previous, [id]: { draft: submittedDraft, references: submittedReferences, knowledge: submittedKnowledge, images: submittedImages, intent: draftIntent } }))
+        pendingSendsRef.current = { ...pendingSendsRef.current }; delete pendingSendsRef.current[id]; setPendingSends(pendingSendsRef.current)
+        setFeedback((previous) => ({ ...previous, [id]: { error: true, text: response.reason === 'SOURCE_CHANGED' ? `引用文件已变化，尚未发送。${restoreExact ? '草稿与原版本引用已恢复。' : '新草稿已保留，未发送内容可恢复。'}${response.sources?.map((source) => ` ${source.relativePath}`).join('') ?? ''}` : `${response.error ?? '发送被拒绝。'}${restoreExact ? '原草稿已恢复。' : '新草稿已保留，未发送内容可恢复。'}` } }))
+      }
     } catch (error) {
       if (isCurrent()) {
         clearRequest()
-        if (!controller.signal.aborted) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: failureText(error) } }))
+        if (controller.signal.aborted) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '发送已中止，当前状态未知。已保留待确认消息，不会自动重发。' } }))
+        else {
+          const restoreExact = draftsRef.current[id] === '' && JSON.stringify(readKnowledgeReferences(root, id)) === '[]' && (draftReferencesRef.current[id] === undefined || draftReferencesRef.current[id].length === 0)
+          if (restoreExact) {
+            draftsRef.current[id] = submittedDraft; draftReferencesRef.current[id] = submittedReferences
+            writeSessionView(root, id, { draft: submittedDraft, sourceReferences: submittedReferences, intent: draftIntent })
+            writeKnowledgeReferences(root, id, submittedKnowledge)
+            if (activeSelection.current.id === id) { setInput(submittedDraft); setReferences(submittedReferences); setKnowledgeReferences(submittedKnowledge); setDraftIntent(draftIntent) }
+            composerImages.replace(id, submittedImages)
+          } else setFailedSends(previous => ({ ...previous, [id]: { draft: submittedDraft, references: submittedReferences, knowledge: submittedKnowledge, images: submittedImages, intent: draftIntent } }))
+          pendingSendsRef.current = { ...pendingSendsRef.current }; delete pendingSendsRef.current[id]; setPendingSends(pendingSendsRef.current)
+          setFeedback((previous) => ({ ...previous, [id]: { error: true, text: `${failureText(error)}${restoreExact ? '原草稿已恢复。' : '新草稿已保留，未发送内容可恢复。'}` } }))
+        }
       }
     }
     finally {
@@ -1092,9 +1170,24 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
           {activeSession.directoryLeaseReason && <p className="rounded-my-md bg-my-warning-subtle px-3 py-2 text-my-sm text-my-warning-text">目录占用：{activeSession.directoryLeaseReason}</p>}
           {isReadOnly && <div className="acp-history-note"><p>{activeSession.archivedAt ? '此会话已归档，取消归档后可继续。' : '此记录没有可恢复的远端会话，仅供阅读。'}</p><Button size="sm" variant="ghost" onClick={() => openNewConversation()}>新建会话</Button>{activeSession.error && <ConnectionNotice message={activeSession.error} />}</div>}
           <ConversationTranscript items={items} currentActivity={currentTurnActivity} onActiveSegmentChange={setActiveTranscriptSegment} suppressWorkingIndicator={Boolean(currentTurnActivity)} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={(directory) => openTask(directory)} onOpenArtifact={openRecordedArtifact} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} onOpenWebPreview={openWebPreview} />
+          {failedSends[activeSession.sessionId] && <div className="acp-history-note" role="status"><p>有一条消息未发送，新草稿已保留。</p><button className="underline" onClick={() => {
+            const failed = failedSends[activeSession.sessionId]
+            const current = draftsRef.current[activeSession.sessionId] ?? ''
+            if (current.trim()) {
+              setDraftBackup(current)
+              writeSessionView(root, activeSession.sessionId, { draftBackup: current, backupReferences: draftReferencesRef.current[activeSession.sessionId] ?? [], backupIntent: draftIntent })
+            }
+            else setDraftBackup('')
+            draftsRef.current[activeSession.sessionId] = failed.draft; draftReferencesRef.current[activeSession.sessionId] = failed.references
+            writeSessionView(root, activeSession.sessionId, { draft: failed.draft, sourceReferences: failed.references, intent: failed.intent })
+            writeKnowledgeReferences(root, activeSession.sessionId, failed.knowledge)
+            setInput(failed.draft); setReferences(failed.references); setKnowledgeReferences(failed.knowledge); setDraftIntent(failed.intent)
+            composerImages.replace(activeSession.sessionId, failed.images)
+            setFailedSends(previous => { const next = { ...previous }; delete next[activeSession.sessionId]; return next })
+          }}>恢复未发送内容</button></div>}
           {visiblePermissions.map((permission) => <EventRow key={`current-permission:${permission.requestId}`} item={{ type: 'perm', key: `current-permission:${permission.requestId}`, ev: { id: `current-permission:${permission.requestId}`, ts: 0, source: 'acp', kind: 'permission', sessionId: activeSession.sessionId, projectRoot: root, text: permission.toolCall?.title ?? '等待你的授权', payload: { requestId: permission.requestId } } }} session={activeSession} events={activeEvents} pendingPerm={pendingPerm} permissionPending={permissionPending} permissionErrors={permissionErrors} onRespond={respondPerm} onOpenTask={openTask} onOpenArtifact={() => {}} onOpenSpec={() => setPage('spec')} onOpenJira={() => setPage('jira')} />)}
           {conversationArtifacts.length > 0 && <section className="acp-material-shelf" aria-label="当前任务材料"><p className="mb-3 text-my-sm text-my-tertiary">任务材料 · 当前文件，文件变化不代表任务已验收</p><div className="space-y-2">{conversationArtifacts.slice(0, 6).map((artifact) => <ConversationArtifactCard key={artifact.relativePath} artifact={artifact} onOpen={openDocument} selected={documentTarget?.artifact.relativePath === artifact.relativePath && inspectorTab === 'document' && inspectorOpen} />)}</div><div className="mt-4 flex flex-wrap items-center gap-3 text-my-sm text-my-tertiary"><button onClick={preparePlanning}>继续完善方案<ChevronRight size={12} className="ml-1 inline" /></button><button onClick={() => openTask()}>复核规划材料<ChevronRight size={12} className="ml-1 inline" /></button></div></section>}
-          {items.length === 0 && !activeSession.handoff && !isReadOnly && !currentTurnActivity && !sending[activeSession.sessionId] && activeSession.status !== 'starting' && !history.selectionError && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{history.selectionLoading ? '正在加载历史消息…' : '从一条清晰的指令开始。'}</p></div>}
+          {items.length === 0 && !activeSession.handoff && !isReadOnly && !currentTurnActivity && !sending[activeSession.sessionId] && activeSession.status !== 'starting' && !history.selectionError && !projection.detail && <div className="acp-empty"><Bot size={25} className="mx-auto" /><p>{history.selectionLoading || projection.loading ? '正在加载历史消息…' : '从一条清晰的指令开始。'}</p></div>}
           <CurrentTurnStatus activity={segmentOwnsActivity ? null : currentTurnActivity} />
         </div></div>
         {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}

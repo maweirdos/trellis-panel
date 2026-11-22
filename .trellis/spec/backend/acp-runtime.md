@@ -777,9 +777,9 @@ archive bytes, sequence, turn boundaries, coverage and request receipts unchange
 
 Read this section when changing `src/shared/acp-projections.ts`,
 `src/main/services/acp/control-plane-*`, the daemon `runtime.conversation*`
-routes, or the preload ACP projection APIs. The projection store is a read model
-parallel to the authoritative archive; it must never become a second native
-session authority.
+routes, the preload ACP projection APIs, or the renderer conversation projection
+cache. The projection store is a read model parallel to the authoritative
+archive; it must never become a second native session authority.
 
 ### 2. Signatures
 
@@ -796,6 +796,12 @@ The additive control-plane database is `userData/acp/control-plane.sqlite`. Its
 first schema contains normalized conversation, turn, turn-item, runtime-session,
 runtime-thread, provider-instance, monotonic event, and migration rows. Legacy
 `history.sqlite` is opened read-only as the migration source.
+
+The renderer cache is root-scoped and bounded. Selection renders its last known
+detail immediately and refreshes through snapshot/event reads. It validates the
+returned root and source session ID, clears all detail/loading/error state when
+the root changes, coalesces duplicate reads of one session, and handles typed
+cursor resets by requesting a fresh snapshot.
 
 ### 3. Contracts
 
@@ -822,6 +828,24 @@ runtime-thread, provider-instance, monotonic event, and migration rows. Legacy
   store-reset. A generic I/O failure must not replace a reset response.
 - Missing legacy provider metadata degrades to explicit identifiers such as
   `unknown`; it must not fail SQLite non-null binding or invent a provider.
+- Projection and legacy records with the same event ID merge with the richer
+  legacy record as the base; a bounded projection row must not remove delivery,
+  image, or other authoritative presentation fields.
+
+### Conversation optimistic sends
+
+- Send commits the renderer-owned pending user row, clears the active draft and
+  submitted references/images/knowledge, and starts truthful submission feedback
+  before its first asynchronous operation.
+- The pending row is renderer state only. It is never written to history,
+  SQLite, or the projection store, and never establishes transport delivery.
+- Definite admission failure removes that row. Restore the exact submitted
+  payload only when the current draft is still empty; preserve and prioritize any
+  newer draft and expose the failed payload through a bounded recovery action.
+- Aborted sends with an ambiguous runtime outcome remain marked unknown; the UI
+  must not restore them as definitively unsent or replay them automatically.
+- Only the authoritative `promptStarted` user event replaces the pending row.
+  Deduplication is by request/turn/connection identity, not message text.
 
 ### 4. Validation / Error Matrix
 
