@@ -1520,3 +1520,26 @@ Split daemon runtime into admission, conversation read, session runtime, and lif
 ### Status
 
 [OK] **Completed**
+
+
+## Session 47: ACP v2 运行时迁移收尾
+<!-- trellis-session: v=2 fp=4e0b2a7283089193 -->
+
+**Date**: 2026-11-23
+**Task**: ACP v2 运行时迁移收尾
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+T3 ACP v2 客户端接管活路径，规范覆盖发送回执、配置选项、原生投影与进程清理。七项修复通过模拟代理回归与独立复核，最终快照通过 postinstall、check:acpx、typecheck、build 和 check:ui。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `79fdc9a` | feat(ui): 对齐 Crux T3 规范全面优化质感系统与通用微交互 |
+| `586bfd8` | chore(acp): clean up vendored RPC formatting |
+
+### Status
+
+[OK] **Completed**

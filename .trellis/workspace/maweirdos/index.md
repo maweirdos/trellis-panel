@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 46
-- **Last Active**: 2026-11-22
+- **Total Sessions**: 47
+- **Last Active**: 2026-11-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1522 | Active |
+| `journal-1.md` | ~1545 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 47 | 2026-11-23 | ACP v2 运行时迁移收尾 | `79fdc9a`, `586bfd8` | `codex/team-task-execution` |
 | 46 | 2026-11-22 | ACP daemon modular split | `b72af9b` | `codex/team-task-execution` |
 | 45 | 2026-11-22 | ACP provider ecosystem milestone | `0bcaa8b` | `codex/team-task-execution` |
 | 44 | 2026-11-22 | Conversation UX control plane milestone | `3f38854` | `codex/team-task-execution` |
