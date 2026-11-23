@@ -1,9 +1,10 @@
 import { join } from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, realpathSync, readdirSync } from 'node:fs'
 import { z } from 'zod'
 import { watch, type FSWatcher } from 'chokidar'
-import { runtimeBodies, runtimeRequests, type RuntimeMethod, type RuntimeRequest, type RuntimeResult, type RuntimeCursor, type RuntimeBodyMethod, type RuntimeWire } from '../../../shared/daemon-runtime'
+import { CONVERSATION_RUNTIME_METHODS, runtimeBodies, runtimeRequests, type RuntimeMethod, type RuntimeRequest, type RuntimeResult, type RuntimeCursor, type RuntimeBodyMethod, type RuntimeWire } from '../../../shared/daemon-runtime'
 import type { WorkspaceGrant } from '../../../shared/daemon'
 import * as acp from '../../services/acp'
 import { installHostEventSink } from '../../services/bridge'
@@ -41,6 +42,9 @@ import { AdmissionService, isGlobalRuntimeMethod, type RuntimeDispatchContext } 
 import { ConversationReadService } from './conversation-read'
 import { RuntimeSessionService } from './session-runtime'
 import { LifecycleService, type RuntimeBlocker, type RuntimeStatus } from './lifecycle'
+import { ConversationRuntime } from './conversation'
+import type { ConversationAuthority } from '../../../shared/conversation/desktop'
+import { directoryIdentity, pathKey } from '../../services/private-conversations/files'
 
 export type { RuntimeDispatchContext } from './admission'
 
@@ -148,6 +152,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const conversationProjections = new AcpConversationProjectionService(ports.userData ?? ports.directory)
+  const conversation = new ConversationRuntime({ directory: ports.directory, assertOwner: () => ports.assertOwner() })
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const admission = new AdmissionService(ports)
@@ -163,6 +168,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     materialTimers,
     watchers,
     conversationProjections,
+    conversation,
     stopKnowledgeReads: () => knowledge.stopReads(),
     workflow: {
       countOwned: countOwnedWorkflowApplications,
@@ -186,6 +192,23 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     sessionAdmissions: () => sessionAdmissions,
     setSessionAdmissions(value) { sessionAdmissions = value },
   }, admission)
+
+  function conversationAuthority(context: RuntimeDispatchContext): ConversationAuthority & { assertCurrent(): void } {
+    const { workspace, native } = context
+    if (!workspace || !native) throw new DaemonError('E_DENIED', 'Conversation access requires a protected desktop workspace.')
+    native.assertProduct()
+    const identity = directoryIdentity(workspace.root)
+    const assertCurrent = (): void => {
+      ports.assertOwner()
+      ports.assertAuthority()
+      ports.assertWorkspaceGrant?.(workspace)
+      native.assertProduct()
+      if (directoryIdentity(workspace.root) !== identity) throw new DaemonError('E_CONFLICT', 'The conversation workspace directory changed.')
+    }
+    assertCurrent()
+    const projectId = createHash('sha256').update(JSON.stringify([pathKey(workspace.root), identity])).digest('hex')
+    return { ownerId: native.actor.userId, spaceId: 'personal', projectId, cwd: workspace.root, binding: { kind: 'personal' }, assertCurrent }
+  }
   function observeWorkspace(root: string, generation: number): void {
     if (root === '@profile' || watchers.has(root) || closed) return
     if (watchers.size >= 100) throw new DaemonError('E_BUSY', 'Runtime workspace observer limit reached.')
@@ -298,6 +321,40 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const grant = context.workspace ?? taskExecutions.retainedGrant(input.dispatchId)
       return taskExecutions.execute(root, input, { ...context.native, grant }, context.commandId)
     }
+    if (method === 'runtime.conversationModels') {
+      const { instanceId } = runtimeBodies[method].parse(raw)
+      const { projectId, assertCurrent } = conversationAuthority(context)
+      return conversation.listModels(root, projectId, instanceId, assertCurrent)
+    }
+    if (method === 'runtime.conversationCreate') {
+      const input = runtimeBodies[method].parse(raw)
+      if (context.commandId !== input.commandId) throw new DaemonError('E_DENIED', 'The conversation command ID does not match its admitted dispatch.')
+      const authority = conversationAuthority(context)
+      return conversation.createThread({ ...input, ...authority, cwd: root, assertCurrent: () => {
+        if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed.')
+        authority.assertCurrent()
+        ports.assertWorkspaceAdmission?.(root, method)
+      } })
+    }
+    if (method === 'runtime.conversationList') {
+      runtimeBodies[method].parse(raw)
+      const { ownerId, spaceId, projectId } = conversationAuthority(context)
+      return conversation.listThreads(ownerId, spaceId, projectId)
+    }
+    if (method === 'runtime.conversationRead') {
+      const input = runtimeBodies[method].parse(raw)
+      const { ownerId, spaceId, projectId } = conversationAuthority(context)
+      return conversation.readThread(input.threadId, ownerId, spaceId, projectId)
+    }
+    if (method === 'runtime.conversationCommand') {
+      const input = runtimeBodies[method].parse(raw)
+      const { ownerId, spaceId, projectId } = conversationAuthority(context)
+      return conversation.readCommand(input.commandId, ownerId, spaceId, projectId)
+    }
+    if (method === 'runtime.conversationEvents') {
+      const input = runtimeBodies[method].parse(raw)
+      return conversation.readEvents(input, conversationAuthority(context))
+    }
     if (conversationReads.handles(method)) return conversationReads.execute(method, raw, root)
     return sessionRuntime.execute(method, raw, root, context)
   }
@@ -343,7 +400,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
         const taskControl = admission.isNativeTaskControl(method, payload)
         const root = context.workspace?.root ?? (isGlobalRuntimeMethod(method) || taskControl ? '@profile' : '')
         if (!root) throw new DaemonError('E_DENIED', 'Runtime operations require an authenticated workspace grant.')
-    const bodyMethod = method as RuntimeBodyMethod
+        if (CONVERSATION_RUNTIME_METHODS.has(method)) {
+          if (!context.workspace || !context.native) throw new DaemonError('E_DENIED', 'Conversation access requires a protected desktop workspace.')
+          context.native.assertProduct()
+        }
+        const bodyMethod = method as RuntimeBodyMethod
         if (context.workspace && method !== 'runtime.workflowCutover' && method !== 'runtime.taskPreparation' && method !== 'runtime.taskExecution') observeWorkspace(root, context.workspace.revision)
         let value: unknown
         switch (method) {
@@ -426,7 +487,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             }
             admission.assertCommand(bodyMethod, context.commandId, input)
             if (mutation) {
-              value = method === 'runtime.workcopyUse' ? await action() : await commands.run(root, context.commandId as string, method, input, action,
+              value = method === 'runtime.workcopyUse' || method === 'runtime.conversationCreate' ? await action() : await commands.run(root, context.commandId as string, method, input, action,
                 preparation?.operation === 'prepare' && preparationAuthority
                   ? () => taskPreparation.authorizeRecovery(root, preparation, preparationAuthority) : undefined)
             } else value = await action()

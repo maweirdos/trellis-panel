@@ -1,11 +1,10 @@
 import { useState, type JSX } from 'react'
 import type { CruxTask, CruxTaskSharedMaterial } from '@shared/crux'
 import { conversationClient, conversationValue } from '../../../conversations/client'
+import { showPrivateConversation } from '../../../conversations/private-navigation'
 import { selectConversation } from '../../../conversations/workspace'
-import { useMy } from '../../../my/store'
 import { Button } from '../../../my/ui'
 import { MarkdownView } from '../../../components/MarkdownView'
-import { useApp } from '../../../store'
 import { useCrux } from '../../store'
 import { readTaskPostMaterial } from './task-post-documents'
 import { readTaskHandoffSource } from './task-handoff-source'
@@ -48,8 +47,7 @@ export function TaskHandoffProvenance({ task, source: parentSource, onOpenConver
         else {
           useCrux.getState().openTask(null)
           selectConversation(read.conversation)
-          useMy.getState().setShellView(read.conversation.kind === 'code' ? 'development' : 'collaboration')
-          useApp.getState().setPage('chat')
+          showPrivateConversation(read.conversation.kind)
         }
       }
     } catch (cause) { if (owner.owns(ticket)) setError(cause instanceof Error ? cause.message : String(cause)) }

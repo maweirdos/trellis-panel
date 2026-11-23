@@ -33,7 +33,7 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => {
       const reconciled = reconcileInbox(rawInbox, res.snapshot, rootPath)
       set({
         snapshot: res.snapshot,
-        ...(resetNavigation ? { page: 'dashboard' as const } : {}),
+        ...(resetNavigation ? { page: 'dashboard' as const, privateCodeChat: false } : {}),
         openTaskDir: null,
         taskExpandOrigin: null,
         inboxProjectRoot: rootPath,
@@ -130,11 +130,11 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => {
       set({ bootstrapped: true })
     },
 
-    openProjectPath: (root) => openProject(root, true),
+    openProjectPath: (root, options) => openProject(root, options?.keepPage !== true),
 
-    pickAndOpen: async () => {
+    pickAndOpen: async (options) => {
       const root = await api.pickProject()
-      if (root) await get().openProjectPath(root)
+      if (root) await get().openProjectPath(root, options)
     },
 
     closeProject: async () => {

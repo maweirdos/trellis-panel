@@ -1,10 +1,9 @@
 import type { DesignDocument, DesignSelection } from '@shared/design-workspace'
 import { useSyncExternalStore } from 'react'
 import { conversationClient, conversationValue } from '../conversations/client'
+import { showPrivateConversation } from '../conversations/private-navigation'
 import { editDraft, patchEntry, readConversation, requestComposerFocus, saveDraft, selectConversation, sessionRunning, useConversations } from '../conversations/workspace'
 import { projectRootKey } from '../my/navigation'
-import { useMy } from '../my/store'
-import { useApp } from '../store'
 import { requireDesignClient } from './client'
 import { useDesignNavigation } from './navigation'
 
@@ -24,8 +23,7 @@ export async function openDesignConversation(document: Pick<DesignDocument, 'id'
   const read = conversationValue(await client.read(document.conversationId))
   const key = selectConversation(read.conversation)
   useDesignNavigation.setState({ conversationTarget: { conversationId: document.conversationId, documentId: document.id, selection, token: crypto.randomUUID() } })
-  useMy.getState().setShellView(read.conversation.kind === 'code' ? 'development' : 'collaboration')
-  useApp.getState().setPage('chat')
+  showPrivateConversation(read.conversation.kind)
   requestComposerFocus(key)
 }
 

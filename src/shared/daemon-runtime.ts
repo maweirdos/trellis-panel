@@ -31,6 +31,15 @@ export const runtimeCursorSchema = z.object({ epoch: z.string().uuid(), sequence
 export type RuntimeCursor = z.infer<typeof runtimeCursorSchema>
 const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
+export const CONVERSATION_RUNTIME_METHODS: ReadonlySet<string> = new Set([
+  'runtime.conversationModels',
+  'runtime.conversationCreate',
+  'runtime.conversationList',
+  'runtime.conversationRead',
+  'runtime.conversationCommand',
+  'runtime.conversationEvents',
+])
+
 export const runtimeBodies = {
   'runtime.workflowCutover': nativeWorkflowCutoverRequestSchema,
   'runtime.taskPreparation': nativeTaskPreparationRequestSchema,
@@ -46,6 +55,20 @@ export const runtimeBodies = {
   'runtime.workcopyUse': workcopyUseRequestSchema,
   'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
   'runtime.cruxProgress': taskProgressNativeSchema,
+  'runtime.conversationModels': z.object({ instanceId: z.string().min(1).max(64).default('codex') }).strict(),
+  'runtime.conversationCreate': z.object({
+    title: z.string().max(500).optional(), text: z.string().min(1).max(120000).refine(text => text.trim().length > 0),
+    model: z.string().min(1).max(8192), instanceId: z.string().min(1).max(64),
+    commandId: z.string().uuid(), messageId: z.string().uuid().optional(),
+  }).strict(),
+  'runtime.conversationList': z.object({}).strict(),
+  'runtime.conversationRead': z.object({ threadId: z.string().min(1).max(200) }).strict(),
+  'runtime.conversationCommand': z.object({ commandId: z.string().uuid() }).strict(),
+  'runtime.conversationEvents': z.object({
+    threadId: z.string().min(1).max(200),
+    afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    limit: z.number().int().min(1).max(100).optional(),
+  }).strict(),
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
   'runtime.agents': z.object({ refresh: z.boolean().optional() }).strict(),
@@ -134,7 +157,7 @@ export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.workcopyUse',
   'runtime.workcopyCleanup',
   'runtime.knowledge',
-  'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
+  'runtime.conversationCreate', 'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
   'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.historyDelete', 'runtime.historyRegenerateTitle', 'runtime.setup', 'runtime.probe',
   'runtime.workflow.preview', 'runtime.workflow.start', 'runtime.workflow.stop', 'runtime.workflow.previewRevision', 'runtime.workflow.acceptRevision', 'runtime.workflow.cancelRevision'
 ]

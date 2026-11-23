@@ -7,6 +7,7 @@ import { ConversationListPreview, ConversationListRow, useConversationListPrevie
 import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../my/ui'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
+import { showPrivateConversation } from './private-navigation'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { conversationClient, conversationError, conversationValue } from './client'
 import { selectArchive, selectConversation, updateConversation, useConversations } from './workspace'
@@ -69,8 +70,7 @@ export function ConversationArchiveManager({ open, onClose }: { open: boolean; o
   const choose = (conversation: Conversation): void => {
     if (!active.current || !canInteract() || loading || useConversations.getState().managementBusy[conversation.id]) return
     hover.dismiss(); selectConversation(conversation)
-    useMy.getState().setShellView(conversation.kind === 'code' ? 'development' : 'collaboration')
-    onClose(); useApp.getState().setPage('chat')
+    onClose(); showPrivateConversation(conversation.kind)
   }
   const chooseLegacy = (id: string): void => {
     if (!active.current || !canInteract() || loading) return

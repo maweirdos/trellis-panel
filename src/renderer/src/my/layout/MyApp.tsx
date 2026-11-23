@@ -2,7 +2,7 @@
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
 import { clsx } from "clsx"
-import { ArrowUpRight, BookOpen, Briefcase, CircleHelp, Keyboard, ListTodo, Loader2, MessageCircle, X } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Briefcase, CircleHelp, Keyboard, ListTodo, MessageCircle, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { observeCollaborationWorkspace, useCrux } from '../../crux/store'
 import { observeDevelopmentNavigation } from '../../crux/local-work'
@@ -19,6 +19,7 @@ import { CreateIssueModal } from '../pages/work-items/CreateIssueModal'
 import { SpecPage } from '../../pages/Spec'
 import { PageFrame } from './PageFrame'
 import { PAGE_LAYOUTS, PageLayout } from './PageLayout'
+import { PageLoading } from './PageLoading'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { lazyPage } from '../../components/lazy-page'
 import { escLayerCount } from '../../utils/esc-layer'
@@ -48,7 +49,7 @@ const StudioPage = lazy(() => import('../../pages/Studio').then((m) => ({ defaul
 const ArchitecturePage = lazy(() => import('../../pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
 const ModelsPage = lazy(() => import('../../pages/Models').then((m) => ({ default: m.ModelsPage })))
 const GatewayPage = lazy(() => import('../../pages/Gateway').then((m) => ({ default: m.GatewayPage })))
-const ChatPage = lazyPage<Record<string, never>>(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
+const ChatPage = lazyPage<{ active: boolean }>(() => import('../../pages/Chat').then((m) => ({ default: m.ChatPage })))
 const AcpConsolePage = lazyPage<{ compact?: boolean }>(() => import('../../pages/AcpConsole').then((m) => ({ default: m.AcpConsolePage })))
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage').then((m) => ({ default: m.DevToolsPage })))
 const CruxApp = lazy(() => import('../../crux/CruxApp').then((m) => ({ default: m.CruxApp })))
@@ -60,14 +61,6 @@ function rememberModulePage(page: Page): void {
   const module = activeModule(page)
   const current = useMy.getState()
   if (current.modulePages[module] !== page) useMy.setState({ modulePages: { ...current.modulePages, [module]: page } })
-}
-
-function PageLoading(): JSX.Element {
-  return (
-    <div className="flex h-full w-full items-center justify-center text-my-tertiary">
-      <Loader2 size={18} className="animate-spin text-my-icon-tertiary" />
-    </div>
-  )
 }
 
 /** 保留功能、按外壳规范重绘的页面：框架提供顶栏，页面内部只输出内容 */
@@ -215,7 +208,7 @@ export function PageBody(): JSX.Element {
         <Suspense fallback={chatActive && outerInteractive ? <PageLoading /> : null}>
           <InteractionScope key={chatOwner ?? 'empty'} active={chatActive}>
             {chatOwner !== null && <div ref={(element) => { chatRef.current = element; if (element) element.inert = !chatActive || !outerInteractive }} data-chat-source-owner={chatOwner} hidden={!chatActive} aria-hidden={!chatActive || undefined} className="knowledge-discussion-content">
-              <ErrorBoundary key={`chat:${chatOwner}`}><PageLayout variant={PAGE_LAYOUTS.chat}><ChatPage /><StartupContentCommit active={chatActive} /></PageLayout></ErrorBoundary>
+              <ErrorBoundary key={`chat:${chatOwner}`}><PageLayout variant={PAGE_LAYOUTS.chat}><ChatPage active={chatActive && outerInteractive} /></PageLayout></ErrorBoundary>
             </div>}
           </InteractionScope>
         </Suspense>

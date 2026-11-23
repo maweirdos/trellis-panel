@@ -1,9 +1,8 @@
 import type { DesignWorkspaceApi, DesignCreateConversation } from '@shared/design-workspace'
 import { api, hasIpc } from '../api'
 import { conversationValue } from '../conversations/client'
+import { showPrivateConversation } from '../conversations/private-navigation'
 import { readConversation, requestComposerFocus, selectConversation } from '../conversations/workspace'
-import { useMy } from '../my/store'
-import { useApp } from '../store'
 
 export function designClient(): DesignWorkspaceApi | null {
   return hasIpc ? api.designWorkspace ?? null : null
@@ -18,8 +17,7 @@ export function requireDesignClient(): DesignWorkspaceApi {
 export async function startDesignConversation(input: DesignCreateConversation): Promise<void> {
   const read = conversationValue(await requireDesignClient().createConversation(input))
   const key = selectConversation(read.conversation)
-  useMy.getState().setShellView(read.conversation.kind === 'code' ? 'development' : 'collaboration')
-  useApp.getState().setPage('chat')
+  showPrivateConversation(read.conversation.kind)
   await readConversation(key)
   requestComposerFocus(key)
 }

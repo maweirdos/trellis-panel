@@ -7,6 +7,7 @@ import type { CruxTask } from '@shared/crux'
 import { useCrux } from '../crux/store'
 import { useMy } from '../my/store'
 import { useApp } from '../store'
+import { showPrivateConversation } from './private-navigation'
 import { ensureActorTaskConversation, isActorTaskConversation } from './task-navigation-core'
 
 export interface TaskConversationIntent {
@@ -78,8 +79,7 @@ export async function openTaskConversationFromPost(task: CruxTask, conversationI
   }
   emit()
   selectConversation(read.conversation)
-  useMy.getState().setShellView(read.conversation.kind === 'code' ? 'development' : 'collaboration')
-  useApp.getState().setPage('chat')
+  showPrivateConversation(read.conversation.kind)
 }
 
 export async function ensureTaskConversationFromPost(task: CruxTask, kind: 'work' | 'code' = 'work', current: () => boolean = () => true,

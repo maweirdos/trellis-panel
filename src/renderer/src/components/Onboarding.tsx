@@ -19,7 +19,7 @@ export function Onboarding(): JSX.Element {
         <h1 className="text-my-display font-semibold tracking-tight text-my-primary">工作台</h1>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button variant="primary" size="lg" onClick={() => useApp.getState().setPage('crux')}><Users size={17} />进入团队空间<ArrowRight size={15} /></Button>
-          <Button variant="outline" size="lg" onClick={pickAndOpen}><FolderOpen size={17} />打开本机项目</Button>
+          <Button variant="outline" size="lg" onClick={() => void pickAndOpen()}><FolderOpen size={17} />打开本机项目</Button>
         </div>
         {openError && <p role="alert" className="mt-3 rounded-my-md bg-my-danger-subtle p-3 text-my-sm text-my-danger-text">{openError}</p>}
       </section>

@@ -293,6 +293,7 @@ export function Dropdown({
     const target = entryRef.current === 'last' ? controls.at(-1)
       : entryRef.current === 'selected' ? controls.find((el) => el.matches('[aria-selected="true"], [data-selected="true"]')) ?? controls[0]
         : controls[0]
+    if (!target) return
     entryRef.current = null
     // Honor input autofocus supplied by an interactive custom view.
     if (!menu.contains(document.activeElement)) {

@@ -497,6 +497,14 @@ export const ipcInvoke = {
     openExternal: 'shell:openExternal',
     openLocalDocument: 'shell:openLocalDocument'
   },
+  conversation: {
+    models: 'conversation:models',
+    create: 'conversation:create',
+    list: 'conversation:list',
+    read: 'conversation:read',
+    command: 'conversation:command',
+    events: 'conversation:events',
+  },
   acp: {
     agents: 'acp:agents',
     sessions: 'acp:sessions',

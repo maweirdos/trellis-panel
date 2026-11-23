@@ -37,7 +37,8 @@ export function WorkspaceSidebar(): JSX.Element {
           const saved = remembered[item.id] ?? (item.id === 'home' ? remembered.tasks : undefined)
           const opensRoot = item.id === 'agents' || item.id === 'integrations'
           const target = opensRoot || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
-          if ((current !== item.id || opensRoot) && useApp.getState().page !== target) setPage(target)
+          const app = useApp.getState()
+          if ((current !== item.id || opensRoot) && (app.page !== target || target === 'chat' && app.privateCodeChat)) setPage(target)
         }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">

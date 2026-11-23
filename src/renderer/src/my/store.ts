@@ -147,6 +147,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   setTaskConversationTarget: (taskConversationTarget) => set({ taskConversationTarget }),
   shellView: prefs.shellView === 'development' ? 'development' : 'collaboration',
   setShellView: (shellView) => {
+    if (get().shellView !== shellView && useApp.getState().privateCodeChat) useApp.setState({ privateCodeChat: false })
     set({ shellView })
     savePrefs({ shellView })
   },

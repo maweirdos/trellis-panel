@@ -37,16 +37,19 @@ export function TitleBar(): JSX.Element {
   const openTaskDir = useApp((s) => s.openTaskDir)
   const teamContext = page === 'crux' && !openTaskDir
   const development = useMy((s) => s.shellView === 'development')
+  const privateCodeChat = useApp((s) => s.privateCodeChat)
+  const codeChat = development && page === 'chat' && !privateCodeChat
+  const codeNeedsProject = codeChat && !snapshot?.meta.root
   const personalTaskSource = useApp((s) => s.personalTaskSource)
   const domain = getPageNavigation(page).domain
   const privateCodeRoot = useConversations(state => {
-    if (page !== 'chat' || !development) return null
+    if (page !== 'chat' || !development || !privateCodeChat) return null
     const projectId = state.projectScopes[baseScopeKey('code')] ?? undefined
     const current = state.entries[state.selected[scopeKey('code', projectId)]]
     return current && !current.locked && current.kind === 'code' ? current.conversation?.workspace.root ?? current.directory?.path ?? null : null
   })
   const privateProjectTools = Boolean(privateCodeRoot && projectRootKey(privateCodeRoot) === projectRootKey(snapshot?.meta.root))
-  const codeTools = development && (privateProjectTools || Boolean(openTaskDir) || (
+  const codeTools = development && (codeChat || privateProjectTools || Boolean(openTaskDir) || (
     domain !== 'team' && domain !== 'settings' && domain !== 'automations' && domain !== 'integrations' && page !== 'chat' && page !== 'creations' &&
     (page !== 'tasks' || personalTaskSource !== 'team')
   ))
@@ -66,7 +69,7 @@ export function TitleBar(): JSX.Element {
         </div>
         <ShellViewSwitcher />
         <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('crux')} />
-        {hasContextNavigation(page) && <div className="no-drag my-header-collapse flex shrink-0 items-center">
+        {hasContextNavigation(page) && !codeNeedsProject && <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button id="shell-context-toggle" type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
               aria-expanded={!collapsed} onClick={toggleSidebar}
@@ -92,11 +95,11 @@ export function TitleBar(): JSX.Element {
         <div className="my-shell-project-controls">
           {page === 'chat' && privateCodeRoot ? <div className="relative my-shell-project-identity min-w-0">
             <Tooltip side="bottom" label={privateCodeRoot} wrap><span tabIndex={0} className="inline-flex min-w-0 max-w-full items-center gap-2 px-2 text-my-sm text-my-secondary" aria-label={`当前会话工程：${projectNameFromPath(privateCodeRoot)}`}><FolderOpen size={14} className="shrink-0" /><span className="my-project-switcher-name min-w-0 truncate">{projectNameFromPath(privateCodeRoot)}</span></span></Tooltip>
-          </div> : <><ProjectSwitcher /><div className="my-shell-development-scope"><DevelopmentScopeTag /></div></>}
-          <GitBranchControl />
+          </div> : <><ProjectSwitcher keepPage={codeChat} /><div className="my-shell-development-scope"><DevelopmentScopeTag /></div></>}
+          {!codeNeedsProject && <GitBranchControl />}
           {openError && <Tooltip side="bottom" label={openError} wrap><span role="status" tabIndex={0} className="my-header-project-error text-my-xs text-my-danger-text">工程打开失败</span></Tooltip>}
         </div>
-        <ApplicationPanel />
+        {!codeNeedsProject && <ApplicationPanel />}
       </div></InteractionScope>}
     </header>
   )

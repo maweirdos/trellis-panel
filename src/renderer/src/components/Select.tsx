@@ -1,4 +1,4 @@
-import { useRef, useId, type JSX, type ReactNode, type KeyboardEvent, type FocusEvent } from 'react'
+import { useRef, useId, type JSX, type ReactNode, type RefObject, type KeyboardEvent, type FocusEvent } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
 import { Dropdown } from '../my/ui'
@@ -26,6 +26,9 @@ export interface SelectProps<T extends string = string> {
   'aria-describedby'?: string
   title?: string
   onBlur?: () => void
+  onOpen?: () => void
+  emptyContent?: ReactNode
+  composerAnchor?: RefObject<HTMLElement>
 }
 
 /** Theme-aware replacement for platform-native select menus. */
@@ -42,6 +45,9 @@ export function Select<T extends string = string>({
   ariaLabel,
   title,
   onBlur,
+  onOpen,
+  emptyContent,
+  composerAnchor,
   ...restProps
 }: SelectProps<T>): JSX.Element {
   const autoId = useId()
@@ -86,6 +92,11 @@ export function Select<T extends string = string>({
     <Dropdown
       disabled={disabled}
       className={clsx('my-select-host min-w-0', fill && 'w-full', hostClasses)}
+      align={composerAnchor ? 'right' : undefined}
+      placement={composerAnchor ? 'top' : undefined}
+      gap={composerAnchor ? 8 : undefined}
+      width={composerAnchor ? 340 : undefined}
+      positionAnchorRef={composerAnchor}
       trigger={({ open, toggle }) => {
         return (
           <button
@@ -95,13 +106,17 @@ export function Select<T extends string = string>({
             autoFocus={autoFocus}
             disabled={disabled}
             title={title}
-            aria-label={finalAriaLabel}
+            aria-label={composerAnchor && finalAriaLabel && selectedOption ? `${finalAriaLabel}，当前 ${selectedOption.label}` : finalAriaLabel}
             aria-describedby={finalAriaDescribedBy}
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? `${id}-options` : undefined}
-            onClick={() => { searchRef.current = { text: '', at: 0 }; toggle() }}
-            className={clsx('my-select-trigger', fill && 'w-full', triggerLayoutClasses, size === 'sm' && 'my-select-trigger-sm')}
+            onClick={() => {
+              searchRef.current = { text: '', at: 0 }
+              if (!open) onOpen?.()
+              toggle()
+            }}
+            className={clsx(composerAnchor ? 'my-composer-control acp-composer-context acp-model-trigger px-1.5 py-1' : 'my-select-trigger', fill && 'w-full', triggerLayoutClasses, size === 'sm' && !composerAnchor && 'my-select-trigger-sm')}
           >
             <span className="my-select-value">
               {selectedOption?.dot && <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', selectedOption.dot)} />}
@@ -113,7 +128,9 @@ export function Select<T extends string = string>({
         )
       }}
     >
-      {(close) => (
+      {(close) => normalizedOptions.length === 0 && emptyContent ? (
+        <div id={`${id}-options`} className="px-3 py-1">{emptyContent}</div>
+      ) : (
         <div
           ref={menuRef}
           id={`${id}-options`}

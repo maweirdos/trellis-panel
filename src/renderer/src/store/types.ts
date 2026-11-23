@@ -71,8 +71,8 @@ export interface SessionSlice {
   openTaskDir: string | null
   openTaskArchived: boolean
   bootstrap: () => Promise<void>
-  openProjectPath: (root: string) => Promise<void>
-  pickAndOpen: () => Promise<void>
+  openProjectPath: (root: string, options?: { keepPage?: boolean }) => Promise<void>
+  pickAndOpen: (options?: { keepPage?: boolean }) => Promise<void>
   closeProject: () => Promise<void>
   refresh: () => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
@@ -91,6 +91,7 @@ export interface TaskExpandOrigin {
 export interface UiSlice {
   navigationRevision: number
   page: Page
+  privateCodeChat: boolean
   personalTaskSource: 'team' | 'local'
   setPersonalTaskSource: (source: 'team' | 'local') => void
   capsuleMode: boolean
@@ -108,7 +109,7 @@ export interface UiSlice {
   consumeSpecDocumentTarget: () => { projectRoot: string; path: string } | null
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
-  setPage: (p: Page) => void
+  setPage: (p: Page, options?: { privateCodeChat?: boolean }) => void
   setIntakeOpen: (on: boolean) => void
   /** 预览 → 完整工作区（记录来源页面与滚动位置）。 */
   expandTaskWorkspace: (origin: TaskExpandOrigin, materialPath?: string) => void

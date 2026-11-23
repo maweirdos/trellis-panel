@@ -113,7 +113,7 @@ export function KnowledgePage(): JSX.Element {
         <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="企业知识库">
           <h2 className="my-item-title">打开项目以读取企业知识库</h2>
           <p className="my-item-description">企业知识库使用项目配置的连接。团队已发布的文档可在左侧「团队知识库」查看。</p>
-          <Button variant="outline" onClick={pickAndOpen}>打开本机项目</Button>
+          <Button variant="outline" onClick={() => void pickAndOpen()}>打开本机项目</Button>
           {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
         </section>}</div>
     </div>

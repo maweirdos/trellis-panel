@@ -2,11 +2,10 @@ import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { ArrowUpRight, FileText, Loader2, RefreshCw } from 'lucide-react'
 import type { CreationPrivateSource } from '@shared/creations'
 import { conversationClient, conversationError, conversationValue } from '../conversations/client'
+import { showPrivateConversation } from '../conversations/private-navigation'
 import { selectConversation } from '../conversations/workspace'
 import { useCrux } from '../crux/store'
-import { useMy } from '../my/store'
 import { Button } from '../my/ui'
-import { useApp } from '../store'
 import { useInteractionGuard } from '../utils/interaction-scope'
 
 /** This owner-only clue never grants access; resolve the original conversation again. */
@@ -74,8 +73,7 @@ export function CreationSource({ source, disabled }: { source: CreationPrivateSo
       conversationValue(await client.readFile(source.conversationId, { fileId: file.id, expectedRevision: file.revision, expectedSourceIdentity: source.sourceIdentity }))
       if (!valid()) return
       selectConversation(read.conversation)
-      useMy.getState().setShellView(read.conversation.kind === 'code' ? 'development' : 'collaboration')
-      useApp.getState().setPage('chat')
+      showPrivateConversation(read.conversation.kind)
     } catch (cause) {
       if (valid()) setError(conversationError(cause))
     } finally {

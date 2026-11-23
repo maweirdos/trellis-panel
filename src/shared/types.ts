@@ -1413,6 +1413,13 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   jiraTransition: (cfg: JiraConfig, key: string, transitionId: string) => Promise<{ ok: boolean; error?: string }>
   jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>
 
+  /* --- 新版对话内核（T3 移植） --- */
+  conversationModels: (cwd: string) => Promise<{ ok: true; models: Array<{ id: string; displayName: string; isDefault: boolean }> } | IpcFail>
+  conversationCreate: (input: { cwd: string; title?: string; text: string; model: string; instanceId: string; commandId: string; messageId?: string }) => Promise<({ ok: true } & import('./conversation/desktop').ConversationCommandState) | IpcFail>
+  conversationList: (root: string) => Promise<{ ok: true; threads: unknown[] } | IpcFail>
+  conversationRead: (threadId: string, root: string) => Promise<{ ok: true; thread: unknown; messages: unknown[]; runs: unknown[]; asOfSequence: number } | IpcFail>
+  conversationEvents: (input: { cwd: string; threadId: string; afterSequence: number; limit?: number }) => Promise<{ ok: true; page: import('./conversation/desktop').ConversationEventPage } | IpcFail>
+  conversationCommand: (commandId: string, root: string) => Promise<{ ok: true; receipt: import('./conversation/desktop').ConversationCommandState | null } | IpcFail>
   /* --- ACP Agent 控制台 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>

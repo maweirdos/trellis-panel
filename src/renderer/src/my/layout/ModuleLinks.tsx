@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { Bot, BookOpen, Cloud, FileText, Hash, MessageSquare, MessagesSquare } from 'lucide-react'
+import { Bot, BookOpen, Cloud, FileText, Hash, MessageSquare, MessagesSquare, Sparkles } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import type { AgentView, KnowledgeView } from '../navigation'
@@ -19,7 +19,7 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
   const setKnowledgeView = useMy((state) => state.setKnowledgeView)
   const requestAgentView = useMy((state) => state.requestAgentView)
   const agent = (view: AgentView): void => {
-    if (useApp.getState().page === 'acp' && onAgentView) onAgentView(view)
+    if (useApp.getState().page === 'acp' && view !== 'native' && onAgentView) onAgentView(view)
     else { requestAgentView(view); if (useApp.getState().page !== 'acp') setPage('acp') }
   }
   const knowledge = (view: KnowledgeView): void => {
@@ -29,12 +29,16 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
   const row = (key: string, label: string, selected: boolean, icon: JSX.Element, action: () => void): JSX.Element => (
     <button key={key} type="button" className={contextButtonClass(selected)} aria-current={selected ? 'page' : undefined} onClick={action}>{icon}{label}</button>
   )
-  const route = (target: Page, label: string, icon: JSX.Element): JSX.Element => row(target, label, page === target, icon, () => { if (useApp.getState().page !== target) setPage(target) })
+  const route = (target: Page, label: string, icon: JSX.Element): JSX.Element => row(target, label, page === target, icon, () => {
+    const app = useApp.getState()
+    if (app.page !== target || target === 'chat' && app.privateCodeChat) setPage(target)
+  })
   return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="shrink-0 space-y-0.5 border-b border-my-line px-2 py-2">
     {domain === 'agents' ? <>
       {route('chat', '对话', <MessagesSquare size={16} />)}
       {hasProject && <>
-      {row('conversation', '工程对话', page === 'acp' && agentView !== 'roles', <MessageSquare size={16} />, () => agent('conversation'))}
+      {row('conversation', '工程对话', page === 'acp' && (agentView === 'conversation' || !agentView), <MessageSquare size={16} />, () => agent('conversation'))}
+      {row('native', '原生对话', page === 'acp' && agentView === 'native', <Sparkles size={16} />, () => agent('native'))}
       {row('roles', '角色', page === 'acp' && agentView === 'roles', <Bot size={16} />, () => agent('roles'))}
       {route('channels', '频道', <Hash size={16} />)}
       </>}

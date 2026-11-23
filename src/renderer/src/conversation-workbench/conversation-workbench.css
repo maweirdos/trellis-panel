@@ -1,0 +1,58 @@
+.conversation-workbench {
+  background: var(--my-bg-canvas);
+}
+
+.conversation-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-16);
+}
+
+.conversation-messages > .my-feedback {
+  margin: 0;
+}
+
+.conversation-message {
+  min-width: 0;
+}
+
+.conversation-message-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--my-space-8) var(--my-space-14);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-3);
+}
+
+.conversation-message-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-model-name {
+  max-width: min(26cqw, var(--my-space-224));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-composer-toolbar {
+  justify-content: flex-end;
+}
+
+.my-root .conversation-composer:has(textarea:focus-visible) {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: calc(var(--my-space-2) * -1);
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .my-root .conversation-workbench > .my-context-region {
+    grid-template-columns: 0;
+    overflow: visible;
+  }
+
+  .conversation-workbench .acp-navigation:not(.is-open) {
+    display: none;
+  }
+}

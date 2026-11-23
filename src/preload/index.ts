@@ -581,6 +581,12 @@ const api = {
   onCliOutput: (cb: (e: RunEvent) => void) => subscribe(ipcEvent.cliOutput, cb),
   onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe(ipcEvent.cliDone, cb),
 
+  conversationModels: (cwd: string) => ipcRenderer.invoke(ipcInvoke.conversation.models, cwd),
+  conversationCreate: (input: Parameters<TrellisApi['conversationCreate']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.create, input),
+  conversationList: (root: string) => ipcRenderer.invoke(ipcInvoke.conversation.list, root),
+  conversationRead: (threadId: string, root: string) => ipcRenderer.invoke(ipcInvoke.conversation.read, threadId, root),
+  conversationEvents: (input: Parameters<TrellisApi['conversationEvents']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.events, input),
+  conversationCommand: (commandId: string, root: string) => ipcRenderer.invoke(ipcInvoke.conversation.command, commandId, root),
   acpAgents: () => ipcRenderer.invoke(ipcInvoke.acp.agents),
   acpSessions: () => ipcRenderer.invoke(ipcInvoke.acp.sessions),
   acpHistoryList: (input?: Parameters<TrellisApi['acpHistoryList']>[0]) => ipcRenderer.invoke(ipcInvoke.acp.historyList, input),

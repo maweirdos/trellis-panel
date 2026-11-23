@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import { z } from 'zod'
-import { RUNTIME_BULK, runtimeWireSchema, type RuntimeBody, type RuntimeBodyMethod, type RuntimeBlob, type RuntimeWire, runtimeCursorSchema, type RuntimeCursor } from '../../../shared/daemon-runtime'
+import { CONVERSATION_RUNTIME_METHODS, RUNTIME_BULK, runtimeWireSchema, type RuntimeBody, type RuntimeBodyMethod, type RuntimeBlob, type RuntimeWire, runtimeCursorSchema, type RuntimeCursor } from '../../../shared/daemon-runtime'
 import type { DaemonStatus, WorkspaceGrant } from '../../../shared/daemon'
 import { daemonClientContext } from './manager'
 import { DaemonError } from '../../daemon/errors'
@@ -217,7 +217,7 @@ export async function nativeDomainCall<T>(root: string, method: DaemonMethod, bo
       const preparation = nativeTaskPreparationRequestSchema.parse(body)
       if (preparation.operation === 'prepare') await withDesktopTeamService(service => service.authorizeTaskProgress(preparation.pin.connectionId))
     }
-    client = await connect(dedicated, method.startsWith('feishu.workspace.') || method.startsWith('runtime.private') || method === 'runtime.command' || method === 'runtime.workflowCutover' || method.startsWith('runtime.taskExecution') || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
+    client = await connect(dedicated, method.startsWith('feishu.workspace.') || method.startsWith('runtime.private') || CONVERSATION_RUNTIME_METHODS.has(method) || method === 'runtime.command' || method === 'runtime.workflowCutover' || method.startsWith('runtime.taskExecution') || method === 'runtime.taskPreparation' || method === 'runtime.cruxProgress' || method === 'runtime.workcopyUse' || method === 'runtime.workcopyCleanup')
     if (isCurrent && !isCurrent()) throw new DaemonError('E_CONFLICT', '来源项目或请求已改变；尚未授权后台工作区。')
     workspace = workcopyCleanup || taskControl ? undefined : await scope(client, root, isCurrent, !dedicated)
     const input = await upload(client, workspace, body, dedicated)

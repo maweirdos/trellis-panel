@@ -17,6 +17,8 @@ export interface RuntimeLifecyclePorts {
   materialTimers: Map<string, ReturnType<typeof setTimeout>>
   watchers: Map<string, import('chokidar').FSWatcher>
   conversationProjections: { close(): void }
+  /** The new conversation kernel owns Codex child processes and must release them on quit. */
+  conversation: { shutdown(): Promise<void>; activityCount(): number; ownsWorkspace(within: (path: string) => boolean): boolean }
   stopKnowledgeReads(): void
   processRecoveryReady: Promise<void>
   disposeEvents(): void
@@ -86,7 +88,7 @@ export class LifecycleService {
   ) {}
 
   activity(): DaemonActivity {
-    const snapshot = projectDaemonActivity(this.ports.acp.listOwnedAcpSessionFacts(), this.state.operations() + this.ports.commands.count())
+    const snapshot = projectDaemonActivity(this.ports.acp.listOwnedAcpSessionFacts(), this.state.operations() + this.ports.commands.count() + this.ports.conversation.activityCount())
     return this.state.sessionAdmissions() && snapshot.state === 'idle' ? { ...snapshot, state: 'interruptible' } : snapshot
   }
 
@@ -106,7 +108,7 @@ export class LifecycleService {
       admission: this.state.closed() || authority !== 'daemon' ? 'closed' : 'open',
       sessions: this.ports.acp.listOwnedAcpSessionFacts().length,
       workflows: await this.ports.workflow.countOwned(),
-      operations: this.ports.commands.count(),
+      operations: this.ports.commands.count() + this.ports.conversation.activityCount(),
       released: this.state.released(),
       ...(reason ? { reason } : {}),
     }
@@ -127,6 +129,7 @@ export class LifecycleService {
       ...workflows > 0 ? [{ domain: 'workflow' as const, state: 'active' as const, label: `Owned workflows (${workflows})` }] : [],
       ...this.state.operations() > 0 ? [{ domain: 'application' as const, state: 'active' as const, label: `Runtime operations (${this.state.operations()})` }] : [],
       ...this.ports.commands.count() > 0 ? [{ domain: 'application' as const, state: 'unknown' as const, label: 'Pending runtime command receipts' }] : [],
+      ...this.ports.conversation.activityCount() > 0 ? [{ domain: 'runtime' as const, state: 'active' as const, label: '原生会话运行中' }] : [],
       ...this.ports.taskProgress.busy() ? [{ domain: 'application' as const, state: 'active' as const, label: 'Task progress work' }] : [],
       ...this.ports.taskExecutions.busy() ? [{ domain: 'application' as const, state: 'active' as const, label: 'Native task execution' }] : [],
       ...this.ports.workcopies.agentLeases().map(({ token, ...use }) => ({
@@ -161,7 +164,7 @@ export class LifecycleService {
     const sessions = this.ports.acp.listOwnedAcpSessionFacts()
     if (
       this.state.closed() || this.state.released() || this.state.stopping() || this.state.operations() || this.ports.commands.count()
-      || workflows || this.ports.taskProgress.busy() || this.ports.taskExecutions.busy() || this.ports.workcopies.facts().length
+      || workflows || this.ports.taskProgress.busy() || this.ports.taskExecutions.busy() || this.ports.conversation.activityCount() || this.ports.workcopies.facts().length
       || sessions.some(session => sessionActivity(session) !== 'idle')
     ) {
       throw new DaemonError('E_BUSY', 'Original native sessions, preparation, workflow or unfinished operations still own background work.')
@@ -180,7 +183,9 @@ export class LifecycleService {
     this.closeAdmission()
     this.ports.stopKnowledgeReads()
     const stopping = (async () => {
+      // Stop the conversation kernel first: closing its app-servers releases pending turn waits.
       const results = await Promise.allSettled([
+        this.ports.conversation.shutdown(),
         this.ports.taskExecutions.shutdown(),
         this.ports.workflow.shutdownAll(),
         (async () => {
@@ -221,6 +226,7 @@ export class LifecycleService {
       return delta === '' || !isAbsolute(delta) && delta !== '..' && !delta.startsWith('../') && !delta.startsWith('..\\')
     }
     return this.ports.taskExecutions.ownsWorkspace(root)
+      || this.ports.conversation.ownsWorkspace(within)
       || this.ports.commands.count() > 0
       || this.ports.workcopyFacts(root).length > 0
       || this.ports.acp.listOwnedAcpSessionFacts().some(session => within(session.projectRoot) || session.cwd !== null && within(session.cwd))
