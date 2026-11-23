@@ -1543,3 +1543,34 @@ T3 ACP v2 客户端接管活路径，规范覆盖发送回执、配置选项、�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 48: A · Code 原生 Codex 首条会话
+<!-- trellis-session: v=2 fp=6b8d898b2e13fd51 -->
+
+**Date**: 2026-11-24
+**Task**: A · Code 原生 Codex 首条会话
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+普通 Code 接入新版会话库存储、实例注册、事件续读和 Windows Job。真实 Codex 首发、失败后换模型、同回执重开及进程清理通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5327d6cc68eb6c41dbfbe5a576c47269c06327b4` | feat(conversation): ship native Codex first-thread flow |
+
+### Testing
+
+- [OK] GPT-6.2-Sol 单次样本：上屏 14 ms，持久受理 38 ms，引擎收件 1051 ms，首字 5210 ms，完成 5569 ms。重开原用户消息一条、引擎新 Job 为零。
+- [OK] check:acpx、typecheck、build、check:ui、postinstall、git diff --check、dist:dir 及打包后台启停通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- B 命令与队列、C 原生驱动、D 内置 Pi 按依赖并行推进。
