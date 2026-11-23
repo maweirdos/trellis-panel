@@ -18,7 +18,7 @@ function canonicalExecutable(input: string): string {
   if (!isAbsolute(input) || /^[a-z]:[\\/]/i.test(input) === false || input.startsWith('\\\\')) {
     throw new LocalProviderValidationError('可执行文件必须使用本地盘符绝对路径')
   }
-  let lexical = resolve(input)
+  const lexical = resolve(input)
   let real: string
   try {
     const link = lstatSync(lexical)
@@ -28,7 +28,8 @@ function canonicalExecutable(input: string): string {
     if (error instanceof LocalProviderValidationError) throw error
     throw new LocalProviderValidationError('可执行文件不存在或不可读取')
   }
-  if (real !== lexical) throw new LocalProviderValidationError('拒绝链接或 junction 路径')
+  const samePath = process.platform === 'win32' ? real.toLowerCase() === lexical.toLowerCase() : real === lexical
+  if (!samePath) throw new LocalProviderValidationError('拒绝链接或 junction 路径')
   if (process.platform === 'win32' && !WINDOWS_EXECUTABLE_EXTENSIONS.has(extname(lexical).toLowerCase())) {
     throw new LocalProviderValidationError('Windows 仅支持 .exe、.cmd 或 .bat 可执行文件')
   }
@@ -67,14 +68,14 @@ function normalize(input: unknown): AcpLocalProviderSaveInput {
   return acpLocalProviderSaveSchema.parse(input)
 }
 
-export function listLocalProviders(): AcpLocalProviderRecord[] {
-  return structuredClone(readLocalProviderStore().providers)
+export function listLocalProviders(userData: string): AcpLocalProviderRecord[] {
+  return structuredClone(readLocalProviderStore(userData).providers)
 }
 
-export function saveLocalProvider(input: unknown): { ok: true; provider: AcpLocalProviderRecord } | IpcFail {
+export function saveLocalProvider(userData: string, input: unknown): { ok: true; provider: AcpLocalProviderRecord } | IpcFail {
   try {
     const value = normalize(input)
-    const store = readLocalProviderStore()
+    const store = readLocalProviderStore(userData)
     if (RESERVED_PROVIDER_IDS.has(value.agentId.toLowerCase())) return ipcFail(IpcErrorCode.InvalidArg, '本地 provider 不能覆盖内置执行引擎 ID')
     if (store.providers.some(item => item.agentId.toLowerCase() === value.agentId.toLowerCase() && item.id !== value.id)) return ipcFail(IpcErrorCode.Conflict, '本地 provider agent ID 与现有记录冲突')
     if (value.argv.some(arg => /\0/.test(arg))) return ipcFail(IpcErrorCode.InvalidArg, '启动参数不能包含空字节')
@@ -99,23 +100,23 @@ export function saveLocalProvider(input: unknown): { ok: true; provider: AcpLoca
     else store.providers.push(record)
     if (new Set(store.providers.map(item => item.id)).size !== store.providers.length) return ipcFail(IpcErrorCode.Conflict, 'provider ID 已存在')
     if (new Set(store.providers.map(item => item.agentId)).size !== store.providers.length) return ipcFail(IpcErrorCode.Conflict, 'provider agent ID 已存在')
-    writeLocalProviderStore(store)
+    writeLocalProviderStore(userData, store)
     return { ok: true, provider: structuredClone(record) }
   } catch (error) {
     return ipcFail(IpcErrorCode.InvalidArg, error instanceof Error ? error.message : '本地 provider 保存失败')
   }
 }
 
-export function deleteLocalProvider(id: string): { ok: true } | IpcFail {
-  const store = readLocalProviderStore()
+export function deleteLocalProvider(userData: string, id: string): { ok: true } | IpcFail {
+  const store = readLocalProviderStore(userData)
   const next = store.providers.filter(item => item.id !== id)
   if (next.length === store.providers.length) return ipcFail(IpcErrorCode.NotFound, '本地 provider 不存在')
-  writeLocalProviderStore({ schemaVersion: 1, providers: next })
+  writeLocalProviderStore(userData, { schemaVersion: 1, providers: next })
   return { ok: true }
 }
 
-export function resolveAdmittedLocalProvider(id: string): AcpLocalProviderRecord {
-  const provider = readLocalProviderStore().providers.find(item => item.id === id)
+export function resolveAdmittedLocalProvider(userData: string, id: string): AcpLocalProviderRecord {
+  const provider = readLocalProviderStore(userData).providers.find(item => item.id === id)
   if (!provider || provider.schemaVersion !== 1) throw new LocalProviderValidationError('本地 provider 不存在或记录不可读取')
   if (!provider.enabled) throw new LocalProviderValidationError('本地 provider 已停用')
   validateSavedProviderRecordShape(provider)
@@ -125,9 +126,11 @@ export function resolveAdmittedLocalProvider(id: string): AcpLocalProviderRecord
   return provider
 }
 
-export function validateLocalProviderSnapshot(runtime: { id?: string; launchKind?: string; executable?: string; args?: string[]; env?: Array<{ key: string; value: string }> }): AcpLocalProviderRecord | undefined {
+type LocalProviderSnapshot = { id?: string; launchKind?: string; executable?: string; args?: string[]; env?: Array<{ key: string; value: string }> }
+
+export function validateLocalProviderSnapshot(userData: string, runtime: LocalProviderSnapshot): AcpLocalProviderRecord | undefined {
   if (runtime.launchKind !== 'local') return undefined
-  const provider = resolveAdmittedLocalProvider(runtime.id ?? '')
+  const provider = resolveAdmittedLocalProvider(userData, runtime.id ?? '')
   const sameLaunch = provider.executable === runtime.executable
     && JSON.stringify(provider.argv) === JSON.stringify(runtime.args ?? [])
     && JSON.stringify(provider.env) === JSON.stringify(runtime.env ?? [])
@@ -135,8 +138,8 @@ export function validateLocalProviderSnapshot(runtime: { id?: string; launchKind
   return provider
 }
 
-export function localProviderLaunchEnvironment(runtime: { id?: string; launchKind?: string; executable?: string; args?: string[]; env?: Array<{ key: string; value: string }> }): Record<string, string> {
-  const provider = validateLocalProviderSnapshot(runtime)
+export function localProviderLaunchEnvironment(userData: string, runtime: LocalProviderSnapshot): Record<string, string> {
+  const provider = validateLocalProviderSnapshot(userData, runtime)
   if (!provider) throw new LocalProviderValidationError('本地 provider 定义无效')
   return providerEnv(provider)
 }

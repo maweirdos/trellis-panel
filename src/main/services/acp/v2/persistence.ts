@@ -10,6 +10,7 @@ const recordSchema = z.object({
   recordId: uuid,
   sessionKey: z.string().min(1).max(1000),
   cwd: z.string().min(1).max(4096),
+  projectRoot: z.string().min(1).max(4096).optional(),
   launch: z.object({ argv: z.array(z.string()).max(256), envDigest: z.string().length(64) }),
   negotiated: z.object({ protocolVersion: z.literal(2), agent: z.object({ name: z.string(), title: z.string().nullable(), version: z.string() }).strict(), capabilities: z.record(z.string(), z.unknown()) }).strict(),
   nativeSessionId: z.string().min(1).max(1000),
@@ -67,7 +68,7 @@ export class AcpV2FileStore implements AcpV2NativeStore {
     const records: AcpV2NativeRecord[] = []
     for (const name of readdirSync(this.stateDir)) {
       if (!name.endsWith('.json')) continue
-      const record = this.loadSync(name.slice(0, -5))
+      const record = this.readProjectionRecord(name.slice(0, -5))
       if (record !== undefined) records.push(record)
       if (records.length >= limit) break
     }
@@ -76,6 +77,14 @@ export class AcpV2FileStore implements AcpV2NativeStore {
 
   async load(recordId: string): Promise<AcpV2NativeRecord | undefined> {
     return this.loadSync(recordId)
+  }
+
+  readProjectionRecord(recordId: string): AcpV2NativeRecord | undefined {
+    try { return this.loadSync(recordId) }
+    catch (error) {
+      if (error instanceof SyntaxError || error instanceof z.ZodError) return undefined
+      throw error
+    }
   }
 
   loadSync(recordId: string): AcpV2NativeRecord | undefined {

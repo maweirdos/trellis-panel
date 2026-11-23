@@ -87,6 +87,200 @@
 .acp-unified-tuning-options > button:disabled { color: var(--my-txt-disabled); cursor: default; }
 .acp-unified-tuning-options > button:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 
+/* Crux × T3 Card 41 & 42: Split-Trigger & Quick Ruler */
+.acp-split-trigger-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-transparent);
+  border: 1px solid var(--my-border-subtle);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+}
+.acp-split-trigger-pill:hover,
+.acp-split-trigger-pill[aria-expanded='true'] {
+  border-color: var(--my-border-strong);
+  background: var(--my-bg-layer-transparent-hover);
+}
+.acp-split-trigger-left {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  height: 100%;
+  padding: 0 var(--my-space-6) 0 var(--my-space-8);
+  border: 0;
+  background: transparent;
+  color: var(--my-txt-primary);
+  font-size: inherit;
+  font-weight: var(--my-weight-medium);
+  cursor: pointer;
+  border-radius: var(--my-radius-base);
+}
+.acp-split-trigger-left:hover {
+  background: var(--my-bg-layer-transparent-hover);
+}
+.acp-split-trigger-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--my-border-subtle);
+  flex: none;
+}
+.acp-split-trigger-right-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+.acp-split-trigger-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+  height: 100%;
+  padding: 0 var(--my-space-8) 0 var(--my-space-6);
+  border: 0;
+  background: transparent;
+  color: var(--my-txt-secondary);
+  font-size: inherit;
+  cursor: pointer;
+  border-radius: var(--my-radius-base);
+  transition: color var(--my-motion-fast) var(--my-ease-out);
+}
+.acp-split-trigger-right:hover {
+  color: var(--my-txt-primary);
+  background: var(--my-bg-layer-transparent-hover);
+}
+.acp-eff-glyph {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+}
+.acp-eff-glyph i {
+  display: block;
+  width: 2px;
+  height: 4px;
+  border-radius: 0;
+  background: var(--my-border-strong);
+}
+.acp-eff-glyph i:nth-child(2) { height: 7px; }
+.acp-eff-glyph i:nth-child(3) { height: 10px; }
+.acp-eff-glyph i.on {
+  background: var(--my-txt-primary);
+}
+
+.acp-quick-ruler {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--my-space-6));
+  z-index: var(--my-z-tooltip);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-2);
+  height: 28px;
+  padding: var(--my-space-2);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-elevated);
+  border: 1px solid var(--my-border-subtle);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-200);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px) scale(0.97);
+  transform-origin: right bottom;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-snappy);
+}
+.acp-quick-ruler::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+.acp-split-trigger-right-wrap:hover .acp-quick-ruler,
+.acp-split-trigger-right-wrap:focus-within .acp-quick-ruler {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+.acp-quick-ruler-btn {
+  height: 22px;
+  min-height: 22px;
+  padding: 0 var(--my-space-6);
+  border: 0;
+  border-radius: var(--my-radius-base);
+  background: transparent;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-2xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+.acp-quick-ruler-btn:hover:not([aria-pressed='true']) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+.acp-quick-ruler-btn[aria-pressed='true'] {
+  background: var(--my-bg-layer-2-active);
+  color: var(--my-txt-primary);
+  font-weight: var(--my-weight-medium);
+}
+
+/* Dedicated tuning dock above footer */
+.acp-unified-tuning-dock {
+  display: grid;
+  gap: var(--my-space-4);
+  padding: var(--my-space-6) var(--my-space-10);
+  border-top: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-canvas);
+  flex-shrink: 0;
+}
+.acp-unified-tuning-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--my-text-2xs);
+  color: var(--my-txt-tertiary);
+}
+.acp-unified-eff-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-2);
+  padding: var(--my-space-2);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-1);
+  border: 1px solid var(--my-border-subtle);
+}
+.acp-unified-eff-btn {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 var(--my-space-4);
+  border: 0;
+  border-radius: var(--my-radius-base);
+  background: transparent;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-2xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+.acp-unified-eff-btn:hover:not([aria-pressed='true']) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+.acp-unified-eff-btn[aria-pressed='true'] {
+  background: var(--my-bg-panel);
+  color: var(--my-txt-primary);
+  font-weight: var(--my-weight-medium);
+  box-shadow: var(--my-shadow-raised-100);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .acp-unified-picker-pill, .acp-unified-rail-btn, .acp-unified-model-select, .acp-unified-star-btn, .acp-unified-tune-btn, .acp-unified-footer-btn { transition: none; }
+  .acp-unified-picker-pill, .acp-unified-rail-btn, .acp-unified-model-select, .acp-unified-star-btn, .acp-unified-tune-btn, .acp-unified-footer-btn, .acp-split-trigger-pill, .acp-quick-ruler-btn, .acp-unified-eff-btn { transition: none; }
 }

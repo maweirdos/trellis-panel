@@ -104,11 +104,9 @@ export default defineConfig(({ command }) => ({
         input: { index: resolve(__dirname, 'src/main/bootstrap.ts') },
         // externalizeDepsPlugin v5 仅外置 dependencies；electron 位于 devDependencies，
         // 不显式 external 会把 npm 包 index.js 打进产物（运行时误触二进制下载逻辑）
-        // Keep acpx's public CommonJS export and package-relative owner paths intact.
-        // Bundling its ESM branch rewrites import.meta.resolve and breaks packaged launches.
         // These sibling bundles are emitted by bundleMainRole in closeBundle.
         // Resolve them from the emitted bootstrap at runtime, not from src/main.
-        external: ['electron', /^acpx(?:\/|$)/, './gui.js', './gui-scope.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],
+        external: ['electron', './gui.js', './gui-scope.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],
         output: { format: 'cjs', entryFileNames: '[name].js' }
       }
     }

@@ -1,25 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { app } from 'electron'
+import { dirname, isAbsolute, join } from 'node:path'
 import { acpLocalProviderStoreSchema, type AcpLocalProviderRecord } from '../../../shared/acp-provider-ecosystem'
 
-function ensureWithinUserData(path: string): string {
-  const root = resolve(app.getPath('userData'))
-  const target = resolve(path)
-  const contained = process.platform === 'win32'
-    ? target === root || target.toLowerCase().startsWith(`${root.toLowerCase()}\\`)
-    : target === root || target.startsWith(`${root}/`)
-  if (!contained) throw new Error('本地 Provider 数据必须保存在应用数据目录')
-  return target
+function providerStorePath(userData: string): string {
+  if (!isAbsolute(userData)) throw new Error('本地 Provider 数据必须保存在应用数据目录')
+  return join(userData, 'acp', 'providers.json')
 }
 
-export function providerStorePath(): string {
-  return join(app.getPath('userData'), 'acp', 'providers.json')
-}
-
-export function readLocalProviderStore(): { schemaVersion: 1; providers: AcpLocalProviderRecord[] } {
-  const path = ensureWithinUserData(providerStorePath())
+export function readLocalProviderStore(userData: string): { schemaVersion: 1; providers: AcpLocalProviderRecord[] } {
+  const path = providerStorePath(userData)
   if (!existsSync(path)) return { schemaVersion: 1, providers: [] }
   const store = acpLocalProviderStoreSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
   if (new Set(store.providers.map(provider => provider.id.toLowerCase())).size !== store.providers.length) throw new Error('本地 provider 存储存在重复 ID')
@@ -27,8 +17,8 @@ export function readLocalProviderStore(): { schemaVersion: 1; providers: AcpLoca
   return store
 }
 
-export function writeLocalProviderStore(store: { schemaVersion: 1; providers: AcpLocalProviderRecord[] }): void {
-  const path = ensureWithinUserData(providerStorePath())
+export function writeLocalProviderStore(userData: string, store: { schemaVersion: 1; providers: AcpLocalProviderRecord[] }): void {
+  const path = providerStorePath(userData)
   const temporary = `${path}.${process.pid}-${randomUUID()}.tmp`
   mkdirSync(dirname(path), { recursive: true })
   try {

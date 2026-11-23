@@ -3,6 +3,7 @@
   border: 1px solid var(--my-border-user-message);
   border-radius: var(--my-radius-lg);
   background: var(--my-bg-user-message);
+  box-shadow: var(--my-surface-rim);
   color: var(--my-txt-chat);
 }
 .acp-user-message { position: relative; }
@@ -40,8 +41,10 @@
   line-height: var(--my-line-document);
   text-align: left;
   cursor: pointer;
+  transition: color var(--my-motion-fast), background var(--my-motion-fast), transform var(--my-dur-micro) var(--my-ease-snappy);
 }
 .acp-turn-process-toggle:hover { color: var(--my-txt-primary); background: var(--my-bg-layer-transparent-hover); }
+.acp-turn-process-toggle:active { transform: scale(var(--my-tactile-press-scale)); }
 .acp-turn-process-toggle:disabled { color: var(--my-txt-tertiary); background: transparent; cursor: default; }
 .acp-turn-process-toggle:focus-visible { outline: var(--my-space-2) solid var(--my-border-accent-subtle); outline-offset: var(--my-space-2); }
 .acp-turn-process-toggle>svg:first-child { box-sizing: border-box; width: var(--my-space-20); height: var(--my-space-20); padding: var(--my-space-3); flex: 0 0 var(--my-space-20); stroke-width: 1.6; }

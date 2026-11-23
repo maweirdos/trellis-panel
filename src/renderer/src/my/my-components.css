@@ -98,7 +98,29 @@
   font-size: var(--my-text-sm);
   font-weight: var(--my-weight-medium);
   white-space: nowrap;
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  transition: transform var(--my-dur-micro) var(--my-ease-snappy), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root :is(
+  .my-control,
+  .my-icon-control,
+  .my-composer-control,
+  .my-segment,
+  .my-nav-item,
+  .collab-nav-item,
+  .my-menu-item,
+  .my-select-option,
+  .my-tab,
+  .my-tab-item,
+  .acp-agent-card,
+  .acp-header-task,
+  .acp-add-action,
+  .task-pill,
+  button.my-card,
+  a.my-card[href],
+  .my-card[role='button']
+):active:not(:disabled):not([aria-disabled='true']):not([aria-haspopup='true']) {
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+  transition: transform var(--my-dur-micro) var(--my-ease-snappy);
 }
 .my-root .my-control-sm { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); gap: var(--my-space-4); }
 .my-root .my-control-lg { height: var(--my-control-height-lg); }
@@ -177,7 +199,7 @@
   background: color-mix(in oklab, var(--my-bg-elevated) 88%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: var(--my-shadow-overlay-200);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-overlay-200);
 }
 .my-root .my-menu > .my-scrollbar { min-height: 0; flex-shrink: 1; }
 .my-root .my-menu-item {
@@ -288,7 +310,7 @@
 /* Disabled buttons swallow pointer events; pass them through so the tooltip anchor still sees hover/focus. */
 .my-root .my-tooltip-anchor > button:disabled { pointer-events: none; }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
-.my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-4xl); background: var(--my-bg-panel); box-shadow: var(--my-shadow-overlay-200); }
+.my-root .my-modal-panel { max-width: 100%; border: 1px solid var(--my-border-subtle-1); border-radius: var(--my-radius-4xl); background: var(--my-bg-panel); box-shadow: var(--my-surface-rim), var(--my-shadow-overlay-200); }
 .my-root .my-modal-fullscreen-backdrop { padding: 0; }
 .my-root .my-modal-fullscreen-panel { max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .my-root .my-checkbox { width: var(--my-checkbox-size); height: var(--my-checkbox-size); border-radius: var(--my-radius-sm); }
@@ -316,7 +338,7 @@
 .my-root .my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-search-input { height: var(--my-control-height); padding-block: 0; padding-left: var(--my-space-28); font-size: var(--my-text-sm); }
 .my-root .my-search-input-sm { height: var(--my-control-height-sm); }
-.my-root .my-card { border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-panel); }
+.my-root .my-card { border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-lg); background: var(--my-bg-panel); box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100); }
 .my-root :is(button.my-card, a.my-card[href], .my-card[role='button']) { transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out); }
 .my-root :is(button.my-card, a.my-card[href], .my-card[role='button']):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-panel-header); border-color: var(--my-border-strong); }
 .my-root :is(button.my-card, a.my-card[href], .my-card[role='button']):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-2-active); }
@@ -343,4 +365,146 @@
 .my-root .my-peek-in { animation: my-peek-in var(--my-motion-normal) var(--my-ease-out); }
 @media (prefers-reduced-motion: reduce) {
   .my-root *, .my-root *::before, .my-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+
+.my-root .my-fade-scroll {
+  scrollbar-gutter: stable;
+  mask-image: linear-gradient(to bottom, transparent, black var(--my-space-16), black calc(100% - var(--my-space-16)), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--my-space-16), black calc(100% - var(--my-space-16)), transparent);
+}
+
+/* Card 06: 长按蓄能防误触按钮 (Hold to Confirm) */
+.my-root .my-hold-confirm-btn {
+  position: relative;
+  overflow: visible;
+  user-select: none;
+  touch-action: none;
+}
+.my-root .my-hold-confirm-btn.is-pressing {
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+}
+.my-root .my-hold-confirm-ring {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  pointer-events: none;
+  overflow: visible;
+}
+.my-root .my-hold-confirm-ring rect {
+  fill: none;
+  stroke: var(--my-txt-accent-primary);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 420ms linear;
+}
+.my-root .my-hold-confirm-btn.my-button-danger .my-hold-confirm-ring rect {
+  stroke: var(--my-txt-danger-primary);
+}
+.my-root .my-hold-confirm-btn.is-committed .my-hold-confirm-ring rect {
+  stroke: var(--my-txt-success-primary);
+  transition: none;
+}
+
+/* Card 23: 敏感信息窥视与只读锁定 (Secret Peek) */
+.my-root .my-secret-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  padding: var(--my-space-4) var(--my-space-8);
+  border-radius: var(--my-radius-base);
+  border: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-layer-1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--my-text-xs);
+  box-shadow: var(--my-surface-rim);
+}
+.my-root .my-secret-val {
+  filter: blur(5px);
+  user-select: none;
+  transition: filter var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-secret-row:hover .my-secret-val,
+.my-root .my-secret-row.is-peeking .my-secret-val,
+.my-root .my-secret-row:focus-within .my-secret-val {
+  filter: none;
+  user-select: text;
+}
+.my-root .my-secret-action {
+  opacity: 0.65;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-secret-row:hover .my-secret-action,
+.my-root .my-secret-row:focus-within .my-secret-action {
+  opacity: 1;
+}
+
+/* Card 12: 线程语义微动效（同心波轻叩波纹与晃动） */
+.my-root .my-knock-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.my-root .my-knock-dot {
+  width: var(--my-space-8);
+  height: var(--my-space-8);
+  border-radius: var(--my-radius-round);
+  background: var(--my-txt-warning-primary);
+}
+.my-root .my-knock-wave {
+  position: absolute;
+  inset: -3px;
+  border-radius: var(--my-radius-round);
+  border: 1.5px solid var(--my-border-warning-strong);
+  animation: my-knock-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes my-knock-pulse {
+  0% { transform: scale(0.7); opacity: 0.85; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.my-root .my-shake {
+  animation: my-shake-anim 260ms ease both;
+}
+@keyframes my-shake-anim {
+  20%, 60% { transform: translateX(-2px); }
+  40%, 80% { transform: translateX(2px); }
+}
+
+
+/* Global surface rim integration for physical depth */
+.my-root :is(
+  .my-dialog-content,
+  .my-dropdown,
+  .acp-agent-card,
+  .wf-panel,
+  .wf-stage,
+  .my-shell-view-switcher .my-control[aria-pressed='true'],
+  pre:has(> code)
+) {
+  box-shadow: var(--my-surface-rim);
+}
+
+:root[data-alt-held='true'] .my-secret-val,
+.my-root[data-alt-held='true'] .my-secret-val,
+body[data-alt-held='true'] .my-secret-val {
+  filter: none !important;
+  user-select: text !important;
+}
+
+.my-root :is(.my-input, .my-select-trigger)[aria-invalid='true'] {
+  animation: my-shake-anim 260ms ease both;
+}
+
+
+.my-root .my-menu-item-hold {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+.my-root .my-menu-item-hold.is-pressing {
+  background: color-mix(in oklab, var(--my-txt-danger-primary) 18%, transparent) !important;
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
 }

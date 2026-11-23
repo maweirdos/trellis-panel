@@ -1422,7 +1422,7 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   acpHistoryRegenerateTitle: (sessionId: string) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
   onAcpHistoryChanged: (callback: (event: { projectRoot: string; sessionId: string; deleted?: boolean }) => void) => () => void
   acpHistorySession: (sessionId: string) => Promise<{ ok: true; version: 1; session: import('./acp-history').AcpHistorySummary } | IpcFail>
-  acpHistoryEvents: (sessionId: string, input?: { before?: string; after?: string; limit?: number }) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
+  acpHistoryEvents: (sessionId: string, input?: import('./acp-history').AcpHistoryEventsInput) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
   acpConversationListSnapshot: (input?: import('./acp-projections').AcpConversationListInput) => Promise<import('./acp-projections').AcpConversationListSnapshot | IpcFail>
   acpConversationDetailSnapshot: (sessionId: string) => Promise<import('./acp-projections').AcpConversationDetailSnapshot | IpcFail>
   acpConversationEvents: (sessionId: string, input?: { after?: number; limit?: number }) => Promise<import('./acp-projections').AcpConversationEventPage | IpcFail>
@@ -1847,6 +1847,7 @@ export interface AcpSourceReference {
 }
 
 export interface AcpPromptOptions {
+  promptRequestId?: string
   expectedConnectionGeneration?: string
   expectedProjectGeneration?: number
   expectedKnowledgeScopeToken?: string

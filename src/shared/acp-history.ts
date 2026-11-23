@@ -34,9 +34,11 @@ export interface AcpTitleProvenance {
 export const acpHistoryEventsInputSchema = z.object({
   before: z.string().max(4096).optional(),
   after: z.string().max(4096).optional(),
+  tail: z.string().min(1).max(4096).optional(),
   // Soft event target: a complete conversational turn may exceed it.
   limit: z.number().int().min(1).max(500).optional()
-}).optional()
+}).refine(input => [input.before, input.after, input.tail].filter(Boolean).length <= 1).optional()
+export type AcpHistoryEventsInput = NonNullable<z.infer<typeof acpHistoryEventsInputSchema>>
 
 export type AcpHistoryCoverageState = 'complete' | 'unknown' | 'partial'
 export interface AcpHistoryCoverage {
@@ -81,6 +83,7 @@ export interface AcpHistoryEventPage {
   events: Array<TimelineEvent & { historySeq?: number }>
   beforeCursor: string | null
   afterCursor: string | null
+  resumeCursor?: string
   hasEarlier: boolean
   hasLater: boolean
   /** The saved source lacks a confirmed turn opening; normal paging never cuts one. */

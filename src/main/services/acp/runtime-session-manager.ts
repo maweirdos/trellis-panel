@@ -1,6 +1,9 @@
+import { app } from 'electron'
+import * as Effect from 'effect/Effect'
 import type { AcpAgentConfig, AcpSessionStatus } from '../../../shared/types'
 import { resolveAdmittedLocalProvider } from './local-providers'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
+import { make as makeKeyedLock } from './t3-core/keyed-lock'
 
 export type AcpRuntimeReleaseReason =
   | 'turn-settled'
@@ -178,7 +181,7 @@ export function boundedProviderFamily(value: string): AcpRuntimeProviderFamily {
 
 function providerFamily(runtime: AcpAgentConfig | undefined, fallbackAgentId: string): AcpRuntimeProviderFamily {
   if (runtime?.launchKind === 'local') {
-    try { return boundedProviderFamily(resolveAdmittedLocalProvider(runtime.id).agentId) }
+    try { return boundedProviderFamily(resolveAdmittedLocalProvider(app.getPath('userData'), runtime.id).agentId) }
     catch { return 'unknown' }
   }
   const runtimeId = runtime?.id ?? fallbackAgentId
@@ -278,6 +281,8 @@ export function runtimeErrorDetailCode(error: unknown): AcpRuntimeTelemetryDetai
 }
 
 export class RuntimeSessionManager {
+  private readonly releaseLock = Effect.runSync(makeKeyedLock<AcpRuntimeProviderFamily>())
+
   constructor(
     private readonly owners: () => Iterable<AcpRuntimeCapacityOwnerView>,
     private readonly reservations: () => Iterable<AcpRuntimeReservationView>,
@@ -301,10 +306,9 @@ export class RuntimeSessionManager {
   reserve(family: AcpRuntimeProviderFamily, excludedSessionId?: string): AcpRuntimeCapacityDecision {
     const owners = [...this.owners()]
     const reservedKeys = this.reservations()
-    let familyUsageValue = familyUsage(family, owners, reservedKeys)
-    while (familyUsageValue.active + familyUsageValue.reserved >= familyUsageValue.limit) {
-      const claimedForFamily = [...this.capacityReleaseClaims.values()].find(claim => claim.providerFamily === family)
-      if (claimedForFamily) {
+    const familyUsageValue = familyUsage(family, owners, reservedKeys)
+    if (familyUsageValue.active + familyUsageValue.reserved >= familyUsageValue.limit) {
+      if (this.hasCapacityReleaseClaim(family)) {
         return { ...ipcFail(IpcErrorCode.Busy, `${family} 运行连接正在释放，输入已保留，请稍后重试`), family: familyUsageValue, capacityReason: 'capacity-reserved' as const }
       }
       const candidates = owners.filter(owner => owner.sessionId !== excludedSessionId && owner.providerFamily === family)
@@ -336,6 +340,28 @@ export class RuntimeSessionManager {
 
   release(owner: AcpRuntimeCapacityOwnerView, context: AcpRuntimeReleaseContext): AcpRuntimeReleaseResult {
     return classifyRuntimeRelease(owner, context)
+  }
+
+  withReleaseLock<T>(family: AcpRuntimeProviderFamily, release: () => Promise<T>): Promise<T> {
+    return Effect.runPromise(this.releaseLock.withLock(family, Effect.tryPromise({ try: release, catch: error => error })))
+  }
+
+  releaseIfStillIdle(
+    candidate: AcpRuntimeCapacityOwnerView,
+    currentOwner: () => AcpRuntimeCapacityOwnerView | undefined,
+    release: () => Promise<void>,
+  ): Promise<void> {
+    return this.withReleaseLock(candidate.providerFamily, async () => {
+      if (this.hasCapacityReleaseClaim(candidate.providerFamily)) return
+      const current = currentOwner()
+      if (current === undefined || current.lastUsedAt !== candidate.lastUsedAt || current.providerFamily !== candidate.providerFamily
+        || releaseBlocked(current) !== undefined) return
+      await release()
+    })
+  }
+
+  private hasCapacityReleaseClaim(family: AcpRuntimeProviderFamily): boolean {
+    return [...this.capacityReleaseClaims.values()].some(claim => claim.providerFamily === family)
   }
 
   completeCapacityReleaseClaim(candidateId: string): void {

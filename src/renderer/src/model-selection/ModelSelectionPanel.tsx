@@ -137,6 +137,9 @@ export function ModelSelectionPanel({
   const descriptionId = useId()
   const tuningId = useId()
   const hasFooterActions = Boolean(defaultAction || onOpenModelSettings || onOpenRuntimeSettings || recoveryActions.length > 0 || triggerLoading)
+  const currentTuningChoice = tuning?.options.find((opt) => opt.value === tuning.value) ?? tuning?.options[0]
+  const tuningShortLabel = currentTuningChoice?.label ?? ''
+  const isHighTuning = ['高', '极高', '最高', 'high', 'xhigh', 'max'].some((k) => tuningShortLabel.toLowerCase().includes(k))
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const filteredOptions = useMemo(() => {
@@ -172,33 +175,95 @@ export function ModelSelectionPanel({
       layoutKey={loading ? 'loading' : `${runtimes.length}:${options.length}`}
       disabled={disabled}
       positionAnchorRef={positionAnchorRef}
-      trigger={({ toggle, open }) => (
-        <button
-          ref={triggerRef}
-          type="button"
-          className="acp-composer-context acp-model-trigger my-composer-control acp-unified-picker-pill"
-          aria-expanded={open}
-          aria-haspopup="true"
-          aria-label="选择模型"
-          aria-describedby={descriptionId}
-          onClick={() => {
-            if (!open) {
-              setQuery('')
-              setActiveTab('all')
-              setRecentList(loadRecentModels())
-              setFavorites(loadFavorites())
-              setTuningOpen(false)
-            }
-            toggle()
-          }}
-        >
-          {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
-          {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
-          <span className="acp-unified-pill-text">{triggerLabel}</span>
-          <span id={descriptionId} className="sr-only">{triggerDescription}</span>
-          <ChevronDown size={11} className="opacity-60" aria-hidden="true" />
-        </button>
-      )}
+      trigger={({ toggle, open }) => {
+        const handleClick = () => {
+          if (!open) {
+            setQuery('')
+            setActiveTab('all')
+            setRecentList(loadRecentModels())
+            setFavorites(loadFavorites())
+            setTuningOpen(false)
+          }
+          toggle()
+        }
+        if (tuning && tuning.options.length > 0) {
+          return (
+            <div
+              className="acp-composer-context acp-model-trigger my-composer-control acp-split-trigger-pill"
+              aria-expanded={open}
+            >
+              <button
+                ref={triggerRef}
+                type="button"
+                className="acp-split-trigger-left"
+                aria-haspopup="true"
+                aria-label="选择模型"
+                aria-describedby={descriptionId}
+                onClick={handleClick}
+              >
+                {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
+                {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
+                <span className="acp-unified-pill-text">{triggerLabel}</span>
+                <span id={descriptionId} className="sr-only">{triggerDescription}</span>
+              </button>
+              <span className="acp-split-trigger-divider" aria-hidden="true" />
+              <div className="acp-split-trigger-right-wrap">
+                <button
+                  type="button"
+                  className="acp-split-trigger-right"
+                  aria-label={`${tuning.label}：${tuningShortLabel}，点击展开`}
+                  onClick={handleClick}
+                >
+                  <span className="acp-eff-glyph" aria-hidden="true">
+                    <i className="on" />
+                    <i className={['中', 'medium', '高', '极高', '最高', 'high', 'xhigh', 'max'].some((k) => tuningShortLabel.toLowerCase().includes(k)) ? 'on' : ''} />
+                    <i className={isHighTuning ? 'on' : ''} />
+                  </span>
+                  <span>{tuningShortLabel}</span>
+                  <ChevronDown size={10} className="opacity-60" aria-hidden="true" />
+                </button>
+                {!open && (
+                  <div className="acp-quick-ruler" role="group" aria-label={`快捷调整${tuning.label}`}>
+                    {tuning.options.map((choice) => (
+                      <button
+                        key={choice.value}
+                        type="button"
+                        className="acp-quick-ruler-btn"
+                        aria-pressed={choice.value === tuning.value}
+                        disabled={tuning.disabled}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          tuning.onChange(choice.value)
+                        }}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        }
+        return (
+          <button
+            ref={triggerRef}
+            type="button"
+            className="acp-composer-context acp-model-trigger my-composer-control acp-unified-picker-pill"
+            aria-expanded={open}
+            aria-haspopup="true"
+            aria-label="选择模型"
+            aria-describedby={descriptionId}
+            onClick={handleClick}
+          >
+            {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
+            {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
+            <span className="acp-unified-pill-text">{triggerLabel}</span>
+            <span id={descriptionId} className="sr-only">{triggerDescription}</span>
+            <ChevronDown size={11} className="opacity-60" aria-hidden="true" />
+          </button>
+        )
+      }}
     >
       {(close) => (
         <div className="acp-unified-picker-panel">
@@ -331,6 +396,29 @@ export function ModelSelectionPanel({
               )}
             </div>
           </div>
+
+          {tuning && tuning.options.length > 0 && (
+            <div className="acp-unified-tuning-dock">
+              <div className="acp-unified-tuning-dock-head">
+                <span>{tuning.label}</span>
+                <span className="font-semibold text-my-primary">{currentTuningChoice?.label}</span>
+              </div>
+              <div className="acp-unified-eff-rail" role="group" aria-label={tuning.label}>
+                {tuning.options.map((choice) => (
+                  <button
+                    key={choice.value}
+                    type="button"
+                    className="acp-unified-eff-btn"
+                    aria-pressed={choice.value === tuning.value}
+                    disabled={tuning.disabled}
+                    onClick={() => tuning.onChange(choice.value)}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {hasFooterActions && <div className="acp-unified-picker-footer">
             {onOpenModelSettings && (

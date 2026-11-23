@@ -253,8 +253,26 @@ export default function App(): JSX.Element {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat) return
       if (e.key === 'Escape' && dispatchEscKey()) e.preventDefault()
     }
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') document.documentElement.dataset.altHeld = 'true'
+    }
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (e.key === 'Alt') delete document.documentElement.dataset.altHeld
+    }
+    const onBlur = (): void => {
+      delete document.documentElement.dataset.altHeld
+    }
     window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onEsc)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+      delete document.documentElement.dataset.altHeld
+    }
   }, [docMode, capsuleMode, quickTodoMode])
 
   useLayoutEffect(() => {

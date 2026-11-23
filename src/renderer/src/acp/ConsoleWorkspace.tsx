@@ -103,7 +103,6 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const [activeId, setActiveId] = useState<string | null>(null)
   const history = useConversationHistory(root, activeId)
   const projection = useConversationProjection(root, activeId)
-  const projectionCache = projection.details
   const [events, setEvents] = useState<Record<string, TimelineEvent[]>>({})
   const [view, setView] = useState<WorkspaceView>('agents')
   const [input, setInput] = useState('')
@@ -239,10 +238,11 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const composerImages = useComposerImages({ root, sessionId: view === 'conversation' ? activeId ?? undefined : undefined, generation: activeSession?.connectionGeneration, isCurrent })
   const activeSelection = useRef({ id: activeId, generation: activeSession?.connectionGeneration, view })
   activeSelection.current = { id: activeId, generation: activeSession?.connectionGeneration, view }
-  const projectionEvents = useMemo(() => {
-    const result: Record<string, TimelineEvent[]> = {}
-    for (const [sessionId, detail] of projectionCache) {
-      result[sessionId] = detail.turnItems.map((entry) => {
+  const projectionItems = projection.detail?.turnItems
+  const projectionConversation = projection.detail?.conversation
+  const projectionEvents = useMemo<TimelineEvent[]>(() => {
+    if (!projectionConversation) return []
+    return (projectionItems ?? []).map((entry) => {
         const occurredAt = entry.occurredAt
         const payload = entry.item.kind === 'user-message' || entry.item.kind === 'assistant-message' || entry.item.kind === 'reasoning' || entry.item.kind === 'plan' || entry.item.kind === 'status' || entry.item.kind === 'diagnostic' || entry.item.kind === 'system-marker' || entry.item.kind === 'usage'
           ? { text: entry.item.text }
@@ -252,9 +252,9 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
         return {
           id: entry.sourceEventId,
           ts: occurredAt,
-          source: detail.conversation.sourceEngine,
-          sessionId,
-          projectRoot: detail.conversation.root,
+          source: projectionConversation.sourceEngine,
+          sessionId: projectionConversation.sourceSessionId,
+          projectRoot: projectionConversation.root,
           kind: entry.item.kind === 'user-message' || entry.item.kind === 'assistant-message'
             ? 'message'
             : entry.item.kind === 'reasoning' ? 'thought' : entry.item.kind === 'tool-call' ? 'tool-call' : entry.item.kind === 'permission' ? 'permission' : entry.item.kind === 'plan' ? 'plan' : entry.item.kind === 'image' ? 'message' : 'session-status',
@@ -262,10 +262,8 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
           payload: { ...(entry.item.kind === 'user-message' ? { role: 'user' } : entry.item.kind === 'assistant-message' ? { role: 'assistant' } : {}), ...payload },
           turnId: entry.turnId,
         }
-      })
-    }
-    return result
-  }, [projectionCache, projection.version])
+    })
+  }, [projectionItems, projectionConversation])
   useLayoutEffect(() => {
     const intent = newComposerFocus.current
     if (!intent) return
@@ -291,10 +289,14 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     return () => { document.removeEventListener('pointerdown', cancelFocus, true); document.removeEventListener('keydown', cancelFocus, true) }
   }, [])
   const activeEvents = useMemo(() => {
-    const pending = activeSession ? pendingSends[activeSession.sessionId] : undefined
-    const cached = activeSession ? projectionEvents[activeSession.sessionId] ?? [] : []
-    const recorded = activeSession ? mergeEvents(history.events[activeSession.sessionId] ?? [], cached) : []
-    return activeSession ? mergeEvents(recorded, [...(events[activeSession.sessionId] ?? []), ...(pending ? [pending.event] : [])]) : []
+    if (!activeSession) return []
+    const id = activeSession.sessionId
+    const pending = pendingSends[id]
+    const archived = history.events[id]
+    const recorded = archived?.length ? archived : projectionEvents
+    const acknowledged = pending && archived?.some(event => event.kind === 'message' && event.payload?.role === 'user'
+      && event.payload.promptRequestId === pending.requestId && event.connectionGeneration === pending.event.connectionGeneration)
+    return mergeEvents(recorded, [...(events[id] ?? []), ...(pending && !acknowledged ? [pending.event] : [])])
   }, [events, history.events, activeSession, pendingSends, projectionEvents])
   const projectedEvents = useMemo(() => activeSession ? partitionConversationEvents(activeEvents, activeSession) : { transcript: [], background: [] }, [activeEvents, activeSession])
   const items = useMemo(() => compileItems(projectedEvents.transcript), [projectedEvents.transcript])
@@ -477,7 +479,8 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
       if (knownGeneration && event.connectionGeneration && knownGeneration !== event.connectionGeneration) return
       if (event.kind === 'message' && event.payload?.role === 'user' && event.turnId && event.connectionGeneration) {
         const pending = pendingSendsRef.current[id]
-        if (pending && (!pending.turnId || pending.turnId === event.turnId) && pending.event.connectionGeneration === event.connectionGeneration) {
+        if (pending && event.payload.promptRequestId === pending.requestId && (!pending.turnId || pending.turnId === event.turnId)
+          && pending.event.connectionGeneration === event.connectionGeneration) {
           pendingSendsRef.current = { ...pendingSendsRef.current }; delete pendingSendsRef.current[id]; setPendingSends(pendingSendsRef.current)
         }
       }
@@ -706,6 +709,21 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     scope.sendControllers.set(id, controller)
     const valid = (): boolean => isCurrent() && !controller.signal.aborted && scope.sendControllers.get(id) === controller
     const clearRequest = (): void => changeTurnRequest(id, (current) => current?.requestId === request.requestId ? undefined : current)
+    const updateDelivery = (delivery: 'preparing' | 'sent' | 'unknown', turnId?: string): void => {
+      const pending = pendingSendsRef.current[id]
+      if (pending?.requestId !== request.requestId) return
+      pendingSendsRef.current = { ...pendingSendsRef.current, [id]: {
+        ...pending, turnId,
+        event: { ...pending.event, turnId, connectionGeneration: request.connectionGeneration, payload: { ...pending.event.payload, delivery } },
+      } }
+      setPendingSends(pendingSendsRef.current)
+    }
+    const markDeliveryUnknown = (message: string): void => {
+      clearRequest()
+      updateDelivery('unknown')
+      setFeedback(previous => ({ ...previous, [id]: { error: true, text: message } }))
+    }
+    let dispatched = false
     // Explicit submission returns to the current turn. Later passive updates
     // still obey onScroll if the reader chooses to leave the bottom again.
     earlierAnchor.current = null; followRef.current = true; setAtBottom(true)
@@ -756,16 +774,14 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
         knowledgeOptions = { expectedProjectGeneration: projectGeneration, expectedKnowledgeScopeToken: selectionToken, knowledgeReferences: submittedKnowledge.map((item) => item.kind === 'project' ? { kind: 'project', relativePath: item.relativePath, displayedRevision: item.displayedRevision } : { kind: 'source', sourceId: item.id, contentHash: item.contentHash }) }
       }
       if (!valid()) return
-      const response = await api.acpSessionPrompt(id, text, { expectedConnectionGeneration: target.connectionGeneration, sourceReferences: deliveryReferences, images: submittedImages, ...knowledgeOptions })
+      updateDelivery('preparing')
+      dispatched = true
+      const response = await api.acpSessionPrompt(id, text, { promptRequestId: request.requestId, expectedConnectionGeneration: target.connectionGeneration, sourceReferences: deliveryReferences, images: submittedImages, ...knowledgeOptions })
       if (!isCurrent()) return
       const generation = scope.states.get(id)?.connectionGeneration ?? sessionsRef.current.find((session) => session.sessionId === id)?.connectionGeneration
-      if (generation !== request.connectionGeneration) { clearRequest(); return }
+      if (generation !== request.connectionGeneration) { markDeliveryUnknown('会话连接已变化，已保留待确认消息。'); return }
       if (response.ok) {
-        const pending = pendingSendsRef.current[id]
-        if (pending?.requestId === request.requestId) {
-          pendingSendsRef.current = { ...pendingSendsRef.current, [id]: { requestId: request.requestId, turnId: response.turnId, event: { ...pending.event, turnId: response.turnId, connectionGeneration: request.connectionGeneration, payload: { ...pending.event.payload, delivery: 'sent' } } } }
-          setPendingSends(pendingSendsRef.current)
-        }
+        updateDelivery('sent', response.turnId)
         changeTurnRequest(id, (current) => {
           if (current?.requestId !== request.requestId) return current
           const turnId = current.turnId ?? response.turnId
@@ -773,6 +789,8 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
         })
         composerImages.consume(id, submittedImages)
         setFeedback((previous) => ({ ...previous, [id]: { error: false, text: '' } }))
+      } else if (response.code === 'E_UNKNOWN') {
+        markDeliveryUnknown(response.error ?? '发送状态未知，已保留待确认消息。')
       } else {
         clearRequest()
         const restoreExact = draftsRef.current[id] === '' && JSON.stringify(readKnowledgeReferences(root, id)) === '[]' && (draftReferencesRef.current[id] === undefined || draftReferencesRef.current[id].length === 0)
@@ -788,9 +806,9 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
       }
     } catch (error) {
       if (isCurrent()) {
-        clearRequest()
-        if (controller.signal.aborted) setFeedback((previous) => ({ ...previous, [id]: { error: true, text: '发送已中止，当前状态未知。已保留待确认消息，不会自动重发。' } }))
+        if (dispatched || controller.signal.aborted) markDeliveryUnknown('暂时无法确认是否送达，已保留待确认消息。')
         else {
+          clearRequest()
           const restoreExact = draftsRef.current[id] === '' && JSON.stringify(readKnowledgeReferences(root, id)) === '[]' && (draftReferencesRef.current[id] === undefined || draftReferencesRef.current[id].length === 0)
           if (restoreExact) {
             draftsRef.current[id] = submittedDraft; draftReferencesRef.current[id] = submittedReferences
@@ -1138,7 +1156,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
           {view === 'conversation' && activeSession && activeSession.status !== 'starting' && !['prepare-send', 'resume', 'recover-model'].includes(operations[activeSession.sessionId]) && <span role="status" className={clsx('acp-session-status inline-flex items-center gap-1 text-my-sm', STATUS_COLOR[activeSession.status])}>{activeSession.status === 'error' ? '当前未连接' : SESSION_LABEL[activeSession.status]}</span>}
           {view === 'conversation' && activeSession && <><button type="button" className="acp-header-task my-icon-control" title={boundTask?.record?.title ?? activeSession.taskDir ?? '查看任务与材料'} aria-label="查看任务与材料" onClick={() => openTask()}><Folder size={16} /></button><button type="button" className="my-icon-control" title="会话配置与材料" aria-label="会话配置与材料" onClick={() => openAgent()}><Settings2 size={16} /></button></>}
           {view !== 'conversation' && <Button size="sm" variant="ghost" title="执行引擎与本机环境" onClick={() => { showView('agents'); setEngineSetupOpen((current) => !current) }}><Settings2 size={15} /></Button>}
-          {!canEndSession && !(view === 'conversation' && activeSession) ? <Button size="sm" variant="ghost" className="acp-refresh-control" aria-label="刷新会话" title="刷新会话" onClick={() => { void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}><RefreshCw size={14} className={loading || history.loading ? 'animate-spin' : ''} />刷新</Button> : activeSession && <Dropdown align="right" width={256} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>{(close) => <><DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}>刷新</DropdownItem><DropdownItem icon={<ArrowRightLeft size={14} />} onClick={() => { close(); openRuntimeHandoff() }}>用另一个 Runtime 接续</DropdownItem><DropdownItem icon={<FileText size={14} />} onClick={() => { close(); openKnowledge() }}>项目知识与来源</DropdownItem><DropdownItem icon={<Activity size={14} />} onClick={() => { close(); openProjectActivity() }}>项目活动</DropdownItem>{canEndSession && <DropdownItem danger icon={<X size={14} />} disabled={managedComposerBlocked || operations[activeSession.sessionId] === 'kill' || operations[activeSession.sessionId] === 'cancel'} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}</>}</Dropdown>}
+          {!canEndSession && !(view === 'conversation' && activeSession) ? <Button size="sm" variant="ghost" className="acp-refresh-control" aria-label="刷新会话" title="刷新会话" onClick={() => { void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}><RefreshCw size={14} className={loading || history.loading ? 'animate-spin' : ''} />刷新</Button> : activeSession && <Dropdown align="right" width={256} trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="更多会话操作" aria-expanded={open} onClick={toggle}><Ellipsis size={17} /></button>}>{(close) => <><DropdownItem icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />} onClick={() => { close(); void reloadSessions(); void history.refresh(); history.reloadSelected(); void reloadCatalogue() }}>刷新</DropdownItem><DropdownItem icon={<ArrowRightLeft size={14} />} onClick={() => { close(); openRuntimeHandoff() }}>用另一个 Runtime 接续</DropdownItem><DropdownItem icon={<FileText size={14} />} onClick={() => { close(); openKnowledge() }}>项目知识与来源</DropdownItem><DropdownItem icon={<Activity size={14} />} onClick={() => { close(); openProjectActivity() }}>项目活动</DropdownItem>{canEndSession && <DropdownItem danger holdToConfirm icon={<X size={14} />} disabled={managedComposerBlocked || operations[activeSession.sessionId] === 'kill' || operations[activeSession.sessionId] === 'cancel'} onClick={() => { close(); void sessionAction('kill') }}>结束当前会话</DropdownItem>}</>}</Dropdown>}
         </>}
       />
       {(loadError || history.error) && <div role="alert" className="acp-notice">{loadError || history.error}<button className="ml-3 underline" onClick={() => { void reloadCatalogue(); void reloadSessions(); void history.refresh(); history.reloadSelected() }}>重试加载</button></div>}
@@ -1192,22 +1210,24 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
         </div></div>
         {!atBottom && <div className="acp-scroll-to-bottom-container"><Button size="sm" variant="outline" className="acp-scroll-to-bottom-btn" onClick={(event) => { const element = streamRef.current; earlierAnchor.current = null; followRef.current = true; if (element) { if (document.activeElement === event.currentTarget) element.focus({ preventScroll: true }); element.scrollTop = element.scrollHeight }; setAtBottom(true); writeSessionView(root, activeSession.sessionId, { follow: true }) }}><ArrowDown size={12} aria-hidden="true" />回到最新</Button></div>}
         {(!isReadOnly || activeSession.historyPersistence?.state === 'degraded' || (workflow.available && activeSession.taskDir)) && <footer className="acp-composer-region my-conversation-column">
-          <WorkflowPanel root={root} taskDir={activeSession.taskDir ?? ''} session={activeSession} controller={workflow} onOpenHistory={openWorkflowHistory} />
-          {(!handoffEnded || activeSession.cleanupRequired || activeSession.historyPersistence?.state === 'degraded') && <ConnectionRecovery
-            session={activeSession}
-            message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error}
-            reportedByTurn={!feedback[activeSession.sessionId]?.error && isRecordedTurnFailure(activeEvents, activeSession, activeSession.error)}
-            pending={operations[activeSession.sessionId]}
-            onRetry={() => void sessionAction('resume')}
-            onCleanup={() => void sessionAction('kill')}
-            onRetryHistory={() => void retryHistory()}
-            onNew={() => openNewConversation()}
-            onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }}
-            onChooseModel={isReadOnly || handoffComposerBlocked || managedComposerBlocked ? undefined : () => {
-              const trigger = modelTrigger.current
-              if (canInteract() && trigger?.getAttribute('aria-expanded') === 'false') trigger.click()
-            }}
-          />}
+          <div className="acp-composer-banner-stack">
+            <WorkflowPanel root={root} taskDir={activeSession.taskDir ?? ''} session={activeSession} controller={workflow} onOpenHistory={openWorkflowHistory} />
+            {(!handoffEnded || activeSession.cleanupRequired || activeSession.historyPersistence?.state === 'degraded') && <ConnectionRecovery
+              session={activeSession}
+              message={feedback[activeSession.sessionId]?.error ? feedback[activeSession.sessionId].text : activeSession.error}
+              reportedByTurn={!feedback[activeSession.sessionId]?.error && isRecordedTurnFailure(activeEvents, activeSession, activeSession.error)}
+              pending={operations[activeSession.sessionId]}
+              onRetry={() => void sessionAction('resume')}
+              onCleanup={() => void sessionAction('kill')}
+              onRetryHistory={() => void retryHistory()}
+              onNew={() => openNewConversation()}
+              onEnvironment={() => { showView('agents'); setEngineSetupOpen(true) }}
+              onChooseModel={isReadOnly || handoffComposerBlocked || managedComposerBlocked ? undefined : () => {
+                const trigger = modelTrigger.current
+                if (canInteract() && trigger?.getAttribute('aria-expanded') === 'false') trigger.click()
+              }}
+            />}
+          </div>
           {!isReadOnly && <div className={clsx('acp-composer', composerImages.dragging && 'acp-composer-dragging')} {...composerImages.dragHandlers} onPaste={composerImages.onPaste}>
             {composerImages.fileInput}
             {composerImages.dragging && <div className="acp-image-drop-hint" aria-hidden="true"><ImagePlus size={22} /><span>松开以添加图片</span></div>}

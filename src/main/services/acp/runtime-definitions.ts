@@ -1,5 +1,4 @@
 import type { AcpAgentConfig, AcpSessionRecord } from '../../../shared/types'
-import { OPENCODE_V2_PACKAGE } from './native-releases'
 import { BUILTINS, BUNDLED, NATIVES, type BuiltinId, type BundledId, type NativeId } from './runtime-catalog'
 import { validateLocalProviderSnapshot } from './local-providers'
 
@@ -21,21 +20,21 @@ export function isBundled(config: AcpAgentConfig): config is AcpAgentConfig & { 
   return config.launchKind === 'bundled' && Object.hasOwn(BUNDLED, config.id)
     && config.command === 'bundled ACP bridge（随应用提供）' && !config.executable && !config.args?.length
 }
-export function isSupportedRuntimeSnapshot(config: AcpAgentConfig): boolean {
+export function isSupportedRuntimeSnapshot(config: AcpAgentConfig, userData: string): boolean {
   return isManaged(config) || isNative(config) || isBundled(config)
     || config.id === 'pi' && config.launchKind === 'sdk' && /^Pi SDK \S+$/.test(config.command)
       && !config.executable && !config.args?.length
-    || (config.launchKind === 'local' ? !!validateLocalProviderSnapshot(config) : false)
+    || (config.launchKind === 'local' ? !!validateLocalProviderSnapshot(userData, config) : false)
 }
 
-export function isRecoverableRuntimeRecord(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>, legacyIds: readonly string[]): boolean {
+export function isRecoverableRuntimeRecord(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>, legacyIds: readonly string[], userData: string): boolean {
   const config = meta.runtimeSnapshot
-  return !!config && isSupportedRuntimeSnapshot(config) && config.id === meta.agentId
+  return !!config && isSupportedRuntimeSnapshot(config, userData) && config.id === meta.agentId
     && (meta.engine ?? 'acp') === (config.launchKind === 'sdk' ? 'pi' : 'acp')
     && (config.launchKind !== undefined || !legacyIds.includes(config.id))
 }
 
-/** acpx may create a client directly from a loaded record; keep its original launch bound to the admitted argv. */
+/** Bind the saved runtime's original launch to the admitted argv. */
 export function matchesRuntimeRecordLaunch(record: { agentCommand: string; agentArgv?: string[] }, argv: readonly string[]): boolean {
   return record.agentCommand === runtimeArgvIdentity(argv) && (!record.agentArgv
     || record.agentArgv.length === argv.length && record.agentArgv.every((arg, index) => arg === argv[index]))

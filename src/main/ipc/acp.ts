@@ -228,7 +228,9 @@ export function registerAcpIpc(): void {
       return await promptAcpSession(root, sessionId, text, options, () => getProjectRoot() === root && getProjectGeneration() === generation, generation)
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
-      return ipcFail(code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io, error instanceof Error ? error.message : '工作区暂不能接纳新的修改指令')
+      const failureCode = code === 'E_UNKNOWN' ? IpcErrorCode.Unknown
+        : code === 'E_CONFLICT' || code === 'SCOPE_CHANGED' ? IpcErrorCode.Conflict : IpcErrorCode.Io
+      return ipcFail(failureCode, error instanceof Error ? error.message : '工作区暂不能接纳新的修改指令')
     }
   })
   handle(ipcInvoke.acp.sessionBindTask, async (_e, sessionId: string, input: AcpBindTaskInput) => {
@@ -257,12 +259,12 @@ export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.runtimePathPick, (_e, id: string) => pickAcpRuntimePath(id))
   handle(ipcInvoke.acp.registryList, (event, refresh: unknown) => trustedProviderSender(event) ? listAcpRegistryCatalog(refresh === true) : ipcFail(IpcErrorCode.Denied, 'Provider 目录仅允许从应用主窗口访问'))
   handle(ipcInvoke.acp.registrySearch, (event, input: unknown) => trustedProviderSender(event) ? searchAcpRegistryCatalog(input) : ipcFail(IpcErrorCode.Denied, 'Provider 目录仅允许从应用主窗口访问'))
-  handle(ipcInvoke.acp.localProviderList, event => trustedProviderSender(event) ? { ok: true as const, providers: listLocalProviders() } : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
-  handle(ipcInvoke.acp.localProviderSave, (event, input: unknown) => trustedProviderSender(event) ? saveLocalProvider(input) : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
+  handle(ipcInvoke.acp.localProviderList, event => trustedProviderSender(event) ? { ok: true as const, providers: listLocalProviders(app.getPath('userData')) } : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
+  handle(ipcInvoke.acp.localProviderSave, (event, input: unknown) => trustedProviderSender(event) ? saveLocalProvider(app.getPath('userData'), input) : ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理'))
   handle(ipcInvoke.acp.localProviderDelete, (event, id: unknown) => {
     if (!trustedProviderSender(event)) return ipcFail(IpcErrorCode.Denied, '本地 provider 仅允许从应用主窗口管理')
     if (typeof id !== 'string' || !/^local-[a-z0-9][a-z0-9._-]*$/i.test(id)) return ipcFail(IpcErrorCode.InvalidArg, '本地 provider ID 无效')
-    return deleteLocalProvider(id)
+    return deleteLocalProvider(app.getPath('userData'), id)
   })
   handle(ipcInvoke.acp.providerCapabilities, (event, id: unknown) => {
     if (!trustedProviderSender(event)) return ipcFail(IpcErrorCode.Denied, 'Provider 能力仅允许从应用主窗口读取')

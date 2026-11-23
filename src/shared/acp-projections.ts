@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const ACP_PROJECTION_VERSION = 1
+export const ACP_PROJECTION_DEFAULT_ITEMS = 100
 
 const boundedId = z.string().min(1).max(200).regex(/^[\w.-]+$/)
 const timestampMs = z.number().int().nonnegative().safe()
@@ -22,7 +23,7 @@ export type AcpConversationListInput = Omit<z.input<typeof acpConversationListIn
 
 export const acpConversationDetailInputSchema = z.object({
   sessionId: boundedId,
-  itemLimit: z.number().int().min(1).max(200).default(100),
+  itemLimit: z.number().int().min(1).max(200).default(ACP_PROJECTION_DEFAULT_ITEMS),
 }).strict()
 export type AcpConversationDetailInput = z.infer<typeof acpConversationDetailInputSchema>
 
@@ -77,7 +78,7 @@ export const acpTurnItemVariantSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user-message'), text: z.string().max(32768) }).strict(),
   z.object({ kind: z.literal('assistant-message'), text: z.string().max(32768) }).strict(),
   z.object({ kind: z.literal('reasoning'), text: z.string().max(32768) }).strict(),
-  z.object({ kind: z.literal('tool-call'), title: z.string().max(2000) }).strict(),
+  z.object({ kind: z.literal('tool-call'), title: z.string().max(2000), status: z.string().max(120).optional() }).strict(),
   z.object({ kind: z.literal('permission'), title: z.string().max(2000), pending: z.boolean() }).strict(),
   z.object({ kind: z.literal('plan'), text: z.string().max(32768) }).strict(),
   z.object({ kind: z.literal('status'), text: z.string().max(32768) }).strict(),
@@ -140,6 +141,8 @@ export const acpConversationEventPageSchema = z.discriminatedUnion('ok', [
     events: z.array(acpConversationProjectionEventSchema).max(200),
     nextCursor: z.number().int().nonnegative().safe(),
     hasMore: z.boolean(),
+    conversation: acpConversationListItemSchema.optional(),
+    coverage: acpConversationHistoryCoverageSchema.optional(),
   }).strict(),
   z.object({
     ok: z.literal(false),
@@ -150,3 +153,55 @@ export const acpConversationEventPageSchema = z.discriminatedUnion('ok', [
   }).strict(),
 ])
 export type AcpConversationEventPage = z.infer<typeof acpConversationEventPageSchema>
+
+function upsertById<T extends { readonly id: string }>(items: ReadonlyArray<T>, next: T): Array<T> {
+  const index = items.findIndex((item) => item.id === next.id)
+  if (index === -1) {
+    return [...items, next]
+  }
+
+  const updated = [...items]
+  updated[index] = next
+  return updated
+}
+
+export function applyConversationEventPage(
+  snapshot: AcpConversationDetailSnapshot,
+  page: Extract<AcpConversationEventPage, { ok: true }>,
+): AcpConversationDetailSnapshot | undefined {
+  const conversation = page.conversation ?? snapshot.conversation
+  if (conversation.conversationId !== snapshot.conversation.conversationId
+    || conversation.sourceSessionId !== snapshot.conversation.sourceSessionId
+    || conversation.root !== snapshot.conversation.root || page.nextCursor < snapshot.snapshotSequence) return undefined
+
+  let turnItems = snapshot.turnItems
+  for (const event of page.events) {
+    if (event.conversationId !== conversation.conversationId || (event.item !== undefined && event.item.conversationId !== conversation.conversationId)) return undefined
+    if (event.sequence <= snapshot.snapshotSequence || event.item === undefined) continue
+    if (event.sequence > page.nextCursor || event.item.sequence !== event.sequence) return undefined
+    if (snapshot.hasEarlierItems && event.item.sourceSequence < snapshot.earlierHistoryCursor) continue
+    turnItems = upsertById(turnItems, event.item)
+  }
+  if (turnItems === snapshot.turnItems && conversation === snapshot.conversation && page.coverage === undefined) {
+    return page.nextCursor === snapshot.snapshotSequence ? snapshot : { ...snapshot, snapshotSequence: page.nextCursor }
+  }
+  const hasEarlierItems = snapshot.hasEarlierItems || turnItems.length > ACP_PROJECTION_DEFAULT_ITEMS
+  const latest = turnItems === snapshot.turnItems ? turnItems : turnItems
+    .sort((left, right) => left.sourceSequence - right.sourceSequence)
+    .slice(-ACP_PROJECTION_DEFAULT_ITEMS)
+  return {
+    ...snapshot,
+    conversation,
+    turnItems: latest,
+    hasEarlierItems,
+    earlierHistoryCursor: latest[0]?.sourceSequence ?? 0,
+    pendingRequests: latest.flatMap(({ item }) =>
+      item.kind === 'permission' && item.pending ? [{ kind: 'permission', summary: item.title }] : []).slice(-20),
+    coverage: {
+      ...(page.coverage ?? snapshot.coverage),
+      capturedFrom: latest[0]?.occurredAt ?? null,
+      capturedThrough: latest.at(-1)?.occurredAt ?? null,
+    },
+    snapshotSequence: page.nextCursor,
+  }
+}

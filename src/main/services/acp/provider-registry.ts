@@ -127,7 +127,7 @@ export function registryAgent(runtimeId: string): AcpRegistryAgent | undefined {
 }
 
 export function providerCapabilityMatrix(runtimeId: string): { registry?: AcpRegistryAgent; local?: AcpLocalProviderRecord; matrix: AcpCapabilityMatrixItem[] } {
-  const local = readLocalProviderStore().providers.find(provider => provider.id === runtimeId)
+  const local = readLocalProviderStore(app.getPath('userData')).providers.find(provider => provider.id === runtimeId)
   const registry = registryAgent(local ? local.agentId : runtimeId)
   const evidence = runtimeVerificationEvidence(runtimeId)
   const negotiatedCapabilities = evidence?.capabilitiesSummary ?? []

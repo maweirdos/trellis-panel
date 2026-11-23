@@ -47,6 +47,7 @@ import { handoffDigest } from './acp/handoff-store'
 import { PiConversationRuntime } from './pi/runtime'
 import type { ConversationRuntime } from './pi/runtime-port'
 import { AcpV2ConversationRuntime, AcpV2FileStore, normalizeSessionConfigOption } from './acp/v2'
+import { hasAcpCapability } from './acp/v2/normalize'
 import { projectPiState } from './pi/metadata'
 import { readPiImage } from './pi/images'
 import { readAcpStoredImages } from '../../shared/acp-images'
@@ -71,6 +72,7 @@ import { hasLegacyAcpCleanupReceipt, recoverInactiveAcpUses } from './workcopy-u
 import { readWorkcopyOwnerJournal, workcopyOwnerJournalPath } from './workcopy-use/owner-journal'
 import { runOwnedProbe } from './workcopy-use/owned-probe'
 import { hasAcpJobOwner, recoverAcpJobOwner } from './workcopy-use/acp-jobs'
+import { AcpProtocolError } from './acp/v2/errors'
 import { disconnectTelemetry, IDLE_RELEASE_POLL_MS, RuntimeSessionManager, runtimeFailureCause, runtimeTelemetryCause, type AcpRuntimeCapacityFailure, type AcpRuntimeCapacityOwnerView, type AcpRuntimeProviderFamily, type AcpRuntimeReleaseReason, type AcpRuntimeReservationView, type AcpRuntimeTelemetryEvent } from './acp/runtime-session-manager'
 import { reserveTaskSessionIntent, claimTaskSessionIntent, completeTaskSessionIntent, enterTaskSessionNativeBoundary, readTaskSessionIntent, saveTaskSessionIntent, markTaskSessionPrompt, taskSessionExpectedSchema, type TaskSessionExpected } from './workcopy-use/task-session-intent'
 export type { TaskSessionExpected } from './workcopy-use/task-session-intent'
@@ -541,16 +543,17 @@ async function releaseVerifiedIdleRuntimes(): Promise<void[]> {
   const candidates = runtimeSessionManager.idleReleaseCandidates()
     .map(sessionId => sessions.get(sessionId))
     .filter((session): session is ActiveSession => Boolean(session))
-  return Promise.all(candidates.map(async session => {
-    if (sessions.get(session.meta.sessionId) !== session) return
-    const providerFamily = providerFamilyFor(session.meta)
-    const classification = runtimeSessionManager.release(runtimeOwnerView(session), { providerFamily, reason: 'idle-verified' }).classification
-    if (classification !== 'released-clean') return
-    const stopStartedAt = Date.now()
-    const result = await stopRuntimeOwner(session, 'idle', '空闲连接已按时间释放，历史保留可显式恢复', 'disconnected')
-    if (!result.ok) {
-      emit(session, 'session-status', '空闲连接释放需人工确认', { activityScope: 'connection', runtimeTelemetry: disconnectTelemetry({ event: 'release', cause: 'cleanup-uncertain', providerFamily, conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'idle-verified', cleanupConfirmed: false, occurredAt: Date.now(), durationMs: Date.now() - stopStartedAt }) })
-    }
+  return Promise.all(candidates.map(session => {
+    const candidate = runtimeOwnerView(session)
+    return runtimeSessionManager.releaseIfStillIdle(candidate,
+      () => !shuttingDown && sessions.get(candidate.sessionId) === session ? runtimeOwnerView(session) : undefined,
+      async () => {
+        const stopStartedAt = Date.now()
+        const result = await stopRuntimeOwner(session, 'idle', '空闲连接已按时间释放，历史保留可显式恢复', 'disconnected')
+        if (!result.ok) {
+          emit(session, 'session-status', '空闲连接释放需人工确认', { activityScope: 'connection', runtimeTelemetry: disconnectTelemetry({ event: 'release', cause: 'cleanup-uncertain', providerFamily: candidate.providerFamily, conversationId: session.meta.sessionId, runtimeSessionId: session.meta.connectionGeneration ?? session.meta.sessionId, reason: 'idle-verified', cleanupConfirmed: false, occurredAt: Date.now(), durationMs: Date.now() - stopStartedAt }) })
+        }
+      })
   }))
 }
 
@@ -559,18 +562,20 @@ async function reserveConnectionSlot(family: AcpRuntimeProviderFamily, excludedS
     const admitted = runtimeSessionManager.reserve(family, excludedSessionId)
     if (admitted.ok) break
     if (!('candidateId' in admitted) || !admitted.candidateId) return admitted
-    const idle = sessions.get(admitted.candidateId)
-    if (!idle || providerFamilyFor(idle.meta) !== family || sessions.get(idle.meta.sessionId) !== idle) {
-      runtimeSessionManager.completeCapacityReleaseClaim(admitted.candidateId)
-      continue
-    }
-    markProviderCapacityWait(idle)
-    const stopStartedAt = Date.now()
+    const candidateId = admitted.candidateId
+    const idle = sessions.get(candidateId)
     try {
-      const result = await stopRuntimeOwner(idle, 'capacity', '空闲连接已释放，发送消息时会自动连接原会话', 'disconnected', stopStartedAt)
-      if (!result.ok) return { ...admitted, ...ipcFail(result.code, result.error) }
+      const result = await runtimeSessionManager.withReleaseLock(family, async () => {
+        if (shuttingDown || !idle || sessions.get(candidateId) !== idle || providerFamilyFor(idle.meta) !== family) return
+        const usage = runtimeSessionManager.usage(family)
+        if (usage.active + usage.reserved < usage.limit
+          || runtimeSessionManager.release(runtimeOwnerView(idle), { providerFamily: family, reason: 'capacity-verified' }).classification !== 'released-clean') return
+        markProviderCapacityWait(idle)
+        return stopRuntimeOwner(idle, 'capacity', '空闲连接已释放，发送消息时会自动连接原会话', 'disconnected', Date.now())
+      })
+      if (result?.ok === false) return { ...admitted, ...ipcFail(result.code, result.error) }
     } finally {
-      runtimeSessionManager.completeCapacityReleaseClaim(admitted.candidateId)
+      runtimeSessionManager.completeCapacityReleaseClaim(candidateId)
     }
   }
   if (shuttingDown) return { ...ipcFail(IpcErrorCode.Conflict, '后台正在停止，未创建新连接'), family: runtimeSessionManager.usage(family), capacityReason: 'capacity-reserved' }
@@ -748,20 +753,14 @@ function syncRecord(session: ActiveSession, record: RuntimeRecord): void {
   session.meta.agentSessionId = record.agentSessionId
   session.meta.nativeRecordId = record.recordId
   session.meta.capabilities = { ...session.meta.capabilities, controls: session.meta.capabilities?.controls ?? [],
-    protocolVersion: record.negotiated.protocolVersion, loadSession: record.negotiated.capabilities.session !== undefined,
+    protocolVersion: record.negotiated.protocolVersion, loadSession: hasAcpCapability(record.negotiated.capabilities.session),
     promptCapabilities: {
-      image: readSessionCapability(record, 'prompt', 'image') === true,
-      embeddedContext: readSessionCapability(record, 'prompt', 'embeddedContext') === true,
+      image: hasAcpCapability(readSessionCapability(record, 'prompt', 'image')),
+      embeddedContext: hasAcpCapability(readSessionCapability(record, 'prompt', 'embeddedContext')),
     },
     agentInfo: record.negotiated.agent, authMethods: [] }
   session.meta.canResume = true
-  session.meta.currentModeId = undefined
-  session.meta.currentModelId = undefined
-  session.meta.configOptions = record.configOptions.flatMap(option => {
-    const normalized = normalizeSessionConfigOption(option)
-    return normalized === undefined ? [] : [normalized]
-  })
-  projectCategorizedSelections(session.meta)
+  projectConfirmedSessionConfig(session.meta, record.configOptions)
   session.modelMetadata.project(session.meta)
   if (session.meta.privateConversation?.planningPolicy && session.turn && !session.closing) {
     try { assertPlanningObservation(session.meta.privateConversation.planningPolicy, planningObservation(session), { sessionId: session.meta.sessionId, connectionGeneration: session.meta.connectionGeneration ?? '' }) }
@@ -799,6 +798,19 @@ function projectCategorizedSelections(meta: AcpSessionRecord): void {
   meta.models = meta.models?.map((model) => (names.get(model.name) ?? 0) > 1 ? { ...model, name: `${model.name} · ${model.modelId}` } : model)
   const labels = new Map(meta.models?.map(({ modelId, name }) => [modelId, name]))
   if (models.length === 1) models[0].options = models[0].options.map((option) => ({ ...option, name: labels.get(option.value) ?? option.name }))
+}
+
+function projectConfirmedSessionConfig(meta: AcpSessionRecord, raw: readonly unknown[]): ReturnType<typeof parseFreshConfigOptions> {
+  const options = raw.map(normalizeSessionConfigOption).filter(option => option !== undefined)
+  if (meta.engine !== 'pi') {
+    meta.currentModeId = undefined
+    meta.currentModelId = undefined
+    meta.modes = undefined
+    meta.models = undefined
+  }
+  meta.configOptions = options.map(option => ({ ...option, currentValue: String(option.currentValue) }))
+  projectCategorizedSelections(meta)
+  return parseFreshConfigOptions(options)
 }
 
 /** Main-only execution facts. Never read history/preferences or expose native objects. */
@@ -1373,12 +1385,16 @@ async function createSessionRuntime(meta: AcpSessionRecord, config: AcpAgentConf
     meta,
     config,
     argv: effectiveArgv,
-    env: runtimeProcessEnv(config, launchOptions),
-    ...(zcodeDiagnosticDirectory(meta) ? {
-      TRELLIS_ZCODE_DIAGNOSTICS_DIR: zcodeDiagnosticDirectory(meta),
-      TRELLIS_ZCODE_STARTUP_CACHE_DIR: zcodeStartupCacheDirectory(),
-    } : {}),
+    env: {
+      ...runtimeProcessEnv(config, launchOptions),
+      ...(zcodeDiagnosticDirectory(meta) ? {
+        TRELLIS_ZCODE_DIAGNOSTICS_DIR: zcodeDiagnosticDirectory(meta),
+        TRELLIS_ZCODE_STARTUP_CACHE_DIR: zcodeStartupCacheDirectory(),
+      } : {}),
+    },
     stateDirectory: acpDataPath('runtime-v2-store'),
+    knowledge,
+    redactSnapshot: value => knowledgeMcpBridge.redact(value),
     processOwner: nativeJobs,
     onBeforeSpawn: () => {
       if (shuttingDown || session.closing) throw new Error('会话已停止')
@@ -1441,25 +1457,12 @@ async function refreshSessionMetadata(session: ActiveSession, meta = session.met
   if (status.availableCommands) session.nativeCommands = new Set(status.availableCommands.map((command) => command.name.replace(/^\//, '')))
   if (status.models) meta.models = status.models.availableModelIds.map((modelId) => ({ modelId, name: modelId }))
   const details = objectValue(status.details)
-  const freshConfig = parseFreshConfigOptions(details.configOptions)
-  if (Array.isArray(details.configOptions)) {
-    const rawOptions = details.configOptions
-    meta.configOptions = rawOptions.filter(option => typeof option === 'object' && option !== null && (option as { type?: unknown }).type === 'select').map(option => {
-      const item = objectValue(option)
-      return {
-        id: String(item.id), name: String(item.name), ...(typeof item.category === 'string' ? { category: item.category } : {}),
-        currentValue: String(item.currentValue), options: (Array.isArray(item.options) ? item.options : []).map(value => {
-          const choice = objectValue(value)
-          return { value: String(choice.value), name: String(choice.name) }
-        })
-      }
-    })
-  }
-  projectCategorizedSelections(meta)
+  const freshConfig = Array.isArray(details.configOptions)
+    ? projectConfirmedSessionConfig(meta, details.configOptions) : { present: false as const }
+  if (!freshConfig.present) projectCategorizedSelections(meta)
   session.modelMetadata.project(meta, true)
-  const negotiatedSession = session.raw?.negotiated.capabilities.session as { mcp?: { http?: boolean; sse?: boolean; acp?: boolean } } | undefined
-  const mcp = negotiatedSession?.mcp
-  const support = session.meta.engine === 'pi' || mcp?.http === true ? 'http' : mcp?.http === false || mcp?.sse === true || mcp?.acp === true ? 'unsupported' : 'unknown'
+  const support = session.meta.engine === 'pi' || (session.raw && hasAcpCapability(readSessionCapability(session.raw, 'mcp', 'http')))
+    ? 'http' : session.raw ? 'unsupported' : 'unknown'
   if (support === 'unsupported' && session.knowledgeSupport !== support && session.knowledge) {
     session.knowledge.disconnect()
     emit(session, 'diagnostic', 'Native engine does not support the HTTP knowledge bridge; ordinary dialogue remains available', {
@@ -1568,7 +1571,7 @@ export type TaskSessionReconcile =
   | { status: 'settled'; outcome: 'not-created' | 'cleaned'; dispatch: 'not-sent' | 'sent' | 'unknown' }
   | { status: 'unknown'; reason: string; dispatch: 'unknown' }
 function runtimeRecordAvailable(meta: Pick<AcpSessionRecord, 'agentId' | 'engine' | 'runtimeSnapshot'>): boolean {
-  return isRecoverableRuntimeRecord(meta, (getSettings().acp?.agents ?? []).map(item => item.id))
+  return isRecoverableRuntimeRecord(meta, (getSettings().acp?.agents ?? []).map(item => item.id), app.getPath('userData'))
 }
 const readSessionCapability = (record: RuntimeRecord, capability: 'prompt' | 'mcp', field: string): unknown =>
   (record.negotiated.capabilities.session as Record<string, Record<string, unknown> | undefined> | undefined)?.[capability]?.[field]
@@ -1716,9 +1719,11 @@ async function establishPlatformCodexModel(session: ActiveSession): Promise<void
     const actual = acknowledgedConfigOption(options, id)
     if (!actual.options.some(option => option.value === value)) throw new Error(`所选执行引擎不支持产品执行配置：${id}`)
     assertPlatformModelOwner(session, expected)
-    const response = await session.runtime.setConfigOption({ handle: expected.handle, key: id, value, assertActive: () => assertPlatformModelOwner(session, expected) })
+    await session.runtime.setConfigOption({ handle: expected.handle, key: id, value, assertActive: () => assertPlatformModelOwner(session, expected) })
+    const confirmed = await refreshSessionMetadata(session)
     assertPlatformModelOwner(session, expected)
-    options = acpConfigOptionAcknowledgement(response)
+    if (!confirmed.present) throw new Error('执行引擎未返回配置确认')
+    options = confirmed.options
     assertPlatformCodexConfigValue(options, id, value)
   }
   const final = await refreshSessionMetadata(session)
@@ -1936,7 +1941,7 @@ function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
   }
   const isModelResponse = (event.type === 'text_delta' && (event.text.trim().length > 0 || readAcpStoredImages(objectValue(event.meta).piImages).length > 0 || readPiWebPreviewArtifact(objectValue(event.meta).piWebPreview))) || event.type === 'tool_call' || (event.type === 'status' && event.tag === 'plan')
   if (!session.firstResponseAt && isModelResponse) { session.firstResponseAt = Date.now(); observe(session, session.meta.engine === 'pi' ? '收到首个可展示内容' : '收到首次模型响应', session.turnStartedAt, false, 'turn') }
-  if (event.type === 'text_delta') emit(session, event.stream === 'thought' ? 'thought' : 'message', event.text, { messageId: event.messageId, meta: event.meta })
+  if (event.type === 'text_delta') emit(session, event.stream === 'thought' ? 'thought' : 'message', event.text, { messageId: event.messageId, meta: event.meta, nativeSessionId: session.meta.engine === 'pi' ? undefined : session.handle?.backendSessionId })
   else if (event.type === 'tool_call') {
     if (session.meta.platformExecution && event.toolCallId) {
       const previous = session.permissionTools.get(event.toolCallId)
@@ -1964,7 +1969,7 @@ function mapEvent(session: ActiveSession, event: AcpRuntimeEvent): void {
     const input = objectValue(event.rawInput)
     const output = objectValue(event.rawOutput)
     if (input.run_in_background === true || output.task_id || output.background === true) session.backgroundWork = true
-    emit(session, 'tool-call', event.title ?? event.text, { ...event })
+    emit(session, 'tool-call', event.title ?? event.text, { ...event, nativeSessionId: session.meta.engine === 'pi' ? undefined : session.handle?.backendSessionId })
   } else if (event.type === 'status') emit(session, 'rawUpdate' in event ? 'diagnostic' : event.tag === 'plan' ? 'plan' : event.tag === 'config_option_update' || event.tag === 'current_mode_update' ? 'config' : 'session-status', event.text, { ...event })
   else if (event.type === 'error') emit(session, 'diagnostic', event.message, { ...event })
   else emit(session, 'diagnostic', 'Runtime 更新', { ...event })
@@ -2005,12 +2010,16 @@ export async function promptAcpSession(projectRoot: string, sessionId: string, t
   const live = sessions.get(sessionId)
   const mayRejectPrepared = live && belongs(projectRoot, live.meta) && !live.accepting && !live.turn && !live.closing
   const result = await promptOwnedAcpSession(projectRoot, sessionId, text, options, isCurrent, projectGeneration, workflow, privateRequestId, privateDisplayText)
-  if (!result.ok && mayRejectPrepared) {
+  if (!result.ok && result.code !== IpcErrorCode.Unknown && mayRejectPrepared) {
     try { acpHandoffs.admissionFailed(projectRoot, sessionId, result.error) }
     catch (error) { return failure(new Error(`${result.error}；交接恢复失败：${errorMessage(error)}`)) }
   }
   return result
 }
+function promptDeliveryUnconfirmed(error: unknown, dispatched: boolean | undefined): boolean {
+  return dispatched === true && !(error instanceof AcpProtocolError && error.details.promptRejected === true)
+}
+
 async function promptOwnedAcpSession(projectRoot: string, sessionId: string, text: string, options?: AcpPromptOptions, isCurrent?: () => boolean, projectGeneration = 0, workflow?: WorkflowPreparedPrompt, privateRequestId?: string, privateDisplayText?: string): Promise<{ ok: true; turnId: string } | IpcFail> {
   assertRuntimeExecutionHost()
   const session = owned(projectRoot, sessionId)
@@ -2027,7 +2036,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
   if (!session.handle) return ipcFail(IpcErrorCode.Conflict, '会话尚未准备好')
   const parsedOptions = promptOptionsSchema.safeParse(options ?? {})
   if (!parsedOptions.success) return ipcFail(IpcErrorCode.InvalidArg, parsedOptions.error.issues[0]?.message ?? '文档引用或发送参数无效')
-  const { sourceReferences = [], knowledgeReferences = [], images = [], expectedConnectionGeneration, expectedKnowledgeScopeToken } = parsedOptions.data
+  const { sourceReferences = [], knowledgeReferences = [], images = [], promptRequestId, expectedConnectionGeneration, expectedKnowledgeScopeToken } = parsedOptions.data
   if (platformInput && (sourceReferences.length || knowledgeReferences.length || images.length)) return ipcFail(IpcErrorCode.InvalidArg, 'Platform aggregate cannot carry unrelated prompt bodies')
   if (!text.trim() && images.length === 0) return ipcFail(IpcErrorCode.InvalidArg, '请先输入内容或添加图片')
   if (session.meta.privateConversation?.planningPolicy && text.trimStart().startsWith('/')) return ipcFail(IpcErrorCode.Denied, '任务规划不能通过原生命令切换模式或扩大执行权限')
@@ -2050,6 +2059,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
   const trimmed = text.trim()
   const nativeCommand = !workflow && images.length === 0 && sourceReferences.length === 0 && knowledgeReferences.length === 0 && trimmed.startsWith('/') && session.nativeCommands.has(trimmed.slice(1).split(/\s/, 1)[0])
   let promptWritten = false
+  let submittedTurn: AcpRuntimeTurn | undefined
   let assertTaskBeforeSend: (() => void) | undefined
   let agentContext: PreparedAgentContext | undefined
   let executionContext: ReturnType<typeof composeAcpExecutionContext> | undefined
@@ -2190,6 +2200,7 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       attachments: images.map((image) => ({ mediaType: image.mimeType, data: image.data })),
       requestId: turnId, timeoutMs: (session.meta.profileSnapshot?.maxTurnMinutes ?? 30) * 60_000,
       assertActive, onPermissionRequest: permissionHandler(session) })
+    submittedTurn = turn
     session.turn = turn
     session.promptAbort = undefined
     // Register this checkpoint before terminal completion can clear its owned scope.
@@ -2231,6 +2242,8 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       if (session.meta.restorePending) { session.meta.restorePending = false; observe(session, '原生会话恢复已验证') }
       const actionDisplay = privateRequestId && session.meta.privateConversation && privateDisplayText ? privateDisplayText : undefined
       emit(session, 'message', actionDisplay ?? trimmed, { role: 'user', materialSnapshot: session.meta.materialSnapshot,
+        ...(session.meta.engine === 'pi' ? {} : { nativeSessionId: session.handle?.backendSessionId }),
+        ...(promptRequestId ? { promptRequestId } : {}),
         ...(executionContext ? { executionContext: { ...executionContext.manifest, state: 'emitted-to-host', sessionId, turnId, connectionGeneration: generation } } : {}),
         ...(platformDelivery ? { platformReferenceDelivery: platformDelivery } : {}),
         ...(actionDisplay ? { privateAction: { requestId: privateRequestId, expandedPrompt: trimmed } } : {}),
@@ -2242,8 +2255,10 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       }
       save(session)
     }).catch((error) => {
-      if (handoffContext && !promptWritten) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
-      if (agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
+      if (!promptWritten && !promptDeliveryUnconfirmed(error, turn.promptDispatched)) {
+        if (handoffContext) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
+        if (agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
+      }
       throw error
     })
     void delivery.catch(() => {})
@@ -2317,12 +2332,16 @@ async function promptOwnedAcpSession(projectRoot: string, sessionId: string, tex
       const receipt = platformDelivery
       publishWorkflowObservation(() => { workflow?.onPlatformDelivery?.(receipt); return [] })
     }
-    if (handoffContext && !promptWritten) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
-    if (!promptWritten && agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
+    const deliveryUnconfirmed = promptWritten || promptDeliveryUnconfirmed(error, submittedTurn?.promptDispatched)
+    if (!deliveryUnconfirmed) {
+      if (handoffContext) acpHandoffs.notSent(projectRoot, sessionId, generation, turnId, errorMessage(error))
+      if (agentContext && session.meta.agentContext?.turnId === turnId) session.meta.agentContext.state = 'not_sent'
+    }
     session.knowledge?.endTurn()
     session.accepting = false
     if (!session.turn) { release(session); if (!session.closing) setStatus(session, abort.signal.aborted || isCurrent?.() === false ? session.disconnected ? 'disconnected' : 'ready' : 'error', errorMessage(error)) }
-    return { ...failure(error), ...(platformInput ? { taskFailure: nativeTaskFailure(error, 'prompt-send') } : {}) }
+    const promptFailure = deliveryUnconfirmed ? ipcFail(IpcErrorCode.Unknown, '发送结果待确认，请先核对原会话。') : failure(error)
+    return { ...promptFailure, ...(platformInput ? { taskFailure: nativeTaskFailure(error, 'prompt-send') } : {}) }
   } finally { if (session.promptAbort === abort) session.promptAbort = undefined }
 }
 

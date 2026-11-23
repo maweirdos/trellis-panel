@@ -209,7 +209,11 @@
   --my-modal-top-inset: 12vh;
   --my-modal-max-height: 76vh;
   --my-motion-fast: 140ms;
+  --my-dur-micro: 95ms;
   --my-control-press-scale: .985;
+  --my-tactile-press-y: 1px;
+  --my-tactile-press-scale: 0.988;
+  --my-ease-snappy: cubic-bezier(0.2, 0.85, 0.25, 1);
   --my-icon-hover-scale: 1.06;
   --my-motion-normal: 200ms;
   --my-motion-slow: 300ms;
@@ -229,6 +233,7 @@
   --my-notification-shadow-gutter: var(--my-space-16);
   --my-notification-radius: var(--my-radius-lg);
   --my-notification-detail-height: var(--my-space-192);
+  --my-surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 0 0.5px color-mix(in oklab, var(--my-txt-primary) 10%, transparent);
 }
 
 .my-root[data-my-font-size='small'] {
@@ -587,6 +592,7 @@
   --my-shadow-overlay-100: 0 8px 28px rgba(0, 0, 0, 0.3);
   --my-shadow-overlay-200: 0 16px 48px rgba(0, 0, 0, 0.4);
   --my-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+  --my-surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
 
 :root:not(.dark),
@@ -866,4 +872,5 @@
   --my-shadow-overlay-100: 0 8px 28px rgba(0, 0, 0, 0.08);
   --my-shadow-overlay-200: 0 16px 48px rgba(0, 0, 0, 0.12);
   --my-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+  --my-surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 0 0.5px color-mix(in oklab, var(--my-txt-primary) 10%, transparent);
 }

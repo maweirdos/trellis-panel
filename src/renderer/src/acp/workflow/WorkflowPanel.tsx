@@ -4,7 +4,7 @@ import type { AcpPermissionPayload, AcpSessionRecord, FlowDef } from '../../../.
 import type { ExecutionEvent, RunRef } from '../../../../shared/workflow'
 import type { WorkflowApplicationEventPage } from '../../../../shared/workflow-application'
 import { api } from '../../api'
-import { Button, Modal } from '../../my/ui'
+import { Button, KnockIndicator, Modal } from '../../my/ui'
 import { Select } from '../../components/Select'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../../utils/interaction-scope'
 import { WorkflowCanvas } from './WorkflowCanvas'
@@ -167,7 +167,7 @@ export function WorkflowPanel({ root, taskDir, session, controller: c, onOpenHis
     </header>
     <div className="wf-secondary-actions"><WorkflowRevision root={root} taskDir={taskDir} run={retainedRun} originKey={originKey} disabled={busy || c.loading || !managed || Boolean(c.snapshot?.recoveryRequired)} onRefresh={c.refresh} onOpenMaterial={(ref, run) => c.openArtifact(ref, run)} /><WorkflowRecovery root={root} run={retainedRun} originKey={originKey} onOpenHistory={onOpenHistory} /></div>
     {(c.error || c.notice || c.gap) && <p className="wf-notice" role={c.error ? 'alert' : 'status'}>{c.error || c.notice || '记录游标已重置，当前节点状态来自最新快照；旧记录可按阶段重新读取。'}</p>}
-    {permissions.length > 0 && <div className="wf-permissions">{permissions.map((permission) => <section key={permission.requestId} aria-label="阶段原生授权" className="wf-permission"><div><ShieldQuestion size={15} /><strong>{permission.toolCall?.title ?? '执行阶段等待授权'}</strong></div><p>选择仅作用于此阶段的原生请求。</p><details><summary>授权来源</summary><p>会话 {permission.sessionId} · 连接 {permission.connectionGeneration} · 请求 {permission.requestId}</p></details><div className="wf-permission-options">{permission.options.map((option) => <Button key={option.optionId} size="sm" variant={option.kind.startsWith('reject') ? 'outline' : 'neutral'} disabled={permissionBusy[permission.requestId] || permissionLocks.current.has(permission.requestId)} onClick={() => { void respond(permission, option.optionId) }}>{option.name}</Button>)}</div>{permissionErrors[permission.requestId] && <p role="alert">{permissionErrors[permission.requestId]}</p>}</section>)}</div>}
+    {permissions.length > 0 && <div className="wf-permissions">{permissions.map((permission) => <section key={permission.requestId} aria-label="阶段原生授权" className="wf-permission"><div><KnockIndicator><ShieldQuestion size={15} /></KnockIndicator><strong>{permission.toolCall?.title ?? '执行阶段等待授权'}</strong></div><p>选择仅作用于此阶段的原生请求。</p><details><summary>授权来源</summary><p>会话 {permission.sessionId} · 连接 {permission.connectionGeneration} · 请求 {permission.requestId}</p></details><div className="wf-permission-options">{permission.options.map((option) => <Button key={option.optionId} size="sm" variant={option.kind.startsWith('reject') ? 'outline' : 'neutral'} disabled={permissionBusy[permission.requestId] || permissionLocks.current.has(permission.requestId)} onClick={() => { void respond(permission, option.optionId) }}>{option.name}</Button>)}</div>{permissionErrors[permission.requestId] && <p role="alert">{permissionErrors[permission.requestId]}</p>}</section>)}</div>}
     <div id={contentId} hidden={view.collapsed} className="wf-content">
       {graph ? <><WorkflowCanvas graph={graph} snapshot={c.snapshot} view={view} onView={updateView} onSelected={(selectedId) => { ticket.current++; updateView({ selected: selectedId }) }} locate={currentNode(c.snapshot)} />
         <div className="wf-details my-scrollbar" aria-label="所选流程记录">

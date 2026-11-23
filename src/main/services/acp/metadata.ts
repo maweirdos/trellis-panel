@@ -78,7 +78,7 @@ export function readRecords(): AcpSessionRecord[] {
       const record = raw as unknown as AcpSessionRecord
       if (readHistoryDeletion(acpDataPath(), record.projectRoot, record.sessionId)) continue
       const legacy = record.schemaVersion !== 2
-      const canResume = !legacy && isRecoverableRuntimeRecord(record, legacyIds)
+      const canResume = !legacy && isRecoverableRuntimeRecord(record, legacyIds, app.getPath('userData'))
         && typeof record.backendSessionId === 'string' && record.backendSessionId.trim().length > 0 && record.canResume === true
       records.push({ ...record, status: legacy ? 'legacy' : record.status === 'closed' || record.status === 'error' ? record.status : 'disconnected',
         error: record.recovery?.commitPending ? ACP_RECOVERY_COMMIT_PENDING_MESSAGE : record.error,

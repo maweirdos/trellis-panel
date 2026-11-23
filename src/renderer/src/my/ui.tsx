@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Search } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -414,7 +414,9 @@ export function DropdownItem({
   shortcut,
   hasSubmenu,
   trailing,
-  className
+  className,
+  holdToConfirm = false,
+  holdDurationMs = 420
 }: {
   children: ReactNode
   description?: ReactNode
@@ -427,8 +429,49 @@ export function DropdownItem({
   hasSubmenu?: boolean
   trailing?: ReactNode
   className?: string
+  holdToConfirm?: boolean
+  holdDurationMs?: number
 }): JSX.Element {
   const multiline = Boolean(description)
+  const [pressing, setPressing] = useState(false)
+  const timerRef = useRef<number | null>(null)
+  const onClickRef = useRef(onClick)
+  onClickRef.current = onClick
+
+  const cancel = useCallback((): void => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setPressing(false)
+  }, [])
+
+  const start = useCallback((): void => {
+    if (disabled || !onClickRef.current) return
+    cancel()
+    setPressing(true)
+    timerRef.current = window.setTimeout(() => {
+      setPressing(false)
+      onClickRef.current?.()
+    }, holdDurationMs)
+  }, [disabled, holdDurationMs, cancel])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    if (disabled) return
+    if (!holdToConfirm) {
+      onClick?.()
+    } else {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
+
   return (
     <button
       type="button"
@@ -436,11 +479,17 @@ export function DropdownItem({
       data-selected={selected || undefined}
       aria-pressed={selected}
       data-danger={danger || undefined}
-      onClick={disabled ? undefined : onClick}
+      onClick={handleClick}
+      onPointerDown={holdToConfirm ? start : undefined}
+      onPointerUp={holdToConfirm ? cancel : undefined}
+      onPointerLeave={holdToConfirm ? cancel : undefined}
+      onPointerCancel={holdToConfirm ? cancel : undefined}
       className={clsx(
         'my-menu-item',
         multiline && 'my-menu-item-multiline',
         disabled && 'cursor-default',
+        holdToConfirm && 'my-menu-item-hold',
+        pressing && 'is-pressing',
         className
       )}
     >
@@ -453,7 +502,8 @@ export function DropdownItem({
           </>
         ) : children}
       </span>
-      {shortcut && <span className="my-menu-shortcut">{shortcut}</span>}
+      {holdToConfirm && <span className="my-menu-shortcut select-none text-my-tertiary">{pressing ? '蓄能中…' : '长按确认'}</span>}
+      {!holdToConfirm && shortcut && <span className="my-menu-shortcut">{shortcut}</span>}
       {hasSubmenu && <ChevronRight size={13} className="my-menu-chevron shrink-0" aria-hidden="true" />}
       {trailing}
       {selected && <Check size={14} className="my-menu-check shrink-0 text-my-primary" aria-hidden="true" />}
@@ -895,4 +945,205 @@ export function useNow(): number {
     return () => window.clearInterval(t)
   }, [])
   return now
+}
+
+
+/* ---------------- Card 06: 长按蓄能确认按钮 (Hold to Confirm) ---------------- */
+
+export function HoldToConfirmButton({
+  children,
+  onConfirm,
+  holdDurationMs = 420,
+  variant = 'danger',
+  size = 'md',
+  className,
+  disabled,
+  title,
+  confirmHint = '按住 0.4s 确认'
+}: {
+  children: ReactNode
+  onConfirm: () => void
+  holdDurationMs?: number
+  variant?: ButtonVariant
+  size?: 'sm' | 'md' | 'lg'
+  className?: string
+  disabled?: boolean
+  title?: string
+  confirmHint?: string
+}): JSX.Element {
+  const [pressing, setPressing] = useState(false)
+  const [committed, setCommitted] = useState(false)
+  const timerRef = useRef<number | null>(null)
+  const commitTimerRef = useRef<number | null>(null)
+  const onConfirmRef = useRef(onConfirm)
+  onConfirmRef.current = onConfirm
+
+  const cancel = useCallback((): void => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setPressing(false)
+  }, [])
+
+  const start = useCallback((): void => {
+    if (disabled || committed) return
+    cancel()
+    setPressing(true)
+    timerRef.current = window.setTimeout(() => {
+      setPressing(false)
+      setCommitted(true)
+      onConfirmRef.current()
+      commitTimerRef.current = window.setTimeout(() => {
+        setCommitted(false)
+      }, 300)
+    }, holdDurationMs)
+  }, [disabled, committed, holdDurationMs, cancel])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+      if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current)
+    }
+  }, [])
+
+  const strokeDashoffset = committed ? 0 : pressing ? 0 : 260
+
+  return (
+    <Button
+      variant={variant}
+      size={size}
+      disabled={disabled}
+      title={title ?? confirmHint}
+      className={clsx(
+        'my-hold-confirm-btn',
+        pressing && 'is-pressing',
+        committed && 'is-committed',
+        className
+      )}
+      onPointerDown={start}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onKeyDown={(event) => {
+        if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+          start()
+        }
+      }}
+      onKeyUp={(event) => {
+        if (event.key === ' ' || event.key === 'Enter') {
+          cancel()
+        }
+      }}
+    >
+      <svg className="my-hold-confirm-ring" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <rect
+          x="2"
+          y="2"
+          width="96"
+          height="96"
+          rx="10"
+          pathLength="260"
+          strokeDasharray="260"
+          style={{
+            strokeDashoffset,
+            transition: pressing ? `stroke-dashoffset ${holdDurationMs}ms linear` : 'stroke-dashoffset 150ms ease-out'
+          }}
+        />
+      </svg>
+      {children}
+    </Button>
+  )
+}
+
+/* ---------------- Card 23: 敏感信息窥视 (Secret Peek) ---------------- */
+
+export function SecretPeek({
+  value,
+  label,
+  className,
+  revealOnAlt = true
+}: {
+  value: string
+  label?: string
+  className?: string
+  revealOnAlt?: boolean
+}): JSX.Element {
+  const [revealed, setRevealed] = useState(false)
+  const [altHeld, setAltHeld] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!revealOnAlt) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt') setAltHeld(true)
+    }
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt') setAltHeld(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', () => setAltHeld(false))
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [revealOnAlt])
+
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // ignore
+    }
+  }
+
+  const isPeeking = revealed || altHeld
+
+  return (
+    <div
+      className={clsx('my-secret-row', isPeeking && 'is-peeking', className)}
+      title="悬停、点击右侧眼睛或按住 Alt 查看明文"
+    >
+      {label && <span className="text-my-tertiary select-none">{label}</span>}
+      <span className="my-secret-val select-all">{value}</span>
+      <button
+        type="button"
+        className="my-icon-control my-secret-action text-my-tertiary hover:text-my-primary"
+        aria-label={isPeeking ? '隐藏明文' : '显示明文 (支持 Alt 键)'}
+        onClick={() => setRevealed((prev) => !prev)}
+      >
+        {isPeeking ? <EyeOff size={13} /> : <Eye size={13} />}
+      </button>
+      <button
+        type="button"
+        className="my-icon-control my-secret-action text-my-tertiary hover:text-my-primary"
+        aria-label="复制到剪贴板"
+        onClick={() => void copy()}
+      >
+        {copied ? <Check size={13} className="text-my-success-text" /> : <Copy size={13} />}
+      </button>
+    </div>
+  )
+}
+
+/* ---------------- Card 12: 同心波轻叩指示器 (Knock Indicator) ---------------- */
+
+export function KnockIndicator({
+  children,
+  active = true,
+  className
+}: {
+  children?: ReactNode
+  active?: boolean
+  className?: string
+}): JSX.Element {
+  return (
+    <span className={clsx('my-knock-wrap', className)}>
+      {active && <span className="my-knock-wave" aria-hidden="true" />}
+      {children ?? <span className="my-knock-dot" aria-hidden="true" />}
+    </span>
+  )
 }

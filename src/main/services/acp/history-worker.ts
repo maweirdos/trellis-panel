@@ -2,6 +2,7 @@ import { parentPort } from 'node:worker_threads'
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { AcpHistoryCore, HistoryCursorError, type HistoryBatchItem } from './history-core'
+import type { AcpHistoryEventsInput } from '../../../shared/acp-history'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 
 export type HistoryOperation =
@@ -11,7 +12,7 @@ export type HistoryOperation =
   | { op: 'session'; root: string; sessionId: string; legacyIds: string[] }
   | { op: 'delete'; root: string; sessionId: string }
   | { op: 'title-material'; root: string; sessionId: string }
-  | { op: 'events'; root: string; sessionId: string; input: { limit?: number; before?: string; after?: string } }
+  | { op: 'events'; root: string; sessionId: string; input: AcpHistoryEventsInput }
   | { op: 'handoff'; root: string; sessionId: string; byteLimit: number }
   | { op: 'recovery'; root: string; record: AcpSessionRecord; input: { sourcePath: string; sourceDigest: string; events: TimelineEvent[] } }
   | { op: 'close' }

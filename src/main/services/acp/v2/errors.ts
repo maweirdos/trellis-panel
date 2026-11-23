@@ -22,6 +22,7 @@ export type AcpProtocolErrorDetails = {
   readonly requestId?: string | number
   readonly maxMessageBytes?: number
   readonly code?: number
+  readonly promptRejected?: boolean
   readonly cause?: unknown
 }
 
@@ -47,7 +48,7 @@ export const incompatibleVersionError = (requestedVersion: number, returnedVersi
 export const invalidInitializeError = (returnedVersion: number | null, cause?: unknown): AcpProtocolError =>
   new AcpProtocolError(
     'E_PROTOCOL',
-    'ACP v2 initialize response is invalid',
+    `ACP v2 initialize response is schema-invalid: the agent reported protocol ${returnedVersion ?? 'none'} but its capability tree did not match the v2 schema`,
     { returnedVersion, cause },
   )
 

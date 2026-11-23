@@ -62,9 +62,9 @@ export type AcpV2ProvidersRequest = ListProvidersRequest
 export type AcpV2McpServer = McpServer
 
 export type AcpV2RuntimeEvent =
-  | { type: 'text_delta'; text: string; stream?: 'output' | 'thought'; tag?: string; messageId?: string; meta?: { origin?: string; kind?: string; source?: string } }
+  | { type: 'text_delta'; text: string; stream?: 'output' | 'thought'; tag?: string; messageId?: string; meta?: { origin?: string; kind?: string; source?: string; acpText?: import('../../../../shared/acp-text-blocks').ConversationTextBlock } }
   | { type: 'status'; text: string; tag?: string; availableCommands?: Array<{ name: string; description?: string; hasInput?: boolean }> }
-  | { type: 'tool_call'; text: string; tag?: string; toolCallId?: string; status?: string; title?: string; kind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'think' | 'switch_mode' | 'other'; rawInput?: unknown; rawOutput?: unknown; content?: import('@agentclientprotocol/sdk').ToolCallContent[] }
+  | { type: 'tool_call'; text: string; tag?: string; toolCallId?: string; status?: string; title?: string; kind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'think' | 'switch_mode' | 'other'; rawInput?: unknown; rawOutput?: unknown; content?: unknown[] }
   | { type: 'error'; message: string }
   | { type: 'done'; stopReason?: string; _meta?: Record<string, unknown> | null }
 
@@ -76,6 +76,7 @@ export type AcpV2TurnResult =
 export interface AcpV2Turn {
   readonly requestId: string
   readonly promptStarted: Promise<void>
+  readonly promptDispatched?: boolean
   readonly events: AsyncIterable<AcpV2RuntimeEvent>
   readonly result: Promise<AcpV2TurnResult>
   cancel(input?: { reason?: string }): Promise<void>

@@ -10,19 +10,24 @@ import {
   acpConversationListSnapshotSchema,
   acpConversationDetailSnapshotSchema,
   acpConversationEventPageSchema,
+  acpConversationProjectionEventSchema,
   acpTurnItemProjectionSchema,
-  acpTurnItemVariantSchema,
   type AcpConversationDetailInput,
   type AcpConversationEventsInput,
   type AcpConversationEventPage,
+  type AcpConversationHistoryCoverage,
   type AcpConversationListInput,
   type AcpConversationListSnapshot,
   type AcpConversationDetailSnapshot,
+  type AcpConversationProjectionEvent,
   type AcpTurnItemProjection,
   type AcpTurnItemVariant,
 } from '../../../shared/acp-projections'
+import { readConversationTextBlock } from '../../../shared/acp-text-blocks'
 import type { AcpSessionMeta, TimelineEvent } from '../../../shared/types'
+import { truncateDetail } from './t3-core/wire-projection'
 import type { AcpV2NativeRecord } from './v2/persistence'
+import { hasAcpCapability } from './v2/normalize'
 import { CONTROL_PLANE_DDL, CONTROL_PLANE_SCHEMA_VERSION } from './control-plane-schema'
 
 export class AcpControlPlaneCursorError extends Error {
@@ -35,14 +40,18 @@ export class AcpControlPlaneStoreError extends Error {
   constructor(message: string) { super(message) }
 }
 
-export interface AcpControlPlaneMigrationSource {
+export interface AcpArchiveProjectionSource {
   root: string
   meta: AcpSessionMeta
-  events: Array<TimelineEvent & { historySeq?: number }>
+  sourceEpoch: string
   sourceDigest: string
-  sourceLastSequence: number | null
-  afterSourceSequence?: number
+  throughSequence: number
+  lastActivityAt: number
+  remainingEventCount: number
+  events: Array<TimelineEvent & { historySeq: number }>
+  coverageState: AcpConversationHistoryCoverage['state']
   coverageReason?: string
+  nativeSessionId?: string
 }
 
 interface SequenceRow { currentSequence: number; storeEpoch: string; schemaVersion: number }
@@ -51,8 +60,7 @@ interface ConversationRow {
   title: string; archivedAt: number | null; pinnedAt: number | null; lastActivityAt: number;
   createdAt: number; updatedAt: number; lastSequence: number
 }
-interface RuntimeRow { state: string; lastObservedAt: number | null; recoverable: number; engine: 'acp' | 'pi' }
-interface RuntimeIdsRow { runtimeSessionId: string }
+interface RuntimeRow { runtimeSessionId: string; state: string; lastObservedAt: number | null; recoverable: number; engine: 'acp' | 'pi' }
 interface ProviderRow { providerInstanceId: string }
 interface ItemRow {
   id: string; turnId: string; conversationId: string; ordinal: number; sourceEventId: string;
@@ -60,9 +68,10 @@ interface ItemRow {
 }
 interface EventRow { sequence: number; conversationId: string; type: string; occurredAt: number; payload: string }
 interface MigrationRow { state: string; sourceDigest: string; sourceLastSequence: number | null; sourceEventCount: number; projectedEventCount: number; diagnostic: string | null }
+interface ArchiveProgressRow { sourceEpoch: string; sourceSequence: number }
+interface V2ProgressRow { sourceDigest: string; sourceOffset: number; sourceCount: number }
 
 const PAGE_BYTES = 2 * 1024 * 1024
-const MAX_ITEM_TEXT = 32_768
 
 function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -73,8 +82,7 @@ function conversationId(root: string, sessionId: string, engine: 'acp' | 'pi'): 
 }
 
 function boundedText(value: unknown, fallback = ''): string {
-  if (typeof value !== 'string') return fallback
-  return value.length > MAX_ITEM_TEXT ? `${value.slice(0, MAX_ITEM_TEXT - 12)}…[truncated]` : value
+  return truncateDetail(typeof value === 'string' ? value : undefined) ?? fallback
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
@@ -106,12 +114,13 @@ function itemVariant(event: TimelineEvent): AcpTurnItemVariant {
   if (event.kind === 'thought') return { kind: 'reasoning', text: boundedText(event.text) }
   if (event.kind === 'tool-call') {
     const title = typeof event.payload?.title === 'string' ? event.payload.title : undefined
-    return { kind: 'tool-call', title: boundedText(title ?? event.text, 'Tool call') }
+    const status = typeof event.payload?.status === 'string' ? event.payload.status.slice(0, 120) : undefined
+    return { kind: 'tool-call', title: boundedText(title ?? event.text, 'Tool call').slice(0, 2000), ...(status ? { status } : {}) }
   }
   if (event.kind === 'permission') {
     const toolCall = event.payload?.toolCall
     const title = toolCall && typeof toolCall === 'object' && 'title' in toolCall && typeof toolCall.title === 'string' ? toolCall.title : undefined
-    return { kind: 'permission', title: boundedText(title ?? event.text, 'Permission'), pending: event.payload?.pending === true }
+    return { kind: 'permission', title: boundedText(title ?? event.text, 'Permission').slice(0, 2000), pending: event.payload?.pending === true }
   }
   if (event.kind === 'plan') return { kind: 'plan', text: boundedText(event.text) }
   if (event.kind === 'session-status' && event.payload?.runtimeTelemetry instanceof Object) {
@@ -123,7 +132,7 @@ function itemVariant(event: TimelineEvent): AcpTurnItemVariant {
   }
   if (event.kind === 'turn-done' || event.kind === 'session-status' || event.kind === 'task-status' || event.kind === 'material-change') return { kind: 'status', text: boundedText(event.text) }
   if (event.kind === 'message' || event.kind === 'diagnostic') return { kind: 'diagnostic', text: boundedText(event.text ?? event.payload) }
-  return { kind: 'system-marker', text: boundedText(event.text ?? event.kind, event.kind) }
+  return { kind: 'system-marker', text: boundedText(event.text ?? event.kind, event.kind).slice(0, 2000) }
 }
 
 function itemProjection(row: ItemRow): AcpTurnItemProjection {
@@ -142,30 +151,41 @@ function sqliteText(value: string | undefined): string | null {
   return value ?? null
 }
 
-function sourceSequence(event: TimelineEvent & { historySeq?: number }, fallback: number): number {
-  return typeof event.historySeq === 'number' && Number.isSafeInteger(event.historySeq) && event.historySeq > 0 ? event.historySeq : fallback
+function nativeItemKey(sessionId: string, kind: TimelineEvent['kind'] | 'prompt', nativeId: string): string {
+  return `v2:${digest([sessionId, kind, nativeId])}`
 }
 
-function v2TimelineEvents(record: AcpV2NativeRecord): Array<TimelineEvent & { historySeq?: number }> {
-  const events: Array<TimelineEvent & { historySeq?: number }> = []
-  const append = (nativeId: string, kind: TimelineEvent['kind'], text: string, payload?: Record<string, unknown>): void => {
+type NativeTimelineEvent = TimelineEvent & { legacyUserOccurrence?: number }
+
+function v2TimelineEvents(root: string, record: AcpV2NativeRecord): NativeTimelineEvent[] {
+  const events: NativeTimelineEvent[] = []
+  const legacyUsers = new Map<string, number>()
+  const append = (nativeId: string, kind: TimelineEvent['kind'], text: string, payload?: Record<string, unknown>,
+    promptTurnId?: string, legacyUser = false): void => {
+    const bounded = boundedText(text)
+    const legacyUserOccurrence = legacyUser ? legacyUsers.get(bounded) ?? 0 : undefined
+    if (legacyUserOccurrence !== undefined) legacyUsers.set(bounded, legacyUserOccurrence + 1)
     events.push({
-      id: `v2:${record.nativeSessionId}:${nativeId}`,
+      id: promptTurnId === undefined ? nativeItemKey(record.nativeSessionId, kind, nativeId) : nativeItemKey(record.nativeSessionId, 'prompt', promptTurnId),
       ts: record.updatedAt,
       source: 'acp',
       sessionId: record.sessionKey,
-      projectRoot: record.cwd,
+      projectRoot: root,
       kind,
-      text: boundedText(text),
-      payload: { ...payload, nativeId },
-      historySeq: events.length + 1,
+      text: bounded,
+      payload,
+      turnId: promptTurnId,
+      legacyUserOccurrence,
     })
   }
   for (const entity of record.aggregate.messages) {
     const value = readRecord(entity.value)
-    if (value !== undefined) append(entity.nativeId, 'message', typeof value.text === 'string' ? value.text : '', {
-      role: value.tag === 'user_message' || value.tag === 'user_message_chunk' ? 'user' : 'assistant',
-    })
+    if (value === undefined) continue
+    const user = value.tag === 'user_message' || value.tag === 'user_message_chunk'
+    const projection = readRecord(value.projection)
+    const promptTurnId = user && typeof projection?.promptTurnId === 'string' ? projection.promptTurnId : undefined
+    append(entity.nativeId, value.stream === 'thought' ? 'thought' : 'message', typeof value.text === 'string' ? value.text : '',
+      { role: user ? 'user' : 'assistant' }, promptTurnId, user && projection === undefined)
   }
   for (const entity of record.aggregate.toolCalls) {
     const value = readRecord(entity.value)
@@ -175,9 +195,13 @@ function v2TimelineEvents(record: AcpV2NativeRecord): Array<TimelineEvent & { hi
     const value = readRecord(entity.value)
     if (value !== undefined) append(entity.nativeId, 'plan', typeof value.summary === 'string' && value.summary.length > 0 ? value.summary : entity.nativeId)
   }
-  for (const entity of [...record.aggregate.sessionInfo, ...record.aggregate.notices]) {
+  for (const entity of record.aggregate.sessionInfo) {
     const value = readRecord(entity.value)
-    if (value !== undefined) append(entity.nativeId, 'session-status', typeof value.message === 'string' ? value.message : typeof value.summary === 'string' ? value.summary : 'ACP v2 更新')
+    if (value !== undefined) append(`session-info:${entity.nativeId}`, 'session-status', 'ACP v2 会话信息已更新')
+  }
+  for (const entity of record.aggregate.notices) {
+    const value = readRecord(entity.value)
+    if (value !== undefined) append(`notice:${entity.nativeId}`, 'session-status', typeof value.message === 'string' ? value.message : typeof value.summary === 'string' ? value.summary : 'ACP v2 更新')
   }
   const terminal = record.aggregate.terminal.find(entity => entity.nativeId === 'terminal')
   const terminalValue = terminal === undefined ? undefined : readRecord(terminal.value)
@@ -188,6 +212,8 @@ function v2TimelineEvents(record: AcpV2NativeRecord): Array<TimelineEvent & { hi
 export interface AcpV2ProjectionSource {
   readonly root: string
   readonly record: AcpV2NativeRecord
+  readonly archiveHead?: number
+  readonly budget: { readonly rows: number; readonly bytes: number }
 }
 
 export class AcpControlPlaneStore {
@@ -245,99 +271,174 @@ export class AcpControlPlaneStore {
   private appendEvent(conversationId: string, type: string, occurredAt: number, payload: unknown, sequence?: number): number {
     const value = sequence ?? this.nextSequence()
     this.statement('INSERT OR IGNORE INTO control_plane_events(sequence,eventId,conversationId,type,occurredAt,payloadDigest,payload) VALUES(?,?,?,?,?,?,?)')
-      .run(value, `${conversationId}:${type}:${sequence ?? digest(payload)}`, conversationId, type, occurredAt, digest(payload), JSON.stringify(payload))
+      .run(value, `${conversationId}:${type}:${value}`, conversationId, type, occurredAt, digest(payload), JSON.stringify(payload))
     return value
   }
 
-  migrate(source: AcpControlPlaneMigrationSource): void {
-    const root = source.root
-    const id = conversationId(root, source.meta.sessionId, source.meta.engine ?? 'acp')
-    const engine = source.meta.engine ?? 'acp'
-    const migrationKey = [root, source.meta.sessionId, engine] as const
-    const existing = this.selectOne<MigrationRow>('SELECT * FROM control_plane_migration WHERE root=? AND sessionId=? AND engine=?', ...migrationKey)
-    const sameSource = existing?.sourceDigest === source.sourceDigest
-    if (existing?.state === 'complete' && sameSource && (existing.sourceLastSequence ?? null) === (source.sourceLastSequence ?? null)) return
+  private writeMetadata(
+    id: string,
+    source: { root: string; meta: AcpSessionMeta; runtimeUnverified?: boolean },
+    lastActivityAt: number,
+    now: number,
+    createdSequence: number,
+  ): string {
+    const { root, meta } = source
+    const engine = meta.engine ?? 'acp'
+    const title = boundedText(meta.title ?? meta.agentName ?? meta.sessionId).slice(0, 300)
+    const createdAt = Math.max(0, Math.trunc(meta.startedAt || now))
+    this.statement(`INSERT INTO conversation_projection(conversationId,sourceRoot,sourceSessionId,sourceEngine,title,archivedAt,pinnedAt,lastActivityAt,createdAt,updatedAt,lastSequence)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(conversationId) DO UPDATE SET
+      title=excluded.title,archivedAt=excluded.archivedAt,pinnedAt=excluded.pinnedAt,lastActivityAt=MAX(conversation_projection.lastActivityAt,excluded.lastActivityAt),updatedAt=excluded.updatedAt`)
+      .run(id, root, meta.sessionId, engine, title, sqliteInteger(meta.archivedAt), sqliteInteger(meta.pinnedAt),
+        Math.max(createdAt, lastActivityAt), createdAt, now, createdSequence)
+
+    const recoverable = meta.canResume === true && (engine === 'pi' || (meta.nativeRecordId !== undefined && meta.capabilities?.protocolVersion === 2))
+    const runtimeState = source.runtimeUnverified ? 'unknown' : meta.status === 'busy' ? 'running' : meta.status === 'awaiting_permission' ? 'awaiting-permission'
+      : meta.status === 'cancelling' ? 'stopping' : recoverable ? 'recoverable' : 'stopped'
+    const runtimeSessionId = `rt-${digest([id, meta.connectionGeneration ?? 'legacy']).slice(0, 24)}`
+    this.statement('DELETE FROM runtime_session_projection WHERE conversationId=? AND runtimeSessionId<>?').run(id, runtimeSessionId)
+    this.statement('DELETE FROM provider_instance_projection WHERE conversationId=? AND providerInstanceId<>?').run(id, `${runtimeSessionId}:provider`)
+    this.statement(`INSERT INTO runtime_session_projection(runtimeSessionId,conversationId,state,lastObservedAt,recoverable,engine) VALUES(?,?,?,?,?,?)
+      ON CONFLICT(runtimeSessionId) DO UPDATE SET state=excluded.state,lastObservedAt=excluded.lastObservedAt,recoverable=excluded.recoverable,engine=excluded.engine`)
+      .run(runtimeSessionId, id, runtimeState, sqliteInteger(meta.endedAt ?? lastActivityAt), recoverable ? 1 : 0, engine)
+    this.statement(`INSERT INTO runtime_thread_projection(runtimeThreadId,conversationId,runtimeSessionId,nativeThreadId,identityStrength,recoverability) VALUES(?,?,?,?,?,?)
+      ON CONFLICT(runtimeThreadId) DO UPDATE SET nativeThreadId=excluded.nativeThreadId,identityStrength=excluded.identityStrength,recoverability=excluded.recoverability`)
+      .run(`${runtimeSessionId}:thread`, id, runtimeSessionId, meta.backendSessionId ?? null, meta.backendSessionId ? 'native' : 'session-only', recoverable ? 'recoverable' : 'unavailable')
+    this.statement(`INSERT INTO provider_instance_projection(providerInstanceId,conversationId,launchKind,providerId,providerName,snapshotDigest,capabilityProjection) VALUES(?,?,?,?,?,?,?)
+      ON CONFLICT(providerInstanceId) DO UPDATE SET launchKind=excluded.launchKind,providerId=excluded.providerId,providerName=excluded.providerName,snapshotDigest=excluded.snapshotDigest,capabilityProjection=excluded.capabilityProjection`)
+      .run(`${runtimeSessionId}:provider`, id, engine, meta.agentId ?? 'unknown', sqliteText(meta.agentName), digest([meta.runtimeSnapshot ?? null]), JSON.stringify(meta.capabilities ?? {}))
+    return runtimeSessionId
+  }
+
+  archiveCursor(root: string, sessionId: string, engine: 'acp' | 'pi', epoch: string, head: number): number {
+    const progress = this.selectOne<ArchiveProgressRow>('SELECT sourceEpoch,sourceSequence FROM control_plane_archive_progress WHERE conversationId=?',
+      conversationId(root, sessionId, engine))
+    return progress?.sourceEpoch === epoch && progress.sourceSequence <= head ? progress.sourceSequence : 0
+  }
+
+  migrateArchive(source: AcpArchiveProjectionSource): void {
+    const { root, meta, throughSequence, sourceEpoch, sourceDigest } = source
+    const engine = meta.engine ?? 'acp'
+    const id = conversationId(root, meta.sessionId, engine)
+    const migration = this.migrationState(root, meta.sessionId, engine)
+    const existing = this.selectOne<ArchiveProgressRow>('SELECT sourceEpoch,sourceSequence FROM control_plane_archive_progress WHERE conversationId=?', id)
+    const resume = existing?.sourceEpoch === sourceEpoch && existing.sourceSequence <= throughSequence
+    if (resume && migration?.sourceDigest === sourceDigest && source.events.length === 0) return
 
     this.transaction(() => {
-      const resume = existing?.state === 'partial' && sameSource
-      if (existing && !resume) {
-        this.statement('DELETE FROM control_plane_events WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM turn_item_projection WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM turn_projection WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM runtime_thread_projection WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM runtime_session_projection WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM provider_instance_projection WHERE conversationId=?').run(id)
-        this.statement('DELETE FROM conversation_projection WHERE conversationId=?').run(id)
-      }
-
+      if (!resume && migration) this.statement('DELETE FROM conversation_projection WHERE conversationId=?').run(id)
       const now = Date.now()
-      const createdAt = Math.max(0, Math.trunc(source.meta.startedAt || now))
-      const activity = Math.max(createdAt, ...source.events.map(event => Math.max(0, Math.trunc(event.ts))))
       const createdSequence = this.nextSequence()
+      const runtimeSessionId = this.writeMetadata(id, source, source.lastActivityAt, now, createdSequence)
       if (!resume) {
-        this.statement(`INSERT INTO conversation_projection(conversationId,sourceRoot,sourceSessionId,sourceEngine,title,archivedAt,pinnedAt,lastActivityAt,createdAt,updatedAt,lastSequence)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
-          id, root, source.meta.sessionId, engine, boundedText(source.meta.title ?? source.meta.agentName ?? source.meta.sessionId).slice(0, 300),
-          sqliteInteger(source.meta.archivedAt), sqliteInteger(source.meta.pinnedAt), activity, createdAt, now, createdSequence)
-      } else {
-        this.statement('UPDATE conversation_projection SET title=?,archivedAt=?,pinnedAt=?,lastActivityAt=?,updatedAt=? WHERE conversationId=?')
-          .run(boundedText(source.meta.title ?? source.meta.agentName ?? source.meta.sessionId).slice(0, 300), sqliteInteger(source.meta.archivedAt), sqliteInteger(source.meta.pinnedAt), activity, now, id)
+        this.appendEvent(id, migration ? 'projection-reset' : 'conversation-created', now, { sourceRoot: root, sourceSessionId: meta.sessionId, engine }, createdSequence)
       }
-
-      const runtimeState = source.meta.status === 'busy' ? 'running' : source.meta.status === 'awaiting_permission' ? 'awaiting-permission'
-        : source.meta.status === 'cancelling' ? 'stopping' : source.meta.canResume === true ? 'recoverable' : 'stopped'
-      const runtimeSessionId = `rt-${createHash('sha256').update(JSON.stringify([id, source.meta.connectionGeneration ?? 'legacy'])).digest('hex').slice(0, 24)}`
-      this.statement(`INSERT INTO runtime_session_projection(runtimeSessionId,conversationId,state,lastObservedAt,recoverable,engine) VALUES(?,?,?,?,?,?)
-        ON CONFLICT(runtimeSessionId) DO UPDATE SET state=excluded.state,lastObservedAt=excluded.lastObservedAt,recoverable=excluded.recoverable,engine=excluded.engine`)
-        .run(runtimeSessionId, id, runtimeState, sqliteInteger(source.meta.endedAt ?? activity), source.meta.canResume === true ? 1 : 0, engine)
-      this.statement(`INSERT INTO runtime_thread_projection(runtimeThreadId,conversationId,runtimeSessionId,nativeThreadId,identityStrength,recoverability) VALUES(?,?,?,?,?,?)
-        ON CONFLICT(runtimeThreadId) DO UPDATE SET nativeThreadId=excluded.nativeThreadId,identityStrength=excluded.identityStrength,recoverability=excluded.recoverability`)
-        .run(`${runtimeSessionId}:thread`, id, runtimeSessionId, source.meta.backendSessionId ?? null, source.meta.backendSessionId ? 'native' : 'session-only', source.meta.canResume === true ? 'recoverable' : 'unavailable')
-      this.statement(`INSERT INTO provider_instance_projection(providerInstanceId,conversationId,launchKind,providerId,providerName,snapshotDigest,capabilityProjection) VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(providerInstanceId) DO UPDATE SET launchKind=excluded.launchKind,providerId=excluded.providerId,providerName=excluded.providerName,snapshotDigest=excluded.snapshotDigest,capabilityProjection=excluded.capabilityProjection`)
-        .run(`${runtimeSessionId}:provider`, id, source.meta.engine === 'pi' ? 'pi' : 'acp', source.meta.agentId ?? 'unknown', sqliteText(source.meta.agentName), digest([source.meta.runtimeSnapshot ?? null]), JSON.stringify(source.meta.capabilities ?? {}))
-      if (!resume) this.appendEvent(id, 'conversation-created', createdAt, { sourceRoot: root, sourceSessionId: source.meta.sessionId, engine }, createdSequence)
-      this.appendEvent(id, 'runtime-updated', now, { state: runtimeState, recoverable: source.meta.canResume === true })
-
-      let ordinal = resume ? existing?.projectedEventCount ?? 0 : 0
-      let projectedCount = ordinal
-      let bytes = 0
-      for (const [index, event] of source.events.entries()) {
-        if (resume && source.afterSourceSequence !== undefined && sourceSequence(event, index + 1) <= source.afterSourceSequence) continue
-        const turn = turnIdFor(root, source.meta.sessionId, event)
-        const startedAt = Math.max(0, Math.trunc(event.ts))
-        this.statement('INSERT OR IGNORE INTO turn_projection(turnId,conversationId,ordinal,status,providerRuntimeId,startedAt,endedAt) VALUES(?,?,?,?,?,?,?)')
-          .run(turn, id, ordinal, 'archived', runtimeSessionId, startedAt, null)
-        const sequence = this.nextSequence()
-        const variant = itemVariant(event)
-        const payload = JSON.stringify(variant)
-        const eventBytes = Buffer.byteLength(payload)
-        if (bytes + eventBytes > PAGE_BYTES && projectedCount > 0) {
-          this.statement(`INSERT INTO control_plane_migration(root,sessionId,engine,state,sourceLastSequence,sourceEventCount,projectedEventCount,sourceDigest,diagnostic,migratedAt)
-            VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(root,sessionId,engine) DO UPDATE SET state=excluded.state,sourceLastSequence=excluded.sourceLastSequence,
-            sourceEventCount=excluded.sourceEventCount,projectedEventCount=excluded.projectedEventCount,sourceDigest=excluded.sourceDigest,diagnostic=excluded.diagnostic,migratedAt=excluded.migratedAt`)
-            .run(root, source.meta.sessionId, engine, 'partial', source.sourceLastSequence, source.events.length, projectedCount, source.sourceDigest,
-              boundedText(source.coverageReason ?? 'Legacy page exceeded the bounded projection budget'), Date.now())
-          break
-        }
-        this.statement('INSERT INTO turn_item_projection(id,turnId,conversationId,ordinal,sourceEventId,sourceSequence,occurredAt,sequence,kind,payload) VALUES(?,?,?,?,?,?,?,?,?,?)')
-          .run(`${id}:source:${event.id}`, turn, id, index, event.id, sourceSequence(event, index + 1), startedAt, sequence, variant.kind, payload)
-        this.appendEvent(id, 'item-updated', startedAt, { sourceEventId: event.id, sourceSequence: sourceSequence(event, index + 1), item: variant }, sequence)
-        ordinal += 1
-        projectedCount += 1
-        bytes += eventBytes
+      let projectedCount = resume ? migration?.projectedEventCount ?? 0 : 0
+      let sourceSequence = resume ? existing.sourceSequence : 0
+      for (const event of source.events) {
+        if (event.historySeq <= sourceSequence) continue
+        if (this.ingestArchiveEvent(id, root, meta.sessionId, runtimeSessionId, event, source.nativeSessionId)) projectedCount += 1
+        sourceSequence = event.historySeq
       }
-
-      const complete = projectedCount === source.events.length
-      this.statement(`INSERT INTO control_plane_migration(root,sessionId,engine,state,sourceLastSequence,sourceEventCount,projectedEventCount,sourceDigest,diagnostic,migratedAt)
-        VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(root,sessionId,engine) DO UPDATE SET state=excluded.state,sourceLastSequence=excluded.sourceLastSequence,
-        sourceEventCount=excluded.sourceEventCount,projectedEventCount=excluded.projectedEventCount,sourceDigest=excluded.sourceDigest,diagnostic=excluded.diagnostic,migratedAt=excluded.migratedAt`)
-        .run(root, source.meta.sessionId, engine, complete ? 'complete' : 'partial', source.sourceLastSequence, source.events.length, projectedCount, source.sourceDigest,
-          complete ? null : boundedText(source.coverageReason ?? 'Legacy history changed during a bounded projection'), Date.now())
-      const finalSequence = this.nextSequence()
+      const complete = sourceSequence === throughSequence
+      this.statement(`INSERT INTO control_plane_archive_progress(conversationId,sourceEpoch,sourceSequence) VALUES(?,?,?)
+        ON CONFLICT(conversationId) DO UPDATE SET sourceEpoch=excluded.sourceEpoch,sourceSequence=excluded.sourceSequence`)
+        .run(id, sourceEpoch, sourceSequence)
+      this.writeMigration(source, complete ? source.coverageState : 'partial', throughSequence, projectedCount + source.remainingEventCount, projectedCount,
+        complete ? source.coverageReason : (source.coverageReason ?? 'More archived events are available'), now)
+      const finalSequence = this.appendEvent(id, 'conversation-updated', now, { projectedCount })
       this.statement('UPDATE conversation_projection SET lastSequence=? WHERE conversationId=?').run(finalSequence, id)
-      this.appendEvent(id, complete ? 'migration-completed' : 'conversation-updated', now, { sourceEventCount: source.events.length, projectedEventCount: projectedCount }, finalSequence)
     })
+  }
+
+  private ingestArchiveEvent(id: string, root: string, sessionId: string, runtimeSessionId: string,
+    event: TimelineEvent & { historySeq: number }, archiveSessionId?: string): boolean {
+    const block = readConversationTextBlock(event)
+    const meta = readRecord(event.payload?.meta)
+    const structuredText = event.source === 'pi' ? meta?.piText : event.source === 'acp' ? meta?.acpText : undefined
+    if (structuredText !== undefined && block === undefined) return false
+    const sourceEventId = event.id.length <= 150 ? event.id : digest(event.id)
+    const variant = itemVariant(event)
+    const nativeSessionId = event.source === 'acp'
+      ? (typeof event.payload?.nativeSessionId === 'string' ? event.payload.nativeSessionId : archiveSessionId) : undefined
+    const messageId = typeof event.payload?.messageId === 'string' ? event.payload.messageId : undefined
+    let nativeKey: string | undefined
+    if (nativeSessionId !== undefined) {
+      if ((event.kind === 'message' || event.kind === 'thought') && messageId !== undefined
+        && (block === undefined || block.blockIndex === 0)) {
+        nativeKey = nativeItemKey(nativeSessionId, event.kind, messageId)
+      } else if (event.kind === 'message' && event.payload?.role === 'user' && event.turnId !== undefined) {
+        nativeKey = nativeItemKey(nativeSessionId, 'prompt', event.turnId)
+      } else if (event.kind === 'tool-call' && typeof event.payload?.toolCallId === 'string') {
+        nativeKey = nativeItemKey(nativeSessionId, event.kind, event.payload.toolCallId)
+      }
+    }
+    const itemId = nativeKey !== undefined ? `${id}:source:${nativeKey}` : block === undefined ? `${id}:source:${sourceEventId}`
+      : `${id}:text:${digest([event.source, event.connectionGeneration, event.turnId, block.messageId, block.blockIndex, block.blockType])}`
+    const previous = this.selectOne<ItemRow>('SELECT * FROM turn_item_projection WHERE id=?', itemId)
+    const archivePayload = nativeKey === undefined && variant.kind !== 'user-message' ? undefined
+      : this.selectOne<{ payload: string }>('SELECT payload FROM control_plane_archive_item_payload WHERE itemId=?', itemId)?.payload
+    if (block?.operation === 'append' && 'text' in variant) {
+      const prior = nativeKey === undefined ? previous?.payload : archivePayload
+      const prefix = prior === undefined ? '' : (JSON.parse(prior) as { text?: string }).text ?? ''
+      variant.text = boundedText(prefix + variant.text)
+    }
+    const archiveVariant = JSON.stringify(variant)
+    const visible = previous === undefined ? undefined : readRecord(JSON.parse(previous.payload))
+    if (nativeKey !== undefined && block?.operation === 'append' && 'text' in variant
+      && typeof visible?.text === 'string' && visible.text.startsWith(variant.text)) variant.text = visible.text
+    if (nativeKey !== undefined && variant.kind === 'tool-call' && archivePayload !== undefined && visible?.kind === 'tool-call') {
+      const oldArchive = readRecord(JSON.parse(archivePayload))
+      if (oldArchive?.title === variant.title && typeof visible.title === 'string') variant.title = visible.title
+      if (oldArchive?.status === variant.status && typeof visible.status === 'string') variant.status = visible.status
+    }
+    this.writeItem({ id, itemId, root, sessionId, runtimeSessionId, event, sourceEventId, variant, previous, turnOrdinal: event.historySeq })
+    if (nativeKey !== undefined || variant.kind === 'user-message') {
+      this.statement(`INSERT INTO control_plane_archive_item_payload(itemId,conversationId,payload) VALUES(?,?,?)
+        ON CONFLICT(itemId) DO UPDATE SET payload=excluded.payload`).run(itemId, id, archiveVariant)
+    }
+    return nativeKey !== undefined || variant.kind === 'user-message' ? archivePayload === undefined : previous === undefined
+  }
+
+  private writeItem(input: { id: string; itemId: string; root: string; sessionId: string; runtimeSessionId: string;
+    event: TimelineEvent & { historySeq: number }; sourceEventId: string; variant: AcpTurnItemVariant; previous?: ItemRow; turnOrdinal: number }): boolean {
+    const { id, itemId, root, sessionId, runtimeSessionId, event, sourceEventId, variant, previous, turnOrdinal } = input
+    const payload = JSON.stringify(variant)
+    if (previous?.payload === payload) return false
+    const turnId = previous?.turnId ?? turnIdFor(root, sessionId, event)
+    const occurredAt = previous?.occurredAt ?? Math.max(0, Math.trunc(event.ts))
+    this.statement('INSERT OR IGNORE INTO turn_projection(turnId,conversationId,ordinal,status,providerRuntimeId,startedAt,endedAt) VALUES(?,?,?,?,?,?,?)')
+      .run(turnId, id, turnOrdinal, 'archived', runtimeSessionId, occurredAt, null)
+    if (event.kind === 'turn-done') {
+      this.statement('UPDATE turn_projection SET endedAt=? WHERE turnId=?').run(occurredAt, turnId)
+    }
+    const sequence = this.nextSequence()
+    const row: ItemRow = {
+      id: itemId, turnId, conversationId: id, ordinal: previous?.ordinal ?? event.historySeq,
+      sourceEventId: previous?.sourceEventId ?? sourceEventId, sourceSequence: previous?.sourceSequence ?? event.historySeq,
+      occurredAt, sequence, kind: variant.kind, payload,
+    }
+    this.statement(`INSERT INTO turn_item_projection(id,turnId,conversationId,ordinal,sourceEventId,sourceSequence,occurredAt,sequence,kind,payload) VALUES(?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET sequence=excluded.sequence,kind=excluded.kind,payload=excluded.payload`)
+      .run(row.id, row.turnId, row.conversationId, row.ordinal, row.sourceEventId, row.sourceSequence, row.occurredAt, row.sequence, row.kind, row.payload)
+    this.appendEvent(id, 'item-updated', Math.max(0, Math.trunc(event.ts)), { turnItem: itemProjection(row) }, sequence)
+    return true
+  }
+
+  private writeMigration(
+    source: { root: string; meta: AcpSessionMeta; sourceDigest: string },
+    state: AcpConversationHistoryCoverage['state'],
+    sourceLastSequence: number | null,
+    sourceEventCount: number,
+    projectedCount: number,
+    diagnostic: string | undefined,
+    now: number,
+  ): void {
+    this.statement(`INSERT INTO control_plane_migration(root,sessionId,engine,state,sourceLastSequence,sourceEventCount,projectedEventCount,sourceDigest,diagnostic,migratedAt)
+      VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(root,sessionId,engine) DO UPDATE SET state=excluded.state,sourceLastSequence=excluded.sourceLastSequence,
+      sourceEventCount=excluded.sourceEventCount,projectedEventCount=excluded.projectedEventCount,sourceDigest=excluded.sourceDigest,diagnostic=excluded.diagnostic,migratedAt=excluded.migratedAt`)
+      .run(source.root, source.meta.sessionId, source.meta.engine ?? 'acp', state, sourceLastSequence,
+        sourceEventCount, projectedCount, source.sourceDigest, diagnostic?.slice(0, 2000) ?? null, now)
   }
 
   migrationState(root: string, sessionId: string, engine: 'acp' | 'pi'): MigrationRow | undefined {
@@ -345,43 +446,104 @@ export class AcpControlPlaneStore {
   }
 
   migrateV2(source: AcpV2ProjectionSource): void {
-    const events = v2TimelineEvents(source.record)
-    this.migrate({
-      root: source.root,
-      meta: {
-        schemaVersion: 2,
-        sessionId: source.record.sessionKey,
-        projectRoot: source.root,
-        cwd: source.record.cwd,
-        agentId: source.record.negotiated.agent.name,
-        agentName: source.record.negotiated.agent.title ?? source.record.negotiated.agent.name,
-        status: source.record.cleanupState === 'live' ? 'ready' : 'disconnected',
-        startedAt: source.record.updatedAt,
-        capabilities: {
-          controls: source.record.negotiated.capabilities.session === undefined ? [] : ['session/set_config_option', 'session/status'],
-          loadSession: source.record.negotiated.capabilities.session !== undefined,
-          promptCapabilities: {
-            image: readNested(source.record.negotiated.capabilities, 'session', 'prompt', 'image') === true,
-            embeddedContext: readNested(source.record.negotiated.capabilities, 'session', 'prompt', 'embeddedContext') === true,
-          },
-          protocolVersion: source.record.negotiated.protocolVersion,
-          agentInfo: source.record.negotiated.agent,
-          authMethods: [],
+    const { record, root, archiveHead, budget } = source
+    const id = conversationId(root, record.sessionKey, 'acp')
+    const archive = this.selectOne<ArchiveProgressRow>('SELECT sourceEpoch,sourceSequence FROM control_plane_archive_progress WHERE conversationId=?', id)
+    if (archiveHead !== undefined && archive?.sourceSequence !== archiveHead) return
+    const events = v2TimelineEvents(root, record)
+    const sourceDigest = digest([record.nativeSessionId, archive === undefined ? record.cleanupState : null, events.map(({ ts: _timestamp, ...event }) => event)])
+    const progress = this.selectOne<V2ProgressRow>('SELECT * FROM control_plane_v2_progress WHERE conversationId=?', id)
+    if (progress?.sourceDigest === sourceDigest && progress.sourceOffset === events.length) return
+    const session = readRecord(record.negotiated.capabilities.session)
+    const meta: AcpSessionMeta = {
+      schemaVersion: 2,
+      sessionId: record.sessionKey,
+      projectRoot: root,
+      cwd: record.cwd,
+      agentId: record.negotiated.agent.name,
+      agentName: record.negotiated.agent.title ?? record.negotiated.agent.name,
+      status: record.cleanupState === 'live' ? 'ready' : 'disconnected',
+      startedAt: record.updatedAt,
+      capabilities: {
+        controls: session === undefined ? [] : ['session/set_config_option', 'session/status'],
+        loadSession: session !== undefined,
+        promptCapabilities: {
+          image: hasAcpCapability(readNested(record.negotiated.capabilities, 'session', 'prompt', 'image')),
+          embeddedContext: hasAcpCapability(readNested(record.negotiated.capabilities, 'session', 'prompt', 'embeddedContext')),
         },
-        backendSessionId: source.record.nativeSessionId,
-        nativeRecordId: source.record.recordId,
-        canResume: source.record.cleanupState !== 'live',
+        protocolVersion: record.negotiated.protocolVersion,
+        agentInfo: record.negotiated.agent,
+        authMethods: [],
       },
-      events,
-      sourceDigest: digest([source.record.recordId, source.record.replayCursor ?? '', source.record.aggregate.replayCursor ?? '', source.record.aggregate.revisionOrder, source.record.configOptions, source.record.cleanupState, source.record.updatedAt, source.record.aggregate]),
-      sourceLastSequence: events.at(-1)?.historySeq ?? null,
-      coverageReason: 'ACP v2 native aggregate projection is bounded to 200 entities',
+      backendSessionId: record.nativeSessionId,
+      nativeRecordId: record.recordId,
+      canResume: record.cleanupState === 'closed' && session !== undefined,
+    }
+    this.transaction(() => {
+      const now = Date.now()
+      const conversation = this.selectOne<ConversationRow>('SELECT * FROM conversation_projection WHERE conversationId=?', id)
+      let runtimeSessionId = this.selectOne<RuntimeRow>('SELECT * FROM runtime_session_projection WHERE conversationId=?', id)?.runtimeSessionId
+      if (archive === undefined) {
+        const sequence = this.nextSequence()
+        runtimeSessionId = this.writeMetadata(id, { root, meta, runtimeUnverified: record.cleanupState !== 'closed' }, record.updatedAt, now, sequence)
+        if (conversation === undefined) this.appendEvent(id, 'conversation-created', now, { sourceRoot: root, sourceSessionId: record.sessionKey, engine: 'acp' }, sequence)
+      }
+      if (runtimeSessionId === undefined) throw new AcpControlPlaneStoreError('ACP v2 projection runtime is missing')
+      const start = progress?.sourceDigest === sourceDigest ? progress.sourceOffset : 0
+      let offset = start
+      let bytes = 0
+      let changed = false
+      let sourceSequence = Math.max(archiveHead ?? 0, this.selectOne<{ value: number }>(
+        'SELECT COALESCE(MAX(sourceSequence),0) AS value FROM turn_item_projection WHERE conversationId=?', id)?.value ?? 0)
+      for (const event of events.slice(start, start + budget.rows)) {
+        const variant = itemVariant(event)
+        const payload = JSON.stringify(variant)
+        const size = Buffer.byteLength(payload) + 512
+        if (bytes + size > budget.bytes) break
+        bytes += size
+        offset += 1
+        const itemId = `${id}:source:${event.id}`
+        if (archive !== undefined && variant.kind === 'user-message') {
+          if (this.selectOne('SELECT 1 FROM control_plane_archive_item_payload WHERE itemId=?', itemId)) continue
+          if (event.legacyUserOccurrence !== undefined && this.selectOne(`SELECT 1 FROM control_plane_archive_item_payload a
+            JOIN turn_item_projection item ON item.id=a.itemId
+            WHERE a.conversationId=? AND a.payload=? ORDER BY item.sourceSequence LIMIT 1 OFFSET ?`,
+          id, payload, event.legacyUserOccurrence)) continue
+        }
+        const previous = this.selectOne<ItemRow>('SELECT * FROM turn_item_projection WHERE id=?', itemId)
+        if (previous?.payload === payload) continue
+        if (previous === undefined) sourceSequence += 1
+        changed = this.writeItem({ id, itemId, root, sessionId: record.sessionKey, runtimeSessionId,
+          event: { ...event, historySeq: sourceSequence }, sourceEventId: event.id, variant, previous,
+          turnOrdinal: -this.currentSequence - 1 }) || changed
+      }
+      this.statement(`INSERT INTO control_plane_v2_progress(conversationId,sourceDigest,sourceOffset,sourceCount) VALUES(?,?,?,?)
+        ON CONFLICT(conversationId) DO UPDATE SET sourceDigest=excluded.sourceDigest,sourceOffset=excluded.sourceOffset,sourceCount=excluded.sourceCount`)
+        .run(id, sourceDigest, offset, events.length)
+      if (archive === undefined) {
+        const projected = this.selectOne<{ value: number }>('SELECT COUNT(*) AS value FROM turn_item_projection WHERE conversationId=?', id)?.value ?? 0
+        this.writeMigration({ root, meta, sourceDigest }, offset === events.length ? 'complete' : 'partial', sourceSequence, events.length, projected,
+          offset === events.length ? undefined : 'More ACP v2 native items are available', now)
+      }
+      if (changed || archive === undefined || progress?.sourceOffset !== offset || progress?.sourceCount !== events.length) {
+        const sequence = this.appendEvent(id, 'conversation-updated', now, {})
+        this.statement('UPDATE conversation_projection SET lastSequence=?,lastActivityAt=MAX(lastActivityAt,?),updatedAt=? WHERE conversationId=?')
+          .run(sequence, changed ? record.updatedAt : 0, now, id)
+      }
     })
   }
 
-  lastSourceSequence(root: string, sessionId: string, engine: 'acp' | 'pi'): number | null {
-    return Number(this.selectOne<{ value: number | null }>('SELECT MAX(sourceSequence) value FROM turn_item_projection WHERE conversationId=?',
-      conversationId(root, sessionId, engine))?.value ?? null)
+  removeDeleted(root: string, sessionIds: readonly string[]): void {
+    this.transaction(() => {
+      const projection = this.statement('DELETE FROM conversation_projection WHERE sourceRoot=? AND sourceSessionId=?')
+      const migration = this.statement('DELETE FROM control_plane_migration WHERE root=? AND sessionId=?')
+      let removed = false
+      for (const sessionId of sessionIds) {
+        if (projection.run(root, sessionId).changes > 0) removed = true
+        migration.run(root, sessionId)
+      }
+      if (removed) this.nextSequence()
+    })
   }
 
   list(root: string, rawInput: AcpConversationListInput): AcpConversationListSnapshot {
@@ -389,7 +551,7 @@ export class AcpControlPlaneStore {
     const snapshotSequence = this.currentSequence
     const params: Array<string | number> = [root]
     const archiveFilter = input.archive === 'archived' ? ' AND cp.archivedAt IS NOT NULL' : input.archive === 'all' ? '' : ' AND cp.archivedAt IS NULL'
-    let where = `cp.sourceRoot=?${archiveFilter}`
+    let where = `cp.sourceRoot=? AND cp.sourceSessionId NOT LIKE 'acp-private-%'${archiveFilter}`
     if (input.query) { where += ' AND instr(lower(cp.title), lower(?)) > 0'; params.push(input.query) }
     if (input.cursor) {
       if (input.cursor.scope !== this.scopeKey(root)) throw new AcpControlPlaneCursorError('store-reset')
@@ -414,16 +576,27 @@ export class AcpControlPlaneStore {
   private scopeKey(root: string): string { return digest([this.epoch, root]) }
 
   private listItem(row: ConversationRow): AcpConversationListSnapshot['conversations'][number] {
-    const runtime = this.selectOne<RuntimeRow>('SELECT * FROM runtime_session_projection WHERE conversationId=? ORDER BY runtimeSessionId LIMIT 1', row.conversationId)
-    const runtimeIds = this.selectOne<RuntimeIdsRow>('SELECT runtimeSessionId FROM runtime_session_projection WHERE conversationId=? ORDER BY runtimeSessionId LIMIT 1', row.conversationId)
+    const runtime = this.selectOne<RuntimeRow>('SELECT * FROM runtime_session_projection WHERE conversationId=? ORDER BY lastObservedAt DESC, runtimeSessionId LIMIT 1', row.conversationId)
     const provider = this.selectOne<ProviderRow>('SELECT providerInstanceId FROM provider_instance_projection WHERE conversationId=? ORDER BY providerInstanceId LIMIT 1', row.conversationId)
-    if (!runtime || !runtimeIds || !provider) throw new AcpControlPlaneStoreError('Conversation runtime projection is missing')
+    if (!runtime || !provider) throw new AcpControlPlaneStoreError('Conversation runtime projection is missing')
     const engine = runtime.engine === 'pi' ? 'pi' : 'acp'
     return acpConversationListSnapshotSchema.shape.conversations.element.parse({
       conversationId: row.conversationId, sourceSessionId: row.sourceSessionId, sourceEngine: row.sourceEngine,
       root: row.sourceRoot, title: row.title, status: row.archivedAt === null ? 'active' : 'archived',
-      runtime: { state: runtime.state as 'stopped' | 'recoverable' | 'running' | 'awaiting-permission' | 'stopping' | 'unknown', lastObservedAt: runtime.lastObservedAt, recoverable: runtime.recoverable === 1, engine, providerInstanceId: provider.providerInstanceId, runtimeSessionId: runtimeIds.runtimeSessionId },
+      runtime: { state: runtime.state, lastObservedAt: runtime.lastObservedAt, recoverable: runtime.recoverable === 1, engine, providerInstanceId: provider.providerInstanceId, runtimeSessionId: runtime.runtimeSessionId },
       lastActivityAt: row.lastActivityAt, createdAt: row.createdAt, updatedAt: row.updatedAt, lastSequence: row.lastSequence,
+    })
+  }
+
+  private coverage(row: ConversationRow, capturedFrom: number | null, capturedThrough: number | null): AcpConversationDetailSnapshot['coverage'] {
+    const migration = this.migrationState(row.sourceRoot, row.sourceSessionId, row.sourceEngine)
+    const native = this.selectOne<V2ProgressRow>('SELECT * FROM control_plane_v2_progress WHERE conversationId=?', row.conversationId)
+    const nativePartial = native !== undefined && native.sourceOffset < native.sourceCount
+    return acpConversationDetailSnapshotSchema.shape.coverage.parse({
+      state: nativePartial || migration?.state === 'partial' ? 'partial' : migration?.state === 'complete' ? 'complete' : 'unknown',
+      sourceEventCount: migration?.sourceEventCount ?? 0, projectedEventCount: migration?.projectedEventCount ?? 0,
+      capturedFrom, capturedThrough,
+      ...(nativePartial ? { reason: 'More ACP v2 native items are available' } : migration?.diagnostic ? { reason: migration.diagnostic } : {}),
     })
   }
 
@@ -432,17 +605,22 @@ export class AcpControlPlaneStore {
     const row = this.selectOne<ConversationRow>('SELECT * FROM conversation_projection WHERE sourceRoot=? AND sourceSessionId=?', root, input.sessionId)
     if (!row) throw new AcpControlPlaneCursorError('conversation-reset')
     const snapshotSequence = this.currentSequence
-    const items = (this.statement('SELECT * FROM turn_item_projection WHERE conversationId=? ORDER BY sourceSequence DESC LIMIT ?')
-      .all(row.conversationId, input.itemLimit) as unknown as ItemRow[]).reverse().map(itemProjection)
-    const migration = this.selectOne<MigrationRow>('SELECT * FROM control_plane_migration WHERE root=? AND sessionId=? AND engine=?',
-      row.sourceRoot, row.sourceSessionId, row.sourceEngine)
-    const hasEarlier = items.length > 0 && Number(this.selectOne<{ count: number }>('SELECT COUNT(*) count FROM turn_item_projection WHERE conversationId=? AND sourceSequence < ?', row.conversationId, items[0].sourceSequence)?.count ?? 0) > 0
-    const coverage = acpConversationDetailSnapshotSchema.shape.coverage.parse({
-      state: migration?.state === 'complete' ? 'complete' : migration?.state === 'partial' ? 'partial' : 'unknown',
-      sourceEventCount: migration?.sourceEventCount ?? 0, projectedEventCount: migration?.projectedEventCount ?? 0,
-      capturedFrom: items[0]?.occurredAt ?? null, capturedThrough: items.at(-1)?.occurredAt ?? null,
-      ...(migration?.diagnostic ? { reason: migration.diagnostic } : {}),
-    })
+    const rows = this.statement('SELECT * FROM turn_item_projection WHERE conversationId=? ORDER BY sourceSequence DESC LIMIT ?')
+      .iterate(row.conversationId, input.itemLimit + 1) as unknown as Iterable<ItemRow>
+    const items: AcpTurnItemProjection[] = []
+    let bytes = 0
+    let hasEarlier = false
+    for (const item of rows) {
+      const size = Buffer.byteLength(item.payload) + 512
+      if (items.length >= input.itemLimit || (items.length > 0 && bytes + size > PAGE_BYTES)) {
+        hasEarlier = true
+        break
+      }
+      items.push(itemProjection(item))
+      bytes += size
+    }
+    items.reverse()
+    const coverage = this.coverage(row, items[0]?.occurredAt ?? null, items.at(-1)?.occurredAt ?? null)
     return acpConversationDetailSnapshotSchema.parse({
       ok: true, version: 1,
       conversation: this.listItem(row), turnItems: items, hasEarlierItems: hasEarlier,
@@ -458,23 +636,39 @@ export class AcpControlPlaneStore {
     const snapshotSequence = this.currentSequence
     if (!conversation) throw new AcpControlPlaneCursorError('conversation-reset')
     if (input.after > snapshotSequence) return acpConversationEventPageSchema.parse({ ok: false, version: 1, resetRequired: true, reason: 'cursor-ahead', snapshotSequence })
+    const reset = input.after > 0 && this.statement("SELECT 1 FROM control_plane_events WHERE conversationId=? AND sequence>? AND type='projection-reset' LIMIT 1")
+      .get(conversation.conversationId, input.after)
+    if (reset) return { ok: false, version: 1, resetRequired: true, reason: 'conversation-reset', snapshotSequence }
     const rows = this.statement('SELECT * FROM control_plane_events WHERE conversationId=? AND sequence>? ORDER BY sequence LIMIT ?')
-      .all(conversation.conversationId, input.after, input.limit + 1) as unknown as EventRow[]
-    const page = rows.slice(0, input.limit)
-    const last = page.at(-1)?.sequence ?? Math.min(input.after, snapshotSequence)
-      return acpConversationEventPageSchema.parse({
-      ok: true, version: 1, hasMore: rows.length > input.limit, nextCursor: last,
-      events: page.map(row => {
-        const payload = JSON.parse(row.payload) as { item?: AcpTurnItemVariant }
-        return {
-          sequence: row.sequence, conversationId: row.conversationId,
-          type: row.type === 'conversation-created' || row.type === 'conversation-updated' || row.type === 'turn-updated' || row.type === 'item-updated' || row.type === 'runtime-updated' || row.type === 'migration-completed' ? row.type : 'conversation-updated',
-          occurredAt: row.occurredAt,
-        }
-      }).map(event => {
-        const item = this.statement('SELECT * FROM turn_item_projection WHERE sequence=?').get(event.sequence) as unknown as ItemRow | undefined
-        return item === undefined ? undefined : { ...event, item: itemProjection(item) }
-      }).filter((event): event is NonNullable<typeof event> => event !== undefined),
+      .iterate(conversation.conversationId, input.after, input.limit + 1) as unknown as Iterable<EventRow>
+    const events: AcpConversationProjectionEvent[] = []
+    let bytes = 0
+    let hasMore = false
+    let after = input.after
+    let scanned = 0
+    for (const row of rows) {
+      const size = Buffer.byteLength(row.payload) + 256
+      if (scanned >= input.limit || (scanned > 0 && bytes + size > PAGE_BYTES)) {
+        hasMore = true
+        break
+      }
+      scanned += 1
+      bytes += size
+      after = row.sequence
+      if (row.type !== 'item-updated') continue
+      const { turnItem } = JSON.parse(row.payload) as { turnItem?: AcpTurnItemProjection }
+      const previous = turnItem ? undefined : this.selectOne<ItemRow>('SELECT * FROM turn_item_projection WHERE sequence=?', row.sequence)
+      if (turnItem || previous) {
+        events.push(acpConversationProjectionEventSchema.parse({
+          sequence: row.sequence, conversationId: row.conversationId, type: row.type, occurredAt: row.occurredAt,
+          item: turnItem ?? (previous ? itemProjection(previous) : undefined),
+        }))
+      }
+    }
+    const changed = !hasMore && conversation.lastSequence > input.after
+    return acpConversationEventPageSchema.parse({
+      ok: true, version: 1, hasMore, nextCursor: hasMore ? after : snapshotSequence, events,
+      ...(changed ? { conversation: this.listItem(conversation), coverage: this.coverage(conversation, null, null) } : {}),
     })
   }
 }

@@ -126,4 +126,29 @@ CREATE TABLE IF NOT EXISTS control_plane_migration (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS control_plane_migration_state
   ON control_plane_migration(root, state);
+
+CREATE TABLE IF NOT EXISTS control_plane_archive_progress (
+  conversationId TEXT PRIMARY KEY,
+  sourceEpoch TEXT NOT NULL,
+  sourceSequence INTEGER NOT NULL,
+  FOREIGN KEY (conversationId) REFERENCES conversation_projection(conversationId) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS control_plane_archive_item_payload (
+  itemId TEXT PRIMARY KEY,
+  conversationId TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  FOREIGN KEY (itemId) REFERENCES turn_item_projection(id) ON DELETE CASCADE,
+  FOREIGN KEY (conversationId) REFERENCES conversation_projection(conversationId) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX IF NOT EXISTS control_plane_archive_item_conversation
+  ON control_plane_archive_item_payload(conversationId, payload);
+
+CREATE TABLE IF NOT EXISTS control_plane_v2_progress (
+  conversationId TEXT PRIMARY KEY,
+  sourceDigest TEXT NOT NULL,
+  sourceOffset INTEGER NOT NULL,
+  sourceCount INTEGER NOT NULL,
+  FOREIGN KEY (conversationId) REFERENCES conversation_projection(conversationId) ON DELETE CASCADE
+) STRICT;
 `

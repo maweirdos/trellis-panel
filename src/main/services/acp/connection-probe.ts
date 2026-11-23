@@ -5,7 +5,6 @@
  * 探测不安装引擎，程序启动本身仍可能产生副作用。
  */
 import { spawn, type ChildProcess } from 'child_process'
-import { createInterface } from 'readline'
 import { tmpdir } from 'os'
 import { randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
@@ -15,7 +14,9 @@ import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { batchShell, isSupportedRuntimeSnapshot, LEGACY_CUSTOM_RUNTIME_ERROR, listAcpAgents, runtimeDefinitions, runtimeLaunchSnapshot } from './setup'
 import { errorMessage, objectValue } from './types'
 import { rememberRuntimeVerification, type RuntimeConnectionProbeResult } from './runtime-verification'
-import { initializeResultSchema } from './v2'
+import { AcpV2Client } from './v2/client'
+import { AcpProtocolError } from './v2/errors'
+import { hasAcpCapability } from './v2/normalize'
 import { acpSpawnEnv } from '../../../shared/acp-launch-options'
 import { createAcpJobOwner } from '../workcopy-use/acp-jobs'
 import { workcopyUseDirectory } from '../workcopy-use'
@@ -32,31 +33,23 @@ function stringField(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
 
-/** ACP wire 的 protocolVersion 允许数字；宽容接收数字字符串，其余视为未提供。 */
-function numericVersion(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim())
-  return undefined
-}
-
 /** 精选能力白名单 → 中文标签；未知/缺失能力如实忽略，不做名称推断。 */
-function capabilityLabels(capabilities: unknown): string[] {
-  const source = objectValue(capabilities)
-  const session = objectValue(source.session)
-  const prompt = objectValue(session.prompt)
-  const mcp = objectValue(session.mcp)
+function capabilityLabels(capabilities: Awaited<ReturnType<AcpV2Client['initialize']>>['capabilities']): string[] {
+  const session = capabilities.session
+  const prompt = session?.prompt
+  const mcp = session?.mcp
   const labels: string[] = []
-  labels.push('会话基线')
-  if (prompt.image === true) labels.push('图片输入')
-  if (prompt.embeddedContext === true) labels.push('内嵌上下文')
-  if (prompt.audio === true) labels.push('音频输入')
-  if (mcp.http === true || mcp.stdio === true || mcp.acp === true) labels.push('MCP')
+  if (hasAcpCapability(session)) labels.push('会话基线')
+  if (hasAcpCapability(prompt?.image)) labels.push('图片输入')
+  if (hasAcpCapability(prompt?.embeddedContext)) labels.push('内嵌上下文')
+  if (hasAcpCapability(prompt?.audio)) labels.push('音频输入')
+  if ([mcp?.http, mcp?.stdio, mcp?.acp].some(hasAcpCapability)) labels.push('MCP')
   return labels
 }
 
 function authMethodIds(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return value.map((entry) => stringField(objectValue(entry).id)).filter((id): id is string => typeof id === 'string')
+  return value.map((entry) => stringField(objectValue(entry).methodId)).filter((id): id is string => typeof id === 'string')
 }
 
 /** 批处理 wrap 的直接子进程是 cmd.exe，必须 /T 才能带走真实 agent 进程树。 */
@@ -70,12 +63,12 @@ function terminate(child: ChildProcess): void {
   }
 }
 
-function waitForExit(child: ChildProcess, graceMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
+function waitForExit(child: ChildProcess, graceMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, graceMs)
-    if (typeof timer.unref === 'function') timer.unref()
-    child.once('exit', () => { clearTimeout(timer); resolve() })
+    const exited = (): void => { clearTimeout(timer); resolve(true) }
+    const timer = setTimeout(() => { child.off('exit', exited); resolve(false) }, graceMs)
+    child.once('exit', exited)
   })
 }
 
@@ -121,11 +114,12 @@ async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[
   const nativeJobs = process.platform === 'win32' ? await createAcpJobOwner(workcopyUseDirectory(), cwd,
     { kind: 'agent', id, generation: randomUUID(), label: `${config.name} · 连接核对`.slice(0, 200) }, true) : undefined
   const launch: AcpProcessLaunch = { launchId: randomUUID(), purpose: 'agent', scope: { kind: 'runtime-probe', agent: config.id }, command: target, args: spawnArgv, cwd }
-  try { return await new Promise<RuntimeConnectionProbeResult>((resolve) => {
-    let settled = false
+  let child: ChildProcess | undefined
+  let client: AcpV2Client | undefined
+  let result: RuntimeConnectionProbeResult
+  try {
+    const deadline = Date.now() + HANDSHAKE_TIMEOUT_MS
     let stderrTail = ''
-    let timer: NodeJS.Timeout | undefined
-    let reader: ReturnType<typeof createInterface> | undefined
     const options = {
       cwd,
       env: acpSpawnEnv(process.env, env ?? {}, process.platform),
@@ -133,77 +127,50 @@ async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[
       windowsVerbatimArguments: batch,
       stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe']
     }
-    const child = nativeJobs ? nativeJobs.spawn(launch, options) : spawn(target, spawnArgv, options)
-    const settle = (result: RuntimeConnectionProbeResult): void => {
-      if (settled) return
-      settled = true
-      if (timer) clearTimeout(timer)
-      reader?.close()
-      if (nativeJobs) {
-        void nativeJobs.cleanupAll().then(() => resolve(result), () => resolve({ ok: false, error: '原连接探测的完整 Job 清理尚未确认；原 Job 见证已保留，请重试原清理。' }))
-        return
-      }
-      terminate(child)
-      // 等待进程真正退出再返回；宽限期满仍未退出则升级 SIGKILL 兜底（杀不死 cmd 包裹层时至少不留活进程）。
-      void waitForExit(child, EXIT_GRACE_MS).finally(() => {
-        try { child.kill('SIGKILL') } catch { /* 已退出 */ }
-        resolve(result)
-      })
-    }
-    const fail = (error: string): void => settle({ ok: false, error })
-    timer = setTimeout(() => fail(`连接超时：${HANDSHAKE_TIMEOUT_MS / 1000} 秒内未收到 initialize 响应`), HANDSHAKE_TIMEOUT_MS)
-    if (typeof timer.unref === 'function') timer.unref()
-    child.on('error', (error) => fail(`启动失败：${errorMessage(error)}`))
-    child.on('exit', (code) => fail(`进程在握手完成前退出（code=${code ?? 'unknown'}）${stderrTail ? `：${stderrTail}` : ''}`))
-    child.stderr?.on('data', (chunk: Buffer) => { stderrTail = `${stderrTail}${chunk.toString('utf8')}`.slice(-STDERR_TAIL_CHARS) })
-    child.stdin?.on('error', () => { /* 写入失败由 exit/error 分支如实报告 */ })
-    const stdout = child.stdout
-    if (!stdout) { fail('无法读取 ACP server 输出流'); return }
-    const initialize = (): void => { if (settled) return; try { child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2, info: { name: 'trellis-panel', version: '0.1.0' }, capabilities: {} } })}\n`) } catch { /* The owner observes write/exit failure. */ } }
-    if (nativeJobs) {
-      child.once('spawn', () => {
-        if (!child.pid) { fail('原连接探测未能启动'); return }
-        void nativeJobs.spawned({ ...launch, pid: child.pid, startedAt: new Date().toISOString() }).then(initialize, error => fail(errorMessage(error)))
-      })
-    } else initialize()
-    reader = createInterface({ input: stdout })
-    reader.on('line', (line) => {
-      const trimmed = line.trim()
-      if (settled || !trimmed) return
-      let rawMessage: unknown
-      try { rawMessage = JSON.parse(trimmed) } catch { return } // 启动横幅等非 JSON 行忽略
-      const message = objectValue(rawMessage)
-      if (message.id !== 1 && message.id !== '1') return // 早于 initialize 响应的通知/日志忽略
-      if (message.jsonrpc !== '2.0') { fail('无效的 initialize 响应：缺少 JSON-RPC 2.0 标记'); return }
-      if (message.error !== undefined && message.error !== null) {
-        const detail = objectValue(message.error)
-        settle({ ok: false, errorCode: typeof detail.code === 'number' ? detail.code : undefined,
-          error: `initialize 被拒绝：${stringField(detail.message) ?? '未知错误'}` })
-        return
-      }
-      const parsed = initializeResultSchema.safeParse(message.result)
-      if (!parsed.success) {
-        const protocolVersion = numericVersion(objectValue(message.result).protocolVersion)
-        settle({ ok: false, protocolVersion, error: protocolVersion === undefined ? '无效的 initialize 响应：缺少有效协议版本' : `协议不兼容：客户端请求 v2，引擎返回 v${protocolVersion}` })
-        return
-      }
-      const result = parsed.data
-      if (result.protocolVersion !== 2) {
-        settle({ ok: false, protocolVersion: result.protocolVersion, error: `协议不兼容：客户端请求 v2，引擎返回 v${result.protocolVersion}` })
-        return
-      }
-      const info = objectValue(result.info)
-      settle({
-        ok: true,
-        agentInfo: { name: stringField(info.name), version: stringField(info.version) },
-        protocolVersion: result.protocolVersion,
-        authMethodIds: authMethodIds(result.authMethods),
-        capabilitiesSummary: capabilityLabels(result.capabilities)
-      })
+    child = nativeJobs ? nativeJobs.spawn(launch, options) : spawn(target, spawnArgv, options)
+    const started = child
+    await new Promise<void>((resolve, reject) => {
+      started.once('error', reject)
+      started.once('spawn', resolve)
     })
-  }) } catch (error) {
-    try { await nativeJobs?.cleanupAll() }
-    catch { return { ok: false, error: '原连接探测的完整 Job 清理尚未确认；原 Job 见证已保留，请重试原清理。' } }
-    return { ok: false, error: `启动失败：${errorMessage(error)}` }
+    child.stderr?.on('data', (chunk: Buffer) => { stderrTail = `${stderrTail}${chunk.toString('utf8')}`.slice(-STDERR_TAIL_CHARS) })
+    if (!child.pid || !child.stdout || !child.stdin) throw new Error('无法连接 ACP server 输入输出流')
+    child.stdin.on('error', () => { /* The client observes stream failure. */ })
+    await nativeJobs?.spawned({ ...launch, pid: child.pid, startedAt: new Date().toISOString() })
+    client = await AcpV2Client.connect({ input: child.stdout, output: child.stdin }, {}, {
+      initializeMs: Math.max(1, deadline - Date.now()),
+    })
+    const { response, capabilities } = await client.initialize({ name: 'trellis-panel', version: '0.1.0' }, {})
+    result = {
+      ok: true,
+      agentInfo: { name: stringField(response.info.name), version: stringField(response.info.version) },
+      protocolVersion: response.protocolVersion,
+      authMethodIds: authMethodIds(response.authMethods),
+      capabilitiesSummary: capabilityLabels(capabilities),
+    }
+  } catch (error) {
+    result = error instanceof AcpProtocolError ? {
+      ok: false,
+      errorCode: error.details.code,
+      ...(error.type === 'E_INCOMPATIBLE' ? { protocolVersion: error.details.returnedVersion ?? undefined } : {}),
+      error: errorMessage(error),
+    } : { ok: false, error: `启动失败：${errorMessage(error)}` }
   }
+  try {
+    if (nativeJobs) await nativeJobs.cleanupAll()
+    else if (child?.pid !== undefined) {
+      terminate(child)
+      if (!(await waitForExit(child, EXIT_GRACE_MS))) {
+        child.kill('SIGKILL')
+        if (!(await waitForExit(child, EXIT_GRACE_MS))) return { ok: false, error: '原连接探测的进程清理尚未确认。' }
+      }
+    }
+  } catch {
+    return { ok: false, error: '原连接探测的进程清理尚未确认。' }
+  } finally {
+    child?.stdin?.destroy()
+    child?.stdout?.destroy()
+    await client?.close().catch(() => undefined)
+  }
+  return result
 }

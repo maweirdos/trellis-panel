@@ -1,4 +1,4 @@
-/** Explicit same-session recovery contracts. Values are candidates until acpx acknowledges them. */
+/** Explicit same-session recovery contracts. Values are candidates until the agent acknowledges them. */
 export interface AcpRecoverModelInput {
   /** Exact model ID previously advertised/acknowledged by this session. */
   modelId: string

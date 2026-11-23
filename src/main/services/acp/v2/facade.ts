@@ -1,6 +1,7 @@
 import type { ContentBlock, RequestPermissionRequest } from '@agentclientprotocol/sdk/experimental/v2'
 import type { AcpAgentConfig, AcpSessionRecord } from '../../../../shared/types'
 import type { ConversationRuntime, ConversationRuntimePermissionRequest } from '../../pi/runtime-port'
+import type { KnowledgeMcpConnection } from '../../knowledge-mcp'
 import { AcpV2FileStore, AcpV2RuntimeOwner, normalizeSessionConfigOption, type AcpV2PromptContent, type AcpV2RuntimeHandle, type AcpV2Turn } from '.'
 import type { AcpV2RuntimeOptions } from './runtime'
 
@@ -14,6 +15,8 @@ export interface AcpV2FacadeOptions {
   readonly argv: readonly string[]
   readonly env: Readonly<Record<string, string>>
   readonly stateDirectory: string
+  readonly knowledge?: KnowledgeMcpConnection
+  readonly redactSnapshot?: AcpV2RuntimeOptions['redactSnapshot']
   readonly processOwner?: AcpV2RuntimeOptions['processOwner']
   readonly onBeforeSpawn: () => void
   readonly onSpawned: () => void
@@ -29,9 +32,12 @@ export class AcpV2ConversationRuntime implements ConversationRuntime {
       agentId: options.config.id,
       argv: options.argv,
       cwd: options.meta.cwd ?? options.meta.projectRoot,
+      projectRoot: options.meta.projectRoot,
       env: options.env,
       store: new AcpV2FileStore(options.stateDirectory),
       processOwner: options.processOwner,
+      mcpServers: () => options.knowledge?.servers() ?? [],
+      redactSnapshot: options.redactSnapshot,
       onBeforeSpawn: () => options.onBeforeSpawn(),
       onSpawned: () => options.onSpawned(),
       onSpawnFailed: failure => options.onSpawnFailed(failure.error),
@@ -112,7 +118,7 @@ export class AcpV2ConversationRuntime implements ConversationRuntime {
   private async setConfiguredOption(handle: AcpV2RuntimeHandle, requestedValue: string, category: 'model' | 'mode', assertActive?: () => void): Promise<void> {
     assertActive?.()
     const options = this.owner.getStatus({ handle }).configOptions.map(normalizeSessionConfigOption)
-      .filter((option): option is NonNullable<ReturnType<typeof normalizeSessionConfigOption>> => option !== undefined && option.category === category)
+      .filter((option): option is Extract<NonNullable<typeof option>, { type: 'select' }> => option?.type === 'select' && option.category === category)
     const option = options.find(item => item.id === requestedValue || item.options.some(choice => choice.value === requestedValue))
     if (option === undefined) throw new Error(`此 ACP v2 引擎没有确认请求的${category === 'model' ? '模型' : '模式'}选项`)
     const value = option.options.find(choice => choice.value === requestedValue)?.value ?? option.currentValue

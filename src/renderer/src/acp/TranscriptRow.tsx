@@ -2,7 +2,7 @@ import { isConversationRuntimeEvent } from './runtime-events'
 import { Check, ChevronRight, Copy, FileText, GitBranch, Loader2, Minimize2, Pencil, Search, ShieldQuestion, Sparkles, Terminal, TriangleAlert, Workflow } from 'lucide-react'
 import { clsx } from 'clsx'
 import { MarkdownView } from '../components/MarkdownView'
-import { Button } from '../my/ui'
+import { Button, KnockIndicator } from '../my/ui'
 import { ActivityResult } from '../my/ActivityResult'
 import { asObject, runtimeActivityLabel, type RenderItem } from './timeline'
 import { ConnectionNotice } from './ConnectionNotice'
@@ -204,7 +204,7 @@ export function EventRow({ item, session, events, pendingPerm, permissionPending
     const pending = pendingPerm[requestId]
     if (!pending) return <div data-acp-item={item.key} className="acp-historical-permission">{item.ev.text ?? '授权记录'} · 历史记录，当前不可操作</div>
     return <div className="rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-2 text-my-sm">
-      <div className="flex items-center gap-1.5 font-medium text-my-warning-text"><ShieldQuestion size={13} />{pending?.toolCall?.title ?? item.ev.text ?? '权限请求'}</div>
+      <div className="flex items-center gap-1.5 font-medium text-my-warning-text"><KnockIndicator active={Boolean(pending)}><ShieldQuestion size={13} /></KnockIndicator>{pending?.toolCall?.title ?? item.ev.text ?? '权限请求'}</div>
       {pending ? <>
         <div className="mt-2 flex min-w-0 max-w-full flex-wrap gap-2">{pending.options.map((option) => <Button key={option.optionId} size="sm" variant="outline" disabled={permissionPending[requestId]} className={clsx('!h-auto min-h-6 min-w-0 max-w-full !items-start !justify-start !whitespace-normal !py-2 text-left', option.kind.startsWith('reject') ? 'text-my-danger-text' : 'text-my-accent-text')} title={`原始选项：${option.optionId} · ${option.kind}`} onClick={() => onRespond(requestId, option.optionId)}>{permissionPending[requestId] && <Loader2 size={12} className="mt-0.5 shrink-0 animate-spin" />}<span className="min-w-0 flex-1 whitespace-normal break-words leading-relaxed [overflow-wrap:anywhere]">{option.name}</span></Button>)}</div>
         <p className="mt-2 text-my-sm text-my-secondary">{pending.expiresAt ? `等待选择，${new Date(pending.expiresAt).toLocaleTimeString()} 到期` : '等待选择；超时将取消本轮请求。'}</p>

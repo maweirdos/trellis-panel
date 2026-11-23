@@ -13,12 +13,85 @@ custom engine definitions and snapshots are retained for identification and
 reading only.
 ZCode installation and native startup also follow `zcode-managed-startup.md`.
 
-The live path uses the project-owned ACP v2 wire, client, runtime, and persistence
-boundary under `src/main/services/acp/v2/`. Trellis owns current-root authorization,
-Agent profiles, explicit setup, task materials, approval mediation, framing,
-processes, native sessions, turns, canonical shutdown, and presentation. Keep
-`acpx@0.19.5` only for legacy-history reads; never import `acpx/runtime` or
-`acpx/agent-registry` from live code.
+The live path uses the vendored T3 `effect-acp` core under
+`src/main/services/acp/t3-core/` behind the `src/main/services/acp/v2/` adapter
+and persistence boundary. A different negotiated major version yields
+`E_INCOMPATIBLE`. A malformed initialize response yields `E_PROTOCOL`. Only a
+valid v2 response admits session methods. Runtime requests, responses and
+notifications use the T3 v2 RPC groups and schema.
+`auth/login` requires the requested ID in the initialize response's
+`authMethods`. `auth/logout` requires a nonempty method list. The
+`capabilities.auth` tree describes authentication extensions.
+T3 owns ACP framing, request correlation and schema validation for both the
+connection probe and session execution. Trellis owns root authorization, Agent
+profiles, task materials, permission mediation, process ownership and canonical
+shutdown. Read legacy archives directly from disk.
+
+Per-request deadlines are applied at the `AcpV2Client.operation` boundary, not
+inside the vendored RPC core, following T3 `AcpSessionRuntime`. Defaults
+(`ACP_V2_DEFAULT_TIMEOUTS`) are `initialize` 30s, session new/resume/list/
+delete/fork/close 90s, config/providers/auth/mcp control calls 30s, and
+`session/cancel` 15s; `AcpV2RuntimeOptions.timeouts` overrides any of them.
+`session/prompt` has no request deadline because it waits for idle completion;
+the turn-level guard below bounds it instead. A request timeout rejects with
+`AcpProtocolError` type `E_TIMEOUT` carrying `details.method`.
+
+The adapter accepts at most 64 outstanding RPC requests and rejects incoming
+NDJSON frames above 1 MiB before T3 decodes them. Startup retains at most 256
+session notifications or 1 MiB before the native session ID is known. Resume
+accepts updates only for the original native session ID.
+
+T3's `AcpSessionRuntime` startup transitions share one deferred for the exact
+session key, cwd, native session ID, and native record ID. The owner publishes
+the handle after initializing, adopting the session, applying buffered updates
+for that session, and saving its native record. Failed setup closes the
+captured owner before rejecting.
+
+`session/prompt` keeps insertion and completion separate. The vendored core
+exposes an insertion callback (`AcpPromptOptions.onInsertion`) that fires once
+the agent acknowledges the write; the returned Effect still settles only on
+idle or failure. `AcpV2Turn.promptStarted` resolves at insertion, so the app
+facade emits the user message, marks the prompt written and returns
+`promptAcpSession` while the turn is still running. A terminal update arriving
+before the prompt response is held for that turn until insertion is confirmed
+or fails. A missing prompt response keeps the deadline armed. T3's deferred
+completes on the first fresh session-scoped idle for that turn. A fresh revision
+can complete a new turn with the same stop reason and no intervening running
+update. Replay, known revisions and subsequent idle notifications cannot settle
+the current turn again. After prompt dispatch, an absent or malformed insertion
+response and an ambiguous failure return `E_UNKNOWN`. A schema-valid correlated
+rejection for invalid request, unknown method, invalid params, authentication
+required or resource not found can restore the draft. Keep the prompt unreplayed.
+
+Streamed assistant chunks append under their native message ID and
+`payload.meta.acpText`. A full message replaces the matching block. The
+`replayConversationTextEvents` reducer applies that contract for transcript,
+history and previews. Provider user-message echoes enter the native aggregate.
+An active turn's first new live user echo carries the original turn identity
+into the snapshot so it can reconcile with the insertion receipt. Replay and
+out-of-turn messages retain their native IDs. Coalesce native snapshot writes
+within 100 ms and serialize the terminal and cleanup snapshots behind pending
+writes. Redact authorized knowledge descriptors before snapshot persistence.
+
+Only matching in-flight session requests share setup. When initialize, create,
+or resume fails, close the original owner through the same teardown as explicit
+stop. Persist a closed record only after process exit or owned Job cleanup has
+been verified. Keep cleanup failures recoverable against the original owner.
+
+The turn guard (`startTurn.timeoutMs`, default 30 minutes) is bounded. At the
+deadline the owner notifies `session/cancel`; if the turn has not settled
+within a further 10s grace (`TURN_CANCEL_GRACE_MS`, matching the facade's
+user-cancel budget) the turn is terminated: it settles as a typed `E_TIMEOUT`
+failure, the native record is marked `uncertain`, and the owner is
+disconnected through the canonical `shutdown('uncertain')` path. A provider
+that ignored the cancel never becomes a clean `cancelled` success, and a later
+idle cannot resurrect the terminated turn. User-initiated cancel keeps the
+existing `acp.ts` `CANCEL_TIMEOUT_MS` path unchanged.
+
+A timed-out startup or session setup runs the existing canonical cleanup: the
+child and Windows Job are released through the process owner, no native record
+is written as `live`, and `uncertain` is recorded only when the process
+outcome is genuinely unknown.
 
 ## 2. Signatures
 
@@ -174,33 +247,6 @@ roles continue to use the negotiated embedded resource and actual write receipt.
 
 ## 3. Contracts
 
-### Native OpenCode retries
-
-Windows native OpenCode V1 may supplement ACP with read-only `GET /session/status`
-for retry evidence that its ACP stream omits. Use public acpx `prepareSpawn` to
-assign a loopback port and random process-local `OPENCODE_SERVER_PASSWORD`;
-neither the password nor Authorization header belongs in IPC, history, launch
-snapshots or logs. Explicit port/hostname/auth overrides skip this auxiliary reader.
-
-Before each bounded, non-redirecting request, verify the listener PID belongs to
-the live launch or its descendants and verify the launch birth time. Poll only
-after `promptStarted` for the admitted turn. Require current project/session,
-connection generation, turn and matching `handle.backendSessionId` and
-`meta.backendSessionId`; stop on terminal result, cancellation, exit or replacement.
-
-`AcpStateEvent.runtimeRetry?: AcpRuntimeRetry` contains `turnId`,
-`connectionGeneration`, `attempt`, `nextAt`, sanitized `message`, optional `reason`
-and `provider`. It is ephemeral evidence, not a terminal result. A native
-`free_tier_limit` whose `nextAt` exceeds the turn deadline requests canonical acpx
-cancellation and retains the reason after the terminal acknowledgement. A peer
-that answers `completed/end_turn` after that request keeps its raw result, with a
-separate host-policy stop receipt; it establishes no successful reply, handoff or
-native-persistence confirmation. Present the stopped turn and its reason rather
-than claiming successful completion from that raw result.
-Transient retries retain their native state. Provider failures and cancellation
-reasons must survive `acpState` followed by `acpDone`; no automatic model switch,
-prompt replay or fabricated successful/failed outcome follows from a retry read.
-
 ### Task materials and source-bound prompts
 
 Product-owned platform nodes use [Product task execution](./product-task-execution.md).
@@ -217,9 +263,9 @@ packet/digest/envelope validation. A prepared manifest is separate from actual
 transport acknowledgement. Original native cleanup and durable task controls
 remain available without changing shared task approval or business state.
 
-`AcpPromptOptions.images?: AcpImageAttachment[]` carries `{id,name,mimeType,data}` with raw base64 (no data URL). `shared/acp-images.ts` defines raster MIME types PNG/JPEG/WebP/GIF and per-message bounds: eight images, 10 MiB per image, 20 MiB combined. `services/acp/images.ts` independently validates shape/unique IDs/base64/decoded byte count and file signature before any turn publication. This is signature checking, not full image decoding. Text may be empty only with valid images. Use the initialized runtime record's `agentCapabilities.promptCapabilities.image === true`; expose the same explicit fact as `session.capabilities.promptCapabilities.image`. Missing/false capability rejects attachments with `E_INVALID_ARG`, without changing connection state or dispatching a turn. Do not infer image support from agent/model names.
+`AcpPromptOptions.images?: AcpImageAttachment[]` carries `{id,name,mimeType,data}` with raw base64 (no data URL). `shared/acp-images.ts` defines raster MIME types PNG/JPEG/WebP/GIF and per-message bounds: eight images, 10 MiB per image, 20 MiB combined. `services/acp/images.ts` independently validates shape, unique IDs, base64, decoded byte count and file signature before any turn publication. Text may be empty with valid images. The v2 handshake's `capabilities.session.prompt.image` object establishes support and projects to `session.capabilities.promptCapabilities.image`. Missing support rejects attachments with `E_INVALID_ARG` before dispatch.
 
-Pass admitted bytes through existing public `runtime.startTurn({text,attachments:images.map(({mimeType,data})=>({mediaType:mimeType,data})),...})`. acpx already emits actual ACP image content blocks and supports image-only input; no additional transport/compat patch is needed. After `promptStarted`, attach the submitted images to the app user message's `payload.images` and retain them in schema2 history. Provider-specific model/image restrictions remain provider errors, not a reason to silently send text alone. Existing root/generation/reference/admission/cancellation guards apply unchanged.
+The runtime adapter sends admitted attachments as ACP v2 image content blocks. After `promptStarted`, attach them to the user message's `payload.images` and retain them in schema2 history. A provider image rejection follows the original turn's failure path.
 
 `acpSessionBindTask(sessionId,input)` is explicit and requires an idle ready owned session/current connection generation and an actual active task/path. It changes future material assembly only; prior events/snapshots/native identity are not rewritten. Busy/stale binding rejects with `E_CONFLICT`.
 
@@ -229,22 +275,18 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 ### Dependencies and launch
 
-- Pin `acpx=0.19.5`, SDK 1.8.0 scoped through the acpx override, and
-  `patch-package=8.0.1`. The installed license remains intact. Check
-  `patches/acpx-compat.json` and the public `TRELLIS_ACPX_COMPAT_VERSION=3` marker.
-- `postinstall` runs `scripts/prepare-acpx.mjs`. Standard dev/build/typecheck/dist
-  run the guard. `npm ci --legacy-peer-deps` is required by the repository's
-  existing Vite 8 / electron-vite 5 peer mismatch; do not change the build stack
-  silently. An install with scripts skipped must be explicitly prepared.
+- Pin the ACP SDK and Effect versions declared in `patches/acp-v2-sdk.json`.
+  Install, dev, build, typecheck and dist run `npm run check:acpx`, which
+  verifies the installed versions, lockfile, v2 SDK export and Effect loading.
+  The existing Vite 8 / electron-vite 5 peer mismatch requires
+  `npm ci --legacy-peer-deps`.
 - Pin electron-builder26.0.11 for the supported Windows package. Version25.1.8
   can place shared transitive dependencies under an unrelated package, making
   the packaged daemon fail at startup. Verify actual packaged control/host
   startup, build stamp and canonical exit in the actual packaged application; a successful
   archive layout check alone does not prove dependency resolution.
-- `electron.vite.config.ts` externalizes acpx and its subpaths. Bundling its ESM
-  runtime into CommonJS destroys package-relative `import.meta.resolve` paths.
-  The published export is ESM; the supported Node/Electron version loads it from
-  the CommonJS main using `require(ESM)`. Do not describe it as a separate CJS build.
+- Package the Effect dependency alongside the CommonJS Electron roles and the
+  original T3 MIT notice under `resources/licenses/`.
 - Managed Setup installs exact adapters under
   `userData/acp/runtimes/<id>/<version>/`. Discovery and Start never download.
   Managed launch uses an absolute external Node >=22.13 executable and the
@@ -300,8 +342,7 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   `AcpAgentStatus.adapterVersion` carries the CLI's own `--version` for native
   entries, and diagnostics state the detection source (手动指定/自动检测).
   Windows batch shims (`.cmd`/`.bat`) must never be fed to Node spawn or
-  `execFile` directly: route through `cmd.exe /d /s /c` (as `run()`, the
-  connection probe and acpx all do), and `findExecutable` must prefer
+  `execFile` directly: route through `cmd.exe /d /s /c`, and `findExecutable` must prefer
   extensioned executables over the extensionless POSIX sh shims npm also
   installs.
 - Native install/upgrade is the same explicit Setup action
@@ -312,8 +353,9 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 - `services/acp/connection-probe.ts` implements 测试连接: it spawns the real
   launch argv, sends exactly one ACP `initialize` over NDJSON (10s handshake
   timeout), collects agentInfo/protocolVersion/capability labels/authMethod
-  ids, then tree-terminates (win32 `taskkill /T /F` with `child.kill()`
-  fallback, POSIX kill with post-grace `SIGKILL`). It must never send
+  ids, then confirms Windows Job cleanup or POSIX process exit. On POSIX,
+  wait again within a bounded grace period after `SIGKILL` and fail the
+  probe if exit remains unconfirmed. It must never send
   `session/new` or any prompt — the probe has zero user-data side effects and
   never authenticates; non-empty `authMethodIds` is surfaced as a hint only.
   Probe business failures return `{ok:true, probe:{ok:false}}`, not IpcFail.
@@ -327,11 +369,11 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
 
 ### Identity, persistence and admission
 
-- App `sessionId` is the panel identity. acpx `backendSessionId` is the ACP wire
+- App `sessionId` is the panel identity. `backendSessionId` is the ACP wire
   session ID; optional `agentSessionId` is a different native vendor identity.
   Missing native ID is not missing ACP identity.
-- Persist app schema 2 records in `userData/acp-sessions/`; runtime records are
-  owned by the public acpx store under `userData/acp/runtime-store/`.
+- Persist app schema 2 records in `userData/acp-sessions/` and native v2 runtime
+  records in `userData/acp/runtime-v2-store/`.
 - Profiles use schema 1 envelopes keyed by canonical root hash under
   `userData/acp/profiles/`. Preserve compatible unknown profile/envelope fields;
   reject unsupported versions without rewriting them. IDs are bounded safe
@@ -343,9 +385,9 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   Selecting history only reads its saved transcript and metadata. Explicit Send
   reuses the current connection, joins an in-flight start, or loads the same
   native identity before dispatch. Selection never starts or stops a process.
-  The pinned revision2 `connectSession` reuses acpx's owner/lock/checkpoint and
-  same-session-only load without a prompt. Publish ready only after load and
-  metadata refresh. Do not manufacture readiness from a stored handle.
+  `session/resume` checks the stored v2 record, its session ID, cwd and launch
+  identity, and replays history without sending a prompt. Publish ready after
+  the resume acknowledgement and metadata refresh.
 - Resumes for the same session/canonical root share one in-flight promise;
   foreign roots cannot join. Ready owners are reused without load/spawn.
   A new connection clears active turn identity and startup observations.
@@ -435,22 +477,25 @@ Material snapshots distinguish sourceRevision/includedRevision/sourceBytes/inclu
   A model turn ending does not approve a Trellis/Jira state or a commit.
 - Render only measured launch/process/session-ready/first-response observations.
   Do not invent handshake/auth substep timings or success from executable probes.
-- Models, modes and select configs come from negotiated data. Acknowledge through
-  the runtime before displaying effective values. Preserve prior values on
-  rejected changes. Public record retention includes only non-secret Agent/auth
+- Model, mode, reasoning, collaboration and boolean controls use the same
+  confirmed v2 option set. Normalize `configId`, keep the type discriminator
+  and flatten grouped select choices. A full config acknowledgement replaces
+  the prior set. Acknowledge through the runtime before displaying effective
+  values. Preserve prior values on rejected changes. Public record retention includes only non-secret Agent/auth
   display metadata and mode choices, including store/restart/load.
 - A unique explicitly categorized `mode` or `model` config option is the current
   public authority when modern controls coexist with stale legacy fields. Retain
   `category` through projection and hide duplicate generic controls in the UI.
   Do not infer category from arbitrary IDs/names; absent/ambiguous categories use
   legacy values. Rejected updates preserve effective values.
-- Public acpx already persists explicit model requests in its session options and
-  reapplies them on native reconnect. Inspect that requested value and the latest
-  advertised ID/name mapping before diagnosing lost preferences. Vendor alias
-  mappings may change with inherited local configuration. Do not introduce a
-  second model-preference authority or mistake an alias-ID change for a proven
-  provider/model switch. Validate a fresh nonce with an actual tool after restore.
-- SDK-delivered updates unknown to acpx project as passive status/diagnostic
+- Retain the confirmed v2 configuration in `runtime-v2-store`.
+  On resume, verify the original native session and the latest advertised model
+  ID/name mapping before publishing effective controls.
+- Treat v2 capability objects as present markers. Pass the already authorized
+  knowledge bridge HTTP descriptor to `session/new` and `session/resume` when
+  the peer advertises `session.mcp.http`. Keep existing root, generation, turn,
+  and authority checks on tool calls.
+- Unrecognized provider updates project as passive status/diagnostic
   events with bounded `rawUpdate`. Limits before redaction: depth 4, 128 visited
   nodes, 16 keys/object, 8 elements/array, 256 UTF-16 units/string, 64/key and
   128/tag. The serialized raw value remains at most 6144 UTF-8 bytes after
@@ -514,7 +559,7 @@ backend rejection, native retry time and canonical cancellation. Exercise a real
 provider rejection followed by an explicit model change and a complete response
 in the same native session. Retry evidence must not count as successful inference.
 
-Verify identity and generation fences through initialize/new/load, early updates, failed admissions, permissions and canonical cleanup. Restore must keep the same native session without prompt replay, retain the complete model catalog, reject notice overflow and consume queued desktop events before readiness. Independent configuration fields must survive equal and out-of-order revisions.
+Verify identity and generation fences through initialize/new/resume, early updates, failed admissions, permissions and canonical cleanup. Restore must keep the same native session without prompt replay, retain the complete model catalog, reject notice overflow and consume queued desktop events before readiness. Independent configuration fields must survive equal and out-of-order revisions.
 
 Verify resource/image byte bounds, source revisions, unsupported-capability zero-dispatch, cancelled turns and subsequent reuse. Rejected controls preserve effective values; stale root/selection replies cannot publish readiness or permissions. Connection timing spans must remain bounded, current-attempt facts.
 
@@ -523,7 +568,7 @@ For UI changes, verify drafts, IME, focus, scroll, pending approval and explicit
 ## 7. Wrong vs Correct
 
 Wrong: use a permission kind to pick the first same-kind option; expose ready from
-an installed command; bundle acpx; claim all tests passed because the mock worked.
+an installed command or treat fixture results as provider validation.
 
 Correct: select the unique original option ID, show measured readiness only,
 retain the public dependency boundary, and report fixture, vendor, native and
@@ -531,7 +576,7 @@ packaged evidence separately with their actual limits.
 
 ## 8. Conversation history archive and explicit model recovery
 
-Read this section when changing ACP transcript retention, history paging, recovery actions, or the worker lifecycle. The panel event archive is a reader/persistence authority for events admitted by Trellis; acpx remains the sole native transport/session authority.
+Read this section when changing ACP transcript retention, history paging, recovery actions, or the worker lifecycle. The panel archive is the read model for admitted events. The active ACP owner controls the native connection.
 
 ### Signatures and contracts
 
@@ -554,7 +599,7 @@ Summaries carry `hasConversation`, derived from actual scoped message text, tool
 - Persisted event canonicalization is a storage contract. New hashes use ordinal key ordering, not locale-sensitive sorting. Early version1 rows may use recursive `localeCompare` ordering: accept that known digest only when the stored payload verifies against it and canonical stored/incoming content is identical. Apply this comparison to append and snapshot import. Preserve original payload, digest and sequence; never treat an unexplained digest mismatch or changed body as an upgrade artifact. Test an actual old-format row across reopen/import, not only a freshly created archive.
 - Archive pages target 200 events/2 MiB, stopping only between turns. If one turn exceeds either target, return that entire saved turn and mark the page `oversized`; never split its streamed answer, Markdown, attachments or tools. Native identity includes connection generation and turn ID; retain turn-scoped preparation before the user event. Legacy records without turn IDs use actual user/outcome boundaries, without inventing a user prompt or successful completion. The SQLite worker and degraded snapshot reader follow the same boundary rules. Derive boundaries from lightweight metadata before reading selected payloads; do not hydrate the full archive just to select a page. Full history has no 800-event retention cap. During sustained worker failure, explicit write-queue bounds change coverage to partial/degraded and never report saved.
 - `startsMidTurn` describes an already incomplete saved prefix, not ordinary pagination. A page beginning with legitimate preparation/connection facts must not be classified incomplete solely because its first event is not a user message. A running turn returns all currently saved content with its actual running state; paging cannot manufacture an ending. Immutable sequence cursors remain scoped and monotonic; concurrent tail appends and old cursors must not lose or duplicate events when pages merge. A cursor at a valid turn edge remains usable; an old interior cursor or a tail edge invalidated by growth returns a typed conflict/reset instead of silently returning half a turn.
-- `acpSessionRecoverModel` accepts only an exact last-known candidate ID and current connection generation. It uses public acpx `setModel`/same-session load plus a subsequent same-session connect; it never parses error text, creates a replacement session, replays a prompt, or silently changes provider. `modelConfirmed` may be true while connection remains failed.
+- `acpSessionRecoverModel` accepts only an exact last-known candidate ID and current connection generation. It verifies the original session identity and uses the v2 configuration option with a provider acknowledgement. Recovery never dispatches a prompt. `modelConfirmed` may be true while connection remains failed.
 - `connectionOwned`/`cleanupRequired` are ephemeral lifecycle facts derived from the active owner, never inferred from persisted `status='error'`.
 
 ### Validation matrix
@@ -796,47 +841,76 @@ acpConversationDetailSnapshot(sessionId: string)
   -> AcpConversationDetailSnapshot | IpcFail
 acpConversationEvents(sessionId: string, input?: AcpConversationEventsInput)
   -> AcpConversationEventPage | IpcFail
+acpHistoryEvents(sessionId: string, { tail: resumeCursor })
+  -> AcpHistoryEventPage | IpcFail
 ```
 
 The additive control-plane database is `userData/acp/control-plane.sqlite`. Its
 first schema contains normalized conversation, turn, turn-item, runtime-session,
 runtime-thread, provider-instance, monotonic event, and migration rows. Legacy
-`history.sqlite` is opened read-only as the migration source.
+`history.sqlite` is opened read-only as the archive source.
 
 The renderer cache is root-scoped and bounded. Selection renders its last known
-detail immediately and refreshes through snapshot/event reads. It validates the
-returned root and source session ID, clears all detail/loading/error state when
-the root changes, coalesces duplicate reads of one session, and handles typed
-cursor resets by requesting a fresh snapshot.
+detail immediately and merges newer item revisions by stable ID. It validates
+the conversation, root, and source session ID, replaces the read scope with each
+root change, coalesces duplicate reads, and requests a fresh snapshot on a
+typed cursor reset.
 
 ### 3. Contracts
 
 - Projection list/detail reads derive the trusted canonical root only in the
   main/daemon workspace context. Renderer input contains filters, limits,
   cursors, and session IDs only.
-- Legacy migration is idempotent and restartable. A complete migration is
-  skipped only when both its source digest and last source sequence are
-  unchanged; a same-source partial migration resumes after its highest
-  projected source sequence.
+- List projection reads materialize archive metadata and can ingest native
+  updates for an already indexed conversation. Detail and event reads ingest
+  up to 256 archive and native rows or 2 MiB combined per pass. One oversized
+  first archive row may be read to advance the archive cursor.
+  The `(sourceEpoch, sourceSequence)` checkpoint advances
+  by raw archive sequence, including text fragments that update an existing
+  item. It advances in the same transaction as the items and delta events.
+- ACP v2 text and tool updates share items with the native snapshot by native
+  session and entity ID. The insertion receipt and live user echo reconcile by
+  turn ID. Older uncoupled user echoes can match exact receipt text by occurrence.
+  Keep the first event anchor and position. Archive streaming appends use only
+  the archived prefix. Each delta retains its own item revision, so a later
+  update cannot erase an earlier cursor page.
+- `acpConversationEvents` returns the next scanned cursor and `hasMore`.
+  Its final changed page can carry conversation metadata and coverage. Cached
+  reads apply deltas directly; a non-advancing or invalid page stops the drain.
+- An initial rich archive page returns `resumeCursor`. The mutually exclusive
+  `tail` input reads later raw events through the session's SQLite sequence
+  index, including additions to an unfinished turn. `resumeCursor` advances
+  even when a page has no `afterCursor`. `before` and `after` retain whole-turn
+  paging. A tail cursor for another archive epoch, root or session returns a
+  conflict and requires a fresh snapshot.
 - Conversation, runtime, provider, turn-item, and projection-event writes commit
   in one SQLite transaction. The global monotonic sequence is allocated only
   inside that transaction.
-- Text payloads are bounded. Partial migration is truthful in
-  `coverage.state='partial'`; a partial page must never be presented as complete
-  history.
+- Detail and event pages have a 2 MiB body budget. Text uses T3's
+  `truncateDetail` UTF-8 bound. Coverage reflects both the projection
+  checkpoint and the source archive's state.
 - `archive='all'` means all archived states inside the same canonical root. It
   never removes the root predicate through SQL operator precedence.
 - Projection reads never spawn, resume, authenticate, probe, install, or prompt
   a provider. They do not alter `acpHistory*` data or behavior.
 - Existing history tombstones are checked on migration and every read. A
   tombstoned conversation is absent, not empty.
+- The journal worker and its dependencies are Node-only. Main supplies the
+  trusted app-data directory explicitly for provider-record reads. Exercise
+  `init` on the production worker bundle and require a real SQLite archive.
+- v2 records are attributed to their persisted trusted project root. Older v2
+  records use their canonical cwd. Archive metadata and user receipts take
+  precedence. A matching native snapshot contributes replay and out-of-turn
+  content after the archive checkpoint catches up. Each native snapshot has a
+  separate bounded ingestion checkpoint. A live or uncertain record on disk is
+  an unverified runtime state.
 - Cursor failures are typed conflicts: cursor-ahead, conversation-reset, or
   store-reset. A generic I/O failure must not replace a reset response.
 - Missing legacy provider metadata degrades to explicit identifiers such as
   `unknown`; it must not fail SQLite non-null binding or invent a provider.
-- Projection and legacy records with the same event ID merge with the richer
-  legacy record as the base; a bounded projection row must not remove delivery,
-  image, or other authoritative presentation fields.
+- The rich archive is authoritative for transcript presentation when available.
+  Projection summaries provide an initial visible transcript before rich history
+  arrives. The live stream remains independently fenced by generation and turn.
 
 ### Conversation optimistic sends
 
@@ -851,7 +925,10 @@ cursor resets by requesting a fresh snapshot.
 - Aborted sends with an ambiguous runtime outcome remain marked unknown; the UI
   must not restore them as definitively unsent or replay them automatically.
 - Only the authoritative `promptStarted` user event replaces the pending row.
-  Deduplication is by request/turn/connection identity, not message text.
+  The optional UUID `AcpPromptOptions.promptRequestId` is echoed on that user
+  event. The renderer binds its pending row to the verified connection before
+  dispatch and reconciles by request, turn when available, and connection
+  generation. A transport failure after dispatch preserves unknown delivery.
 
 ### 4. Validation / Error Matrix
 
@@ -862,6 +939,8 @@ cursor resets by requesting a fresh snapshot.
 | Client cursor exceeds store sequence | Typed cursor-ahead reset |
 | Conversation removed or store epoch changed | Typed conversation/store reset |
 | Same source migrated again | No duplicate conversation/turn/item rows |
+| Later fragment or final replacement for a rendered message | One updated item with its original anchor and order |
+| Cached rich transcript switches away and back | Read only events newer than `resumeCursor` |
 | Page exceeds projection byte budget | Partial migration and truthful coverage |
 | Legacy archive damaged/unavailable | Projection unavailable; legacy archive remains unchanged |
 | Metadata lacks agent id/name | Degrades provider identity without binding error |
@@ -869,17 +948,17 @@ cursor resets by requesting a fresh snapshot.
 ### 5. Good / Base / Bad Cases
 
 Good: a stopped runtime conversation remains listed and its detail snapshot
-returns recent items from the projection without touching a provider process.
-Base: a bounded migration leaves partial coverage and resumes later after the
-same source digest. Bad: resuming a provider to satisfy a projection read,
+returns items from the projection without touching a provider process.
+Base: a bounded migration leaves partial coverage and continues from the
+committed raw archive sequence. Bad: resuming a provider to satisfy a projection read,
 rewriting authoritative legacy events, or treating a foreign-root row as local.
 
 ### 6. Tests Required
 
 Exercise real SQLite files under OS TEMP: idempotent repeated migration,
-partial then resumed migration, source growth, root isolation for all archive
-filters, tombstone suppression, snapshot cursor ordering, incremental-only
-events, and all typed reset paths. Run `npm run check:acpx`, `npm run typecheck`,
+partial then resumed migration, streaming message replacement across pages, root
+isolation for all archive filters, tombstone suppression, snapshot cursor
+ordering, rich history tail, and all typed reset paths. Run `npm run check:acpx`, `npm run typecheck`,
 `npm run build`, and `npm run check:ui` for affected layers.
 
 ### 7. Wrong vs Correct
@@ -902,7 +981,7 @@ projection in `control-plane-store.ts`.
 
 `RuntimeSessionManager` owns provider-family capability lookup, family usage,
 connection reservations, verified-idle candidates, recent-use pinning, and an
-atomic release claim. Existing `killOwned` / `closeOwned` / acpx shutdown /
+atomic release claim. Existing `killOwned` / `closeOwned` / ACP shutdown /
 Windows Job cleanup remain the only process-termination authorities.
 
 Current family declarations are explicit for Codex, Claude, OpenCode, DSH,
@@ -921,6 +1000,9 @@ from a provider name or protocol version.
   awaiting canonical stop. Concurrent reservations must not stop several idle
   owners when one release is sufficient. A stale claim is released and selection
   retried; stop failure retains ownership and reports cleanup uncertainty.
+- Capacity-triggered and timed release share T3's keyed lock per provider
+  family. Recheck current owner identity, activity and protected work while
+  holding the lock. Timed release yields to a capacity claim in the same family.
 - Verified-idle release starts after 30 idle minutes. A ten-minute recent-use
   pin prevents rapid switching from thrashing owners. Protected work never
   depends on this timer.

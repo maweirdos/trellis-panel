@@ -1,9 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
-import type { AcpHistoryCoverage, AcpHistoryDiagnostic, AcpHistoryEventPage, AcpHistoryListResult, AcpHistoryPersistence, AcpHistorySummary } from '../../../shared/acp-history'
+import type { AcpHistoryCoverage, AcpHistoryDiagnostic, AcpHistoryEventPage, AcpHistoryEventsInput, AcpHistoryListResult, AcpHistoryPersistence, AcpHistorySummary } from '../../../shared/acp-history'
 import { acpConversationPreview, type AcpConversationPreview } from '../../../shared/acp-conversation-preview'
 import { historicalEvent, HistoryTurnBoundaryError, selectHistoryTurns, type HistoryEventMetadata } from './history-turns'
 import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences, type SessionPreferences } from './session-preferences'
@@ -261,7 +261,7 @@ export class AcpHistoryCore {
     const historyPersistence: AcpHistoryPersistence = { state: coverage.unarchivedCount ? 'degraded' : 'saved', pendingCount: coverage.unarchivedCount ?? 0, committedThroughEventId: latest?.eventId ?? null, committedThroughSeq: aggregate.seq,
       ...(coverage.unarchivedCount ? { error: coverage.reason, unarchivedCount: coverage.unarchivedCount } : {}) }
     const legacy = meta.schemaVersion !== 2
-    const canResume = !legacy && isRecoverableRuntimeRecord(meta, legacyIds)
+    const canResume = !legacy && isRecoverableRuntimeRecord(meta, legacyIds, dirname(this.directory))
       && meta.canResume === true && typeof meta.backendSessionId === 'string' && !!meta.backendSessionId.trim()
     const preview = this.conversationPreview(row.root, row.sessionId)
     return { ...applySessionPreferences(meta, preferences), ...(preview ? { conversationPreview: preview.text, conversationPreviewAt: preview.at } : {}), status: legacy ? 'legacy' : ['closed', 'error'].includes(meta.status) ? meta.status : 'disconnected',
@@ -321,10 +321,11 @@ export class AcpHistoryCore {
     return { ok: true, version: 1, sessions, hasMore, nextCursor: hasMore ? this.encode({ kind: 'list', root, snapshot: snapshotId, position: next }) : null,
       snapshotId, searchScope: 'metadata', diagnostics: this.diagnostics.filter((item) => !item.root || item.root === root).map(({ root: _root, ...item }) => item) }
   }
-  events(root: string, sessionId: string, input: { before?: string; after?: string; limit?: number } = {}): AcpHistoryEventPage | null {
+  events(root: string, sessionId: string, input: AcpHistoryEventsInput = {}): AcpHistoryEventPage | null {
     const session = this.session(root, sessionId)
     if (!session) return null
-    if (input.before && input.after) throw new HistoryCursorError('Choose one transcript page direction')
+    if ([input.before, input.after, input.tail].filter(Boolean).length > 1) throw new HistoryCursorError('Choose one transcript page direction')
+    if (input.tail) return this.tail(root, session, input.tail, input.limit ?? 200)
     let bound: number | undefined
     if (input.before || input.after) {
       const cursor = this.decode(input.before ?? input.after ?? '')
@@ -350,7 +351,39 @@ export class AcpHistoryCore {
     return { ok: true, version: 1, session, events, hasEarlier, hasLater, startsMidTurn, oversized,
       beforeCursor: hasEarlier ? this.encode({ kind: 'events', root, sessionId, seq: first }) : null,
       afterCursor: hasLater ? this.encode({ kind: 'events', root, sessionId, seq: last }) : null,
+      ...(!input.before && !input.after ? { resumeCursor: this.encode({ kind: 'tail', root, sessionId, seq: last ?? 0 }) } : {}),
       coverage: session.historyCoverage, historyPersistence: session.historyPersistence,
       ...(!input.before && !input.after ? { discussion: readHistoryDiscussion(this.db, root, sessionId) } : {}) }
+  }
+
+  private tail(root: string, session: AcpHistorySummary, cursor: string, limit: number): AcpHistoryEventPage {
+    const { sessionId } = session
+    const decoded = this.decode(cursor)
+    if (decoded.kind !== 'tail' || decoded.root !== root || decoded.sessionId !== sessionId
+      || typeof decoded.seq !== 'number' || !Number.isSafeInteger(decoded.seq) || decoded.seq < 0
+      || decoded.seq > 0 && !this.db.prepare('SELECT 1 FROM events WHERE root=? AND sessionId=? AND seq=?').get(root, sessionId, decoded.seq)) {
+      throw new HistoryCursorError('Transcript resume cursor is no longer valid')
+    }
+    const rows = this.db.prepare('SELECT seq,payload,bytes FROM events WHERE root=? AND sessionId=? AND seq>? ORDER BY seq LIMIT ?')
+      .iterate(root, sessionId, decoded.seq, limit + 1) as unknown as Iterable<{ seq: number; payload: string; bytes: number }>
+    const events: AcpHistoryEventPage['events'] = []
+    let last = decoded.seq
+    let bytes = 0
+    let hasLater = false
+    for (const row of rows) {
+      if (events.length >= limit || (events.length > 0 && bytes + row.bytes > 2 * 1024 * 1024)) {
+        hasLater = true
+        break
+      }
+      events.push(historicalEvent({ ...(JSON.parse(row.payload) as TimelineEvent), historySeq: row.seq }))
+      last = row.seq
+      bytes += row.bytes
+    }
+    return {
+      ok: true, version: 1, session, events, hasEarlier: false, hasLater, beforeCursor: null, afterCursor: null,
+      resumeCursor: this.encode({ kind: 'tail', root, sessionId, seq: last }),
+      startsMidTurn: false, oversized: bytes > 2 * 1024 * 1024,
+      coverage: session.historyCoverage, historyPersistence: session.historyPersistence,
+    }
   }
 }

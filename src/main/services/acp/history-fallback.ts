@@ -66,6 +66,7 @@ export function snapshotHistoryList(root: string, input: unknown, error: string)
 }
 export function snapshotHistoryEvents(root: string, id: string, input: unknown, error: string): AcpHistoryEventPage | IpcFail {
   const parsed = acpHistoryEventsInputSchema.safeParse(input)
+  if (parsed.success && parsed.data?.tail) return ipcFail(IpcErrorCode.Conflict, '历史存储已变化，请重新读取会话。')
   if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '正文分页参数无效')
   const options = parsed.data ?? {}
   const record = records(root).find((item) => item.sessionId === id)

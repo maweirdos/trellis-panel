@@ -20,14 +20,12 @@
     "generate:collaboration": "node scripts/generate-collaboration-icons.mjs",
     "dist:dir": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs --dir",
     "dist": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs",
-    "postinstall": "node scripts/prepare-acpx.mjs && node scripts/prepare-acp-v2-sdk.mjs && node scripts/prepare-pi-tools.mjs",
-    "check:acpx": "node scripts/check-acpx-compat.mjs",
+    "postinstall": "npm run check:acpx && node scripts/prepare-pi-tools.mjs",
+    "check:acpx": "node scripts/check-acp-v2.mjs",
     "predev": "npm run check:acpx && node scripts/prepare-pi-tools.mjs",
     "prebuild": "npm run check:acpx && node scripts/prepare-pi-tools.mjs && node scripts/prepare-team-trellis.mjs",
     "predist:dir": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
     "predist": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
-    "prepare:acpx": "node scripts/prepare-acpx.mjs",
-    "prepare:acp-v2-sdk": "node scripts/prepare-acp-v2-sdk.mjs",
     "prepare:pi-tools": "node scripts/prepare-pi-tools.mjs",
     "pretypecheck": "npm run check:acpx"
   },
@@ -66,7 +64,7 @@
     "@tiptap/starter-kit": "3.32.2",
     "@xyflow/react": "12.12.0",
     "@zip.js/zip.js": "2.24.0",
-    "acpx": "0.19.5",
+    "effect": "4.1.5",
     "chokidar": "^3.6.0",
     "clsx": "^2.1.1",
     "css-tree": "3.1.0",
@@ -84,7 +82,6 @@
     "mermaid": "^11.17.2",
     "oauth4webapi": "3.8.8",
     "parse5": "8.0.0",
-    "patch-package": "8.0.1",
     "pdfjs-dist": "6.5.438",
     "qrcode": "1.5.4",
     "react": "^18.3.1",
@@ -96,10 +93,5 @@
     "undici": "^8.11.0",
     "zod": "^4.6.5",
     "zustand": "^4.5.5"
-  },
-  "overrides": {
-    "acpx": {
-      "@agentclientprotocol/sdk": "1.9.0"
-    }
   }
 }

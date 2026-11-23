@@ -17,11 +17,14 @@ import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationEv
 import { acpExtraArgv, acpLaunchEnvironment, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import type { AcpRuntimeDefaults } from '../../../shared/types'
 import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, OPENCODE_V2_VERSION, parseReleaseVersion } from './native-releases'
-import { BUILTINS, BUNDLED, NATIVES, isManaged, isNative, isBundled, isSupportedRuntimeSnapshot, type BuiltinId, type NativeId, type BundledId } from './runtime-definitions'
+import { BUILTINS, BUNDLED, NATIVES, isManaged, isNative, isBundled, isSupportedRuntimeSnapshot as supportsRuntimeSnapshot, type BuiltinId, type NativeId, type BundledId } from './runtime-definitions'
 import { listLocalProviders, localProviderLaunchEnvironment, resolveAdmittedLocalProvider } from './local-providers'
-export { isSupportedRuntimeSnapshot } from './runtime-definitions'
 
 export { BUILTINS }
+
+export function isSupportedRuntimeSnapshot(config: AcpAgentConfig): boolean {
+  return supportsRuntimeSnapshot(config, app.getPath('userData'))
+}
 
 export const NATIVE_TOOLS_DIAGNOSTIC = '工具由适配器原生能力提供；ACP 客户端文件和终端回调未启用，实际工具以该适配器报告和运行结果为准。'
 export const LEGACY_CUSTOM_RUNTIME_ERROR = '旧自定义执行引擎已停用，无法继续执行、启动或恢复；原会话和配置仍可查看，请选择受支持的执行引擎创建新会话'
@@ -151,7 +154,7 @@ function runtimeDefinitionsFor(settings: Settings['acp']): AcpAgentConfig[] {
     else items.push(custom)
   }
   let localProviders: AcpAgentConfig[] = []
-  try { localProviders = listLocalProviders().map(provider => ({
+  try { localProviders = listLocalProviders(app.getPath('userData')).map(provider => ({
     id: provider.id, name: provider.name, command: `${provider.agentId} · ${provider.name}`, enabled: provider.enabled,
     launchKind: 'local' as const, executable: provider.executable, args: [...provider.argv], env: structuredClone(provider.env)
   })) }
@@ -413,7 +416,7 @@ export async function runtimeLaunchSnapshot(config: AcpAgentConfig): Promise<{ i
     const defaults = resolveAcpLaunchOptions(selection.runtimeDefaults, undefined, process.platform)
     if (config.launchKind === 'sdk' && defaults.args?.length) throw new Error('Pi SDK 不支持额外启动参数；请清除执行引擎的参数后重试')
     const argv = [...await launchArgv(config), ...acpExtraArgv(defaults)]
-    const env = { ...acpLaunchEnvironment(config, defaults, process.platform), ...(config.launchKind === 'local' ? localProviderLaunchEnvironment(config) : {}) }
+    const env = { ...acpLaunchEnvironment(config, defaults, process.platform), ...(config.launchKind === 'local' ? localProviderLaunchEnvironment(app.getPath('userData'), config) : {}) }
     const localSelection = config.launchKind === 'local' ? { ...selection, localProviderEnv: env } : selection
     return { identity: runtimeVerificationIdentity(config, argv, localSelection), argv, env }
   } catch (error) {
@@ -422,7 +425,7 @@ export async function runtimeLaunchSnapshot(config: AcpAgentConfig): Promise<{ i
 }
 
 /** Fresh selected-runtime admission. Full discovery/version queries belong to Settings,
- * not session startup. Native readiness/authentication still belongs to acpx/the adapter. */
+ * not session startup. Native readiness and authentication still belong to the ACP agent. */
 export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: AcpAgentConfig; argv: string[] } | IpcFail> {
   const config = runtimeDefinitions().find((item) => item.id === id)
   if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
@@ -443,7 +446,7 @@ export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: Acp
 
 export function runtimeProcessEnv(config: AcpAgentConfig, options: AcpRuntimeDefaults): Record<string, string> {
   return config.launchKind === 'local'
-    ? { ...acpProcessEnv(options, process.platform), ...localProviderLaunchEnvironment(config) }
+    ? { ...acpProcessEnv(options, process.platform), ...localProviderLaunchEnvironment(app.getPath('userData'), config) }
     : acpLaunchEnvironment(config, options, process.platform)
 }
 
@@ -482,7 +485,7 @@ export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
       ...(bundledAutomationAllowed() ? ['--enable-automation-tools'] : [])]
   }
   if (config.launchKind === 'local') {
-    const provider = resolveAdmittedLocalProvider(config.id)
+    const provider = resolveAdmittedLocalProvider(app.getPath('userData'), config.id)
     return [provider.executable, ...provider.argv]
   }
   throw new Error(LEGACY_CUSTOM_RUNTIME_ERROR)

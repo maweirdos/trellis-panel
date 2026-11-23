@@ -18,8 +18,8 @@ function object(value: unknown): Record<string, unknown> | undefined {
 /** Validate persisted updates independently of the live private transport. */
 export function readConversationTextBlock(event: TimelineEvent): ConversationTextBlock | undefined {
   const meta = object(event.payload?.meta)
-  const block = object(meta?.piText)
-  if (event.source !== 'pi' || ![event.projectRoot, event.sessionId, event.connectionGeneration, event.turnId].every(value => typeof value === 'string' && Boolean(value.trim())) ||
+  const block = object(event.source === 'pi' ? meta?.piText : event.source === 'acp' ? meta?.acpText : undefined)
+  if (![event.projectRoot, event.sessionId, event.connectionGeneration, event.turnId].every(value => typeof value === 'string' && Boolean(value.trim())) ||
     !block || typeof event.text !== 'string' || block.version !== 1 || typeof block.messageId !== 'string' || !block.messageId.trim() || block.messageId !== event.payload?.messageId ||
     !Number.isSafeInteger(block.blockIndex) || Number(block.blockIndex) < 0 || block.blockType !== 'text' && block.blockType !== 'thinking' ||
     block.operation !== 'append' && block.operation !== 'replace' || (block.blockType === 'thinking' ? 'thought' : 'message') !== event.kind || event.payload?.role === 'user' ||
@@ -39,7 +39,7 @@ export function replayConversationTextEvents(events: readonly TimelineEvent[]): 
   const seen = new Set<string>()
   for (const event of events) {
     const meta = object(event.payload?.meta)
-    if (event.source !== 'pi' || meta?.piText === undefined) { projected.push(event); continue }
+    if ((event.source === 'pi' ? meta?.piText : event.source === 'acp' ? meta?.acpText : undefined) === undefined) { projected.push(event); continue }
     const block = readConversationTextBlock(event)
     // Invalid structured replacements must not fall back to ordinary text appends.
     if (!block) continue
@@ -55,7 +55,7 @@ export function replayConversationTextEvents(events: readonly TimelineEvent[]): 
     } else {
       const previous = projected[index]
       const nextMeta = { ...object(previous.payload?.meta), ...meta }
-      if (block.authority && meta.phase === undefined) delete nextMeta.phase
+      if (block.authority && meta?.phase === undefined) delete nextMeta.phase
       projected[index] = { ...previous, text: block.operation === 'replace' ? event.text ?? '' : (previous.text ?? '') + (event.text ?? ''),
         payload: { ...previous.payload, ...event.payload, meta: nextMeta } }
     }
