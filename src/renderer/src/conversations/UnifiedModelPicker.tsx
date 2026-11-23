@@ -1,8 +1,18 @@
-import { useMemo, type JSX, type Ref, type RefObject } from 'react'
+import { useMemo, useState, type JSX, type Ref, type RefObject } from 'react'
 import { cleanModelDisplayName } from '@shared/model-selection'
-import { ModelSelectionPanel, saveRecentModel, type ModelSelectionOption } from '../model-selection/ModelSelectionPanel'
+import { ModelSelectionPanel, saveRecentModel, type ModelSelectionOption, type ModelSelectionTuning } from '../model-selection/ModelSelectionPanel'
 import { setDraftSelection, useConversations, type WorkspaceEntry } from './workspace'
 import { DefaultModelAction } from './DefaultModelAction'
+
+const DRAFT_TUNING_STORAGE_KEY = 'my-draft-tuning-effort'
+
+const DRAFT_TUNING_OPTIONS = [
+  { value: 'off', label: '关' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'max', label: '超高' }
+]
 
 export function UnifiedModelPicker({
   current,
@@ -23,6 +33,14 @@ export function UnifiedModelPicker({
   const piModels = useConversations((state) => state.piModels)
   const defaultPiModelId = useConversations((state) => state.defaultPiModelId)
 
+  const [effort, setEffort] = useState<string>(() => {
+    try {
+      return localStorage.getItem(DRAFT_TUNING_STORAGE_KEY) || 'high'
+    } catch {
+      return 'high'
+    }
+  })
+
   const currentRuntime = runtimes.find((runtime) => runtime.id === current.runtimeId)
   const currentModelId = current.modelId ?? defaultPiModelId
   const selectedModel = piModels.find((model) => model.id === currentModelId)
@@ -42,6 +60,21 @@ export function UnifiedModelPicker({
     }
     return [{ runtimeId: runtime.id, name: runtime.name, brand: runtime.brand }]
   }), [enabledRuntimes, piModels])
+
+  const tuning = useMemo<ModelSelectionTuning>(() => ({
+    label: '思考强度',
+    value: effort,
+    options: DRAFT_TUNING_OPTIONS,
+    disabled: disabled || Boolean(current.action),
+    onChange: (val) => {
+      setEffort(val)
+      try {
+        localStorage.setItem(DRAFT_TUNING_STORAGE_KEY, val)
+      } catch {
+        // ignore
+      }
+    }
+  }), [effort, disabled, current.action])
 
   return (
     <ModelSelectionPanel
@@ -64,6 +97,7 @@ export function UnifiedModelPicker({
       defaultAction={usingPi && selectedModel?.available ? <DefaultModelAction modelId={currentModelId} /> : undefined}
       onOpenModelSettings={onOpenModelSettings}
       onOpenRuntimeSettings={onOpenRuntimeSettings}
+      tuning={tuning}
     />
   )
 }

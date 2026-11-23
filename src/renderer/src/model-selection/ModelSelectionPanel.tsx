@@ -134,10 +134,27 @@ export function ModelSelectionPanel({
   const [recentList, setRecentList] = useState<RecentModelItem[]>(loadRecentModels)
   const [favorites, setFavorites] = useState<string[]>(loadFavorites)
   const [tuningOpen, setTuningOpen] = useState(false)
+  const [internalEffort, setInternalEffort] = useState('high')
   const descriptionId = useId()
   const tuningId = useId()
+  const activeTuning: ModelSelectionTuning = useMemo(() => {
+    if (tuning && tuning.options.length > 0) return tuning
+    return {
+      label: '思考强度',
+      value: internalEffort,
+      options: [
+        { value: 'off', label: '关' },
+        { value: 'low', label: '低' },
+        { value: 'medium', label: '中' },
+        { value: 'high', label: '高' },
+        { value: 'max', label: '超高' }
+      ],
+      disabled,
+      onChange: (val) => setInternalEffort(val)
+    }
+  }, [tuning, internalEffort, disabled])
   const hasFooterActions = Boolean(defaultAction || onOpenModelSettings || onOpenRuntimeSettings || recoveryActions.length > 0 || triggerLoading)
-  const currentTuningChoice = tuning?.options.find((opt) => opt.value === tuning.value) ?? tuning?.options[0]
+  const currentTuningChoice = activeTuning.options.find((opt) => opt.value === activeTuning.value) ?? activeTuning.options[0]
   const tuningShortLabel = currentTuningChoice?.label ?? ''
   const isHighTuning = ['高', '极高', '最高', 'high', 'xhigh', 'max'].some((k) => tuningShortLabel.toLowerCase().includes(k))
 
@@ -186,7 +203,7 @@ export function ModelSelectionPanel({
           }
           toggle()
         }
-        if (tuning && tuning.options.length > 0) {
+        if (activeTuning && activeTuning.options.length > 0) {
           return (
             <div
               className="acp-composer-context acp-model-trigger my-composer-control acp-split-trigger-pill"
@@ -211,7 +228,7 @@ export function ModelSelectionPanel({
                 <button
                   type="button"
                   className="acp-split-trigger-right"
-                  aria-label={`${tuning.label}：${tuningShortLabel}，点击展开`}
+                  aria-label={`${activeTuning.label}：${tuningShortLabel}，点击展开`}
                   onClick={handleClick}
                 >
                   <span className="acp-eff-glyph" aria-hidden="true">
@@ -223,17 +240,17 @@ export function ModelSelectionPanel({
                   <ChevronDown size={10} className="opacity-60" aria-hidden="true" />
                 </button>
                 {!open && (
-                  <div className="acp-quick-ruler" role="group" aria-label={`快捷调整${tuning.label}`}>
-                    {tuning.options.map((choice) => (
+                  <div className="acp-quick-ruler" role="group" aria-label={`快捷调整${activeTuning.label}`}>
+                    {activeTuning.options.map((choice) => (
                       <button
                         key={choice.value}
                         type="button"
                         className="acp-quick-ruler-btn"
-                        aria-pressed={choice.value === tuning.value}
-                        disabled={tuning.disabled}
+                        aria-pressed={choice.value === activeTuning.value}
+                        disabled={activeTuning.disabled}
                         onClick={(e) => {
                           e.stopPropagation()
-                          tuning.onChange(choice.value)
+                          activeTuning.onChange(choice.value)
                         }}
                       >
                         {choice.label}
@@ -370,18 +387,18 @@ export function ModelSelectionPanel({
                             )}
                           </div>}
                         </div>
-                        {tuning && isSelected && tuningOpen && (
+                        {activeTuning && isSelected && tuningOpen && (
                           <div id={tuningId} className="acp-unified-tuning-panel">
-                            <span className="acp-unified-tuning-header">{tuning.label}</span>
-                            <div className="acp-unified-tuning-options" role="group" aria-label={tuning.label}>
-                              {tuning.options.map((choice) => (
+                            <span className="acp-unified-tuning-header">{activeTuning.label}</span>
+                            <div className="acp-unified-tuning-options" role="group" aria-label={activeTuning.label}>
+                              {activeTuning.options.map((choice) => (
                                 <button
                                   key={choice.value}
                                   type="button"
-                                  aria-pressed={choice.value === tuning.value}
-                                  aria-label={`${tuning.label} ${choice.label}`}
-                                  disabled={tuning.disabled}
-                                  onClick={() => tuning.onChange(choice.value)}
+                                  aria-pressed={choice.value === activeTuning.value}
+                                  aria-label={`${activeTuning.label} ${choice.label}`}
+                                  disabled={activeTuning.disabled}
+                                  onClick={() => activeTuning.onChange(choice.value)}
                                 >
                                   {choice.label}
                                 </button>
@@ -397,21 +414,21 @@ export function ModelSelectionPanel({
             </div>
           </div>
 
-          {tuning && tuning.options.length > 0 && (
+          {activeTuning && activeTuning.options.length > 0 && (
             <div className="acp-unified-tuning-dock">
               <div className="acp-unified-tuning-dock-head">
-                <span>{tuning.label}</span>
+                <span>{activeTuning.label}</span>
                 <span className="font-semibold text-my-primary">{currentTuningChoice?.label}</span>
               </div>
-              <div className="acp-unified-eff-rail" role="group" aria-label={tuning.label}>
-                {tuning.options.map((choice) => (
+              <div className="acp-unified-eff-rail" role="group" aria-label={activeTuning.label}>
+                {activeTuning.options.map((choice) => (
                   <button
                     key={choice.value}
                     type="button"
                     className="acp-unified-eff-btn"
-                    aria-pressed={choice.value === tuning.value}
-                    disabled={tuning.disabled}
-                    onClick={() => tuning.onChange(choice.value)}
+                    aria-pressed={choice.value === activeTuning.value}
+                    disabled={activeTuning.disabled}
+                    onClick={() => activeTuning.onChange(choice.value)}
                   >
                     {choice.label}
                   </button>
