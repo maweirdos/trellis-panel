@@ -143,4 +143,3 @@ export const ClientRpcs = RpcGroup.make(
   MessageMcpRpc,
   DisconnectMcpRpc,
 );
-
