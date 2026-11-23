@@ -40,6 +40,13 @@ export function acpProcessEnv(options: AcpRuntimeDefaults, platform?: string): R
   return Object.fromEntries((options.env ?? []).map(item => [environmentKey(item.key, platform), item.value]))
 }
 
+export function acpLaunchEnvironment(config: { id: string; launchKind?: string }, options: AcpRuntimeDefaults, platform?: string): Record<string, string> {
+  const env = acpProcessEnv(options, platform)
+  return config.id === 'claude' && config.launchKind === 'managed' && env.CLAUDE_AGENT_ACP_EXPERIMENTAL_V2 === undefined
+    ? { ...env, CLAUDE_AGENT_ACP_EXPERIMENTAL_V2: '1' }
+    : env
+}
+
 /** Node selects only one casing on Windows; canonicalize both ambient and explicit overlays. */
 export function acpSpawnEnv(base: Record<string, string | undefined>, overlay: Record<string, string>, platform?: string): Record<string, string> {
   return Object.fromEntries([...Object.entries(base), ...Object.entries(overlay)].filter((entry): entry is [string, string] => entry[1] !== undefined)

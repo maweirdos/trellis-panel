@@ -1062,7 +1062,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
   const filteredProfiles = rolesForDisplay(profiles.filter((item) => `${item.name} ${item.description} ${item.runtimeId}`.toLowerCase().includes(libraryQuery.toLowerCase())))
   const createProfile = (resumePicker = false): void => {
     const supportedEngines = agents.filter((agent) => agent.id === 'codex' || agent.id === 'claude')
-    const readyEngine = supportedEngines.find((agent) => agent.enabled && agent.available) ?? supportedEngines[0] ?? agents[0]
+    const readyEngine = supportedEngines.find((agent) => agent.enabled && agent.available && agent.health === 'ready') ?? supportedEngines[0] ?? agents[0]
     const draft: AcpAgentProfile = { id: crypto.randomUUID(), name: '', description: '', instructions: '', runtimeId: readyEngine?.runtimeId ?? readyEngine?.id ?? '', maxTurnMinutes: 30 }
     setNewConversation(null); setReturnToPicker(resumePicker); setInspectedSessionId(null); setEditor(draft); setInspectedProfileId(draft.id); setInspectorTab('agent'); setInspectorOpen(true)
   }
@@ -1287,7 +1287,7 @@ function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}
     </WorkspaceInspector>
     {newConversation && <NewConversationPicker key={newConversation.key} profiles={profiles} agents={agents} initialProfileId={newConversation.profileId} initialTaskDir={newConversation.taskDir} root={root} tasks={snapshot?.tasks ?? []} starting={creating} error={newConversationError} isCurrent={isCurrent} onAgentsChange={setAgents} onClose={() => setNewConversation(null)} onCreateRole={() => createProfile(true)} onEditRole={(selected) => editProfile(selected, true)} onStart={(selected, selectedTask, selectModel) => {
       const engine = agents.find((agent) => (agent.runtimeId ?? agent.id) === selected.runtimeId)
-      if (!engine?.enabled || !engine.available) { setNewConversationError('执行引擎尚未就绪，请先完成本机环境配置。'); return }
+      if (!engine?.enabled || !engine.available || engine.health !== 'ready') { setNewConversationError('执行引擎尚未完成 ACP v2 连接验证。'); return }
       void newSession(engine.id, selectedTask, selected.id, selectModel)
     }} />}
     {jiraOpen && <JiraPickerModal isCurrent={isCurrent} onClose={() => setJiraOpen(false)} onSelected={() => { if (isCurrent()) setJiraOpen(false) }} />}

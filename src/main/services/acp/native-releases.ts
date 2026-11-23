@@ -31,6 +31,7 @@ export function compareReleaseVersions(left: string | undefined, right: string |
 }
 
 export const OPENCODE_V2_PACKAGE = '@opencode/cli'
+export const OPENCODE_V2_VERSION = '2.3.2'
 export const OPENCODE_MIGRATION_GUIDE = 'https://opencode.ai/v2/docs/migrate-v1/'
 
 /** An installed but unreadable/unsupported CLI must never select an installation package. */

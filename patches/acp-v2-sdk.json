@@ -1,0 +1,5 @@
+{
+  "version": "1.9.0",
+  "entry": "@agentclientprotocol/sdk/experimental/v2",
+  "protocolVersion": 2
+}

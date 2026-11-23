@@ -50,8 +50,17 @@ export async function checkAcpxCompatibility(root = projectRoot, { requirePatche
   if (digest(patch) !== manifest.patchSha256) throw new Error('acpx compatibility patch checksum mismatch; review and regenerate its manifest')
   if (manifest.upgradeFrom && digest(await readFile(join(root, 'patches', manifest.upgradeFrom.patch))) !== manifest.upgradeFrom.patchSha256) throw new Error('Recognized acpx upgrade patch checksum mismatch')
   const sdk = await readResolvedPackage(createRequire(packagePath), '@agentclientprotocol/sdk')
+  const v2Sdk = await readResolvedPackage(request, '@agentclientprotocol/sdk')
   if (project.overrides?.acpx?.['@agentclientprotocol/sdk'] !== manifest.sdkVersion || sdk.version !== manifest.sdkVersion) {
     throw new Error(`ACP SDK must be pinned by the acpx override and installed at ${manifest.sdkVersion}; review compatibility before upgrading`)
+  }
+  const v2Manifest = await readJson(join(root, 'patches/acp-v2-sdk.json'))
+  if (project.dependencies?.['@agentclientprotocol/sdk'] !== v2Sdk.version || v2Sdk.version !== v2Manifest.version || v2Manifest.protocolVersion !== 2) {
+    throw new Error('ACP v2 SDK must be pinned, installed, and declare protocol version 2')
+  }
+  const v2Entry = await import(pathToFileURL(request.resolve(v2Manifest.entry)).href)
+  if (v2Entry.PROTOCOL_VERSION !== v2Manifest.protocolVersion) {
+    throw new Error('ACP v2 SDK entry does not advertise the pinned protocol version')
   }
   if (!requirePatched) return { manifest, packagePath }
   for (const [file, expected] of Object.entries(manifest.files)) {

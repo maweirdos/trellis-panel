@@ -1,6 +1,7 @@
 import { taskPlanningPolicySchema, type TaskPlanningPolicy } from '../../../shared/private-conversations'
 import { taskInputCanonical } from '../../../shared/team-task-inputs'
-import type { AcpPermissionDecision, AcpPermissionRequest } from 'acpx/runtime'
+import type { AcpPermissionDecision } from './v2'
+import type { ConversationRuntimePermissionRequest } from '../pi/runtime-port'
 
 type ConfigOption = { id: string; currentValue: string; options: Array<{ value: string }> }
 export interface PlanningObservation {
@@ -70,14 +71,14 @@ export async function verifyPlanningPolicy(policy: TaskPlanningPolicy, expected:
   port.assertCurrent()
   assertPlanningObservation(policy, actual, expected)
 }
-export function rejectPlanningPermission(options: Array<{ optionId: string; kind: string }>): AcpPermissionDecision {
+export function rejectPlanningPermission(options: ReadonlyArray<{ readonly optionId: string; readonly kind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always' }>): AcpPermissionDecision {
   const safe = options.filter(item => item.optionId !== 'implement_plan' && options.filter(other => other.optionId === item.optionId).length === 1)
   const reject = ['decline', 'reject_permissions', 'revise_plan'].map(id => safe.find(item => item.optionId === id && item.kind === 'reject_once')).find(Boolean)
     ?? safe.find(item => item.optionId === 'cancel' && item.kind === 'reject_once')
-  return reject ? { outcome: 'selected', optionId: reject.optionId } : { outcome: 'cancel' }
+  return reject ? { outcome: { outcome: 'selected', optionId: reject.optionId } } : { outcome: { outcome: 'cancelled' } }
 }
 export type PlanningPermissionReview = { command: string; cwd: string; details: string }
-export function planningPermissionReview(toolCall: AcpPermissionRequest['raw']['toolCall'], requestMeta: unknown,
+export function planningPermissionReview(toolCall: ConversationRuntimePermissionRequest['raw']['toolCall'], requestMeta: unknown,
   redact: (value: string) => string): PlanningPermissionReview | undefined {
   if (toolCall.kind !== 'execute') return undefined
   const rawInput = toolCall.rawInput

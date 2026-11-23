@@ -1,6 +1,6 @@
 /**
  * 测试连接：以 Runtime 的真实 launch argv 拉起 ACP server，发送一次 NDJSON
- * `initialize`（protocolVersion 1），在超时内收集 agentInfo/协议版本/能力/登录方式后
+ * `initialize`（protocolVersion 2），在超时内收集 agentInfo/协议版本/能力/登录方式后
  * 确认原进程容器完整清理后返回。只发 initialize，不发 session/new / prompt；
  * 探测不安装引擎，程序启动本身仍可能产生副作用。
  */
@@ -9,13 +9,13 @@ import { createInterface } from 'readline'
 import { tmpdir } from 'os'
 import { randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import type { AcpProcessLaunch } from 'acpx/runtime'
+import type { AcpProcessLaunch } from './v2'
 import type { AcpAgentConfig, AcpAgentStatus, AcpConnectionProbeResult } from '../../../shared/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { batchShell, isSupportedRuntimeSnapshot, LEGACY_CUSTOM_RUNTIME_ERROR, listAcpAgents, runtimeDefinitions, runtimeLaunchSnapshot } from './setup'
 import { errorMessage, objectValue } from './types'
 import { rememberRuntimeVerification, type RuntimeConnectionProbeResult } from './runtime-verification'
-import { PI_VERSION } from '../pi/protocol'
+import { initializeResultSchema } from './v2'
 import { acpSpawnEnv } from '../../../shared/acp-launch-options'
 import { createAcpJobOwner } from '../workcopy-use/acp-jobs'
 import { workcopyUseDirectory } from '../workcopy-use'
@@ -42,14 +42,15 @@ function numericVersion(value: unknown): number | undefined {
 /** 精选能力白名单 → 中文标签；未知/缺失能力如实忽略，不做名称推断。 */
 function capabilityLabels(capabilities: unknown): string[] {
   const source = objectValue(capabilities)
-  const prompt = objectValue(source.promptCapabilities)
-  const mcp = objectValue(source.mcpCapabilities)
+  const session = objectValue(source.session)
+  const prompt = objectValue(session.prompt)
+  const mcp = objectValue(session.mcp)
   const labels: string[] = []
-  if (source.loadSession === true) labels.push('会话恢复')
+  labels.push('会话基线')
   if (prompt.image === true) labels.push('图片输入')
   if (prompt.embeddedContext === true) labels.push('内嵌上下文')
   if (prompt.audio === true) labels.push('音频输入')
-  if (mcp.http === true || mcp.sse === true) labels.push('MCP')
+  if (mcp.http === true || mcp.stdio === true || mcp.acp === true) labels.push('MCP')
   return labels
 }
 
@@ -90,7 +91,7 @@ export async function testAcpRuntimeConnection(id: string): Promise<ConnectionTe
   const task = (async (): Promise<ConnectionTestResult> => {
     let probe: RuntimeConnectionProbeResult
     if (!launch.argv) probe = { ok: false, error: launch.error ?? '无法解析启动命令' }
-    else if (config.launchKind === 'sdk') probe = { ok: true, agentInfo: { name: 'Pi SDK', version: PI_VERSION }, capabilitiesSummary: ['原生 SDK', '会话恢复', 'MCP', 'Skills', '上下文压缩'] }
+    else if (config.launchKind === 'sdk') probe = { ok: false, error: 'Pi 使用原生 SDK 而非 ACP v2；不能凭 SDK 安装状态标记 ACP provider 可用' }
     else probe = await probeAcpConnection(config, launch.argv, launch.env)
     const current = runtimeDefinitions().find(item => item.id === id)
     if (!current || (await runtimeLaunchSnapshot(current)).identity !== launch.identity) {
@@ -158,7 +159,7 @@ async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[
     child.stdin?.on('error', () => { /* 写入失败由 exit/error 分支如实报告 */ })
     const stdout = child.stdout
     if (!stdout) { fail('无法读取 ACP server 输出流'); return }
-    const initialize = (): void => { if (settled) return; try { child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: {} } })}\n`) } catch { /* The owner observes write/exit failure. */ } }
+    const initialize = (): void => { if (settled) return; try { child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2, info: { name: 'trellis-panel', version: '0.1.0' }, capabilities: {} } })}\n`) } catch { /* The owner observes write/exit failure. */ } }
     if (nativeJobs) {
       child.once('spawn', () => {
         if (!child.pid) { fail('原连接探测未能启动'); return }
@@ -169,9 +170,9 @@ async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[
     reader.on('line', (line) => {
       const trimmed = line.trim()
       if (settled || !trimmed) return
-      let parsed: unknown
-      try { parsed = JSON.parse(trimmed) } catch { return } // 启动横幅等非 JSON 行忽略
-      const message = objectValue(parsed)
+      let rawMessage: unknown
+      try { rawMessage = JSON.parse(trimmed) } catch { return } // 启动横幅等非 JSON 行忽略
+      const message = objectValue(rawMessage)
       if (message.id !== 1 && message.id !== '1') return // 早于 initialize 响应的通知/日志忽略
       if (message.jsonrpc !== '2.0') { fail('无效的 initialize 响应：缺少 JSON-RPC 2.0 标记'); return }
       if (message.error !== undefined && message.error !== null) {
@@ -180,19 +181,24 @@ async function probeAcpConnection(config: AcpAgentConfig, resolvedArgv?: string[
           error: `initialize 被拒绝：${stringField(detail.message) ?? '未知错误'}` })
         return
       }
-      const result = objectValue(message.result)
-      const protocolVersion = numericVersion(result.protocolVersion)
-      if (protocolVersion !== 1) {
-        settle({ ok: false, protocolVersion, error: protocolVersion === undefined ? '无效的 initialize 响应：缺少有效协议版本' : `协议不兼容：引擎返回 v${protocolVersion}，客户端支持 v1` })
+      const parsed = initializeResultSchema.safeParse(message.result)
+      if (!parsed.success) {
+        const protocolVersion = numericVersion(objectValue(message.result).protocolVersion)
+        settle({ ok: false, protocolVersion, error: protocolVersion === undefined ? '无效的 initialize 响应：缺少有效协议版本' : `协议不兼容：客户端请求 v2，引擎返回 v${protocolVersion}` })
         return
       }
-      const info = objectValue(result.agentInfo)
+      const result = parsed.data
+      if (result.protocolVersion !== 2) {
+        settle({ ok: false, protocolVersion: result.protocolVersion, error: `协议不兼容：客户端请求 v2，引擎返回 v${result.protocolVersion}` })
+        return
+      }
+      const info = objectValue(result.info)
       settle({
         ok: true,
         agentInfo: { name: stringField(info.name), version: stringField(info.version) },
-        protocolVersion,
+        protocolVersion: result.protocolVersion,
         authMethodIds: authMethodIds(result.authMethods),
-        capabilitiesSummary: capabilityLabels(result.agentCapabilities)
+        capabilitiesSummary: capabilityLabels(result.capabilities)
       })
     })
   }) } catch (error) {

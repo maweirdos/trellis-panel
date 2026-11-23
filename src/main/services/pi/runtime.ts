@@ -3,12 +3,12 @@ import { randomUUID, createHash } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import type { AcpRuntimeEvent, AcpRuntimeHandle, AcpRuntimeTurn, AcpRuntimeTurnInput, AcpRuntimeTurnResult, AcpPermissionDecision } from 'acpx/runtime'
+import type { AcpRuntimeEvent, AcpRuntimeHandle, AcpRuntimeTurn, AcpRuntimeTurnResult, AcpPermissionDecision } from './runtime-port'
 import type { AcpSessionRecord } from '../../../shared/types'
 import { assertPiToolPath } from './tool-paths'
 import { piConfiguredModels, piProjectMcp } from './models'
 import { PI_FRAME_BYTES, PI_VERSION, piInitializeSchema, piPermissionSchema, piStateSchema, piTextMetaSchema, type PiActivity, type PiState } from './protocol'
-import type { ConversationRuntime } from './runtime-port'
+import type { ConversationRuntime, ConversationRuntimeStatus } from './runtime-port'
 import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { readAcpStoredImages } from '../../../shared/acp-images'
 import { readPiWebPreviewArtifact } from '../../../shared/pi-web-preview'
@@ -52,6 +52,7 @@ class ActivityQueue implements AsyncIterable<AcpRuntimeEvent> {
   }
 }
 type Running = { input: AcpRuntimeTurnInput; abort: AbortController; queue: ActivityQueue; started(): void; rejectStarted(error: Error): void; finish(result: AcpRuntimeTurnResult): void; startedAcknowledged: boolean; error?: string }
+type AcpRuntimeTurnInput = Parameters<ConversationRuntime['startTurn']>[0]
 
 /** Native SDK-process adapter. No ACP initialize/session frames are sent to this process. */
 export class PiConversationRuntime implements ConversationRuntime {
@@ -83,8 +84,15 @@ export class PiConversationRuntime implements ConversationRuntime {
   }
   private handle(): AcpRuntimeHandle {
     const meta = this.options.meta
-    return { sessionKey: meta.sessionId, backend: 'pi', runtimeSessionName: meta.sessionId,
-      cwd: meta.cwd, backendSessionId: this.state?.sessionId ?? meta.backendSessionId, agentSessionId: this.state?.sessionId ?? meta.agentSessionId }
+    return {
+      sessionKey: meta.sessionId,
+      backend: 'acp-v2',
+      runtimeSessionName: meta.sessionId,
+      cwd: meta.cwd ?? meta.projectRoot,
+      nativeRecordId: meta.nativeRecordId ?? '',
+      backendSessionId: this.state?.sessionId ?? meta.backendSessionId ?? meta.sessionId,
+      agentSessionId: this.state?.sessionId ?? meta.agentSessionId,
+    }
   }
   private write(value: unknown): Promise<void> {
     const child = this.child
@@ -302,10 +310,10 @@ export class PiConversationRuntime implements ConversationRuntime {
     input.assertActive?.(); await this.ensureSession({ sessionKey: this.options.meta.sessionId, agent: 'pi', mode: 'persistent' }); input.assertActive?.()
   }
   getCapabilities(): ReturnType<ConversationRuntime['getCapabilities']> { return Promise.resolve({ controls: ['session/set_mode', 'session/set_model', 'session/set_config_option', 'session/status'] }) }
-  async getStatus(): Promise<Awaited<ReturnType<ConversationRuntime['getStatus']>>> {
+  async getStatus(): Promise<ConversationRuntimeStatus> {
     if (this.state) this.options.onState(this.state, this.mode)
-    return { ...this.handle(), models: { currentModelId: this.state?.modelId ?? this.options.meta.currentModelId,
-      availableModelIds: this.configured.models.map(model => model.selectionId), availableModels: this.configured.models.map(model => ({ modelId: model.selectionId, name: model.label })) },
+    return { ...this.handle(), models: {
+      availableModelIds: this.configured.models.map(model => model.selectionId) },
       availableCommands: [{ name: 'compact', description: '压缩当前会话上下文' }] }
   }
   private async configure(input: Record<string, unknown>): Promise<void> {
@@ -422,7 +430,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     run.input.assertActive?.()
     const finalPaths = assertPath()
     if (initialPaths.length !== finalPaths.length || initialPaths.some((path, index) => relative(path, finalPaths[index] ?? '') !== '')) throw new Error('工具路径在授权期间发生变化')
-    return !run.abort.signal.aborted && (decision?.outcome === 'allow_once' || decision?.outcome === 'selected' && decision.optionId === 'allow-once')
+    return !run.abort.signal.aborted && decision?.outcome.outcome === 'selected' && decision.outcome.optionId === 'allow-once'
   }
   shutdown(): Promise<void> {
     return this.closed ??= (async () => {

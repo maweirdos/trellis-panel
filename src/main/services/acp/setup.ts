@@ -13,10 +13,10 @@ import { resolveZcodeInstallation, resolveZcodeOverride } from './zcode-installa
 import { prepareBundledZcodeStartup } from './zcode-startup'
 import { piEngineAvailable, piEngineEntry, piRuntimeDefinition } from '../pi/catalog'
 import { PI_VERSION } from '../pi/protocol'
-import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationIdentity } from './runtime-verification'
-import { acpExtraArgv, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
+import { applyRuntimeVerification, hasRuntimeVerification, runtimeVerificationEvidenceForLaunch, runtimeVerificationIdentity } from './runtime-verification'
+import { acpExtraArgv, acpLaunchEnvironment, acpProcessEnv, resolveAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import type { AcpRuntimeDefaults } from '../../../shared/types'
-import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, parseReleaseVersion } from './native-releases'
+import { compareReleaseVersions, openCodeRelease, OPENCODE_MIGRATION_GUIDE, OPENCODE_V2_PACKAGE, OPENCODE_V2_VERSION, parseReleaseVersion } from './native-releases'
 import { BUILTINS, BUNDLED, NATIVES, isManaged, isNative, isBundled, isSupportedRuntimeSnapshot, type BuiltinId, type NativeId, type BundledId } from './runtime-definitions'
 import { listLocalProviders, localProviderLaunchEnvironment, resolveAdmittedLocalProvider } from './local-providers'
 export { isSupportedRuntimeSnapshot } from './runtime-definitions'
@@ -289,15 +289,15 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
     }
     if (config.id === 'pi' && config.launchKind === 'sdk') {
       const compatible = !!node && Number(node.version.slice(1).split('.')[0]) >= 24 || !!node && /^v22\.(?:19|[2-9]\d)\./.test(node.version)
-      return { ...base, available: compatible && piEngineAvailable(), health: !compatible ? 'executable_missing' : !piEngineAvailable() ? 'adapter_missing' : 'ready',
+      return { ...base, available: compatible && piEngineAvailable(), health: !compatible ? 'executable_missing' : !piEngineAvailable() ? 'adapter_missing' : 'not_checked',
         adapterVersion: PI_VERSION, setupRequired: false, diagnostics: [compatible ? `Node ${node?.version}；Pi SDK ${PI_VERSION} 随应用提供` : nodeError || 'Pi 需要 Node >=22.19',
-          '使用设置中的 AI 模型；原生 SDK 会话，工具由项目权限控制，不通过 ACP 外部 CLI'] }
+          'Pi 使用原生 SDK 而非 ACP v2；ACP provider 矩阵中保持未验证，不能凭安装状态可用'] }
     }
     if (isManaged(config)) {
       const entry = installedEntry(config.id)
       return { ...base, available: !!node && !!entry, health: !node ? 'executable_missing' : !entry ? 'adapter_missing' : 'not_checked',
         adapterVersion: BUILTINS[config.id].version, setupRequired: !entry,
-        diagnostics: [nodeError || `Node ${node?.version}；固定 acpx 0.19.5 / compat 1`, entry ? '适配器已安装；认证和 ACP 就绪状态将在启动时验证' : '请显式安装此 Runtime；启动不会自动下载', NATIVE_TOOLS_DIAGNOSTIC] }
+        diagnostics: [nodeError || `Node ${node?.version}；ACP v2 运行时`, entry ? '适配器已安装；认证和 ACP v2 就绪状态将在启动时验证' : '请显式安装此 Runtime；启动不会自动下载', NATIVE_TOOLS_DIAGNOSTIC] }
     }
     if (isNative(config)) {
       const spec = NATIVES[config.id]
@@ -308,27 +308,22 @@ async function probe(queryRegistry: boolean, settings: Settings['acp'], definiti
         diagnostics: [...(manual ? [`手动指定的路径不可用（${manual}），且 PATH 自动检测未命中`] : []), spec.missingHint, NATIVE_TOOLS_DIAGNOSTIC] }
       const source = nativeSourceIdentity(config, settings, detected, node)
       const version = await runtimeVersion(source, detected.path, ['--version'], queryRegistry)
-      const release = config.id === 'opencode' ? openCodeRelease(version) : undefined
-      const packageName = config.id === 'opencode' ? release?.packageName : spec.npmPackage
-      const [candidate, migrationVersion] = await Promise.all([
-        packageName ? latestNativeVersion(packageName, source, node, queryRegistry) : undefined,
-        release?.channel === 'v1' ? latestNativeVersion(OPENCODE_V2_PACKAGE, source, node, queryRegistry) : undefined
-      ])
-      const latestVersion = release && parseReleaseVersion(candidate)?.major !== release.major ? undefined : candidate
-      const comparison = compareReleaseVersions(version, latestVersion)
-      const setupBlockedReason = manual ? '自定义路径的程序请使用原安装方式升级，再重新探测' : !parseReleaseVersion(version)
-        ? '无法读取程序版本，请使用原安装方式更新或配置有效路径'
-        : config.id === 'opencode' && !release ? '此 OpenCode 主版本尚无受支持的更新通道，请使用官方安装方式' : undefined
       if (source !== nativeSourceIdentity(config, settings, nativeExecutableFor(config.id, settings), node)) {
         return { ...base, available: true, health: 'not_checked', setupRequired: false, updateStatus: 'unknown',
           setupBlockedReason: '程序路径或文件已变化，请重新探测', diagnostics: ['程序路径或文件已变化，请重新探测', NATIVE_TOOLS_DIAGNOSTIC] }
       }
+      if (config.id === 'opencode') return { ...base, available: false, health: 'incompatible', setupRequired: false,
+        adapterVersion: version, setupBlockedReason: 'OpenCode 2.3.2 的 ACP server 返回 v1，不能用于 ACP v2；其 HTTP v2 API 是另一个 provider surface',
+        diagnostics: [`${detected.manual ? '手动指定' : '自动检测'}：检测到 OpenCode：${detected.path}`,
+          'OpenCode 当前不可用于 ACP v2', NATIVE_TOOLS_DIAGNOSTIC] }
+      const candidate = await latestNativeVersion(spec.npmPackage, source, node, queryRegistry)
+      const latestVersion = candidate
+      const comparison = compareReleaseVersions(version, latestVersion)
+      const setupBlockedReason = manual ? '自定义路径的程序请使用原安装方式升级，再重新探测' : !parseReleaseVersion(version)
+        ? '无法读取程序版本，请使用原安装方式更新或配置有效路径' : undefined
       return { ...base, available: true, health: 'not_checked', setupRequired: false, adapterVersion: version, latestVersion,
-        releaseChannel: release?.channel,
         updateStatus: comparison === undefined ? 'unknown' : comparison < 0 ? 'available' : comparison === 0 ? 'current' : 'ahead',
         setupBlockedReason,
-        availableMigration: release?.channel === 'v1' && migrationVersion && openCodeRelease(migrationVersion)?.channel === 'v2'
-          ? { version: migrationVersion, guideUrl: OPENCODE_MIGRATION_GUIDE } : undefined,
         diagnostics: [`${detected.manual ? '手动指定' : '自动检测'}：检测到 ${spec.name}：${detected.path}；协议与登录状态将在连接时验证`,
           ...(manual && !detected.manual ? ['手动指定路径无效，已回退 PATH 自动检测'] : []),
           ...(setupBlockedReason ? [setupBlockedReason] : []), NATIVE_TOOLS_DIAGNOSTIC] }
@@ -418,7 +413,7 @@ export async function runtimeLaunchSnapshot(config: AcpAgentConfig): Promise<{ i
     const defaults = resolveAcpLaunchOptions(selection.runtimeDefaults, undefined, process.platform)
     if (config.launchKind === 'sdk' && defaults.args?.length) throw new Error('Pi SDK 不支持额外启动参数；请清除执行引擎的参数后重试')
     const argv = [...await launchArgv(config), ...acpExtraArgv(defaults)]
-    const env = { ...acpProcessEnv(defaults, process.platform), ...(config.launchKind === 'local' ? localProviderLaunchEnvironment(config) : {}) }
+    const env = { ...acpLaunchEnvironment(config, defaults, process.platform), ...(config.launchKind === 'local' ? localProviderLaunchEnvironment(config) : {}) }
     const localSelection = config.launchKind === 'local' ? { ...selection, localProviderEnv: env } : selection
     return { identity: runtimeVerificationIdentity(config, argv, localSelection), argv, env }
   } catch (error) {
@@ -432,14 +427,24 @@ export async function resolveAcpRuntimeLaunch(id: string): Promise<{ config: Acp
   const config = runtimeDefinitions().find((item) => item.id === id)
   if (config && !isSupportedRuntimeSnapshot(config)) return ipcFail(IpcErrorCode.Unavailable, LEGACY_CUSTOM_RUNTIME_ERROR)
   if (!config?.enabled) return ipcFail(IpcErrorCode.InvalidArg, 'Runtime 未启用或不可用')
-  try { return { config, argv: await launchArgv(config) } }
+  try {
+    const argv = await launchArgv(config)
+    if (config.launchKind !== 'sdk') {
+      const launch = await runtimeLaunchSnapshot(config)
+      const evidence = launch.argv === undefined || launch.error !== undefined ? undefined : runtimeVerificationEvidenceForLaunch(id, launch.identity)
+      if (evidence?.ok !== true || evidence.protocolVersion !== 2) {
+        return ipcFail(IpcErrorCode.Unavailable, 'Runtime 尚未通过 ACP v2 initialize 验证；请先测试连接，注册表或安装状态不能替代握手证据')
+      }
+    }
+    return { config, argv }
+  }
   catch (error) { return ipcFail(IpcErrorCode.InvalidArg, errorMessage(error)) }
 }
 
 export function runtimeProcessEnv(config: AcpAgentConfig, options: AcpRuntimeDefaults): Record<string, string> {
   return config.launchKind === 'local'
     ? { ...acpProcessEnv(options, process.platform), ...localProviderLaunchEnvironment(config) }
-    : acpProcessEnv(options, process.platform)
+    : acpLaunchEnvironment(config, options, process.platform)
 }
 
 export async function launchArgv(config: AcpAgentConfig): Promise<string[]> {
@@ -535,7 +540,8 @@ async function setupNativeRuntime(config: AcpAgentConfig & { id: NativeId }, set
   if (!current || !isNative(current) || source !== nativeSourceIdentity(current, currentSettings, nativeExecutableFor(config.id, currentSettings), node)) {
     return ipcFail(IpcErrorCode.Conflict, '程序或路径设置已变化，未安装任何软件包；请重新探测')
   }
-  await run(node.path, [npmCli, 'install', '-g', '--prefix', prefix, '--no-audit', '--no-fund', '--loglevel=error', `${packageName}@${latest}`], 600000)
+  const exactVersion = config.id === 'opencode' ? spec.version : latest
+  await run(node.path, [npmCli, 'install', '-g', '--prefix', prefix, '--no-audit', '--no-fund', '--loglevel=error', `${packageName}@${exactVersion}`], 600000)
   const afterSettings = getSettings().acp
   const afterConfig = runtimeDefinitions().find(item => item.id === config.id)
   const after = nativeExecutableFor(config.id, afterSettings)
@@ -546,7 +552,7 @@ async function setupNativeRuntime(config: AcpAgentConfig & { id: NativeId }, set
   }
   let installedVersion: string | undefined
   try { installedVersion = versionToken(await run(after.path, ['--version'])) } catch { /* Report unverified installation below. */ }
-  if (compareReleaseVersions(installedVersion, latest) !== 0) return ipcFail(IpcErrorCode.Io, 'npm 安装已结束，但当前程序版本未匹配安装结果，请使用原安装方式更新并核对路径')
+  if (compareReleaseVersions(installedVersion, exactVersion) !== 0) return ipcFail(IpcErrorCode.Io, 'npm 安装已结束，但当前程序版本未匹配安装结果，请使用原安装方式更新并核对路径')
   return listAcpAgents(true)
 }
 
@@ -557,6 +563,7 @@ export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: A
   if (config?.launchKind === 'sdk') return listAcpAgents(true)
   if (Object.hasOwn(BUNDLED, id)) return ipcFail(IpcErrorCode.InvalidArg, '内置 Runtime 随应用提供，无需安装')
   const native = Object.hasOwn(NATIVES, id)
+  if (native && id === 'opencode') return ipcFail(IpcErrorCode.Unavailable, 'OpenCode 2.3.2 的 ACP server 返回 v1，不能作为 ACP v2 provider')
   if (!Object.hasOwn(BUILTINS, id) && !native) return ipcFail(IpcErrorCode.InvalidArg, '执行引擎不存在或不可安装')
   if (!config || native && !isNative(config) || !native && !isManaged(config)) return ipcFail(IpcErrorCode.InvalidArg, '执行引擎不可安装')
   const pending = setups.get(id)

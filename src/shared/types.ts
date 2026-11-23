@@ -2003,6 +2003,7 @@ export interface AcpSessionMeta {
   backendSessionId?: string
   agentSessionId?: string
   acpxRecordId?: string
+  nativeRecordId?: string
   connectionGeneration?: string
   turnId?: string
   cwd?: string

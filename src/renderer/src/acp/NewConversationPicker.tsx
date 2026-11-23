@@ -18,7 +18,7 @@ export function NewConversationPicker({ profiles, agents, initialProfileId, init
   const [selectedTask, setSelectedTask] = useState(initialTaskDir ?? '')
   const selected = profiles.find((profile) => profile.id === selectedId)
   const engine = agents.find((agent) => (agent.runtimeId ?? agent.id) === selected?.runtimeId)
-  const ready = Boolean(engine?.enabled && engine.available)
+  const ready = Boolean(engine?.enabled && engine.available && !engine.setupRequired && engine.health === 'ready')
   const close = (): void => { if (!starting) onClose() }
   return <Modal open onClose={close} width={780}><div role="dialog" aria-modal="true" aria-labelledby="acp-new-conversation-title" className="acp-new-conversation">
     <header className="acp-picker-header"><div><h2 id="acp-new-conversation-title">新建会话</h2><p>选择一个具名角色，再明确连接并开始。选择和编辑都不会自动启动。</p></div><Button size="sm" variant="ghost" title="关闭新会话选择器" disabled={starting} onClick={close}><X size={15} /></Button></header>

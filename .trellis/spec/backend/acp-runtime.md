@@ -3,16 +3,22 @@
 ## 1. Scope / Trigger
 
 Read before changing `services/acp.ts`, `services/acp/`, ACP IPC/preload/types,
-the Agent workspace, dependency preparation, or Electron packaging. The supported
-pair is Codex adapter 2.2.2 and Claude adapter 0.91.0. Legacy custom engine
-definitions and snapshots are retained for identification and reading only.
+the Agent workspace, dependency preparation, or Electron packaging. The managed
+pair is Codex adapter 2.9.0 and Claude adapter 0.109.1; Claude receives
+`CLAUDE_AGENT_ACP_EXPERIMENTAL_V2=1` unless an explicit environment override is
+configured. Every execution still requires a successful v2 initialize
+handshake. OpenCode 2.3.2 is unavailable as an ACP provider because its ACP
+server negotiates v1; its HTTP v2 API is a separate provider surface. Legacy
+custom engine definitions and snapshots are retained for identification and
+reading only.
 ZCode installation and native startup also follow `zcode-managed-startup.md`.
 
-Use the public `acpx/runtime` and `acpx/agent-registry` exports. acpx owns framing,
-processes, native sessions, turns and canonical shutdown. Trellis owns current-root
-authorization, Agent profiles, explicit setup, task materials, approval mediation,
-directory occupancy and presentation. Do not add another competing transport,
-prompt queue, process killer or transcript authority.
+The live path uses the project-owned ACP v2 wire, client, runtime, and persistence
+boundary under `src/main/services/acp/v2/`. Trellis owns current-root authorization,
+Agent profiles, explicit setup, task materials, approval mediation, framing,
+processes, native sessions, turns, canonical shutdown, and presentation. Keep
+`acpx@0.19.5` only for legacy-history reads; never import `acpx/runtime` or
+`acpx/agent-registry` from live code.
 
 ## 2. Signatures
 
@@ -958,8 +964,8 @@ Use OS TEMP and the real service/daemon path. Exercise the provider-family
 capability matrix, atomic concurrent claims, stale-owner retry, every protected
 classification, telemetry bounds, projection zero-side-effect switching across
 at least eight conversations, and real duplicate resume/end behavior with a
-supported authenticated provider. Run `npm run check:acpx`, `npm run typecheck`,
-`npm run build`, and `npm run check:ui`.
+supported authenticated provider other than OpenCode. Run `npm run check:acpx`,
+`npm run typecheck`, `npm run build`, and `npm run check:ui`.
 
 ### 7. Wrong vs Correct
 
@@ -1017,8 +1023,9 @@ provider names.
   executable identity plus recorded size/mtime/digest and reject drift.
 - Capability evidence remains one of registry-declared, negotiated initialize
   evidence, or unknown. Registry declarations never become runtime capabilities.
-- Current protocol negotiation remains ACP v1. Do not advertise v2 until a real
-  protocol boundary exists; upgrading `acpx` alone does not provide v2.
+- Every ACP provider must negotiate protocol version 2 through the strict
+  initialize probe before execution; registry metadata alone never provides that
+  evidence.
 
 ### 4. Validation / Error Matrix
 

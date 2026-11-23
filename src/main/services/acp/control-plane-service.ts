@@ -16,6 +16,7 @@ import type { AcpSessionMeta, TimelineEvent } from '../../../shared/types'
 import { readHistoryDeletion } from './history-deletion'
 import { AcpControlPlaneCursorError, AcpControlPlaneStore, type AcpControlPlaneMigrationSource } from './control-plane-store'
 import { canonicalDirectory } from './metadata'
+import { AcpV2FileStore, type AcpV2NativeRecord } from './v2/persistence'
 
 export { AcpControlPlaneCursorError }
 
@@ -24,6 +25,7 @@ interface EventRow { seq: number; payload: string }
 interface AggregateRow { count: number; lastSeq: number | null; digest: string | null }
 
 const MIGRATION_SESSION_LIMIT = 100
+const V2_RECORD_LIMIT = 200
 
 function aggregate(value: Array<{ seq: number; payload: string }>): string {
   return createHash('sha256').update(value.map(row => `${row.seq}:${row.payload}`).join('\n')).digest('hex')
@@ -82,9 +84,21 @@ export class AcpConversationProjectionService {
     } finally { archive.close() }
   }
 
+  private migrateV2Records(root: string): void {
+    const directory = join(this.userData, 'acp', 'runtime-v2-store')
+    if (!existsSync(directory)) return
+    const records = new AcpV2FileStore(directory).list(V2_RECORD_LIMIT)
+    const store = this.ensureStore()
+    for (const record of records) {
+      if (record.cwd !== root || record.cleanupState === 'live') continue
+      store.migrateV2({ root, record })
+    }
+  }
+
   list(root: string, rawInput: AcpConversationListInput): AcpConversationListSnapshot {
     const canonical = canonicalDirectory(root)
     this.migrateRoot(canonical)
+    this.migrateV2Records(canonical)
     return this.ensureStore().list(canonical, rawInput)
   }
 
@@ -92,6 +106,7 @@ export class AcpConversationProjectionService {
     const input = acpConversationDetailInputSchema.parse(rawInput)
     const canonical = canonicalDirectory(root)
     this.migrateRoot(canonical)
+    this.migrateV2Records(canonical)
     if (readHistoryDeletion(join(this.userData, 'acp'), canonical, input.sessionId)) throw new AcpControlPlaneCursorError('conversation-reset')
     return this.ensureStore().detail(canonical, input)
   }
@@ -104,6 +119,7 @@ export class AcpConversationProjectionService {
       return { ok: false, version: 1, resetRequired: true, reason: 'cursor-ahead', snapshotSequence: store.currentSequence }
     }
     this.migrateRoot(canonical)
+    this.migrateV2Records(canonical)
     if (readHistoryDeletion(join(this.userData, 'acp'), canonical, input.sessionId)) throw new AcpControlPlaneCursorError('conversation-reset')
     return store.events(canonical, input)
   }

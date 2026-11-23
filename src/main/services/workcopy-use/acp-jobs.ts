@@ -3,7 +3,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
-import type { AcpProcessLaunch, AcpProcessStarted } from 'acpx/runtime'
 import { processOwnerSchema, type ProcessOwner } from '../../../shared/daemon'
 import { workcopyOwnerSchema, type WorkcopyOwner } from '../../../shared/workcopy-use'
 import { DaemonError } from '../../daemon/errors'
@@ -15,6 +14,7 @@ import { workcopyJobLauncher } from './job-launcher'
 import { resolveWorkcopy } from './identity'
 
 const uuid = z.string().uuid(), ticks = z.string().regex(/^\d+$/)
+import type { AcpProcessLaunch, AcpProcessStarted } from '../acp/v2'
 const ownerSchema = z.object({ version: z.literal(1), scheme: z.literal('windows-job-v1'), owner: workcopyOwnerSchema,
   root: z.string().min(1).max(4096), identityId: z.string().length(64), host: processOwnerSchema,
   kernel: kernelLifetimeSchema.optional(), launches: z.array(uuid).max(256) }).strict()

@@ -68,6 +68,10 @@ cross-family migration separately. Unknown versions or registry failures cannot
 establish that the executable is current. Recheck the selected executable after
 installation; updating a different global PATH entry proves no update to a manual
 override. Discovery never migrates an installation or native data automatically.
+OpenCode 2.3.2 cannot be admitted through the ACP v2-only path: its ACP server
+negotiates protocol version 1, while its HTTP v2 API is a separate provider
+surface. Product major version and registry membership do not establish ACP v2
+compatibility.
 
 OpenCode Console authentication remains native-owned. A V1 free-model catalog
 entry does not establish current access, and `FreeUsageLimitError` alone does not

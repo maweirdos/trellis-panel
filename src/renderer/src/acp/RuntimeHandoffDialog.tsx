@@ -49,7 +49,7 @@ export function RuntimeHandoffDialog({ root, source, agents, sourceIssue, isCurr
   latest.current = { owner, sourceIssue, isCurrent, onReady, onChanged, canInteract, signal }
   const current = useCallback((): boolean => live.current && latest.current.isCurrent() && latest.current.canInteract() && !latest.current.signal?.aborted, [])
   const sourceRuntime = source.runtimeSnapshot?.id ?? source.agentId
-  const targets = agents.filter((agent) => agent.enabled && agent.available && !agent.setupRequired && (agent.runtimeId ?? agent.id) !== sourceRuntime)
+  const targets = agents.filter((agent) => agent.enabled && agent.available && !agent.setupRequired && agent.health === 'ready' && (agent.runtimeId ?? agent.id) !== sourceRuntime)
   const target = targets.find((agent) => (agent.runtimeId ?? agent.id) === draft.targetRuntimeId)
   const attempt = draft.attempt
   const operation = draft.operation

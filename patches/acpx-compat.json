@@ -1,6 +1,6 @@
 {
   "version": "0.19.5",
-  "sdkVersion": "1.8.0",
+  "sdkVersion": "1.9.0",
   "compatVersion": 4,
   "patch": "acpx+0.19.5.patch",
   "patchSha256": "646bc68d6a696a6cdd73545c443f6245efd4180e4d39885e18aafaeee6dc673b",

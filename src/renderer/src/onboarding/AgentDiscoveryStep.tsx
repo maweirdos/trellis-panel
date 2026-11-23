@@ -20,7 +20,7 @@ function agentState(agent: AcpAgentStatus): { label: string; detail: string; ton
     return { label: '检查失败', detail: '查看检测记录，处理后重新检查。', tone: 'text-my-danger-text' }
   }
   if (!agent.available || agent.setupRequired) return { label: '未就绪', detail: '本机环境尚未就绪。', tone: 'text-my-secondary' }
-  if (agent.launchKind === 'sdk') return { label: '可用', detail: '模型连接和凭据尚未验证。', tone: 'text-my-success-text' }
+  if (agent.launchKind === 'sdk') return { label: '不适用', detail: 'Pi 使用原生 SDK，不在 ACP v2 provider 矩阵内。', tone: 'text-my-tertiary' }
   if (agent.health === 'ready') return { label: '握手可用', detail: '登录状态和模型请求尚未验证。', tone: 'text-my-success-text' }
   if (agent.launchKind === 'custom' && !agent.executable) return { label: '已配置', detail: '程序与登录状态尚未验证。', tone: 'text-my-secondary' }
   if (agent.launchKind === 'managed') return { label: '适配器已安装', detail: 'Agent 和登录状态尚未验证。', tone: 'text-my-secondary' }

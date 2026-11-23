@@ -15,7 +15,7 @@ import './runtime-panel.css'
 export { runtimeHealthLabel } from './runtime-status'
 
 function isUnsupportedLegacyRuntime(agent: AcpAgentStatus | undefined): boolean {
-  return agent?.launchKind === 'custom'
+  return agent?.launchKind === 'custom' || agent?.id === 'opencode'
 }
 
 type RuntimeAction = 'refresh' | 'node' | 'setup' | 'path' | 'test' | 'migration'
@@ -421,7 +421,7 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
     const state = unsupported ? 'disabled' : busy ? 'busy' : error ? 'error' : !agent.enabled ? 'disabled'
       : agent.health === 'adapter_missing' || agent.health === 'executable_missing' ? 'missing'
         : agent.health && !['ready', 'not_checked'].includes(agent.health) ? 'attention'
-        : agent.available && !agent.setupRequired ? agent.launchKind === 'sdk' ? 'sdk-available' : agent.health === 'ready' ? 'verified' : 'installed' : 'missing'
+        : agent.available && !agent.setupRequired ? agent.health === 'ready' ? 'verified' : 'installed' : 'missing'
     return { agent, id, x, y, path, busy, error, state, status }
   })
   const actions = (

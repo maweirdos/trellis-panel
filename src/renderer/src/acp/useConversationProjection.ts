@@ -5,11 +5,11 @@ import { projectRootKey } from '../my/navigation'
 import type { IpcFail } from '../../../shared/ipc-errors'
 import type {
   AcpConversationDetailSnapshot,
-  AcpConversationEventPage,
   AcpConversationListSnapshot,
 } from '../../../shared/acp-projections'
 
 const DETAIL_CACHE_LIMIT = 24
+const EVENT_REFRESH_PAGE_LIMIT = 100
 
 type ProjectionSnapshot = {
   details: Map<string, AcpConversationDetailSnapshot>
@@ -86,17 +86,22 @@ export function useConversationProjection(root: string, activeId: string | null)
     if (!cached) return
     try {
       let after = cached.snapshotSequence
-      let page: AcpConversationEventPage | undefined
-      let resetRequired = false
-      for (let index = 0; index < 4; index += 1) {
-        const result = await api.acpConversationEvents(sessionId, { after })
+      let readComplete = false
+      while (!readComplete) {
+        const result = await api.acpConversationEvents(sessionId, { after, limit: EVENT_REFRESH_PAGE_LIMIT })
         if (!isCurrent()) return
-        if (!result.ok) { resetRequired = true; break }
-        page = result
+        if (!result.ok) {
+          await refreshDetail(sessionId)
+          return
+        }
+        if (result.hasMore && result.nextCursor === after) {
+          snapshot.errors.set(sessionId, '事件分页游标没有前进，已停止刷新。')
+          return
+        }
         after = result.nextCursor
-        if (!result.hasMore) break
+        readComplete = !result.hasMore
       }
-      if (resetRequired || !page?.ok || !page.hasMore) await refreshDetail(sessionId)
+      await refreshDetail(sessionId)
     } catch {
       await refreshDetail(sessionId)
     }

@@ -54,18 +54,21 @@ export function applyRuntimeVerification(agent: AcpAgentStatus, identity: string
     return agent
   }
   const { checkedAt, probe } = verification
-  const sdk = agent.launchKind === 'sdk'
   const detail = probe.ok
-    ? sdk ? 'SDK 启动条件已验证；模型连接和凭据尚未验证'
-      : `ACP initialize 握手成功（协议 v${probe.protocolVersion}）；登录状态和模型请求尚未验证`
+    ? `ACP initialize 握手成功（协议 v${probe.protocolVersion}）；登录状态和模型请求尚未验证`
     : `连接验证失败：${probe.error ?? '未收到有效的 initialize 响应'}`
   return { ...agent,
     health: !agent.available ? agent.health : probe.ok ? 'ready' : probe.errorCode === -32000 ? 'auth_required'
-      : probe.protocolVersion !== undefined && probe.protocolVersion !== 1 ? 'incompatible' : 'launch_error',
+      : probe.protocolVersion !== undefined && probe.protocolVersion !== 2 ? 'incompatible' : 'launch_error',
     diagnostics: [...(agent.diagnostics ?? []), `${new Date(checkedAt).toISOString()} · ${detail}`]
   }
 }
 
 export function runtimeVerificationEvidence(id: string): RuntimeConnectionProbeResult | undefined {
   return currentVerification(id)?.probe
+}
+
+export function runtimeVerificationEvidenceForLaunch(id: string, identity: string): RuntimeConnectionProbeResult | undefined {
+  const verification = currentVerification(id)
+  return verification?.identity === identity ? verification.probe : undefined
 }

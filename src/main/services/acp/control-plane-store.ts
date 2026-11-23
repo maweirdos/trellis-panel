@@ -22,6 +22,7 @@ import {
   type AcpTurnItemVariant,
 } from '../../../shared/acp-projections'
 import type { AcpSessionMeta, TimelineEvent } from '../../../shared/types'
+import type { AcpV2NativeRecord } from './v2/persistence'
 import { CONTROL_PLANE_DDL, CONTROL_PLANE_SCHEMA_VERSION } from './control-plane-schema'
 
 export class AcpControlPlaneCursorError extends Error {
@@ -74,6 +75,18 @@ function conversationId(root: string, sessionId: string, engine: 'acp' | 'pi'): 
 function boundedText(value: unknown, fallback = ''): string {
   if (typeof value !== 'string') return fallback
   return value.length > MAX_ITEM_TEXT ? `${value.slice(0, MAX_ITEM_TEXT - 12)}…[truncated]` : value
+}
+
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function readNested(value: Record<string, unknown>, ...keys: readonly string[]): unknown {
+  let current: unknown = value
+  for (const key of keys) {
+    current = readRecord(current)?.[key]
+  }
+  return current
 }
 
 function turnIdFor(root: string, sessionId: string, event: TimelineEvent): string {
@@ -131,6 +144,50 @@ function sqliteText(value: string | undefined): string | null {
 
 function sourceSequence(event: TimelineEvent & { historySeq?: number }, fallback: number): number {
   return typeof event.historySeq === 'number' && Number.isSafeInteger(event.historySeq) && event.historySeq > 0 ? event.historySeq : fallback
+}
+
+function v2TimelineEvents(record: AcpV2NativeRecord): Array<TimelineEvent & { historySeq?: number }> {
+  const events: Array<TimelineEvent & { historySeq?: number }> = []
+  const append = (nativeId: string, kind: TimelineEvent['kind'], text: string, payload?: Record<string, unknown>): void => {
+    events.push({
+      id: `v2:${record.nativeSessionId}:${nativeId}`,
+      ts: record.updatedAt,
+      source: 'acp',
+      sessionId: record.sessionKey,
+      projectRoot: record.cwd,
+      kind,
+      text: boundedText(text),
+      payload: { ...payload, nativeId },
+      historySeq: events.length + 1,
+    })
+  }
+  for (const entity of record.aggregate.messages) {
+    const value = readRecord(entity.value)
+    if (value !== undefined) append(entity.nativeId, 'message', typeof value.text === 'string' ? value.text : '', {
+      role: value.tag === 'user_message' || value.tag === 'user_message_chunk' ? 'user' : 'assistant',
+    })
+  }
+  for (const entity of record.aggregate.toolCalls) {
+    const value = readRecord(entity.value)
+    if (value !== undefined) append(entity.nativeId, 'tool-call', typeof value.title === 'string' && value.title.length > 0 ? value.title : entity.nativeId, { status: value.status })
+  }
+  for (const entity of record.aggregate.plans) {
+    const value = readRecord(entity.value)
+    if (value !== undefined) append(entity.nativeId, 'plan', typeof value.summary === 'string' && value.summary.length > 0 ? value.summary : entity.nativeId)
+  }
+  for (const entity of [...record.aggregate.sessionInfo, ...record.aggregate.notices]) {
+    const value = readRecord(entity.value)
+    if (value !== undefined) append(entity.nativeId, 'session-status', typeof value.message === 'string' ? value.message : typeof value.summary === 'string' ? value.summary : 'ACP v2 更新')
+  }
+  const terminal = record.aggregate.terminal.find(entity => entity.nativeId === 'terminal')
+  const terminalValue = terminal === undefined ? undefined : readRecord(terminal.value)
+  if (terminalValue !== undefined) append('terminal', 'session-status', `ACP v2 ${typeof terminalValue.state === 'string' ? terminalValue.state : 'unknown'}`)
+  return events
+}
+
+export interface AcpV2ProjectionSource {
+  readonly root: string
+  readonly record: AcpV2NativeRecord
 }
 
 export class AcpControlPlaneStore {
@@ -287,6 +344,41 @@ export class AcpControlPlaneStore {
     return this.selectOne<MigrationRow>('SELECT * FROM control_plane_migration WHERE root=? AND sessionId=? AND engine=?', root, sessionId, engine)
   }
 
+  migrateV2(source: AcpV2ProjectionSource): void {
+    const events = v2TimelineEvents(source.record)
+    this.migrate({
+      root: source.root,
+      meta: {
+        schemaVersion: 2,
+        sessionId: source.record.sessionKey,
+        projectRoot: source.root,
+        cwd: source.record.cwd,
+        agentId: source.record.negotiated.agent.name,
+        agentName: source.record.negotiated.agent.title ?? source.record.negotiated.agent.name,
+        status: source.record.cleanupState === 'live' ? 'ready' : 'disconnected',
+        startedAt: source.record.updatedAt,
+        capabilities: {
+          controls: source.record.negotiated.capabilities.session === undefined ? [] : ['session/set_config_option', 'session/status'],
+          loadSession: source.record.negotiated.capabilities.session !== undefined,
+          promptCapabilities: {
+            image: readNested(source.record.negotiated.capabilities, 'session', 'prompt', 'image') === true,
+            embeddedContext: readNested(source.record.negotiated.capabilities, 'session', 'prompt', 'embeddedContext') === true,
+          },
+          protocolVersion: source.record.negotiated.protocolVersion,
+          agentInfo: source.record.negotiated.agent,
+          authMethods: [],
+        },
+        backendSessionId: source.record.nativeSessionId,
+        nativeRecordId: source.record.recordId,
+        canResume: source.record.cleanupState !== 'live',
+      },
+      events,
+      sourceDigest: digest([source.record.recordId, source.record.replayCursor ?? '', source.record.aggregate.replayCursor ?? '', source.record.aggregate.revisionOrder, source.record.configOptions, source.record.cleanupState, source.record.updatedAt, source.record.aggregate]),
+      sourceLastSequence: events.at(-1)?.historySeq ?? null,
+      coverageReason: 'ACP v2 native aggregate projection is bounded to 200 entities',
+    })
+  }
+
   lastSourceSequence(root: string, sessionId: string, engine: 'acp' | 'pi'): number | null {
     return Number(this.selectOne<{ value: number | null }>('SELECT MAX(sourceSequence) value FROM turn_item_projection WHERE conversationId=?',
       conversationId(root, sessionId, engine))?.value ?? null)
@@ -373,13 +465,16 @@ export class AcpControlPlaneStore {
       return acpConversationEventPageSchema.parse({
       ok: true, version: 1, hasMore: rows.length > input.limit, nextCursor: last,
       events: page.map(row => {
-        const payload = JSON.parse(row.payload) as { item?: unknown }
+        const payload = JSON.parse(row.payload) as { item?: AcpTurnItemVariant }
         return {
           sequence: row.sequence, conversationId: row.conversationId,
           type: row.type === 'conversation-created' || row.type === 'conversation-updated' || row.type === 'turn-updated' || row.type === 'item-updated' || row.type === 'runtime-updated' || row.type === 'migration-completed' ? row.type : 'conversation-updated',
-          occurredAt: row.occurredAt, ...(payload.item ? { item: payload.item } : {}),
+          occurredAt: row.occurredAt,
         }
-      }).map(event => event.type === 'item-updated' && !event.item ? undefined : event).filter((event): event is NonNullable<typeof event> => event !== undefined),
+      }).map(event => {
+        const item = this.statement('SELECT * FROM turn_item_projection WHERE sequence=?').get(event.sequence) as unknown as ItemRow | undefined
+        return item === undefined ? undefined : { ...event, item: itemProjection(item) }
+      }).filter((event): event is NonNullable<typeof event> => event !== undefined),
     })
   }
 }

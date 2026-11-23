@@ -1,4 +1,4 @@
-import type { AcpProcessLaunch } from 'acpx/runtime'
+import type { AcpProcessLaunch } from '../acp/v2'
 import type { SpawnOptions } from 'node:child_process'
 import { DaemonError } from '../../daemon/errors'
 import type { AcpJobOwner } from './acp-jobs'

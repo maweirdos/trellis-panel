@@ -20,13 +20,14 @@
     "generate:collaboration": "node scripts/generate-collaboration-icons.mjs",
     "dist:dir": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs --dir",
     "dist": "electron-vite build && node scripts/prepare-pi-runtime.mjs && node scripts/package-desktop.mjs",
-    "postinstall": "node scripts/prepare-acpx.mjs && node scripts/prepare-pi-tools.mjs",
+    "postinstall": "node scripts/prepare-acpx.mjs && node scripts/prepare-acp-v2-sdk.mjs && node scripts/prepare-pi-tools.mjs",
     "check:acpx": "node scripts/check-acpx-compat.mjs",
     "predev": "npm run check:acpx && node scripts/prepare-pi-tools.mjs",
     "prebuild": "npm run check:acpx && node scripts/prepare-pi-tools.mjs && node scripts/prepare-team-trellis.mjs",
     "predist:dir": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
     "predist": "npm run check:acpx && node scripts/prepare-node-runtime.mjs",
     "prepare:acpx": "node scripts/prepare-acpx.mjs",
+    "prepare:acp-v2-sdk": "node scripts/prepare-acp-v2-sdk.mjs",
     "prepare:pi-tools": "node scripts/prepare-pi-tools.mjs",
     "pretypecheck": "npm run check:acpx"
   },
@@ -49,6 +50,7 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
     "@earendil-works/pi-coding-agent": "1.4.0",
     "@gitbeaker/requester-utils": "43.8.0",
     "@gitbeaker/rest": "43.8.0",
@@ -97,7 +99,7 @@
   },
   "overrides": {
     "acpx": {
-      "@agentclientprotocol/sdk": "1.8.0"
+      "@agentclientprotocol/sdk": "1.9.0"
     }
   }
 }

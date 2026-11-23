@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { AcpSessionMeta } from '../../../shared/types'
 
 const safeId = z.string().min(1).max(200).regex(/^[\w.-]+$/).refine(value => value !== '.' && value !== '..')
-const identitySchema = z.object({ sessionId: safeId, projectRoot: z.string().min(1), engine: z.enum(['pi', 'acp']).optional(), acpxRecordId: z.string().min(1).max(1000).optional(),
+const identitySchema = z.object({ sessionId: safeId, projectRoot: z.string().min(1), engine: z.enum(['pi', 'acp']).optional(), acpxRecordId: z.string().min(1).max(1000).optional(), nativeRecordId: z.string().uuid().optional(),
   backendSessionId: z.string().optional(), agentSessionId: z.string().optional(), cwd: z.string().optional(),
   connectionGeneration: z.string().optional(), startedAt: z.number().optional(), title: z.string().optional(), agentId: z.string().optional(), agentName: z.string().optional() }).strict()
 const tombstoneSchema = z.object({ version: z.literal(1), root: z.string(), operationId: z.string().uuid(), state: z.enum(['pending', 'complete']), metadata: identitySchema, createdAt: z.number() }).strict()
@@ -92,7 +92,7 @@ export function saveHistoryDeletion(directory: string, meta: AcpSessionMeta, sta
   const value: HistoryDeletion = state === 'complete' ? { version: 1, root: deletionRoot(meta.projectRoot), operationId: old?.operationId ?? randomUUID(), state, createdAt: old?.createdAt ?? Date.now(),
     metadata: { sessionId: meta.sessionId, projectRoot: meta.projectRoot } } : old ? { ...old, state } : {
     version: 1, root: deletionRoot(meta.projectRoot), operationId: randomUUID(), state, createdAt: Date.now(),
-    metadata: identitySchema.parse({ sessionId: meta.sessionId, projectRoot: meta.projectRoot, engine: meta.engine, acpxRecordId: meta.acpxRecordId,
+    metadata: identitySchema.parse({ sessionId: meta.sessionId, projectRoot: meta.projectRoot, engine: meta.engine, acpxRecordId: meta.acpxRecordId, nativeRecordId: meta.nativeRecordId,
       backendSessionId: meta.backendSessionId, agentSessionId: meta.agentSessionId, cwd: meta.cwd,
       connectionGeneration: meta.connectionGeneration, startedAt: meta.startedAt, title: meta.title, agentId: meta.agentId, agentName: meta.agentName })
   }
@@ -149,6 +149,26 @@ export function historyDeletionTargets(userData: string, meta: AcpSessionMeta): 
       if (!verifyRuntimeRecord(record)) continue
       assertNoProcess(record)
       targets.push(temporary)
+    }
+    if (meta.nativeRecordId !== undefined) {
+      const runtimeDirectory = join(userData, 'acp', 'runtime-v2-store')
+      const recordPath = join(runtimeDirectory, `${encodeURIComponent(meta.nativeRecordId)}.json`)
+      assertDeletionBoundary(userData, recordPath)
+      if (existsSync(recordPath)) {
+        const record = JSON.parse(readFileSync(recordPath, 'utf8')) as Record<string, unknown>
+        const owned = record.schemaVersion === 2 && record.recordId === meta.nativeRecordId
+          && record.sessionKey === meta.sessionId && typeof record.cwd === 'string'
+          && deletionRoot(record.cwd) === deletionRoot(meta.cwd ?? meta.projectRoot)
+          && record.nativeSessionId === meta.backendSessionId && record.cleanupState !== 'live'
+        if (!owned) throw new Error('ACP v2 原生记录归属无法核对，已保留文件；请先恢复并检查原会话')
+        targets.push(recordPath)
+      }
+      if (existsSync(runtimeDirectory)) for (const name of readdirSync(runtimeDirectory)) {
+        if (!name.startsWith(`${encodeURIComponent(meta.nativeRecordId)}.json.`) || !/\.tmp$/.test(name)) continue
+        const temporary = join(runtimeDirectory, name)
+        assertDeletionBoundary(userData, temporary)
+        targets.push(temporary)
+      }
     }
   }
   const snapshotDirectory = join(userData, 'acp-sessions')
