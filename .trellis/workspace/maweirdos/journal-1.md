@@ -1626,3 +1626,28 @@ Work、Code 和普通团队任务共用新版对话。历史分页与阅读位�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 51: T3 线程关系、工程面板与任务交付
+<!-- trellis-session: v=2 fp=b682174c24724fb2 -->
+
+**Date**: 2026-11-24
+**Task**: T3 线程关系、工程面板与任务交付
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+记录真实桌面的委派、BTW 引用与重开，同一会话的 Codex→Claude 接力，工程 Git 及脚本授权复核，固定材料规划、隐私转任务和人工交付复测。F/G/H 代码已提交，待独立写工作树、正式自动写入和整体验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75dca18` | feat(conversation): 接入工程侧栏的 Git 与桌面端口 |
+| `55b3557` | feat(team): 固定任务交付版本并按 Jira 来源去重 |
+| `f0de292` | chore(release): 随包保留对话内核上游许可证 |
+| `dd896ea` | feat(conversation): 统一委派侧聊与任务执行工作台 |
+
+### Status
+
+[OK] **Completed**
