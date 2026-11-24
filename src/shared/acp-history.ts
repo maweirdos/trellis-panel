@@ -2,13 +2,6 @@ import { z } from 'zod'
 import type { AcpPermissionPayload, AcpSessionMeta, TimelineEvent } from './types'
 
 export const ACP_HISTORY_VERSION = 1
-export const acpHistoryListInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional(),
-  cursor: z.string().max(4096).optional(),
-  query: z.string().max(200).optional(),
-  filter: z.enum(['all', 'resumable', 'transcript']).optional(),
-  archive: z.enum(['active', 'archived', 'all']).optional()
-}).optional()
 export const acpHistoryUpdateInputSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   pinned: z.boolean().optional(),
@@ -53,7 +46,6 @@ export interface AcpHistoryPersistence {
   error?: string
   unarchivedCount?: number
 }
-export interface AcpHistoryDiagnostic { code: string; message: string; source?: string }
 export interface AcpHistorySummary extends AcpSessionMeta {
   eventCount: number
   /** Whether the archive contains a real message/tool/permission, excluding diagnostics. */
@@ -63,16 +55,6 @@ export interface AcpHistorySummary extends AcpSessionMeta {
   historyPersistence: AcpHistoryPersistence
   pendingPermissions: AcpPermissionPayload[]
   stateRevision: number
-}
-export interface AcpHistoryListResult {
-  ok: true
-  version: typeof ACP_HISTORY_VERSION
-  sessions: AcpHistorySummary[]
-  nextCursor: string | null
-  hasMore: boolean
-  snapshotId: string
-  searchScope: 'metadata'
-  diagnostics: AcpHistoryDiagnostic[]
 }
 export interface AcpHistoryEventPage {
   ok: true

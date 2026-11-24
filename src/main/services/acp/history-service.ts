@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { neighborWorkerFile } from '../worker-path'
 import { canonicalDirectory } from './metadata'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
-import { acpHistoryEventsInputSchema, acpHistoryListInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistoryPersistence, type AcpHistorySummary } from '../../../shared/acp-history'
+import { acpHistoryEventsInputSchema, type AcpHistoryEventPage, type AcpHistoryPersistence, type AcpHistorySummary } from '../../../shared/acp-history'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import type { HistoryBatchItem } from './history-core'
 import type { HandoffArchive } from './handoff-history'
@@ -176,12 +176,6 @@ export async function flushAcpHistory(): Promise<void> {
 function fail(error: unknown): IpcFail {
   return ipcFail(error instanceof HistoryRequestError && error.resetRequired ? IpcErrorCode.Conflict : IpcErrorCode.Io,
     `会话历史读取失败：${error instanceof Error ? error.message : String(error)}`, error instanceof HistoryRequestError && error.resetRequired ? { resetRequired: true } : undefined)
-}
-export async function listAcpHistory(root: string, input?: unknown): Promise<AcpHistoryListResult | IpcFail> {
-  const parsed = acpHistoryListInputSchema.safeParse(input)
-  if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '会话分页参数无效')
-  try { await ensureAcpHistory(); await flushAcpHistory().catch(() => {}); return await request({ op: 'list', root: canonicalDirectory(root), input: parsed.data ?? {}, legacyIds: (getSettings().acp?.agents ?? []).map(item => item.id) }) }
-  catch (error) { return fail(error) }
 }
 export async function readAcpHistorySession(root: string, sessionId: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
   try {

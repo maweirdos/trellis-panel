@@ -77,16 +77,6 @@ export function readHistoryDeletion(directory: string, root: string, id: string)
   if (value.root !== deletionRoot(root) || value.metadata.sessionId !== id || deletionRoot(value.metadata.projectRoot) !== value.root) throw new Error('删除记录归属不匹配')
   return value
 }
-export function listHistoryDeletions(directory: string, root: string): HistoryDeletion[] {
-  const path = join(directory, 'history-deletions')
-  assertDeletionBoundary(dirname(directory), path)
-  if (!existsSync(path)) return []
-  return readdirSync(path).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).map(name => {
-    const file = join(path, name)
-    assertDeletionBoundary(dirname(directory), file)
-    return tombstoneSchema.parse(JSON.parse(readFileSync(file, 'utf8')))
-  }).filter(value => value.root === deletionRoot(root))
-}
 export function saveHistoryDeletion(directory: string, meta: AcpSessionMeta, state: HistoryDeletion['state']): HistoryDeletion {
   const old = readHistoryDeletion(directory, meta.projectRoot, meta.sessionId)
   const value: HistoryDeletion = state === 'complete' ? { version: 1, root: deletionRoot(meta.projectRoot), operationId: old?.operationId ?? randomUUID(), state, createdAt: old?.createdAt ?? Date.now(),

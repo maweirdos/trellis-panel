@@ -1,21 +1,19 @@
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
-import type { AcpHistoryCoverage, AcpHistoryDiagnostic, AcpHistoryEventPage, AcpHistoryEventsInput, AcpHistoryListResult, AcpHistoryPersistence, AcpHistorySummary } from '../../../shared/acp-history'
+import type { AcpHistoryCoverage, AcpHistoryEventPage, AcpHistoryEventsInput, AcpHistoryPersistence, AcpHistorySummary } from '../../../shared/acp-history'
 import { acpConversationPreview, type AcpConversationPreview } from '../../../shared/acp-conversation-preview'
 import { historicalEvent, HistoryTurnBoundaryError, selectHistoryTurns, type HistoryEventMetadata } from './history-turns'
-import { applySessionPreferences, compareHistorySummaries, matchesHistorySummary, readSessionPreferences, type SessionPreferences } from './session-preferences'
+import { applySessionPreferences, readSessionPreferences } from './session-preferences'
 import { HandoffHistoryError, readHandoffArchive, type HandoffArchive } from './handoff-history'
 import { readHistoryDeletion } from './history-deletion'
 import { readHistoryText } from './history-text'
 import { readHistoryDiscussion } from './history-discussion'
-import { isPrivateAcpRecord } from './private-access'
 import { isRecoverableRuntimeRecord } from './runtime-definitions'
 
 const DB_VERSION = 1
-const SNAPSHOT_TTL = 5 * 60_000
 // SQLite's default trim only removes spaces; use JavaScript trim's whitespace set.
 const MESSAGE_TEXT = "trim(json_extract(payload,'$.text'),char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))"
 const SCHEMA = `
@@ -57,14 +55,11 @@ function matchesStoredEvent(stored: { digest: string; payload: string }, canonic
 export class HistoryCursorError extends Error {}
 export interface HistoryBatchItem { root: string; record: AcpSessionRecord; events: TimelineEvent[]; coverage?: AcpHistoryCoverage }
 interface SessionRow { root: string; sessionId: string; metadata: string; lastActivityAt: number; coverage: string }
-interface Snapshot { root: string; query: string; filter: string; archive: string; preferencesRevision: string; legacyIdsKey: string; expires: number; sessions: AcpHistorySummary[] }
 
 /** Synchronous SQLite work is confined to the dedicated history worker. */
 export class AcpHistoryCore {
   private db: DatabaseSync
   private epoch: string
-  private snapshots = new Map<string, Snapshot>()
-  private diagnostics: Array<AcpHistoryDiagnostic & { root?: string }> = []
   constructor(private directory: string) {
     mkdirSync(directory, { recursive: true })
     const path = join(directory, 'history.sqlite')
@@ -96,7 +91,6 @@ export class AcpHistoryCore {
       this.db.prepare('DELETE FROM imports WHERE root=? AND sessionId=?').run(root, sessionId)
       this.db.prepare('DELETE FROM sessions WHERE root=? AND sessionId=?').run(root, sessionId)
     })
-    this.snapshots.clear()
   }
   titleMaterial(root: string, sessionId: string): { question: string; delivery: string; digest: string } | null {
     if (!this.session(root, sessionId)) return null
@@ -184,13 +178,12 @@ export class AcpHistoryCore {
     for (const filename of readdirSync(sourceDirectory)) {
       if (!filename.endsWith('.json')) continue
       const source = join(sourceDirectory, filename)
-      let root: string | undefined
       try {
         const bytes = readFileSync(source)
         const sourceDigest = digest(bytes)
         const raw = JSON.parse(bytes.toString('utf8')) as AcpSessionRecord
         if (typeof raw.projectRoot !== 'string' || typeof raw.sessionId !== 'string' || !Array.isArray(raw.events)) throw new Error('Invalid legacy conversation record')
-        root = canonicalize(raw.projectRoot)
+        const root = canonicalize(raw.projectRoot)
         if (readHistoryDeletion(this.directory, root, raw.sessionId)) continue
         this.backup(bytes, sourceDigest)
         if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1 && raw.schemaVersion !== 2) throw new Error('Unsupported conversation record version; source preserved')
@@ -202,28 +195,22 @@ export class AcpHistoryCore {
         this.transaction(() => {
           let unknownOrder = false
           for (const [index, event] of raw.events.entries()) {
-            const previous = this.db.prepare('SELECT digest,payload FROM events WHERE root=? AND sessionId=? AND eventId=?').get(root as string, raw.sessionId, event.id) as { digest: string; payload: string } | undefined
-            if (previous && !matchesStoredEvent(previous, stable(cleanEvent(event)))) {
-              this.diagnostics.push({ code: 'source_event_conflict', source: basename(source), root, message: `Original event retained after snapshot identity conflict: ${event.id}` })
-              continue
-            }
+            const previous = this.db.prepare('SELECT digest,payload FROM events WHERE root=? AND sessionId=? AND eventId=?').get(root, raw.sessionId, event.id) as { digest: string; payload: string } | undefined
+            if (previous && !matchesStoredEvent(previous, stable(cleanEvent(event)))) continue
             if (!previous && lastArchived && (lastKnownIndex < 0 || index < lastKnownIndex)) {
               unknownOrder = true
-              this.diagnostics.push({ code: 'source_event_order_unknown', source: basename(source), root, message: `Snapshot-only event preserved in original source; archive order cannot be established: ${event.id}` })
               continue
             }
-            this.insert(root as string, raw.sessionId, event)
+            this.insert(root, raw.sessionId, event)
           }
           // Preserve current archive metadata on restart; recover new snapshot-only events.
           const metadata = existing ? JSON.parse(existing.metadata) as AcpSessionRecord : null
-          this.saveMetadata({ root: root as string, record: metadata ? { ...raw, ...metadata, events: [] } : raw, events: raw.events,
+          this.saveMetadata({ root, record: metadata ? { ...raw, ...metadata, events: [] } : raw, events: raw.events,
             coverage: { state: unknownOrder ? 'partial' : 'unknown', capturedFrom: raw.events[0]?.ts ?? null,
               reason: unknownOrder ? 'Snapshot-only events remain preserved in the original source; their archive order requires explicit recovery' : 'Imported snapshot may have lost older events before full capture began' } })
-          this.db.prepare('INSERT INTO imports VALUES(?,?,?,?,?,?)').run(source, sourceDigest, root as string, raw.sessionId, raw.events.length, Date.now())
+          this.db.prepare('INSERT INTO imports VALUES(?,?,?,?,?,?)').run(source, sourceDigest, root, raw.sessionId, raw.events.length, Date.now())
         })
-      } catch (error) {
-        this.diagnostics.push({ code: 'source_unreadable', source: basename(source), root, message: error instanceof Error ? error.message : String(error) })
-      }
+      } catch { continue }
     }
   }
   private backup(bytes: Buffer, sha: string): void {
@@ -249,8 +236,9 @@ export class AcpHistoryCore {
       this.db.prepare('INSERT INTO imports VALUES(?,?,?,?,?,?)').run(input.sourcePath, input.sourceDigest, root, record.sessionId, input.events.length, Date.now())
     })
   }
-  private summary(row: SessionRow, preferences = readSessionPreferences(this.directory, row.root), legacyIds: readonly string[] = []): AcpHistorySummary {
+  private summary(row: SessionRow, legacyIds: readonly string[]): AcpHistorySummary {
     const meta = JSON.parse(row.metadata) as AcpSessionRecord
+    const preferences = readSessionPreferences(this.directory, row.root)
     const aggregate = this.db.prepare(`SELECT COUNT(*) count,MAX(seq) seq,
       EXISTS(SELECT 1 FROM events WHERE root=? AND sessionId=? AND json_extract(payload,'$.source') IN ('acp','pi')
         AND (json_extract(payload,'$.sessionId') IS NULL OR json_extract(payload,'$.sessionId')=?)
@@ -272,7 +260,7 @@ export class AcpHistoryCore {
   session(root: string, sessionId: string, legacyIds: readonly string[] = []): AcpHistorySummary | null {
     if (readHistoryDeletion(this.directory, root, sessionId)) return null
     const row = this.db.prepare('SELECT * FROM sessions WHERE root=? AND sessionId=?').get(root, sessionId) as SessionRow | undefined
-    return row ? this.summary(row, undefined, legacyIds) : null
+    return row ? this.summary(row, legacyIds) : null
   }
   handoff(root: string, sessionId: string, byteLimit: number): HandoffArchive | null {
     const session = this.session(root, sessionId)
@@ -287,39 +275,6 @@ export class AcpHistoryCore {
       if (value.epoch !== this.epoch) throw new Error('epoch')
       return value
     } catch { throw new HistoryCursorError('History cursor is invalid or belongs to another archive; refresh required') }
-  }
-  list(root: string, input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string } = {}, legacyIds: readonly string[] = []): AcpHistoryListResult {
-    const now = Date.now()
-    for (const [id, snapshot] of this.snapshots) if (snapshot.expires <= now) this.snapshots.delete(id)
-    const query = (input.query ?? '').trim().toLocaleLowerCase()
-    const filter = input.filter ?? 'all'
-    const archive = input.archive ?? 'active'
-    const legacyIdsKey = JSON.stringify([...new Set(legacyIds)].sort())
-    const preferences: SessionPreferences = readSessionPreferences(this.directory, root)
-    let snapshotId: string
-    let snapshot: Snapshot
-    let position = 0
-    if (input.cursor) {
-      const cursor = this.decode(input.cursor)
-      const known = this.snapshots.get(String(cursor.snapshot))
-      if (cursor.kind !== 'list' || cursor.root !== root || !known || known.root !== root || known.query !== query || known.filter !== filter || known.archive !== archive || known.preferencesRevision !== preferences.revision || known.legacyIdsKey !== legacyIdsKey || !Number.isSafeInteger(cursor.position)) throw new HistoryCursorError('History catalogue snapshot expired or changed; refresh required')
-      snapshotId = String(cursor.snapshot); snapshot = known; position = Number(cursor.position)
-      if (position < 0 || position > snapshot.sessions.length) throw new HistoryCursorError('Invalid history catalogue position')
-    } else {
-      // Search the effective metadata, including manual titles on unloaded records.
-      const rows = this.db.prepare('SELECT * FROM sessions WHERE root=?').all(root) as unknown as SessionRow[]
-      snapshotId = randomUUID()
-      snapshot = { root, query, filter, archive, preferencesRevision: preferences.revision, legacyIdsKey, expires: now + SNAPSHOT_TTL,
-        sessions: rows.filter(row => !readHistoryDeletion(this.directory, root, row.sessionId)).map((row) => this.summary(row, preferences, legacyIds)).filter((item) => !isPrivateAcpRecord(item) && matchesHistorySummary(item, query, filter, archive)).sort(compareHistorySummaries) }
-      if (this.snapshots.size >= 16) this.snapshots.delete(this.snapshots.keys().next().value ?? '')
-      this.snapshots.set(snapshotId, snapshot)
-    }
-    const scanned = snapshot.sessions.slice(position, position + (input.limit ?? 30))
-    const sessions = scanned.filter(item => !readHistoryDeletion(this.directory, root, item.sessionId))
-    const next = position + scanned.length
-    const hasMore = next < snapshot.sessions.length
-    return { ok: true, version: 1, sessions, hasMore, nextCursor: hasMore ? this.encode({ kind: 'list', root, snapshot: snapshotId, position: next }) : null,
-      snapshotId, searchScope: 'metadata', diagnostics: this.diagnostics.filter((item) => !item.root || item.root === root).map(({ root: _root, ...item }) => item) }
   }
   events(root: string, sessionId: string, input: AcpHistoryEventsInput = {}): AcpHistoryEventPage | null {
     const session = this.session(root, sessionId)

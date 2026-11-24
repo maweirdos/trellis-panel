@@ -30,7 +30,6 @@ export const listAcpSessions = (root: string, limit?: number) => call<'listAcpSe
 export const listAcpProfiles = (root: string) => call<'listAcpProfiles', 'runtime.profiles'>(root, 'runtime.profiles', {})
 export const saveAcpProfile = (root: string, input: unknown) => call<'saveAcpProfile', 'runtime.profileSave'>(root, 'runtime.profileSave', { input })
 export const deleteAcpProfile = (root: string, profileId: string) => call<'deleteAcpProfile', 'runtime.profileDelete'>(root, 'runtime.profileDelete', { profileId })
-export const listAcpHistorySessions = (root: string, input?: unknown) => call<'listAcpHistorySessions', 'runtime.historyList'>(root, 'runtime.historyList', { input: input as RuntimeBody<'runtime.historyList'>['input'] })
 export const getAcpHistorySession = (root: string, sessionId: string) => call<'getAcpHistorySession', 'runtime.historySession'>(root, 'runtime.historySession', { sessionId })
 export const getAcpHistoryEvents = (root: string, sessionId: string, input?: unknown) => call<'getAcpHistoryEvents', 'runtime.historyEvents'>(root, 'runtime.historyEvents', { sessionId, input: input as RuntimeBody<'runtime.historyEvents'>['input'] })
 export const getAcpPiImage = (root: string, sessionId: string, imageId: string) => call<'getAcpPiImage', 'runtime.piImage'>(root, 'runtime.piImage', { sessionId, imageId })

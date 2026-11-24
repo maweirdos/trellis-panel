@@ -576,19 +576,18 @@ packaged evidence separately with their actual limits.
 
 ## 8. Conversation history archive and explicit model recovery
 
-Read this section when changing ACP transcript retention, history paging, recovery actions, or the worker lifecycle. The panel archive is the read model for admitted events. The active ACP owner controls the native connection.
+This archive serves dedicated ACP sources by original session ID. Ordinary Work, Code and task history use `conversationList` and the scoped v2 thread reads. The active ACP owner controls the native connection.
 
 ### Signatures and contracts
 
 ```ts
-acpHistoryList({ limit?, cursor?, query?, filter? })
 acpHistorySession(sessionId)
 acpHistoryEvents(sessionId, { before?, after?, limit? })
 acpHistoryRetry(sessionId)
 acpSessionRecoverModel(sessionId, { modelId, expectedConnectionGeneration })
 ```
 
-`acpHistoryList` searches project metadata and returns an opaque root/query/snapshot-bound cursor. `acpHistoryEvents` returns chronological pages of whole conversational turns with immutable `historySeq`, coverage, `startsMidTurn`, soft byte/count targets and persistence state. `limit` is an event-count target, not permission to cut a turn. Initial/latest, before and after pages preserve each saved user prompt together with all of its saved assistant fragments, tools, permissions and outcome. Summaries contain no event bodies or base64 attachments. Current actionable permissions are a separate live snapshot (`pendingPermissions`, `stateRevision`, connection/turn generation); historical permission events are never actionable, including the snapshot fallback.
+`acpHistoryEvents` returns chronological pages of whole conversational turns with immutable `historySeq`, coverage, `startsMidTurn`, soft byte/count targets and persistence state. `limit` targets the number of events and preserves whole turns. Initial/latest, before and after pages preserve each saved user prompt together with all of its saved assistant fragments, tools, permissions and outcome. Summaries contain no event bodies or base64 attachments. Current actionable permissions use `pendingPermissions`, `stateRevision` and the live connection/turn generation. Historical permissions are read-only, including the snapshot fallback.
 
 Summaries carry `hasConversation`, derived from actual scoped message text, tool or permission events; a diagnostic/status event count cannot establish conversational content. They also carry a bounded `conversationPreview` and `conversationPreviewAt` for unloaded sidebar hints. Assemble only the coherent latest real message across exact role/turn/connection/producer-message boundaries, including fragments from prior archive batches. Exclude thoughts, tools, diagnostics and attachment bodies. Preview text does not extend the declared title/role/task metadata search scope.
 
@@ -620,7 +619,7 @@ Summaries carry `hasConversation`, derived from actual scoped message text, tool
 
 ### History and recovery acceptance
 
-Verify archives beyond the in-memory event cap and across multiple catalog pages, preserving exact event bytes and whole-turn boundaries. Exercise migration, damaged archives, prefix recovery, failed worker writes and expired historical permissions. Recovery must retain the exact native ID with no new session or replayed prompt, distinguish confirmed model selection from connection failure, and respect root/generation/stop/lease/capacity fences. Native/vendor acceptance remains separate.
+Verify a dedicated archive beyond the in-memory event cap by paging its original session, preserving exact event bytes and whole-turn boundaries. Exercise migration, damaged archives, prefix recovery, failed worker writes and expired historical permissions. Recovery must retain the exact native ID with no new session or replayed prompt, distinguish confirmed model selection from connection failure, and respect root/generation/stop/lease/capacity fences. Native/vendor acceptance remains separate.
 
 Wrong: use the 800-event `AcpSessionRecord.events` array as the full archive, slice an assistant reply at the 200th event, or make `pending:true` in a historical page clickable.
 
@@ -639,23 +638,19 @@ transcript bytes. Archive is reversible and never implies deletion or shutdown.
 ```ts
 acpHistoryUpdate(sessionId, { title?: string, pinned?: boolean, archived?: boolean })
 // -> { ok: true, version: 1, session: AcpHistorySummary } | IpcFail
-acpHistoryList({ archive?: 'active' | 'archived' | 'all', ...existingInput })
 ```
 
 ### 3. Contracts
 
-- Default list scope is `active`. Apply archive selection, effective-title search
-  and pinned-first ordering before page slicing, including unloaded records.
 - Project/session preferences persist independently of runtime-generated session
   metadata. Effective titles expose `customTitle`; pin/archive expose optional
   `pinnedAt`/`archivedAt`. Later status, append, import and reconnect metadata
-  cannot overwrite human choices. List, direct session, event-page summary and
+  cannot overwrite human choices. Direct session, event-page summary and
   degraded snapshot reads apply the same preferences.
 - Capture the current root and project generation at IPC entry. Validate the
   exact owned session and recheck the captured owner before mutation. Acknowledge
   only a durable save; update no native lifecycle, prompt or permission state.
-- Preference changes invalidate stale catalogue snapshots rather than mixing old
-  cursors with changed filters/order. Keep existing event-sequence cursors intact.
+- Preference changes keep original event-sequence cursors intact.
 
 ### 4. Validation / Error Matrix
 
@@ -670,18 +665,16 @@ acpHistoryList({ archive?: 'active' | 'archived' | 'all', ...existingInput })
 
 ### 5. Good / Base / Bad Cases
 
-Good: rename an old disconnected conversation, restart, and find it by its new
-title. Base: archive it and recover it through the archived filter. Bad: store a
-temporary row label that the next runtime event replaces, or hide only the first
-loaded page while search/pagination continue to return archived records.
+Good: rename a disconnected dedicated session and read its new title by the same
+session ID after restart. Base: archive the session and read back `archivedAt`.
+Bad: store a temporary row label that the next runtime event replaces.
 
 ### 6. Tests Required
 
-Verify rename/pin/archive and inverse actions through real persistence/reopen,
-search and pagination; verify legacy and fallback reads, root isolation, stale
-project callbacks, invalid inputs, failed saves and unchanged transcript/native
-dispatch. The renderer must exercise actual row menus, modal validation,
-acknowledgement/failure, selected title updates and retrieval of archived rows.
+Verify rename, pin and archive with real persistence and exact-session readback.
+Exercise archive and snapshot reads, root isolation, stale project callbacks,
+invalid input and save failures. Check that preference writes preserve transcript
+bytes and native dispatch.
 
 ### 7. Wrong vs Correct
 

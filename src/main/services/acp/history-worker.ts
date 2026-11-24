@@ -8,7 +8,6 @@ import type { AcpSessionRecord, TimelineEvent } from '../../../shared/types'
 export type HistoryOperation =
   | { op: 'init'; directory: string; sourceDirectory: string }
   | { op: 'append'; items: HistoryBatchItem[] }
-  | { op: 'list'; root: string; input: { limit?: number; cursor?: string; query?: string; filter?: string; archive?: string }; legacyIds: string[] }
   | { op: 'session'; root: string; sessionId: string; legacyIds: string[] }
   | { op: 'delete'; root: string; sessionId: string }
   | { op: 'title-material'; root: string; sessionId: string }
@@ -35,7 +34,6 @@ export function handleHistoryMessage(message: HistoryOperation): unknown {
   if (!core) throw new Error('Conversation archive unavailable')
   switch (message.op) {
     case 'append': return core.append(message.items)
-    case 'list': return core.list(message.root, message.input, message.legacyIds)
     case 'session': return core.session(message.root, message.sessionId, message.legacyIds)
     case 'delete': core.deleteSession(message.root, message.sessionId); return { deleted: true }
     case 'title-material': return core.titleMaterial(message.root, message.sessionId)
@@ -43,6 +41,7 @@ export function handleHistoryMessage(message: HistoryOperation): unknown {
     case 'handoff': return core.handoff(message.root, message.sessionId, message.byteLimit)
     case 'recovery': return core.importRecovery(message.root, message.record, message.input)
     case 'close': core.close(); core = undefined; return { closed: true }
+    default: throw new Error('Unsupported conversation archive operation')
   }
 }
 parentPort?.on('message', (message: HistoryWorkerRequest) => {

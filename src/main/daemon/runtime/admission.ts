@@ -81,7 +81,6 @@ export function isRuntimeReadMethod(method: string): boolean {
 
 export const SessionReadServiceMethods = new Set<string>([
   'runtime.sessions',
-  'runtime.historyList',
   'runtime.historySession',
   'runtime.historyEvents',
   'runtime.piImage',
@@ -90,7 +89,6 @@ export const SessionReadServiceMethods = new Set<string>([
 
 export const ConversationReadServiceMethods = new Set<string>([
   'runtime.sessions',
-  'runtime.historyList',
   'runtime.historySession',
   'runtime.historyEvents',
   'runtime.piImage',

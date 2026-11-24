@@ -20,8 +20,6 @@ export class ConversationReadService {
         const result = this.ports.acp.listAcpSessions(root, runtimeBodies[method].parse(raw).limit)
         return result.ok ? { ...result, sessions: result.sessions.map(session => ({ ...session, events: [] })) } : result
       }
-      case 'runtime.historyList':
-        return this.ports.acp.listAcpHistorySessions(root, runtimeBodies[method].parse(raw).input)
       case 'runtime.historySession':
         return this.ports.acp.getAcpHistorySession(root, runtimeBodies[method].parse(raw).sessionId)
       case 'runtime.historyEvents': {

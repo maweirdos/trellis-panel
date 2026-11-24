@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from
 import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import type { AcpSessionMeta } from '../../../shared/types'
-import { acpHistoryUpdateInputSchema, type AcpHistorySummary, type AcpTitleProvenance } from '../../../shared/acp-history'
+import { acpHistoryUpdateInputSchema, type AcpTitleProvenance } from '../../../shared/acp-history'
 import { readHistoryDeletion } from './history-deletion'
 
 const preferenceSchema = z.object({
@@ -87,13 +87,4 @@ export function applySessionPreferences<T extends AcpSessionMeta>(meta: T, prefe
   return { ...meta, title: value?.customTitle ?? value?.automaticTitle ?? meta.title ?? '新对话', customTitle: value?.customTitle,
     titleProvenance: value?.titleProvenance ?? meta.titleProvenance,
     pinnedAt: value?.pinnedAt, archivedAt: value?.archivedAt }
-}
-export function matchesHistorySummary(item: AcpHistorySummary, query: string, filter: string, archive: string): boolean {
-  const haystack = [item.title, item.agentName, item.agentId, item.taskDir, item.profileSnapshot?.name].filter(Boolean).join(' ').toLocaleLowerCase()
-  return haystack.includes(query) && (filter === 'all' || (filter === 'resumable' ? item.canResume === true : !item.canResume))
-    && (archive === 'all' || (archive === 'archived' ? item.archivedAt !== undefined : item.archivedAt === undefined))
-}
-export function compareHistorySummaries(a: AcpHistorySummary, b: AcpHistorySummary): number {
-  return Number(b.pinnedAt !== undefined) - Number(a.pinnedAt !== undefined)
-    || b.lastActivityAt - a.lastActivityAt || b.sessionId.localeCompare(a.sessionId)
 }

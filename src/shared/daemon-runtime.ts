@@ -1,7 +1,7 @@
 /** Native allowlist. Workspace authority comes from the authenticated host, never these bodies. */
 import { z } from 'zod'
 import { conversationProjectRoleSelectionSchema } from './conversation/project-role'
-import { acpHistoryListInputSchema, acpHistoryEventsInputSchema, acpHistoryUpdateInputSchema, acpHistoryDeleteInputSchema } from './acp-history'
+import { acpHistoryEventsInputSchema, acpHistoryUpdateInputSchema, acpHistoryDeleteInputSchema } from './acp-history'
 import { workflowPreviewInputSchema, workflowStartInputSchema, workflowSnapshotInputSchema, workflowEventsInputSchema, workflowStopInputSchema, workflowArtifactInputSchema } from './workflow-application'
 import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, workflowRevisionStatusInputSchema } from './workflow-revisions'
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
@@ -132,7 +132,6 @@ export const runtimeBodies = {
   'runtime.profiles': empty,
   'runtime.profileSave': z.object({ input: z.unknown() }).strict(),
   'runtime.profileDelete': z.object({ profileId: id }).strict(),
-  'runtime.historyList': z.object({ input: acpHistoryListInputSchema }).strict(),
   'runtime.historySession': session,
   'runtime.historyEvents': session.extend({ input: acpHistoryEventsInputSchema }).strict(),
   'runtime.piImage': session.extend({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),

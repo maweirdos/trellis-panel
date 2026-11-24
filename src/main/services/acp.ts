@@ -27,11 +27,11 @@ import { canAccessPrivateAcpRecord } from './acp/private-access'
 import { resolveAuthorizedDocumentPath } from './documents/paths'
 import { launchArgv, LEGACY_CUSTOM_RUNTIME_ERROR, resolveAcpRuntimeLaunch, NATIVE_TOOLS_DIAGNOSTIC, runtimeProcessEnv } from './acp/setup'
 import { isRecoverableRuntimeRecord } from './acp/runtime-definitions'
-import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, listAcpHistory, onHistoryPersistence, readAcpHandoffArchive, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory, drainAcpHistory, deleteAcpHistoryArchive, readAcpTitleMaterial } from './acp/history-service'
-import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistoryListResult, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
-import { snapshotHistoryEvents, snapshotHistoryList, snapshotHistorySession } from './acp/history-fallback'
+import { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, onHistoryPersistence, readAcpHandoffArchive, readAcpHistoryEvents, readAcpHistorySession, retryAcpHistory, stopAcpHistory, drainAcpHistory, deleteAcpHistoryArchive, readAcpTitleMaterial } from './acp/history-service'
+import { acpHistoryUpdateInputSchema, type AcpHistoryEventPage, type AcpHistorySummary, type AcpHistoryUpdateResult } from '../../shared/acp-history'
+import { snapshotHistoryEvents, snapshotHistorySession } from './acp/history-fallback'
 import { applySessionPreferences, readSessionPreferences, updateSessionPreferences, compareAndSetSessionTitle } from './acp/session-preferences'
-import { listHistoryDeletions, readHistoryDeletion } from './acp/history-deletion'
+import { readHistoryDeletion } from './acp/history-deletion'
 import { SessionDeletion, pendingDeletionSummary } from './acp/session-deletion'
 import { SessionTitles } from './acp/session-title'
 import { piConfiguredModels } from './pi/models'
@@ -862,11 +862,10 @@ export function listAcpSessions(projectRoot: string, limit = 20): { ok: true; se
   } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 
-function liveHistorySummary(summary: AcpHistorySummary, pendingSnapshots?: Map<string, AcpSessionRecord>): AcpHistorySummary {
+function liveHistorySummary(summary: AcpHistorySummary): AcpHistorySummary {
   const live = sessions.get(summary.sessionId)
   if (!live || !belongs(summary.projectRoot, live.meta)) {
-    const snapshot = pendingSnapshots ? pendingSnapshots.get(summary.sessionId)
-      : readRecords().find(record => record.sessionId === summary.sessionId && record.recovery?.commitPending)
+    const snapshot = readRecords().find(record => record.sessionId === summary.sessionId && record.recovery?.commitPending)
     if (!snapshot || !belongs(summary.projectRoot, snapshot)) return summary
     return { ...summary, status: snapshot.status, error: ACP_RECOVERY_COMMIT_PENDING_MESSAGE, canResume: snapshot.canResume, historyKind: snapshot.historyKind,
       backendSessionId: snapshot.backendSessionId, agentSessionId: snapshot.agentSessionId, nativeRecordId: snapshot.nativeRecordId,
@@ -879,18 +878,6 @@ function liveHistorySummary(summary: AcpHistorySummary, pendingSnapshots?: Map<s
   return { ...summary, ...meta, canResume, title: summary.title ?? meta.title, titleProvenance: summary.titleProvenance,
     customTitle: summary.customTitle, pinnedAt: summary.pinnedAt, archivedAt: summary.archivedAt, historyPersistence: historyPersistence(summary.sessionId),
     pendingPermissions: [...live.pendingPermissions.values()].map((pending) => pending.payload), stateRevision: meta.stateRevision ?? 0 }
-}
-export async function listAcpHistorySessions(root: string, input?: unknown): Promise<AcpHistoryListResult | IpcFail> {
-  assertRuntimeExecutionHost()
-  if (!root) return ipcFail(IpcErrorCode.NoProject, '未打开项目')
-  try {
-    let result = await listAcpHistory(root, input)
-    if (!result.ok && result.code === IpcErrorCode.Io) result = snapshotHistoryList(root, input, result.error)
-    if (!result.ok) return result
-    const pending = listHistoryDeletions(acpDataPath(), root).filter(item => item.state === 'pending').map(item => pendingDeletionSummary(item.metadata))
-    const snapshots = new Map(readRecords().filter(record => record.recovery?.commitPending && belongs(root, record)).map(record => [record.sessionId, record]))
-    return { ...result, sessions: [...pending.filter(item => belongs(root, item)), ...result.sessions.filter(item => belongs(root, item) && !readHistoryDeletion(acpDataPath(), root, item.sessionId)).map(item => liveHistorySummary(item, snapshots))] }
-  } catch (error) { return ipcFail(IpcErrorCode.Io, errorMessage(error)) }
 }
 export async function getAcpHistorySession(root: string, id: string): Promise<{ ok: true; version: 1; session: AcpHistorySummary } | IpcFail> {
   assertRuntimeExecutionHost()
