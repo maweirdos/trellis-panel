@@ -60,10 +60,9 @@ export function useConversationThread(root: string, target: ThreadReadTarget | n
         const result = await api.conversationRead(selection.threadId, root)
         if (cancelled) return
         if (!result.ok) throw new Error(result.error)
-        const thread = result.thread as ConversationThread
+        const { thread, messages, runs } = result
         if (thread.id !== selection.threadId) throw new Error('未能读取所选会话。')
-        const runs = result.runs as ConversationRun[]
-        setRead({ target: selection, projection: { thread, messages: result.messages as ConversationMessage[], runs } })
+        setRead({ target: selection, projection: { thread, messages, runs } })
         asOfSequence = Number.isSafeInteger(result.asOfSequence) && result.asOfSequence >= 0 ? result.asOfSequence : undefined
         failures = 0
         const run = selection.runId ? runs.find((item) => item.id === selection.runId) : runs.at(-1)

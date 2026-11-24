@@ -43,6 +43,8 @@ import { ConversationReadService } from './conversation-read'
 import { RuntimeSessionService } from './session-runtime'
 import { LifecycleService, type RuntimeBlocker, type RuntimeStatus } from './lifecycle'
 import { ConversationRuntime } from './conversation'
+import { createNativeConversationDriverRegistry } from '../../services/conversation/providers/registry'
+import { createPiDriverRegistration } from '../../services/conversation/providers/pi/driver'
 import type { ConversationAuthority } from '../../../shared/conversation/desktop'
 import { directoryIdentity, pathKey } from '../../services/private-conversations/files'
 
@@ -152,7 +154,12 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const conversationProjections = new AcpConversationProjectionService(ports.userData ?? ports.directory)
-  const conversation = new ConversationRuntime({ directory: ports.directory, assertOwner: () => ports.assertOwner() })
+  const conversationDrivers = createNativeConversationDriverRegistry(ports.userData ?? ports.directory, [createPiDriverRegistration()])
+  const conversation = new ConversationRuntime({
+    directory: ports.directory,
+    assertOwner: () => ports.assertOwner(),
+    driverRegistry: conversationDrivers,
+  })
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const admission = new AdmissionService(ports)
@@ -326,6 +333,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const { projectId, assertCurrent } = conversationAuthority(context)
       return conversation.listModels(root, projectId, instanceId, assertCurrent)
     }
+    if (method === 'runtime.conversationDrivers') {
+      runtimeBodies[method].parse(raw)
+      conversationAuthority(context)
+      return conversationDrivers.list().map(({ instanceId, driverKind }) => ({ instanceId, driverKind }))
+    }
+    if (method === 'runtime.conversationDescribeDriver') {
+      const { instanceId } = runtimeBodies[method].parse(raw)
+      const { projectId, assertCurrent } = conversationAuthority(context)
+      return conversation.describeDriver(root, projectId, instanceId, assertCurrent)
+    }
     if (method === 'runtime.conversationCreate') {
       const input = runtimeBodies[method].parse(raw)
       if (context.commandId !== input.commandId) throw new DaemonError('E_DENIED', 'The conversation command ID does not match its admitted dispatch.')
@@ -354,6 +371,25 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     if (method === 'runtime.conversationEvents') {
       const input = runtimeBodies[method].parse(raw)
       return conversation.readEvents(input, conversationAuthority(context))
+    }
+    if (method === 'runtime.conversationApply') {
+      const { command } = runtimeBodies[method].parse(raw)
+      if (context.commandId !== command.commandId) throw new DaemonError('E_DENIED', 'The conversation command ID does not match its admitted dispatch.', 'not-admitted')
+      const authority = conversationAuthority(context)
+      return conversation.command(command, { ...authority, cwd: root, assertCurrent: () => {
+        if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed.', 'not-admitted')
+        authority.assertCurrent()
+        ports.assertWorkspaceAdmission?.(root, method)
+      } })
+    }
+    if (method === 'runtime.conversationThreadCommand') {
+      return conversation.readThreadCommand(runtimeBodies[method].parse(raw), conversationAuthority(context))
+    }
+    if (method === 'runtime.conversationEventDelta') {
+      return conversation.readEventDelta(runtimeBodies[method].parse(raw), conversationAuthority(context))
+    }
+    if (method === 'runtime.conversationHistory') {
+      return conversation.readHistory(runtimeBodies[method].parse(raw), conversationAuthority(context))
     }
     if (conversationReads.handles(method)) return conversationReads.execute(method, raw, root)
     return sessionRuntime.execute(method, raw, root, context)
@@ -487,7 +523,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             }
             admission.assertCommand(bodyMethod, context.commandId, input)
             if (mutation) {
-              value = method === 'runtime.workcopyUse' || method === 'runtime.conversationCreate' ? await action() : await commands.run(root, context.commandId as string, method, input, action,
+              value = method === 'runtime.workcopyUse' || method === 'runtime.conversationCreate' || method === 'runtime.conversationApply' ? await action() : await commands.run(root, context.commandId as string, method, input, action,
                 preparation?.operation === 'prepare' && preparationAuthority
                   ? () => taskPreparation.authorizeRecovery(root, preparation, preparationAuthority) : undefined)
             } else value = await action()

@@ -3,6 +3,7 @@ import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import * as DateTime from 'effect/DateTime'
 import * as Schema from 'effect/Schema'
 import type { ConversationEventPage, ConversationHostEvent, ConversationWireEvent } from '../../../../shared/conversation/desktop'
+import type { ConversationLifecycleEvent, ConversationLifecycleEventPage } from '../../../../shared/conversation/command-runtime'
 import {
   OrchestrationV2DomainEvent,
   OrchestrationV2DomainEventJson,
@@ -60,16 +61,16 @@ export class ConversationEventStore {
     return stored
   }
 
-  appendHostEvents(events: ReadonlyArray<ConversationHostEvent>): void {
+  appendHostEvents(events: ReadonlyArray<ConversationHostEvent | ConversationLifecycleEvent>, commandId?: string): void {
     const insert = this.database.prepare(`INSERT INTO conversation_v2_events
-      (event_id, thread_id, run_id, event_type, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)`)
+      (event_id, command_id, thread_id, run_id, event_type, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     for (const event of events) {
-      insert.run(event.id, event.threadId, event.runId, event.type, event.occurredAt, JSON.stringify(event))
+      insert.run(event.id, commandId ?? null, event.threadId, event.runId ?? null, event.type, event.occurredAt, JSON.stringify(event))
     }
   }
 
   read(input?: { readonly threadId?: string; readonly afterSequence?: number; readonly eventType?: string; readonly limit?: number }): OrchestrationV2StoredEvent[] {
-    const conditions = ["event_type NOT IN ('crux.run-evidence', 'crux.message-delta')"]
+    const conditions = ["event_type NOT GLOB 'crux.*'"]
     const parameters: SQLInputValue[] = []
     if (input?.threadId !== undefined) { conditions.push('thread_id = ?'); parameters.push(input.threadId) }
     if (input?.afterSequence !== undefined) { conditions.push('sequence > ?'); parameters.push(input.afterSequence) }
@@ -81,22 +82,30 @@ export class ConversationEventStore {
     return rows.map(rowToStoredEvent)
   }
 
-  readPage(threadId: string, afterSequence: number, limit: number): ConversationEventPage {
+  readPage(threadId: string, afterSequence: number, limit: number, includeLifecycle: true): ConversationLifecycleEventPage
+  readPage(threadId: string, afterSequence: number, limit: number, includeLifecycle?: false): ConversationEventPage
+  readPage(threadId: string, afterSequence: number, limit: number, includeLifecycle = false): ConversationLifecycleEventPage {
     const rows = this.database.prepare(`SELECT sequence, payload_json FROM conversation_v2_events
-      WHERE thread_id = ? AND sequence > ? ORDER BY sequence LIMIT ?`)
-      .all(threadId, afterSequence, limit + 1) as { sequence: number; payload_json: string }[]
-    const events: Array<{ sequence: number; event: ConversationWireEvent }> = []
+      WHERE thread_id = ? AND sequence > ? AND (? OR event_type <> 'crux.lifecycle') ORDER BY sequence LIMIT ?`)
+      .iterate(threadId, afterSequence, includeLifecycle ? 1 : 0, limit + 1) as Iterable<{ sequence: number; payload_json: string }>
+    const events: Array<{ sequence: number; event: ConversationWireEvent | ConversationLifecycleEvent }> = []
     let bytes = 0
-    for (const row of rows.slice(0, limit)) {
+    let hasMore = false
+    for (const row of rows) {
       bytes += Buffer.byteLength(row.payload_json)
-      if (events.length > 0 && bytes > 512 * 1024) break
-      events.push({ sequence: row.sequence, event: JSON.parse(row.payload_json) as ConversationWireEvent })
+      if (events.length >= limit || (events.length > 0 && bytes > 512 * 1024)) {
+        hasMore = true
+        break
+      }
+      events.push({ sequence: row.sequence, event: JSON.parse(row.payload_json) as ConversationWireEvent | ConversationLifecycleEvent })
     }
-    return { events, nextSequence: events.at(-1)?.sequence ?? afterSequence, hasMore: events.length < rows.length }
+    const lastDelivered = events.at(-1)?.sequence ?? afterSequence
+    const nextSequence = !includeLifecycle && !hasMore ? Math.max(lastDelivered, this.latestSequence(threadId)) : lastDelivered
+    return { events, nextSequence, hasMore }
   }
 
   readByCommandId(commandId: string): OrchestrationV2StoredEvent[] {
-    const rows = this.database.prepare('SELECT * FROM conversation_v2_events WHERE command_id = ? ORDER BY sequence').all(commandId) as Array<Record<string, unknown>>
+    const rows = this.database.prepare("SELECT * FROM conversation_v2_events WHERE command_id = ? AND event_type NOT GLOB 'crux.*' ORDER BY sequence").all(commandId) as Array<Record<string, unknown>>
     return rows.map(rowToStoredEvent)
   }
 
@@ -105,6 +114,17 @@ export class ConversationEventStore {
       ? this.database.prepare('SELECT COALESCE(MAX(sequence), 0) AS sequence FROM conversation_v2_events').get() as { sequence: number }
       : this.database.prepare('SELECT COALESCE(MAX(sequence), 0) AS sequence FROM conversation_v2_events WHERE thread_id = ?').get(threadId) as { sequence: number }
     return row.sequence
+  }
+
+  hasSequence(threadId: string, sequence: number): boolean {
+    return this.database.prepare('SELECT 1 FROM conversation_v2_events WHERE thread_id = ? AND sequence = ?').get(threadId, sequence) !== undefined
+  }
+
+  replaySize(threadId: string, afterSequence: number, limit: number): { count: number; bytes: number } {
+    return this.database.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes FROM (
+      SELECT length(CAST(payload_json AS BLOB)) AS bytes FROM conversation_v2_events
+      WHERE thread_id = ? AND sequence > ? ORDER BY sequence LIMIT ?
+    )`).get(threadId, afterSequence, limit) as { count: number; bytes: number }
   }
 }
 

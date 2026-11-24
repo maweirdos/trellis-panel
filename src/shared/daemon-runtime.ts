@@ -17,10 +17,13 @@ import { runRefSchema } from './workflow'
 import { nativeWorkflowCutoverRequestSchema } from './native-workflow-cutover'
 import { nativeTaskPreparationRequestSchema } from './native-task-preparation'
 import { nativeTaskExecutionRequestSchema, nativeTaskStartSchema } from './native-task-execution'
+import { conversationThreadCommandSchema } from './conversation/command-runtime'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
 const empty = z.object({}).strict()
+const conversationSequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const conversationPageLimit = z.number().int().min(1).max(100).optional()
 export const runtimeBlobSchema = z.object({ id: z.string().uuid(), bytes: z.number().int().min(0).max(RUNTIME_BULK.valueBytes), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 export type RuntimeBlob = z.infer<typeof runtimeBlobSchema>
 /** Inline values stay below the control limit; a blob preserves original, untruncated JSON bytes. */
@@ -38,6 +41,12 @@ export const CONVERSATION_RUNTIME_METHODS: ReadonlySet<string> = new Set([
   'runtime.conversationRead',
   'runtime.conversationCommand',
   'runtime.conversationEvents',
+  'runtime.conversationApply',
+  'runtime.conversationThreadCommand',
+  'runtime.conversationEventDelta',
+  'runtime.conversationHistory',
+  'runtime.conversationDrivers',
+  'runtime.conversationDescribeDriver',
 ])
 
 export const runtimeBodies = {
@@ -56,6 +65,8 @@ export const runtimeBodies = {
   'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
   'runtime.cruxProgress': taskProgressNativeSchema,
   'runtime.conversationModels': z.object({ instanceId: z.string().min(1).max(64).default('codex') }).strict(),
+  'runtime.conversationDrivers': empty,
+  'runtime.conversationDescribeDriver': z.object({ instanceId: z.string().min(1).max(64).regex(/^[\w.-]+$/) }).strict(),
   'runtime.conversationCreate': z.object({
     title: z.string().max(500).optional(), text: z.string().min(1).max(120000).refine(text => text.trim().length > 0),
     model: z.string().min(1).max(8192), instanceId: z.string().min(1).max(64),
@@ -66,8 +77,20 @@ export const runtimeBodies = {
   'runtime.conversationCommand': z.object({ commandId: z.string().uuid() }).strict(),
   'runtime.conversationEvents': z.object({
     threadId: z.string().min(1).max(200),
-    afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    limit: z.number().int().min(1).max(100).optional(),
+    afterSequence: conversationSequence,
+    limit: conversationPageLimit,
+  }).strict(),
+  'runtime.conversationApply': z.object({ command: conversationThreadCommandSchema }).strict(),
+  'runtime.conversationThreadCommand': z.object({ threadId: id, commandId: z.string().uuid() }).strict(),
+  'runtime.conversationEventDelta': z.object({
+    threadId: id,
+    cursor: z.object({ storageId: id, threadId: id, sequence: conversationSequence }).strict(),
+    limit: conversationPageLimit,
+  }).strict(),
+  'runtime.conversationHistory': z.object({
+    threadId: id,
+    cursor: z.object({ storageId: id, threadId: id, beforeRunOrdinal: conversationSequence }).strict(),
+    limit: conversationPageLimit,
   }).strict(),
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
@@ -157,7 +180,7 @@ export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.workcopyUse',
   'runtime.workcopyCleanup',
   'runtime.knowledge',
-  'runtime.conversationCreate', 'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
+  'runtime.conversationCreate', 'runtime.conversationApply', 'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
   'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.historyDelete', 'runtime.historyRegenerateTitle', 'runtime.setup', 'runtime.probe',
   'runtime.workflow.preview', 'runtime.workflow.start', 'runtime.workflow.stop', 'runtime.workflow.previewRevision', 'runtime.workflow.acceptRevision', 'runtime.workflow.cancelRevision'
 ]

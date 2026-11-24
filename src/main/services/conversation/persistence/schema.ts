@@ -2,7 +2,7 @@
  * New-generation conversation storage. No V1 table is read or migrated.
  * Every projection row keeps its source event sequence so replay stays auditable.
  */
-export const CONVERSATION_SCHEMA_VERSION = 1
+export const CONVERSATION_SCHEMA_VERSION = 2
 
 export const CONVERSATION_DDL = `
 CREATE TABLE IF NOT EXISTS conversation_meta (
@@ -68,6 +68,10 @@ CREATE INDEX IF NOT EXISTS conversation_v2_effect_outbox_claim_idx
   ON conversation_v2_effect_outbox(status, available_at, lease_expires_at, created_at);
 CREATE INDEX IF NOT EXISTS conversation_v2_effect_outbox_command_idx
   ON conversation_v2_effect_outbox(command_id, effect_id);
+CREATE INDEX IF NOT EXISTS conversation_v2_effect_outbox_thread_status_idx
+  ON conversation_v2_effect_outbox(thread_id, effect_type, status);
+CREATE INDEX IF NOT EXISTS conversation_v2_effect_outbox_thread_run_idx
+  ON conversation_v2_effect_outbox(thread_id, effect_type, json_extract(payload_json, '$.runId'));
 
 CREATE TABLE IF NOT EXISTS conversation_v2_projection_threads (
   thread_id TEXT PRIMARY KEY,
@@ -289,4 +293,51 @@ CREATE TABLE IF NOT EXISTS conversation_v2_provider_session_bindings (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS conversation_v2_provider_session_bindings_thread_idx
   ON conversation_v2_provider_session_bindings(thread_id);
+
+CREATE TABLE IF NOT EXISTS conversation_v2_thread_control (
+  thread_id TEXT PRIMARY KEY REFERENCES conversation_v2_projection_threads(thread_id),
+  authority_digest TEXT NOT NULL,
+  paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_command_targets (
+  command_id TEXT PRIMARY KEY,
+  run_id TEXT,
+  message_id TEXT,
+  request_id TEXT,
+  follows_run INTEGER NOT NULL CHECK (follows_run IN (0, 1)),
+  detail TEXT
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_dispatch_attempts (
+  effect_id TEXT PRIMARY KEY REFERENCES conversation_v2_effect_outbox(effect_id),
+  attempt_id TEXT NOT NULL UNIQUE,
+  phase TEXT NOT NULL CHECK (phase IN ('preparing', 'dispatching', 'unknown', 'settled')),
+  provider_thread_id TEXT,
+  native_turn_id TEXT,
+  stop_requested INTEGER NOT NULL DEFAULT 0 CHECK (stop_requested IN (0, 1)),
+  foreground_ended INTEGER NOT NULL DEFAULT 0 CHECK (foreground_ended IN (0, 1)),
+  background_running INTEGER NOT NULL DEFAULT 0 CHECK (background_running IN (0, 1))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_native_bindings (
+  thread_id TEXT PRIMARY KEY REFERENCES conversation_v2_projection_threads(thread_id),
+  instance_id TEXT NOT NULL,
+  native_thread_id TEXT NOT NULL,
+  configuration_fingerprint TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_runtime_request_bindings (
+  request_id TEXT PRIMARY KEY REFERENCES conversation_v2_projection_runtime_requests(runtime_request_id),
+  attempt_id TEXT NOT NULL REFERENCES conversation_v2_dispatch_attempts(attempt_id),
+  native_request_id TEXT NOT NULL,
+  UNIQUE(attempt_id, native_request_id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_native_terminal_evidence (
+  effect_id TEXT PRIMARY KEY REFERENCES conversation_v2_effect_outbox(effect_id),
+  status TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  native_turn_id TEXT
+) STRICT;
 `

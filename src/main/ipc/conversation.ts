@@ -5,7 +5,11 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode, noProject, type IpcFail } from '../../shared/ipc-errors'
 import { modelSelectionIdSchema } from '../../shared/model-selection'
 import { getProjectGeneration, getProjectRoot } from '../state'
-import { createConversationThread, listConversationModels, listConversationThreads, readConversationCommand, readConversationEvents, readConversationThread } from '../services/daemon-client/conversation'
+import {
+  applyConversationCommand, createConversationThread, describeConversationDriver, listConversationDrivers, listConversationModels,
+  listConversationThreads, readConversationCommand, readConversationEventDelta, readConversationEvents, readConversationHistory,
+  readConversationThread, readConversationThreadCommand,
+} from '../services/daemon-client/conversation'
 import { checkedDirectory, directoryIdentity, pathKey } from '../services/private-conversations/files'
 import { captureAppWindowDocument } from '../services/window-navigation'
 import { handle } from './registry'
@@ -20,6 +24,11 @@ const createSchema = createBody.extend({
 const threadIdSchema = runtimeBodies['runtime.conversationRead'].shape.threadId.regex(/^[\w.-]+$/)
 const commandIdSchema = runtimeBodies['runtime.conversationCommand'].shape.commandId
 const eventsSchema = runtimeBodies['runtime.conversationEvents'].extend({ cwd: rootSchema, threadId: threadIdSchema })
+const applySchema = runtimeBodies['runtime.conversationApply'].extend({ cwd: rootSchema })
+const threadCommandSchema = runtimeBodies['runtime.conversationThreadCommand'].extend({ cwd: rootSchema })
+const deltaSchema = runtimeBodies['runtime.conversationEventDelta'].extend({ cwd: rootSchema })
+const historySchema = runtimeBodies['runtime.conversationHistory'].extend({ cwd: rootSchema })
+const describeDriverSchema = runtimeBodies['runtime.conversationDescribeDriver'].extend({ cwd: rootSchema })
 
 type ConversationScope = {
   root: string
@@ -107,5 +116,45 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     if (extra.length || !parsed.success || !rootSchema.safeParse(root).success) return invalid()
     if (!scope.matchesRoot(root)) return changed()
     return inScope(scope, () => readConversationCommand(scope.root, parsed.data, scope.isCurrent))
+  })
+  register(ipcInvoke.conversation.apply, (scope, [input, ...extra]) => {
+    const parsed = applySchema.safeParse(input)
+    if (extra.length || !parsed.success || !commandIdSchema.safeParse(parsed.data.command.commandId).success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => applyConversationCommand(scope.root, body, scope.isCurrent), body.command.commandId)
+  })
+  register(ipcInvoke.conversation.threadCommand, (scope, [input, ...extra]) => {
+    const parsed = threadCommandSchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => readConversationThreadCommand(scope.root, body, scope.isCurrent))
+  })
+  register(ipcInvoke.conversation.eventDelta, (scope, [input, ...extra]) => {
+    const parsed = deltaSchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => readConversationEventDelta(scope.root, body, scope.isCurrent))
+  })
+  register(ipcInvoke.conversation.history, (scope, [input, ...extra]) => {
+    const parsed = historySchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => readConversationHistory(scope.root, body, scope.isCurrent))
+  })
+  register(ipcInvoke.conversation.drivers, (scope, [cwd, ...extra]) => {
+    if (extra.length || !rootSchema.safeParse(cwd).success) return invalid()
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => listConversationDrivers(scope.root, scope.isCurrent))
+  })
+  register(ipcInvoke.conversation.describeDriver, (scope, [input, ...extra]) => {
+    const parsed = describeDriverSchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => describeConversationDriver(scope.root, body, scope.isCurrent))
   })
 }

@@ -504,6 +504,12 @@ export const ipcInvoke = {
     read: 'conversation:read',
     command: 'conversation:command',
     events: 'conversation:events',
+    apply: 'conversation:apply',
+    threadCommand: 'conversation:thread-command',
+    eventDelta: 'conversation:event-delta',
+    history: 'conversation:history',
+    drivers: 'conversation:drivers',
+    describeDriver: 'conversation:describe-driver',
   },
   acp: {
     agents: 'acp:agents',

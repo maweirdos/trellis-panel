@@ -1417,9 +1417,15 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   conversationModels: (cwd: string) => Promise<{ ok: true; models: Array<{ id: string; displayName: string; isDefault: boolean }> } | IpcFail>
   conversationCreate: (input: { cwd: string; title?: string; text: string; model: string; instanceId: string; commandId: string; messageId?: string }) => Promise<({ ok: true } & import('./conversation/desktop').ConversationCommandState) | IpcFail>
   conversationList: (root: string) => Promise<{ ok: true; threads: unknown[] } | IpcFail>
-  conversationRead: (threadId: string, root: string) => Promise<{ ok: true; thread: unknown; messages: unknown[]; runs: unknown[]; asOfSequence: number } | IpcFail>
+  conversationRead: (threadId: string, root: string) => Promise<({ ok: true } & import('./conversation/command-runtime').ConversationThreadSnapshot) | IpcFail>
   conversationEvents: (input: { cwd: string; threadId: string; afterSequence: number; limit?: number }) => Promise<{ ok: true; page: import('./conversation/desktop').ConversationEventPage } | IpcFail>
   conversationCommand: (commandId: string, root: string) => Promise<{ ok: true; receipt: import('./conversation/desktop').ConversationCommandState | null } | IpcFail>
+  conversationApply: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationApply'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState } | IpcFail>
+  conversationThreadCommand: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationThreadCommand'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState | null } | IpcFail>
+  conversationEventDelta: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationEventDelta'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadEventPage } | IpcFail>
+  conversationHistory: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationHistory'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadHistoryPage } | IpcFail>
+  conversationDrivers: (cwd: string) => Promise<{ ok: true; drivers: ReadonlyArray<{ instanceId: string; driverKind: string }> } | IpcFail>
+  conversationDescribeDriver: (input: { cwd: string; instanceId: string }) => Promise<{ ok: true; descriptor: import('./conversation/driverCatalog').ConversationDriverDescriptor } | IpcFail>
   /* --- ACP Agent 控制台 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
