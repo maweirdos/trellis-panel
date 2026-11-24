@@ -1651,3 +1651,39 @@ Work、Code 和普通团队任务共用新版对话。历史分页与阅读位�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 52: 桌面对话原生切换与发布复核
+<!-- trellis-session: v=2 fp=dddd94bea9c5fc80 -->
+
+**Date**: 2026-11-24
+**Task**: 桌面对话原生切换与发布复核
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Work、Code 与普通任务统一到 v2。最终 Windows 安装包已生成，解包版启停复测和 Windows Job 清理通过，S1–S6 联合放行仍开放。
+
+### Main Changes
+
+- 移除普通对话的旧发送、历史和投影通道。固定角色与知识引用版本。工作流按原连接代次停止，完整阶段结果与清理回执独立保留。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2356307` | feat(conversation): 切换桌面对话入口并移除旧通用通道 |
+| `903657e` | fix(workflow): 保留原代次停止凭据和已验证结果 |
+
+### Testing
+
+- [OK] 903657e 通过 check:acpx、typecheck、check:ui、postinstall、build、差异检查和 NSIS 打包。验证已打包资源、一次启动回执异常后的原后台核对，以及新档案启停和进程清理。
+- [OK] 真实 Codex 热发送 30 条，上屏 P95 16.8 ms。最终版本实际首发、原回执重开、旧快照保留和零额外引擎已验证。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 验证隔离 Windows 安装与卸载、OpenCode 与 Pi 真实回复、托管写入与复测闭环、独立可写工作树及专用历史迁移。
