@@ -27,6 +27,15 @@ export const piStateSchema = z.object({
   sessionVersion: z.literal(3), thinkingLevel: z.string(), contextWindow: z.number(), tools: z.array(z.string())
 }).strict()
 export type PiState = z.infer<typeof piStateSchema>
+export const piRequestIdSchema = z.string().regex(/^[\w.:-]{1,200}$/)
+export const piOperationReceiptSchema = z.object({
+  requestId: piRequestIdSchema,
+  state: z.enum(['accepted', 'started', 'completed', 'failed', 'cancelled']),
+  kind: z.enum(['prompt', 'compact', 'steer']),
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+  startedAt: z.string().datetime().optional(),
+}).strict()
+export type PiOperationReceipt = z.infer<typeof piOperationReceiptSchema>
 export const piPermissionSchema = z.object({ toolCallId: z.string().min(1), name: z.string().min(1), args: z.record(z.string(), z.unknown()), cwd: z.string().min(1), homeDir: z.string().min(1) }).strict()
 export type PiPermission = z.infer<typeof piPermissionSchema>
 /** A replace carries the complete block in text, including an empty string to clear it. */
@@ -45,8 +54,8 @@ export type PiActivity =
   | { type: 'error'; message: string }
 export type PiChildMessage =
   | { type: 'response'; id: string; ok: boolean; result?: unknown; error?: string }
-  | { type: 'event'; event: PiActivity }
-  | { type: 'permission'; id: string; request: PiPermission }
-  | { type: 'task_progress'; id: string; summary: unknown }
+  | { type: 'event'; requestId?: string; event: PiActivity }
+  | { type: 'permission'; id: string; requestId: string; request: PiPermission }
+  | { type: 'task_progress'; id: string; requestId: string; summary: unknown }
 // Eight public image attachments can total 20 MiB before base64 and context framing.
 export const PI_FRAME_BYTES = 40 * 1024 * 1024

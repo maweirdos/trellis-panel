@@ -8,7 +8,8 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { z } from 'zod'
 import { runtimeContextText } from '../execution-context-budget'
-import { PI_FRAME_BYTES, piInitializeSchema, piStateSchema, type PiActivity, type PiChildMessage, type PiInitialize, type PiPermission, type PiState } from './protocol'
+import { PI_FRAME_BYTES, piInitializeSchema, piRequestIdSchema, piStateSchema, type PiActivity, type PiChildMessage, type PiInitialize, type PiOperationReceipt, type PiPermission, type PiState } from './protocol'
+import { PiOperationReceipts } from './engine/operation-receipts'
 import { createModels, disposeModels, initialModelSelection, selectedModel } from './engine/models'
 import { createResources, mcpLogPath, mcpRegistration } from './engine/resources'
 import { webPreviewExtension } from './engine/web-preview'
@@ -26,16 +27,19 @@ import { taskProgressSummarySchema } from '../../../shared/crux-task-progress-na
 const commandSchema = z.object({ id: z.string().min(1), method: z.string().min(1), params: z.unknown().optional() }).strict()
 const permissionResponseSchema = z.object({ type: z.literal('permission_response'), id: z.string().min(1), allow: z.boolean(), reason: z.string().optional() }).strict()
 const promptSchema = z.object({
+  requestId: piRequestIdSchema.optional(),
   text: z.string(), context: z.array(z.object({ uri: z.string(), mimeType: z.string().optional(), text: z.string() }).strict()).max(128).optional(),
   images: z.array(z.object({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), data: z.string().min(1) }).strict()).max(8).optional()
 }).strict().refine(value => Boolean(value.text.trim()) || Boolean(value.images?.length), 'Prompt is empty')
 const configureSchema = z.object({ modelId: z.string().min(1).optional(), thinkingLevel: z.enum(['off', 'low', 'medium', 'high']).optional() }).strict()
-const compactSchema = z.object({ instructions: z.string().optional() }).strict()
+const compactSchema = z.object({ requestId: piRequestIdSchema.optional(), instructions: z.string().optional() }).strict()
+const operationSchema = z.object({ requestId: piRequestIdSchema }).strict()
+const steerSchema = operationSchema.extend({ turnId: piRequestIdSchema, text: z.string().min(1).max(120000).refine(text => text.trim().length > 0) })
 const emptySchema = z.object({}).strict()
 
 type Command = z.infer<typeof commandSchema>
 type Prompt = z.infer<typeof promptSchema>
-type Turn = { cancelled: boolean; started: boolean; failure?: string; imageFailure?: string; previewWarning?: boolean; aborted: boolean; outputLimitFailures: number; outputTruncated: boolean; boundedFailure?: boolean; lastDesignError?: string; sameDesignFailures?: number; imageCount: number; imageBytes: number; responseNumber: number; imageKeys: Set<string>; imageDigests: Set<string>; imageProgress: Set<string>; completedImages: Set<string> }
+type Turn = { receipt: PiOperationReceipt; cancelled: boolean; started: boolean; failure?: string; imageFailure?: string; previewWarning?: boolean; aborted: boolean; outputLimitFailures: number; outputTruncated: boolean; boundedFailure?: boolean; lastDesignError?: string; sameDesignFailures?: number; imageCount: number; imageBytes: number; responseNumber: number; imageKeys: Set<string>; imageDigests: Set<string>; imageProgress: Set<string>; completedImages: Set<string> }
 type PermissionDecision = { allow: boolean; reason?: string }
 
 let configuration: PiInitialize | undefined
@@ -48,6 +52,9 @@ let closing = false
 let exiting = false
 let shutdownPromise: Promise<void> | undefined
 let turn: Turn | undefined
+let operationReceipts: PiOperationReceipts | undefined
+const steering = new WeakMap<object, PiOperationReceipt>()
+const queuedSteers = new Map<string, PiOperationReceipt>()
 let running: Promise<void> | undefined
 const permissions = new Map<string, (decision: PermissionDecision) => void>()
 const progressReports = new Map<string, (ok: boolean) => void>()
@@ -135,7 +142,7 @@ function send(message: PiChildMessage): void {
   process.stdout.write(`${line}\n`)
 }
 
-function activity(event: PiActivity): void { send({ type: 'event', event }) }
+function activity(event: PiActivity): void { send({ type: 'event', requestId: turn?.receipt.requestId, event }) }
 function status(text: string, tag: string, phase?: string): void { activity({ type: 'status', text, tag, phase }) }
 function reply(id: string, result: unknown): void { send({ type: 'response', id, ok: true, result }) }
 
@@ -195,7 +202,7 @@ const taskProgressExtension: ExtensionFactory = pi => {
         }
         progressReports.set(id, finish)
         signal?.addEventListener('abort', onAbort, { once: true })
-        try { send({ type: 'task_progress', id, summary }) } catch { finish(false) }
+        try { send({ type: 'task_progress', id, requestId: owner.receipt.requestId, summary }) } catch { finish(false) }
       })
       return { content: [{ type: 'text', text: 'Progress durably queued for the original task. Server acknowledgement is pending.' }], details: { queued: true, acknowledged: false } }
     }
@@ -215,7 +222,7 @@ function requestPermission(request: PiPermission, signal?: AbortSignal): Promise
     const onAbort = () => finish({ allow: false, reason: 'Pi operation cancelled' })
     permissions.set(id, finish)
     signal?.addEventListener('abort', onAbort, { once: true })
-    try { send({ type: 'permission', id, request }) } catch (error) {
+    try { send({ type: 'permission', id, requestId: owner.receipt.requestId, request }) } catch (error) {
       finish({ allow: false, reason: errorText(error) })
     }
   })
@@ -327,14 +334,25 @@ function safeToolOutput(value: unknown, toolCallId: string, capture: boolean, re
 
 function promptStarted(): void {
   if (!turn || turn.started) return
+  const receipt = { ...turn.receipt, state: 'started' as const, startedAt: new Date().toISOString() }
+  operationReceipts?.started(receipt)
+  turn.receipt = receipt
   turn.started = true
-  status('Pi prompt started', 'pi_prompt_started')
+  status('Pi operation started', receipt.kind === 'prompt' ? 'pi_prompt_started' : 'pi_operation_started')
 }
 
 function onEvent(event: AgentSessionEvent): void {
   switch (event.type) {
     case 'message_start':
-      if (event.message.role === 'user') promptStarted()
+      if (event.message.role === 'user') {
+        const steer = steering.get(event.message)
+        if (steer) {
+          queuedSteers.delete(steer.requestId)
+          const receipt = { ...steer, state: 'started' as const, startedAt: new Date().toISOString() }
+          operationReceipts?.started(receipt)
+          activity({ type: 'status', text: 'Pi steering input started', tag: 'pi_steer_started', operationId: steer.requestId })
+        } else if (turn?.receipt.kind === 'prompt') promptStarted()
+      }
       if (event.message.role === 'assistant') assistantStream = new AssistantTextStream(activity)
       break
     case 'message_update': {
@@ -431,6 +449,7 @@ function onEvent(event: AgentSessionEvent): void {
       break
     }
     case 'compaction_start':
+      if (turn?.receipt.kind === 'compact') promptStarted()
       status(`Pi compaction (${event.reason})`, 'pi_compaction', 'running')
       if (closing || turn?.cancelled) session?.abortCompaction()
       break
@@ -457,6 +476,7 @@ function onEvent(event: AgentSessionEvent): void {
 async function initialize(value: unknown): Promise<void> {
   rememberSecrets(value)
   const input = prepareDirectories(piInitializeSchema.parse(value))
+  operationReceipts = new PiOperationReceipts(input.sessionDir)
   // Native MCP/tool utility defaults must also remain inside the supplied private agent directory.
   process.env.PI_CODING_AGENT_DIR = input.agentDir
   process.env.PI_OFFLINE = '1'
@@ -500,6 +520,7 @@ async function initialize(value: unknown): Promise<void> {
 async function abort(): Promise<void> {
   if (turn) turn.cancelled = true
   cancelPermissions()
+  session?.clearQueue()
   await session?.abort()
   await running
 }
@@ -518,19 +539,17 @@ function nativeCompact(text: string): string | undefined {
   return match ? match[1]?.trim() ?? '' : undefined
 }
 
-function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: string }): void {
-  const owner: Turn = { cancelled: false, started: false, aborted: false, outputLimitFailures: 0, outputTruncated: false, imageCount: 0, imageBytes: 0, responseNumber: 0, imageKeys: new Set(), imageDigests: new Set(), imageProgress: new Set(), completedImages: new Set() }
+function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: string }, receipt: PiOperationReceipt): void {
+  const owner: Turn = { receipt, cancelled: false, started: false, aborted: false, outputLimitFailures: 0, outputTruncated: false, imageCount: 0, imageBytes: 0, responseNumber: 0, imageKeys: new Set(), imageDigests: new Set(), imageProgress: new Set(), completedImages: new Set() }
   turn = owner
   running = Promise.resolve().then(async () => {
     if (owner.cancelled || closing) return
     if ('instructions' in prompt || !('text' in prompt)) {
-      promptStarted()
       await current.compact(prompt.instructions)
     } else {
       const compact = nativeCompact(prompt.text)
       if (compact !== undefined) {
         if (prompt.context?.length || prompt.images?.length) throw new Error('/compact does not accept context or images')
-        promptStarted()
         await current.compact(compact || undefined)
       } else {
         // Context is carried as literal, source-labelled user input; it cannot select resources or extensions.
@@ -549,10 +568,39 @@ function beginTurn(current: AgentSession, prompt: Prompt | { instructions?: stri
     const phase = owner.cancelled ? 'cancelled' : owner.boundedFailure ? 'failed' : owner.aborted ? 'cancelled' : owner.failure || owner.imageFailure ? 'failed' : 'completed'
     toolOutput.clear()
     assistantStream = undefined
-    turn = undefined
-    running = undefined
-    status(phase === 'failed' ? owner.failure || owner.imageFailure || 'Pi failed' : `Pi ${phase}`, 'pi_settled', phase)
-  })
+    try {
+      for (const receipt of queuedSteers.values()) operationReceipts?.settle({ ...receipt, state: 'cancelled' })
+      queuedSteers.clear()
+      operationReceipts?.settle({ ...owner.receipt, state: phase })
+      status(phase === 'failed' ? owner.failure || owner.imageFailure || 'Pi failed' : `Pi ${phase}`, 'pi_settled', phase)
+    } finally {
+      turn = undefined
+      running = undefined
+    }
+  }).catch(fatal)
+}
+
+function operationReceipt(requestId: string, kind: PiOperationReceipt['kind'], payload: unknown): PiOperationReceipt {
+  return { requestId, kind, state: 'accepted', digest: createHash('sha256').update(JSON.stringify(payload)).digest('hex') }
+}
+
+function replayReceipt(receipt: PiOperationReceipt): PiOperationReceipt | null {
+  if (!operationReceipts) throw new Error('Pi is not initialized')
+  const original = operationReceipts.read(receipt.requestId)
+  if (original && (original.kind !== receipt.kind || original.digest !== receipt.digest)) throw new Error('Pi request ID is already bound to a different input')
+  return original
+}
+
+function admitOperation(commandId: string, receipt: PiOperationReceipt, run: (session: AgentSession, receipt: PiOperationReceipt) => void): void {
+  const original = replayReceipt(receipt)
+  if (original) {
+    reply(commandId, { accepted: true, replayed: true, receipt: original })
+    return
+  }
+  const current = requireIdle()
+  operationReceipts?.claim(receipt)
+  reply(commandId, { accepted: true, replayed: false, receipt })
+  run(current, receipt)
 }
 
 async function handleCommand(command: Command): Promise<void> {
@@ -569,26 +617,54 @@ async function handleCommand(command: Command): Promise<void> {
       reply(command.id, state())
       return
     case 'prompt': {
-      const current = requireIdle()
       const prompt = promptSchema.parse(command.params)
       const compact = nativeCompact(prompt.text)
       if (compact !== undefined && (prompt.context?.length || prompt.images?.length)) throw new Error('/compact does not accept context or images')
-      reply(command.id, { accepted: true })
-      beginTurn(current, prompt)
+      admitOperation(command.id, operationReceipt(prompt.requestId ?? command.id, compact === undefined ? 'prompt' : 'compact', prompt), (current, receipt) => beginTurn(current, prompt, receipt))
       return
     }
     case 'compact': {
-      const current = requireIdle()
       const params = compactSchema.parse(command.params ?? {})
-      reply(command.id, { accepted: true })
-      beginTurn(current, params)
+      admitOperation(command.id, operationReceipt(params.requestId ?? command.id, 'compact', params), (current, receipt) => beginTurn(current, params, receipt))
       return
     }
-    case 'abort':
-      emptySchema.parse(command.params ?? {})
+    case 'steer': {
+      const params = steerSchema.parse(command.params)
+      if (!session?.isStreaming || !turn?.started || turn.cancelled || turn.receipt.kind !== 'prompt' || turn.receipt.requestId !== params.turnId) {
+        throw new Error('Pi original turn can no longer be steered')
+      }
+      const receipt = operationReceipt(params.requestId, 'steer', params)
+      const original = replayReceipt(receipt)
+      if (!original) {
+        if (queuedSteers.size >= 32) throw new Error('Pi has too many pending steering inputs')
+        operationReceipts?.claim(receipt)
+        const message = { role: 'user' as const, content: [{ type: 'text' as const, text: params.text }], timestamp: Date.now() }
+        steering.set(message, receipt)
+        queuedSteers.set(receipt.requestId, receipt)
+        session.agent.steer(message)
+      }
+      reply(command.id, { accepted: true, replayed: Boolean(original), receipt: original ?? receipt })
+      return
+    }
+    case 'operation':
+      if (!operationReceipts) throw new Error('Pi is not initialized')
+      reply(command.id, operationReceipts.read(operationSchema.parse(command.params).requestId))
+      return
+    case 'cancel': {
+      const { requestId } = operationSchema.parse(command.params)
+      if (turn?.receipt.requestId !== requestId) throw new Error('Pi original operation is no longer active')
+      const cancellation = abort()
+      reply(command.id, { submitted: true })
+      void cancellation.catch(fatal)
+      return
+    }
+    case 'abort': {
+      const { requestId } = operationSchema.partial().parse(command.params ?? {})
+      if (requestId && requestId !== turn?.receipt.requestId) throw new Error('Pi original operation is no longer active')
       await abort()
       reply(command.id, { aborted: true })
       return
+    }
     case 'configure': {
       const current = requireIdle()
       const params = configureSchema.parse(command.params)

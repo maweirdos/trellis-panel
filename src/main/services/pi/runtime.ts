@@ -1,13 +1,14 @@
 import { spawn, execFile, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID, createHash } from 'node:crypto'
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import type { AcpRuntimeEvent, AcpRuntimeHandle, AcpRuntimeTurn, AcpRuntimeTurnResult, AcpPermissionDecision } from './runtime-port'
 import type { AcpSessionRecord } from '../../../shared/types'
 import { assertPiToolPath } from './tool-paths'
 import { piConfiguredModels, piProjectMcp } from './models'
-import { PI_FRAME_BYTES, PI_VERSION, piInitializeSchema, piPermissionSchema, piStateSchema, piTextMetaSchema, type PiActivity, type PiState } from './protocol'
+import { PI_FRAME_BYTES, PI_VERSION, piInitializeSchema, piOperationReceiptSchema, piPermissionSchema, piRequestIdSchema, piStateSchema, piTextMetaSchema, type PiActivity, type PiOperationReceipt, type PiState } from './protocol'
+import { z } from 'zod'
 import type { ConversationRuntime, ConversationRuntimeStatus } from './runtime-port'
 import { acpProcessEnv, acpSpawnEnv, sessionAcpLaunchOptions } from '../../../shared/acp-launch-options'
 import { readAcpStoredImages } from '../../../shared/acp-images'
@@ -19,6 +20,7 @@ import { composePiPromptPacket } from './prompt-context'
 import { taskRule } from '../crux/task-progress-context'
 import { reportTaskProgress } from '../crux/task-progress-events'
 import type { AcpJobOwner } from '../workcopy-use/acp-jobs'
+import { ownedDirectory } from '../private-conversations/files'
 
 interface PiRuntimeOptions {
   assertExecutionCurrent?(): Promise<void>
@@ -51,8 +53,12 @@ class ActivityQueue implements AsyncIterable<AcpRuntimeEvent> {
     }
   }
 }
-type Running = { input: AcpRuntimeTurnInput; abort: AbortController; queue: ActivityQueue; started(): void; rejectStarted(error: Error): void; finish(result: AcpRuntimeTurnResult): void; startedAcknowledged: boolean; error?: string }
+type Running = { input: AcpRuntimeTurnInput; abort: AbortController; queue: ActivityQueue; accepted(result: PiOperationReceipt): void; rejectAccepted(error: Error): void; acceptedReceipt: Promise<PiOperationReceipt>; started(): void; rejectStarted(error: Error): void; finish(result: AcpRuntimeTurnResult): void; startedAcknowledged: boolean; terminalObserved: boolean; error?: string }
 type AcpRuntimeTurnInput = Parameters<ConversationRuntime['startTurn']>[0]
+export type PiSdkTurn = AcpRuntimeTurn & { commandAccepted: Promise<PiOperationReceipt>; hasNativeSettlement(): boolean; requestCancel(): Promise<void> }
+const operationResponse = z.object({ accepted: z.literal(true), replayed: z.boolean(), receipt: piOperationReceiptSchema }).strict()
+export class PiInputRejectedError extends Error {}
+export class PiInputUncertainError extends Error {}
 
 /** Native SDK-process adapter. No ACP initialize/session frames are sent to this process. */
 export class PiConversationRuntime implements ConversationRuntime {
@@ -103,18 +109,12 @@ export class PiConversationRuntime implements ConversationRuntime {
   }
   private async call(method: string, params: unknown = {}, timeoutMs = 30_000): Promise<unknown> {
     const id = randomUUID()
-    const owner = method === 'prompt' ? this.running : undefined
     const result = new Promise<unknown>((accept, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id); reject(new Error(`Pi ${method} 等待超时`))
         if (method !== 'shutdown' && method !== 'abort') this.stopAfterProtocolFailure()
       }, timeoutMs)
-      this.pending.set(id, { accept: value => {
-        if (owner && this.running === owner && value && typeof value === 'object' && 'accepted' in value && value.accepted === true && !owner.startedAcknowledged) {
-          owner.startedAcknowledged = true; owner.started()
-        }
-        accept(value)
-      }, reject, timer })
+      this.pending.set(id, { accept, reject, timer })
     })
     // Return the observed response promise immediately: a blocked pipe write must
     // not strand its deadline rejection before the caller can attach a handler.
@@ -129,7 +129,9 @@ export class PiConversationRuntime implements ConversationRuntime {
     if (!run) return
     this.running = undefined
     run.abort.abort()
-    if (!run.startedAcknowledged) run.rejectStarted(new Error(result.status === 'failed' ? result.error.message : 'Pi 输入未确认写入'))
+    const unresolved = new PiInputUncertainError(result.status === 'failed' ? result.error.message : 'Pi 输入未确认写入')
+    run.rejectAccepted(unresolved)
+    if (!run.startedAcknowledged) run.rejectStarted(unresolved)
     run.queue.close(); run.finish(result)
   }
   private receive(value: unknown): void {
@@ -140,17 +142,17 @@ export class PiConversationRuntime implements ConversationRuntime {
       if (!pending) return
       clearTimeout(pending.timer); this.pending.delete(message.id)
       if (message.ok === true) pending.accept(message.result)
-      else pending.reject(this.error(typeof message.error === 'string' ? message.error : 'Pi 请求失败'))
+      else pending.reject(new PiInputRejectedError(this.error(typeof message.error === 'string' ? message.error : 'Pi 请求失败').message))
     } else if (message.type === 'task_progress' && typeof message.id === 'string') {
       const id = message.id
       const owner = this.running
-      const valid = Boolean(owner && !owner.abort.signal.aborted && !this.closing && this.options.meta.taskProgress)
+      const valid = Boolean(owner && message.requestId === owner.input.requestId && !owner.abort.signal.aborted && !this.closing && this.options.meta.taskProgress)
       const summary: unknown = JSON.parse(JSON.stringify(message.summary, (_key, item: unknown) => typeof item === 'string' ? this.safe(item) : item))
       const report = valid ? reportTaskProgress(this.options.meta, summary) : Promise.reject(new Error('The original task turn is no longer active'))
       void report.then(() => this.write({ type: 'task_progress_response', id, ok: true }), () => this.write({ type: 'task_progress_response', id, ok: false })).catch(() => {})
     } else if (message.type === 'permission' && typeof message.id === 'string') {
       const id = message.id
-      void this.permission(message.request).then(allow => this.write({ type: 'permission_response', id, allow }), error => this.write({ type: 'permission_response', id, allow: false, reason: this.error(error).message })).catch(() => {})
+      void this.permission(message.requestId, message.request).then(allow => this.write({ type: 'permission_response', id, allow }), error => this.write({ type: 'permission_response', id, allow: false, reason: this.error(error).message })).catch(() => {})
     } else if (message.type === 'event' && message.event && typeof message.event === 'object') {
       const original = message.event as PiActivity
       if (original.type === 'text_delta' && original.meta?.piText !== undefined) {
@@ -182,13 +184,14 @@ export class PiConversationRuntime implements ConversationRuntime {
         ...projectedDesign, title: projectedDesign.title.split('[redacted]').map(part => this.safe(part)).join('[redacted]').slice(0, 200)
       } }
       const run = this.running
-      if (!run) return
-      if (event.type === 'status' && event.tag === 'pi_prompt_started') {
+      if (!run || message.requestId !== run.input.requestId) return
+      if (event.type === 'status' && ['pi_prompt_started', 'pi_operation_started'].includes(event.tag ?? '')) {
         run.startedAcknowledged = true; run.started(); return
       }
       if (event.type === 'status' && event.tag === 'pi_settled') {
+        run.terminalObserved = true
         if (event.phase === 'failed') this.finish({ status: 'failed', error: { message: run.error ?? event.text ?? 'Pi 执行失败' } })
-        else this.finish({ status: event.phase === 'cancelled' || run.abort.signal.aborted ? 'cancelled' : 'completed', stopReason: event.phase === 'cancelled' || run.abort.signal.aborted ? 'cancelled' : 'end_turn' })
+        else this.finish({ status: event.phase === 'cancelled' ? 'cancelled' : 'completed', stopReason: event.phase === 'cancelled' ? 'cancelled' : 'end_turn' })
         return
       }
       if (event.type === 'error') run.error = event.message === 'Nothing to compact (session too small)' ? '会话上下文较短，暂不需要压缩' : event.message
@@ -282,9 +285,7 @@ export class PiConversationRuntime implements ConversationRuntime {
       this.options.onSpawned()
     } else child.once('spawn', () => this.options.onSpawned())
     const meta = this.options.meta
-    const requestedSessionDir = join(this.options.dataDirectory, 'pi', 'sessions', createHash('sha256').update(meta.projectRoot).digest('hex'), meta.sessionId)
-    mkdirSync(requestedSessionDir, { recursive: true })
-    const sessionDir = realpathSync(requestedSessionDir)
+    const sessionDir = ownedDirectory(this.options.dataDirectory, `pi/sessions/${createHash('sha256').update(meta.projectRoot).digest('hex')}/${meta.sessionId}`)
     const sessionFile = meta.pi?.sessionFile
     if (sessionFile) {
       const local = relative(sessionDir, resolve(sessionFile))
@@ -295,7 +296,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     if (meta.agentRulesManifest && rules?.manifest.digest !== meta.agentRulesManifest.digest) throw new Error('项目规范版本已变化，请显式采用后重新连接')
     meta.agentRulesManifest = rules?.manifest
     const initialized = await this.call('initialize', piInitializeSchema.parse({ root: pathRoot, cwd: pathCwd,
-      sessionDir, sessionFile, agentDir: join(this.options.dataDirectory, 'pi', 'agent'), models: this.configured.models,
+      sessionDir, sessionFile, agentDir: ownedDirectory(this.options.dataDirectory, 'pi/agent'), models: this.configured.models,
       proxy: this.configured.proxy,
       modelId, recoveryModelId: restoring ? this.options.initialModelId : undefined, thinkingLevel: meta.configOptions?.find(option => option.id === 'thinking')?.currentValue ?? 'off',
       skillPaths: meta.platformExecution ? [] : meta.profileSnapshot?.skillPaths?.map(path => join(meta.projectRoot, path)) ?? [], instructions: meta.platformExecution ? '' : [meta.profileSnapshot?.instructions ?? '', rules?.instructions ?? ''].filter(Boolean).join('\n\n'),
@@ -341,28 +342,79 @@ export class PiConversationRuntime implements ConversationRuntime {
     if (input.key !== 'thinking' || !['off', 'low', 'medium', 'high'].includes(input.value)) throw new Error('Pi 配置选项无效')
     await this.configure({ thinkingLevel: input.value }); input.assertActive?.()
   }
-  startTurn(input: AcpRuntimeTurnInput): AcpRuntimeTurn {
+  get available(): boolean {
+    const child = this.child
+    return Boolean(this.state && !this.closing && child && child.exitCode === null && child.signalCode === null && child.stdin.writable)
+  }
+  liveHandle(): AcpRuntimeHandle | undefined { return this.available ? this.handle() : undefined }
+  async steer(turnId: string, requestId: string, text: string): Promise<PiOperationReceipt> {
+    const run = this.running
+    if (!run || run.input.requestId !== turnId || run.abort.signal.aborted || this.closing) throw new PiInputRejectedError('Pi 原回合已结束或不可插话')
+    // The worker owns the "SDK user message started" fact. Requiring the host to have
+    // already observed that frame would reject a legitimate steer during its transit.
+    await run.acceptedReceipt.catch((error: Error) => {
+      throw error instanceof PiInputRejectedError ? error : new PiInputRejectedError(`Pi 原回合尚未确认接纳：${error.message}`)
+    })
+    if (this.running !== run || run.abort.signal.aborted || this.closing) throw new PiInputRejectedError('Pi 原回合已结束或不可插话')
+    run.input.assertActive?.()
+    this.assertConfiguration()
+    const response = operationResponse.parse(await this.call('steer', { turnId, requestId, text }))
+    if (this.running !== run || run.abort.signal.aborted) throw new PiInputRejectedError('Pi 原回合已结束或不可插话')
+    if (response.receipt.requestId !== requestId || response.receipt.kind !== 'steer') throw new PiInputUncertainError('Pi 插话回执身份不一致')
+    return response.receipt
+  }
+  startTurn(input: AcpRuntimeTurnInput): PiSdkTurn {
+    return this.startOperation(input, 'prompt')
+  }
+  compact(input: AcpRuntimeTurnInput, instructions?: string): ReturnType<PiConversationRuntime['startTurn']> {
+    return this.startOperation(input, 'compact', instructions)
+  }
+  private startOperation(input: AcpRuntimeTurnInput, method: 'prompt' | 'compact', instructions?: string): ReturnType<PiConversationRuntime['startTurn']> {
     const queue = new ActivityQueue(), abort = new AbortController()
     let started: () => void = () => {}, rejectStarted: (error: Error) => void = () => {}, finish: (value: AcpRuntimeTurnResult) => void = () => {}
+    let accepted: (receipt: PiOperationReceipt) => void = () => {}, rejectAccepted: (error: Error) => void = () => {}
+    const commandAccepted = new Promise<PiOperationReceipt>((resolve, reject) => { accepted = resolve; rejectAccepted = reject })
     const promptStarted = new Promise<void>((accept, reject) => { started = accept; rejectStarted = reject })
     const result = new Promise<AcpRuntimeTurnResult>(accept => { finish = accept })
+    void commandAccepted.catch(() => {})
     void promptStarted.catch(() => {})
-    const run: Running = { input, queue, abort, started, rejectStarted, finish, startedAcknowledged: false }
-    if (this.running || this.closing) { rejectStarted(new Error('Pi 会话忙碌或已停止')); queue.close(); finish({ status: 'failed', error: { message: 'Pi 会话不可接纳新回合' } }) }
+    const run: Running = { input, queue, abort, accepted, rejectAccepted, acceptedReceipt: commandAccepted, started, rejectStarted, finish, startedAcknowledged: false, terminalObserved: false }
+    if (this.running || this.closing) {
+      const error = new PiInputRejectedError('Pi 会话不可接纳新回合')
+      rejectAccepted(error); rejectStarted(error); queue.close(); finish({ status: 'failed', error: { message: error.message } })
+    }
     else {
       this.running = run
+      let submitted = false
       void (async () => {
         input.assertActive?.()
         this.assertConfiguration()
-        const accepted = await this.call('prompt', composePiPromptPacket(input))
-        if (!accepted || typeof accepted !== 'object' || !('accepted' in accepted) || accepted.accepted !== true) throw new Error('Pi 未确认接纳本次输入')
-        if (this.running === run && !run.startedAcknowledged) { run.startedAcknowledged = true; run.started() }
+        const requestId = piRequestIdSchema.parse(input.requestId)
+        const packet = method === 'compact' ? { instructions } : composePiPromptPacket(input)
+        submitted = true
+        const response = operationResponse.parse(await this.call(method, { ...packet, requestId }))
+        if (response.receipt.requestId !== requestId) throw new Error('Pi 返回了另一条输入的回执')
+        run.accepted(response.receipt)
+        if (response.replayed) {
+          const receipt = response.receipt
+          if (receipt.startedAt) { run.startedAcknowledged = true; run.started() }
+          const status = receipt.state
+          run.terminalObserved = status === 'completed' || status === 'cancelled' || status === 'failed'
+          if (status === 'completed' || status === 'cancelled') this.finish({ status, stopReason: status === 'completed' ? 'end_turn' : 'cancelled' })
+          else if (status === 'failed') this.finish({ status, error: { message: 'Pi 原操作已失败' } })
+          else throw new PiInputUncertainError('Pi 原输入已接纳，尚无结束凭据')
+        }
       })().catch(async error => {
         if (this.running !== run) return
         const message = this.error(error).message
         run.error = message; run.queue.push({ type: 'error', message })
-        // An unacknowledged buffered prompt must not execute after a new turn starts.
-        try { await this.shutdown() } catch (cleanup) { this.options.onCleanupFailure?.(this.error(cleanup).message) }
+        const rejected = !submitted || error instanceof PiInputRejectedError
+        const reason = rejected ? new PiInputRejectedError(message) : new PiInputUncertainError(message)
+        run.rejectAccepted(reason)
+        if (!run.startedAcknowledged) run.rejectStarted(reason)
+        if (!rejected) {
+          try { await this.shutdown() } catch (cleanup) { this.options.onCleanupFailure?.(this.error(cleanup).message) }
+        }
         if (this.running === run) this.finish({ status: 'failed', error: { message } })
       })
     }
@@ -372,12 +424,18 @@ export class PiConversationRuntime implements ConversationRuntime {
       try { await this.shutdown() } catch (cleanup) { this.failed(this.error(cleanup)) }
     }) }, input.timeoutMs ?? 30 * 60_000)
     void result.finally(() => clearTimeout(timer))
+    const requestCancel = async (): Promise<void> => {
+      if (this.running !== run) throw new PiInputRejectedError('Pi 原操作已结束')
+      await commandAccepted
+      if (this.running !== run) throw new PiInputRejectedError('Pi 原操作已结束')
+      abort.abort()
+      await this.call('cancel', { requestId: input.requestId }, 10_000)
+    }
     const cancel = async (): Promise<void> => {
       if (this.running !== run) return
-      abort.abort()
       let settlementTimer: NodeJS.Timeout | undefined
       try {
-        await Promise.race([(async () => { await this.call('abort', {}, 10_000); await result })(),
+        await Promise.race([(async () => { await requestCancel(); await result })(),
           new Promise<never>((_, reject) => { settlementTimer = setTimeout(() => reject(new Error('Pi 取消未在 10 秒内确认结束，正在停止引擎')), 10_000) })])
       } catch (error) {
         if (this.running !== run) return
@@ -385,13 +443,15 @@ export class PiConversationRuntime implements ConversationRuntime {
         try { await this.shutdown() } catch (cleanup) { this.failed(this.error(cleanup)); throw cleanup }
       } finally { if (settlementTimer) clearTimeout(settlementTimer) }
     }
-    return { requestId: input.requestId, events: queue, promptStarted, result, cancel, closeStream: cancel }
+    return { requestId: input.requestId, events: queue, promptStarted, commandAccepted, hasNativeSettlement: () => run.terminalObserved, requestCancel, result, cancel, closeStream: cancel }
   }
-  private async permission(value: unknown): Promise<boolean> {
+  private async permission(requestId: unknown, value: unknown): Promise<boolean> {
     const request = piPermissionSchema.parse(value), run = this.running
-    if (!run || run.abort.signal.aborted || this.closing) return false
+    if (!run || requestId !== run.input.requestId || run.abort.signal.aborted || this.closing) return false
     await this.options.assertExecutionCurrent?.()
+    if (this.running !== run || run.abort.signal.aborted || this.closing) return false
     run.input.assertActive?.()
+    this.assertConfiguration()
     const read = (request.name === 'report_progress' && Boolean(this.options.meta.taskProgress)) || ['preview_web', 'read', 'grep', 'find', 'ls', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(request.name)
       || ['knowledge_search', 'knowledge_read', 'knowledge_context', 'knowledge_document_read', 'knowledge_task_read'].some(name => request.name === `mcp__trellis_knowledge__${name}`)
     const pathTool = ['preview_web', 'design_open', 'read', 'write', 'edit', 'grep', 'find', 'ls'].includes(request.name)
@@ -428,6 +488,7 @@ export class PiConversationRuntime implements ConversationRuntime {
     run.input.assertActive?.()
     await this.options.assertExecutionCurrent?.()
     run.input.assertActive?.()
+    this.assertConfiguration()
     const finalPaths = assertPath()
     if (initialPaths.length !== finalPaths.length || initialPaths.some((path, index) => relative(path, finalPaths[index] ?? '') !== '')) throw new Error('工具路径在授权期间发生变化')
     return !run.abort.signal.aborted && decision?.outcome.outcome === 'selected' && decision.outcome.optionId === 'allow-once'
