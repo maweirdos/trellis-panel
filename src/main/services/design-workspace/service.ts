@@ -150,7 +150,7 @@ export class DesignWorkspace {
     return { items: result.sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)), incomplete }
   }
   async sync(raw: unknown, current: () => void = noop, metadataOnly = false): Promise<dto.DesignDocument[]> {
-    const input = dto.designSyncSchema.parse(raw)
+    const input = dto.designTurnSyncSchema.parse(raw)
     return this.serial(async () => {
       const owner = await this.owner(input.conversationId, true, current)
       const scanPath = `scans/${input.conversationId}.json`, previousScan = this.storage.read(scanPath, designScanSchema)
@@ -252,7 +252,14 @@ export class DesignWorkspace {
         if (row?.value.conversationId === input.conversationId && row.value.creatorId === owner.conversation.creatorId) changed.add(id)
       }
       const result: dto.DesignDocument[] = []
-      if (!metadataOnly) for (const id of changed) { const loaded = this.managed(id, current); result.push({ ...this.view(loaded.record), ...await this.sourceStatus(loaded.record, current) }) }
+      if (!metadataOnly) for (const id of changed) {
+        const { record } = this.managed(id, current)
+        const turnSources = input.turnId ? record.sources.filter(source => source.turnId === input.turnId) : undefined
+        if (turnSources?.length === 0) continue
+        const document = this.view(record)
+        result.push({ ...document, ...await this.sourceStatus(record, current),
+          ...(turnSources && { candidates: document.candidates.filter(candidate => turnSources.some(source => source.output.revisionId === candidate.id)) }) })
+      }
       if (owner.conversation.nativeRef?.agentId === 'pi') {
         const value = { version: 1 as const, conversationId: input.conversationId, sourceIdentity: owner.sourceIdentity, nativeSessionId: owner.conversation.nativeRef.sessionId, afterCursor: scan.afterCursor, rejectedEvents, placeholderRecoveryVersion: 2 as const }
         if (JSON.stringify(previousScan?.value) !== JSON.stringify(value)) this.storage.write(scanPath, designScanSchema, value, previousScan?.digest ?? null, () => { current(); owner.assertCurrent() })
@@ -461,6 +468,22 @@ export class DesignWorkspace {
     let dispatched = false, retainedRequest = false
     try {
     const request = await this.serial(async () => {
+      if ('conversationId' in input) {
+        const intent = this.storage.read(`conversations/${input.conversationId}.json`, designIntentSchema)?.value
+        if (!intent) throw new DesignWorkspaceError('这条会话没有专用设计意图', IpcErrorCode.Denied)
+        const owner = await this.owner(input.conversationId, false, current)
+        this.assertIntent(owner, intent)
+        const digest = hash(JSON.stringify(input))
+        const previous = this.existingRequest(intent, input.requestId, digest)
+        if (previous) { retainedRequest = true; return previous }
+        if (intent.documentId) throw new DesignWorkspaceError('原设计已生成，请从画布继续修改', IpcErrorCode.Conflict)
+        const writable = await this.owner(input.conversationId, true, current)
+        this.assertIntent(writable, intent)
+        if (writable.runtimeId !== 'pi') throw new DesignWorkspaceError('设计画布生成需要 Pi', IpcErrorCode.InvalidArg)
+        const prompt = `${buildDesignGenerationPrompt(input.text)}\n\nDesign medium: ${intent.kind}.`
+        return this.saveRequest(writable, { requestId: input.requestId, text: input.text, draftText: input.text },
+          prompt, input.text, digest, () => { current(); writable.assertCurrent() })
+      }
       const { record } = this.managed(input.documentId, current), digest = hash(JSON.stringify(input))
       const previous = this.existingRequest(record, input.requestId, digest)
       if (previous) {
@@ -471,6 +494,7 @@ export class DesignWorkspace {
       }
       const loaded = await this.load(input.documentId, true, current)
       const snapshot = this.storage.snapshot(input.documentId, loaded.record.currentRevision)
+      if (input.expectedRevision && input.expectedRevision !== snapshot.revision) throw new DesignWorkspaceError('设计版本已变化，请重新打开原稿', IpcErrorCode.Conflict)
       this.checkSelection(snapshot, input.selection)
       const prompt = this.compileEdit(snapshot, input.documentId, input.text, input.selection, loaded.owner, loaded.current)
       return this.saveRequest(loaded.owner, { requestId: input.requestId, text: input.text }, prompt, input.text, digest, loaded.current, input.documentId, snapshot.revision)
@@ -501,6 +525,61 @@ export class DesignWorkspace {
       const notAdmitted = error !== null && typeof error === 'object' && 'outcome' in error && error.outcome === 'not-admitted'
       throw new DesignWorkspaceError(sourceMessage(error), code, { requestId: input.requestId, ...(!dispatched && !retainedRequest || notAdmitted ? { notSent: true } : { outcomeUnknown: true, outcome: 'unknown' }) })
     }
+  }
+  private async observeTurn(input: dto.DesignTurnLocator, writable: boolean, current: () => void) {
+    const owner = await this.owner(input.conversationId, writable, current)
+    const request = this.storage.read(`requests/${input.conversationId}/${input.requestId}.json`, designRequestSchema, 1024 * 1024)?.value
+    const { conversation, sourceIdentity } = owner
+    if (!request || request.conversationId !== conversation.id || request.requestId !== input.requestId
+      || request.creatorId !== conversation.creatorId || request.sourceIdentity !== sourceIdentity || owner.runtimeId !== 'pi') {
+      throw new DesignWorkspaceError('这次操作不属于原设计请求', IpcErrorCode.Denied)
+    }
+    const receipt = await this.ports.conversations.requestReceipt(conversation.id, request.requestId)
+    owner.assertCurrent()
+    if (!receipt.ok) throw new DesignWorkspaceError(receipt.error, receipt.code)
+    const { session } = receipt, inline = receipt.receipt.result?.inline
+    const proof = inline?.ok && inline.turnId === input.turnId ? inline.session
+      : receipt.state === 'sent' && receipt.turnId === input.turnId ? session : undefined
+    const sent = proof?.privateConversation?.request
+    const generation = proof?.connectionGeneration, sessionId = conversation.nativeRef?.sessionId
+    const root = pathKey(conversation.workspace.root)
+    if (!proof || !generation || !sessionId || proof.sessionId !== sessionId || pathKey(proof.projectRoot) !== root
+      || proof.privateConversation?.id !== conversation.id || sent?.id !== request.requestId || !sent.sent || sent.turnId !== input.turnId) {
+      throw new DesignWorkspaceError('尚未确认原设计请求的回合回执', IpcErrorCode.Conflict)
+    }
+    const active = session.sessionId === sessionId && session.privateConversation?.id === conversation.id
+      && pathKey(session.projectRoot) === root && session.turnId === input.turnId && session.connectionGeneration === generation
+      && session.connectionOwned && ['starting', 'busy', 'awaiting_permission', 'cancelling'].includes(session.status)
+    const permissions = active ? (session.pendingPermissions ?? []).filter(permission => permission.sessionId === sessionId
+      && permission.turnId === input.turnId && permission.connectionGeneration === generation
+      && (permission.expiresAt === undefined || permission.expiresAt > Date.now())) : []
+    return { owner, request, sessionId, generation, root, active, permissions }
+  }
+  async status(raw: unknown, current: () => void = noop): Promise<dto.DesignTurnStatus> {
+    const input = dto.designTurnStatusSchema.parse(raw)
+    const turn = await this.observeTurn(input, false, current)
+    if (turn.active) return { permissions: turn.permissions }
+    const result = await this.ports.conversations.events(input.conversationId, { limit: 120 })
+    turn.owner.assertCurrent()
+    if (!result.ok) throw new DesignWorkspaceError(result.error, result.code)
+    const event = result.value?.events.find(event => event.kind === 'turn-done' && event.turnId === input.turnId
+      && event.sessionId === turn.sessionId && event.connectionGeneration === turn.generation
+      && event.projectRoot && pathKey(event.projectRoot) === turn.root)
+    const terminal = object(event?.payload?.result).status
+    return { permissions: [], ...(terminal === 'completed' || terminal === 'failed' || terminal === 'cancelled' ? { terminal } : {}) }
+  }
+  async respond(raw: unknown, current: () => void = noop): Promise<null> {
+    const input = dto.designTurnRespondSchema.parse(raw)
+    const turn = await this.observeTurn(input, true, current)
+    const permission = turn.permissions.find(item => item.requestId === input.permissionRequestId)
+    if (!permission || permission.options.filter(option => option.optionId === input.optionId).length !== 1) {
+      throw new DesignWorkspaceError('权限请求已结束或不属于原设计回合', IpcErrorCode.Denied)
+    }
+    const result = await this.ports.conversations.control('respond', input.conversationId, {
+      requestId: permission.requestId, optionId: input.optionId, expectedConnectionGeneration: turn.generation,
+    }, { turnId: input.turnId, assertCurrent: this.requestGuard(turn.request, turn.owner, current) })
+    if (!result.ok) throw new DesignWorkspaceError(result.error, result.code)
+    return null
   }
   async export(raw: unknown, current: () => void = noop): Promise<{ cancelled: boolean }> {
     const input = dto.designExportSchema.parse(raw), managed = this.managed(input.documentId, current)

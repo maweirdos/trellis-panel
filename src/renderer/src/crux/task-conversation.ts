@@ -1,5 +1,4 @@
 import type { CruxTask } from '@shared/crux'
-import type { CruxProgressSession } from '@shared/crux-task-progress'
 import { isOrdinaryConversationTask, sameConversationTaskLocator, type ConversationTaskScope } from '@shared/conversation/task-scope'
 import { api } from '../api'
 import { useApp, type Page } from '../store'
@@ -21,17 +20,14 @@ interface TaskConversationOrigin {
   pageSnapshot: WorkPageSnapshot
 }
 
-type LegacyTaskConversationTarget = TaskConversationOrigin & { kind: 'legacy'; session: CruxProgressSession; readOnly: boolean }
-type OrdinaryTaskConversationTarget = TaskConversationOrigin & { kind: 'ordinary'; scope: ConversationTaskScope }
-export type TaskConversationTarget = LegacyTaskConversationTarget | OrdinaryTaskConversationTarget
+export type TaskConversationTarget = TaskConversationOrigin & { kind: 'ordinary'; scope: ConversationTaskScope }
 
 export function ownsTaskConversation(target: TaskConversationTarget): boolean {
   const state = useCrux.getState()
   const task = state.snapshot?.tasks.find(item => item.id === target.taskId && item.createdAt === target.taskCreatedAt && item.spaceId === target.spaceId)
   return Boolean(state.snapshot && task && taskSourceKey(state.snapshot, state.workspaceContext) === target.sourceKey &&
     state.workspaceContext.key === target.workspaceKey && canReadTaskSpace(state.snapshot, state.workspaceContext, target.spaceId) &&
-    (target.kind === 'legacy' || state.workspaceContext.state === 'connected' &&
-      task.assigneeIds[0] === target.scope.handlerId && isOrdinaryConversationTask(task)))
+    state.workspaceContext.state === 'connected' && task.assigneeIds[0] === target.scope.handlerId && isOrdinaryConversationTask(task))
 }
 
 function taskConversationOrigin(workspaceKey: string, task: CruxTask): TaskConversationOrigin {
@@ -47,11 +43,6 @@ function activateTaskConversation(target: TaskConversationTarget): void {
   useMy.getState().setTaskConversationTarget(target)
   useMy.getState().requestAgentView(null)
   useApp.getState().setPage('acp')
-}
-
-export async function openTaskConversation(workspaceKey: string, task: CruxTask, session: CruxProgressSession, readOnly = false): Promise<void> {
-  if (useCrux.getState().openTaskId !== task.id) throw Error('任务来源已改变，请重新打开。')
-  activateTaskConversation({ ...taskConversationOrigin(workspaceKey, task), kind: 'legacy', session, readOnly })
 }
 
 export async function openOrdinaryTaskConversation(workspaceKey: string, task: CruxTask, isCurrent: () => boolean): Promise<void> {

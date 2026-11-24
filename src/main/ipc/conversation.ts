@@ -1,11 +1,14 @@
 import { app, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { z } from 'zod'
 import { workspaceGrantSchema } from '../../shared/daemon'
 import { desktopConversationTaskFields, runtimeBodies } from '../../shared/daemon-runtime'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode, noProject, type IpcFail } from '../../shared/ipc-errors'
 import { modelSelectionIdSchema } from '../../shared/model-selection'
 import { ConversationAttachmentBytesInputSchema } from '../../shared/conversation/attachments'
+import { conversationKnowledgeReferenceSchema } from '../../shared/conversation/knowledge-reference'
 import { conversationTaskLocatorSchema, sameConversationTaskLocator, type ConversationTaskLocator } from '../../shared/conversation/task-scope'
 import type { NativeConversationTask } from '../../shared/conversation/task-native'
 import { DaemonError } from '../daemon/errors'
@@ -24,7 +27,7 @@ import { registerProjectWorkbenchIpc } from './project-workbench'
 import { handle } from './registry'
 
 const rootSchema = workspaceGrantSchema.shape.root.regex(/^[^\u0000-\u001f\u007f]+$/u)
-const createBody = runtimeBodies['runtime.conversationCreate']
+const createBody = runtimeBodies['runtime.conversationCreate'].omit({ knowledgePageId: true })
 const createSchema = createBody.extend({
   ...desktopConversationTaskFields,
   cwd: rootSchema,
@@ -35,23 +38,28 @@ const threadIdSchema = runtimeBodies['runtime.conversationRead'].shape.threadId.
 const commandIdSchema = runtimeBodies['runtime.conversationCommand'].shape.commandId
 const desktopTaskScope = { cwd: rootSchema, ...desktopConversationTaskFields }
 const eventsSchema = runtimeBodies['runtime.conversationEvents'].extend({ ...desktopTaskScope, threadId: threadIdSchema })
-const applySchema = runtimeBodies['runtime.conversationApply'].extend(desktopTaskScope)
+const applySchema = runtimeBodies['runtime.conversationApply'].omit({ knowledgePageId: true }).extend(desktopTaskScope)
 const threadCommandSchema = runtimeBodies['runtime.conversationThreadCommand'].extend(desktopTaskScope)
 const deltaSchema = runtimeBodies['runtime.conversationEventDelta'].extend(desktopTaskScope)
 const historySchema = runtimeBodies['runtime.conversationHistory'].extend(desktopTaskScope)
 const listSchema = runtimeBodies['runtime.conversationList'].extend(desktopConversationTaskFields)
 const describeDriverSchema = runtimeBodies['runtime.conversationDescribeDriver'].extend(desktopTaskScope)
 const attachmentTarget = runtimeBodies['runtime.conversationAttachmentList'].extend(desktopTaskScope)
-const attachmentStage = attachmentTarget.extend(ConversationAttachmentBytesInputSchema.shape)
+const attachmentStage = z.union([
+  attachmentTarget.extend(ConversationAttachmentBytesInputSchema.shape),
+  attachmentTarget.extend({ knowledge: conversationKnowledgeReferenceSchema }),
+])
 const attachmentRelease = runtimeBodies['runtime.conversationAttachmentRelease'].extend(desktopTaskScope)
 const attachmentRead = runtimeBodies['runtime.conversationAttachmentRead'].extend(desktopTaskScope)
 const workDirectoryName = 'conversation-v2-workspace'
 
 type ConversationScope = {
   root: string
+  isProject: boolean
   matchesRoot: (value: unknown) => boolean
   isCurrent: () => boolean
   task?: NativeConversationTask
+  knowledgePage?: { id: string; generation: number; isCurrent: () => boolean }
 }
 
 type DesktopTaskGrant = {
@@ -62,6 +70,7 @@ type DesktopTaskGrant = {
 }
 
 const taskGrants = new WeakMap<BrowserWindow, Map<string, DesktopTaskGrant>>()
+const knowledgePages = new WeakMap<BrowserWindow, NonNullable<ConversationScope['knowledgePage']>>()
 
 function rememberTaskGrant(window: BrowserWindow, grant: DesktopTaskGrant, scopeKey: string): void {
   let grants = taskGrants.get(window)
@@ -114,18 +123,30 @@ function captureScope(window: BrowserWindow | null, event: IpcMainInvokeEvent, g
     if (taskGrant && identity !== taskGrant.identity) {
       return ipcFail(IpcErrorCode.Conflict, '任务工作目录的物理身份发生了变化。', { outcome: 'not-admitted' })
     }
+    const isCurrent = (): boolean => {
+      if (!sameDocument()) return false
+      if (!task.data && !isWork && (getProjectRoot() !== selected || getProjectGeneration() !== generation)) return false
+      try { return (taskGrant?.isCurrent() ?? true) && directoryIdentity(selected) === identity } catch { return false }
+    }
+    const isProject = !isWork && !taskGrant && pathKey(root) !== pathKey(managed)
+    let knowledgePage: ConversationScope['knowledgePage']
+    if (window && isProject && [selected, root].some(candidate => pathKey(candidate) === pathKey(requested.data))) {
+      knowledgePage = knowledgePages.get(window)
+      if (!knowledgePage?.isCurrent()) {
+        knowledgePage = { id: randomUUID(), generation, isCurrent }
+        knowledgePages.set(window, knowledgePage)
+      }
+    }
     return {
       root,
+      isProject,
       matchesRoot: value => {
         const parsed = rootSchema.safeParse(value)
         return parsed.success && [selected, root].some(candidate => pathKey(candidate) === pathKey(parsed.data))
       },
-      isCurrent: () => {
-        if (!sameDocument()) return false
-        if (!task.data && !isWork && (getProjectRoot() !== selected || getProjectGeneration() !== generation)) return false
-        try { return (taskGrant?.isCurrent() ?? true) && directoryIdentity(selected) === identity } catch { return false }
-      },
+      isCurrent,
       task: taskGrant?.task,
+      knowledgePage,
     }
   } catch {
     return ipcFail(IpcErrorCode.Conflict, '原工程目录无法核实，请重新选择工程。', { outcome: 'not-admitted' })
@@ -210,7 +231,12 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     if (!parsed.success) return invalid()
     const { cwd, ...body } = parsed.data
     if (!scope.matchesRoot(cwd)) return changed()
-    return inScope(scope, () => createConversationThread(scope.root, withTask(scope, body), scope.isCurrent), body.commandId)
+    if (body.role && !scope.isProject) {
+      return ipcFail(IpcErrorCode.Denied, '项目角色只能从当前工程开始对话。', { commandId: body.commandId, outcome: 'not-admitted' })
+    }
+    return inScope(scope, () => createConversationThread(scope.root, withTask(scope, {
+      ...body, knowledgePageId: scope.knowledgePage?.id,
+    }), scope.isCurrent), body.commandId)
   })
   register(ipcInvoke.conversation.list, (scope, [root, filter, ...extra]) => {
     const parsed = listSchema.safeParse(filter ?? {})
@@ -244,7 +270,9 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     if (extra.length || !parsed.success || !commandIdSchema.safeParse(parsed.data.command.commandId).success) return invalid()
     const { cwd, ...body } = parsed.data
     if (!scope.matchesRoot(cwd)) return changed()
-    return inScope(scope, () => applyConversationCommand(scope.root, withTask(scope, body), scope.isCurrent), body.command.commandId)
+    return inScope(scope, () => applyConversationCommand(scope.root, withTask(scope, {
+      ...body, knowledgePageId: scope.knowledgePage?.id,
+    }), scope.isCurrent), body.command.commandId)
   })
   register(ipcInvoke.conversation.threadCommand, (scope, [input, ...extra]) => {
     const parsed = threadCommandSchema.safeParse(input)
@@ -285,6 +313,15 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     if (extra.length || !parsed.success) return invalid()
     const { cwd, ...body } = parsed.data
     if (!scope.matchesRoot(cwd)) return changed()
+    if ('knowledge' in body) {
+      const page = scope.knowledgePage
+      if (!page || body.knowledge.projectGeneration !== page.generation || !page.isCurrent()) {
+        return ipcFail(IpcErrorCode.Conflict, '所选资料的项目或页面已变化，请重新选择。')
+      }
+      return inScope(scope, () => stageConversationAttachment(scope.root, withTask(scope, {
+        ...body, knowledge: { ...body.knowledge, pageId: page.id },
+      }), page.isCurrent))
+    }
     return inScope(scope, () => stageConversationAttachment(scope.root, withTask(scope, body), scope.isCurrent))
   })
   register(ipcInvoke.conversation.attachmentPick, async (scope, [input, ...extra]) => {

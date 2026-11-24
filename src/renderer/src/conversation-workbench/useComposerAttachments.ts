@@ -3,6 +3,7 @@ import {
   conversationAttachmentLimitError, type ConversationAttachmentBytesInput, type StagedConversationAttachment,
 } from '../../../shared/conversation/attachments'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
+import type { ConversationKnowledgeReference } from '../../../shared/conversation/knowledge-reference'
 import { api } from '../api'
 import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { useInteractionGuard } from '../utils/interaction-scope'
@@ -35,6 +36,8 @@ export function useComposerAttachments(
   const operations = useRef(new Map<string, AttachmentOperation>())
   const latestKey = useRef(key)
   latestKey.current = key
+  const selectionOwner = useRef({ key })
+  if (selectionOwner.current.key !== key) selectionOwner.current = { key }
   const [, redraw] = useState(0)
   const available = typeof api?.conversationAttachmentStage === 'function' &&
     typeof api?.conversationAttachmentPick === 'function' && typeof api?.conversationAttachmentRelease === 'function'
@@ -111,6 +114,24 @@ export function useComposerAttachments(
     }, () => { void addPastedText(text) })
   }
 
+  async function addKnowledge(knowledge: ConversationKnowledgeReference, isCurrent: () => boolean): Promise<boolean> {
+    const owner = selectionOwner.current
+    const current = (): boolean => selectionOwner.current === owner && canInteract() && isCurrent()
+    if (!current()) return false
+    let added = false
+    const ok = await operate(async bound => {
+      const result = await api.conversationAttachmentStage({ ...bound, knowledge })
+      if (!current()) {
+        if (result.ok) await api.conversationAttachmentRelease({ ...bound, attachmentId: result.attachment.id })
+        return
+      }
+      if (!result.ok) throw new Error(result.error)
+      add([result.attachment])
+      added = true
+    })
+    return ok && added
+  }
+
   async function pick(): Promise<boolean> {
     let selected = false
     const ok = await operate(async (bound) => {
@@ -133,7 +154,7 @@ export function useComposerAttachments(
   }
 
   return {
-    available, canEdit, state, pick, addFiles, addPastedText, remove,
+    available, canEdit, state, pick, addFiles, addPastedText, addKnowledge, remove,
     isPending: () => operations.current.get(key)?.pending ?? false,
   }
 }

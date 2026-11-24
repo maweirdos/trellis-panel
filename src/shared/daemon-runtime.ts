@@ -1,7 +1,7 @@
 /** Native allowlist. Workspace authority comes from the authenticated host, never these bodies. */
 import { z } from 'zod'
+import { conversationProjectRoleSelectionSchema } from './conversation/project-role'
 import { acpHistoryListInputSchema, acpHistoryEventsInputSchema, acpHistoryUpdateInputSchema, acpHistoryDeleteInputSchema } from './acp-history'
-import { acpConversationDetailInputSchema, acpConversationEventsInputSchema, acpConversationListInputSchema } from './acp-projections'
 import { workflowPreviewInputSchema, workflowStartInputSchema, workflowSnapshotInputSchema, workflowEventsInputSchema, workflowStopInputSchema, workflowArtifactInputSchema } from './workflow-application'
 import { workflowRevisionPreviewInputSchema, workflowRevisionAcceptInputSchema, workflowRevisionStatusInputSchema } from './workflow-revisions'
 import { workflowWorkspaceRecoveryInputSchema, workflowRecoveryArtifactInputSchema } from './workflow-recovery'
@@ -24,7 +24,7 @@ import { nativeConversationTaskSchema } from './conversation/task-native'
 import { taskPlanningRuntimeBodies } from './conversation/task-planning-runtime'
 import {
   ConversationAttachmentDraftTargetSchema, ConversationAttachmentIdSchema, ConversationAttachmentReadSchema,
-  ConversationAttachmentWireStageSchema, conversationAttachmentReferenceFields,
+  ConversationAttachmentWireBytesSchema, ConversationAttachmentWireKnowledgeSchema, conversationAttachmentReferenceFields,
 } from './conversation/attachments'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
@@ -93,6 +93,8 @@ export const runtimeBodies = {
     model: z.string().min(1).max(8192), instanceId: z.string().min(1).max(64),
     commandId: z.string().uuid(), messageId: z.string().uuid().optional(),
     options: conversationModelOptionsSchema.optional(),
+    role: conversationProjectRoleSelectionSchema.optional(),
+    knowledgePageId: z.uuid().optional(),
     ...conversationAttachmentReferenceFields,
   }),
   'runtime.conversationList': taskConversation.extend({ archived: z.boolean().optional(), query: z.string().trim().max(160).optional() }),
@@ -103,7 +105,7 @@ export const runtimeBodies = {
     afterSequence: conversationSequence,
     limit: conversationPageLimit,
   }),
-  'runtime.conversationApply': taskConversation.extend({ command: conversationThreadCommandSchema }),
+  'runtime.conversationApply': taskConversation.extend({ command: conversationThreadCommandSchema, knowledgePageId: z.uuid().optional() }),
   'runtime.conversationThreadCommand': taskConversation.extend({ threadId: id, commandId: z.string().uuid() }),
   'runtime.conversationEventDelta': taskConversation.extend({
     threadId: id,
@@ -115,7 +117,10 @@ export const runtimeBodies = {
     cursor: z.object({ storageId: id, threadId: id, beforeRunOrdinal: conversationSequence }).strict(),
     limit: conversationPageLimit,
   }),
-  'runtime.conversationAttachmentStage': ConversationAttachmentWireStageSchema.extend(taskConversation.shape),
+  'runtime.conversationAttachmentStage': z.union([
+    ConversationAttachmentWireBytesSchema.extend(taskConversation.shape),
+    ConversationAttachmentWireKnowledgeSchema.extend(taskConversation.shape),
+  ]),
   'runtime.conversationAttachmentList': ConversationAttachmentDraftTargetSchema.extend(taskConversation.shape),
   'runtime.conversationAttachmentRelease': ConversationAttachmentDraftTargetSchema.extend({ ...taskConversation.shape, attachmentId: ConversationAttachmentIdSchema }),
   'runtime.conversationAttachmentRead': ConversationAttachmentReadSchema.extend(taskConversation.shape),
@@ -128,9 +133,6 @@ export const runtimeBodies = {
   'runtime.profileSave': z.object({ input: z.unknown() }).strict(),
   'runtime.profileDelete': z.object({ profileId: id }).strict(),
   'runtime.historyList': z.object({ input: acpHistoryListInputSchema }).strict(),
-  'runtime.conversationProjectionList': z.object({ input: acpConversationListInputSchema }).strict(),
-  'runtime.conversationProjectionDetail': acpConversationDetailInputSchema,
-  'runtime.conversationProjectionEvents': acpConversationEventsInputSchema,
   'runtime.historySession': session,
   'runtime.historyEvents': session.extend({ input: acpHistoryEventsInputSchema }).strict(),
   'runtime.piImage': session.extend({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),

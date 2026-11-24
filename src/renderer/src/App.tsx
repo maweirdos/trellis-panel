@@ -63,15 +63,16 @@ function MainApp(): JSX.Element {
         state.pushToast({ kind: 'error', title: '来源项目尚未就绪', body: '请重新点击文档窗口的返回来源' })
         return
       }
-      if (origin.sessionId) {
-        useMy.getState().setAgentSessionTarget(origin.sessionId)
-        useMy.getState().requestAgentView(null)
-        state.setPage('acp')
-      } else if (origin.taskDir) {
+      if (origin.taskDir) {
         const snapshot = state.snapshot
         const task = snapshot && [...snapshot.tasks, ...snapshot.archived].find((item) => item.dirName === origin.taskDir || item.path === origin.taskDir)
-        if (task && snapshot) { state.showTask(task.dirName, snapshot.archived.includes(task)); state.setPage('tasks') }
+        if (task && snapshot) { state.setPage('tasks'); state.showTask(task.dirName, snapshot.archived.includes(task)) }
         else state.pushToast({ kind: 'error', title: '来源任务已不可用', body: origin.taskDir })
+      } else if (origin.sessionId) {
+        useMy.getState().setTaskConversationTarget(null)
+        useMy.getState().requestAgentView('conversation')
+        state.setPage('acp')
+        state.pushToast({ kind: 'info', title: '原对话记录已不可用' })
       }
     })
     const offFocus = api.onBridgeTaskFocus((taskDir) => {

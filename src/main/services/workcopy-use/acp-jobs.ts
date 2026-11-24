@@ -196,9 +196,11 @@ export async function shutdownAcpJobs(directory?: string): Promise<void> {
   if (results.some(item => item.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '原生执行或连接探测的 Job 清理尚未确认，原所有者已保留。', 'unknown')
 }
 /** No PID adoption: only the original durable Job names/nonces can be reconciled. */
-export async function recoverAcpJobOwner(directory: string, owner: WorkcopyOwner, allowCurrentOwner = false): Promise<boolean> {
+export async function recoverAcpJobOwner(directory: string, owner: WorkcopyOwner, allowCurrentOwner = false, expected?: { root: string; identityId?: string }): Promise<boolean> {
   const state = readOwner(directory, owner)
   if (!state) return false
+  if (expected && (resolve(state.root).toLowerCase() !== resolve(expected.root).toLowerCase()
+    || expected.identityId !== undefined && state.identityId !== expected.identityId)) throw new DaemonError('E_DENIED', '原 Job 与待清理的工作副本不一致。')
   const host = await processIdentity(state.host.pid)
   if (host && sameOwner(host, state.host) && !(allowCurrentOwner && host.pid === process.pid)) throw new DaemonError('E_CONFLICT', '原运行所有者仍存活，请由原所有者清理。')
   const kernel = await kernelLifetime().catch(() => undefined)

@@ -217,7 +217,11 @@ export function PageBody(): JSX.Element {
       <Suspense fallback={acpActive && outerInteractive ? <PageLoading /> : null}>
       <InteractionScope key={acpSource?.owner ?? 'empty'} active={acpActive}>
         {retained && <div ref={(element) => { sourceRef.current = element; if (element) element.inert = !acpActive || !outerInteractive }} data-acp-source-owner={acpSource.owner} data-panel={panelActive} hidden={!acpActive} aria-hidden={!acpActive || undefined} className="knowledge-discussion-source">
-          {panelActive && <header className="knowledge-discussion-header"><strong>知识讨论</strong><Button size="sm" variant="ghost" title="在对话中打开" aria-label="在对话中打开" onClick={() => useApp.getState().setPage('acp')}><ArrowUpRight size={15} /></Button><Button size="sm" variant="ghost" aria-label="收起知识讨论" onClick={() => useKnowledgeDiscussion.getState().hide()}><X size={15} /></Button></header>}
+          {panelActive && <header className="knowledge-discussion-header"><strong>知识讨论</strong><Button size="sm" variant="ghost" title="在对话中打开" aria-label="在对话中打开" onClick={() => {
+            useMy.getState().setTaskConversationTarget(null)
+            useMy.getState().requestAgentView('conversation')
+            useApp.getState().setPage('acp')
+          }}><ArrowUpRight size={15} /></Button><Button size="sm" variant="ghost" aria-label="收起知识讨论" onClick={() => useKnowledgeDiscussion.getState().hide()}><X size={15} /></Button></header>}
           <ErrorBoundary key={`acp:${acpSource.root ?? 'preview'}:${acpSource.owner}`}><PageLayout variant={PAGE_LAYOUTS.acp}><AcpConsolePage compact={panelActive} /><StartupContentCommit active={acpActive} /></PageLayout></ErrorBoundary>
         </div>}
       </InteractionScope>
@@ -320,10 +324,7 @@ export function MyApp(): JSX.Element {
     const offApp = useApp.subscribe((state, previous) => {
       if (state.page !== previous.page) {
         rememberModulePage(state.page)
-        if (state.page !== 'acp') {
-          useMy.getState().requestAgentView(null)
-          useMy.getState().setAgentSessionTarget(null)
-        }
+        if (state.page !== 'acp') useMy.getState().requestAgentView(null)
       }
       persist()
     })

@@ -27,17 +27,14 @@ export const ipcInvoke = {
   },
   designWorkspace: {
     list: 'designWorkspace:list', get: 'designWorkspace:get', listConversation: 'designWorkspace:listConversation', sync: 'designWorkspace:sync', createConversation: 'designWorkspace:createConversation',
-    save: 'designWorkspace:save', send: 'designWorkspace:send', adopt: 'designWorkspace:adopt', discard: 'designWorkspace:discard', export: 'designWorkspace:export'
+    save: 'designWorkspace:save', send: 'designWorkspace:send', status: 'designWorkspace:status', respond: 'designWorkspace:respond',
+    adopt: 'designWorkspace:adopt', discard: 'designWorkspace:discard', export: 'designWorkspace:export'
   },
   docxPreviewResult: 'docxPreview:result',
   privateConversations: {
-    reconcileSend: 'privateConversations:reconcileSend',
-    taskAction: 'privateConversations:taskAction',
     taskSuggestion: { start: 'privateConversations:taskSuggestion:start', check: 'privateConversations:taskSuggestion:check', adopt: 'privateConversations:taskSuggestion:adopt', close: 'privateConversations:taskSuggestion:close' },
-    connect: 'privateConversations:connect',
     list: 'privateConversations:list', createDraft: 'privateConversations:createDraft', updateDraft: 'privateConversations:updateDraft',
-    read: 'privateConversations:read', events: 'privateConversations:events', send: 'privateConversations:send', respond: 'privateConversations:respond',
-    cancel: 'privateConversations:cancel', end: 'privateConversations:end', configure: 'privateConversations:configure', recoverModel: 'privateConversations:recoverModel', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
+    read: 'privateConversations:read', events: 'privateConversations:events', pickDirectory: 'privateConversations:pickDirectory', pickFiles: 'privateConversations:pickFiles',
     files: 'privateConversations:files', openFile: 'privateConversations:openFile', readFile: 'privateConversations:readFile', readAttachment: 'privateConversations:readAttachment', previewImage: 'privateConversations:previewImage', previewPdf: 'privateConversations:previewPdf', previewDocx: 'privateConversations:previewDocx', cancelDocx: 'privateConversations:cancelDocx', validatePdfLocator: 'privateConversations:validatePdfLocator', releasePdfLocator: 'privateConversations:releasePdfLocator', image: 'privateConversations:image', saveImage: 'privateConversations:saveImage',
     projects: 'privateConversations:projects', createProject: 'privateConversations:createProject', reclassify: 'privateConversations:reclassify',
     git: 'privateConversations:git',
@@ -205,10 +202,8 @@ export const ipcInvoke = {
   },
   taskOutputs: { read: 'task-outputs:read', preview: 'task-outputs:preview', confirm: 'task-outputs:confirm', compare: 'task-outputs:compare', recover: 'task-outputs:recover' },
   cruxProgress: {
-    status: 'crux-progress:status', start: 'crux-progress:start', report: 'crux-progress:report',
-    retry: 'crux-progress:retry', detach: 'crux-progress:detach', conversation: 'crux-progress:conversation',
-    events: 'crux-progress:events', send: 'crux-progress:send', respond: 'crux-progress:respond',
-    cancel: 'crux-progress:cancel', resume: 'crux-progress:resume'
+    status: 'crux-progress:status', report: 'crux-progress:report',
+    retry: 'crux-progress:retry', detach: 'crux-progress:detach'
   },
   fs: {
     readText: 'fs:readText',
@@ -528,35 +523,10 @@ export const ipcInvoke = {
   },
   acp: {
     agents: 'acp:agents',
-    sessions: 'acp:sessions',
-    historyList: 'acp:history.list',
-    conversationProjectionList: 'acp:conversation-projection.list',
-    conversationProjectionDetail: 'acp:conversation-projection.detail',
-    conversationProjectionEvents: 'acp:conversation-projection.events',
-    historySession: 'acp:history.session',
-    historyUpdate: 'acp:history.update',
-    historyDelete: 'acp:history.delete',
-    historyRegenerateTitle: 'acp:history.regenerate-title',
-    historyEvents: 'acp:history.events',
-    piImage: 'acp:pi.image',
-    piImageSave: 'acp:pi.image.save',
-    piDocumentOpen: 'acp:pi.document.open',
-    piDocumentCancel: 'acp:pi.document.cancel',
     piWebPreviewOpen: 'acp:pi.web-preview.open',
     piWebPreviewStatus: 'acp:pi.web-preview.status',
     piWebPreviewClose: 'acp:pi.web-preview.close',
     piWebPreviewOpenExternal: 'acp:pi.web-preview.open-external',
-    historyRetry: 'acp:history.retry',
-    sessionRecoverModel: 'acp:session.recover-model',
-    sessionNew: 'acp:session.new',
-    sessionHandoffPreview: 'acp:session.handoff-preview',
-    sessionHandoffCreate: 'acp:session.handoff-create',
-    sessionHandoffStatus: 'acp:session.handoff-status',
-    sessionHandoffCancel: 'acp:session.handoff-cancel',
-    sessionPrompt: 'acp:session.prompt',
-    sessionCancel: 'acp:session.cancel',
-    sessionKill: 'acp:session.kill',
-    permissionRespond: 'acp:permission.respond',
     profiles: 'acp:profiles',
     profileSave: 'acp:profile.save',
     profileDelete: 'acp:profile.delete',
@@ -570,10 +540,7 @@ export const ipcInvoke = {
     localProviderList: 'acp:local-provider.list',
     localProviderSave: 'acp:local-provider.save',
     localProviderDelete: 'acp:local-provider.delete',
-    providerCapabilities: 'acp:provider.capabilities',
-    sessionResume: 'acp:session.resume',
-    sessionConfigure: 'acp:session.configure',
-    sessionBindTask: 'acp:session.bind-task'
+    providerCapabilities: 'acp:provider.capabilities'
   }
 } as const
 

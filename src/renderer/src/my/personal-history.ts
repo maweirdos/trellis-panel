@@ -3,7 +3,7 @@ import { useApp } from '../store'
 import { projectRootKey } from './navigation'
 
 export interface PersonalVisit {
-  kind: 'task' | 'document' | 'agent' | 'chat'
+  kind: 'task' | 'document'
   target: string
   title: string
   archived?: boolean
@@ -25,7 +25,7 @@ function load(key: string | null): PersonalVisit[] {
   let entries: PersonalVisit[] = []
   try {
     const value: unknown = JSON.parse(localStorage.getItem(key) || '[]')
-    if (Array.isArray(value)) entries = value.filter((item): item is PersonalVisit => Boolean(item && typeof item === 'object' && ['task', 'document', 'agent', 'chat'].includes(item.kind) && typeof item.target === 'string' && typeof item.title === 'string' && typeof item.at === 'number' && Number.isFinite(item.at) && (item.archived === undefined || typeof item.archived === 'boolean'))).slice(0, 60)
+    if (Array.isArray(value)) entries = value.filter((item): item is PersonalVisit => Boolean(item && typeof item === 'object' && (item.kind === 'task' || item.kind === 'document') && typeof item.target === 'string' && typeof item.title === 'string' && typeof item.at === 'number' && Number.isFinite(item.at) && (item.archived === undefined || typeof item.archived === 'boolean'))).slice(0, 60)
   } catch { /* Local history can be unavailable without affecting the workspace. */ }
   cache.set(key, entries)
   return entries

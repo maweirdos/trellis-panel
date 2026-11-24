@@ -17,7 +17,13 @@ Consume [native preparation](./native-task-preparation.md),
 [fixed inputs](./team-execution-inputs.md),
 [execution authority](./team-task-executions-v2.md) and
 [artifact/checkpoint contracts](./team-execution-artifacts.md).
-Keep legacy v1 progress, Trellis task bindings and retained cleanup separate.
+Team progress retains status, manual summaries, explicit reporting takeover and
+release. Ordinary task conversations use the task-scoped v2 Workbench. Formal
+launch goes through `ProductTaskEntryService`. Retired progress-session rows
+carry only queue, fixed-input and original cleanup authority. Their aliases
+cannot be read or resumed as ACP conversations. Cleanup must match the retained
+task, directory and generation and confirm the original Job or other accepted
+native evidence before releasing the original workcopy lease.
 
 ## Desktop task entry
 

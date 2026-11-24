@@ -49,6 +49,7 @@ export interface ConversationAuthority extends ConversationProjectScope {
   readonly ownerId: string
   readonly spaceId: string
   readonly binding: ConversationBinding
+  readonly knowledgePageId?: string
 }
 
 export interface ConversationRunEvidence {

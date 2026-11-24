@@ -62,6 +62,8 @@ export function registerDesignWorkspaceIpc(deps: WindowDeps, conversations: Priv
   wrapped(channels.createConversation, (input, current) => service.createConversation(input, current))
   wrapped(channels.save, (input, current) => service.save(input, current))
   wrapped(channels.send, (input, current) => service.send(input, current))
+  wrapped(channels.status, (input, current) => service.status(input, current))
+  wrapped(channels.respond, (input, current) => service.respond(input, current))
   wrapped(channels.adopt, (input, current) => service.adopt(input, current))
   wrapped(channels.discard, (input, current) => service.discard(input, current))
   wrapped(channels.export, (input, current) => service.export(input, current))

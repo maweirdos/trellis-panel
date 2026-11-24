@@ -29,15 +29,15 @@ export function useNarrowConversationPanel(): boolean {
   return useSyncExternalStore(subscribeWidth, () => window.matchMedia(narrowWindow).matches, () => false)
 }
 
-export function ConversationRightPanel({ panel, projectAvailable, onHide, onCloseTab, threadTitle, children }: {
+export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide, onCloseTab, threadTitle, children }: {
   panel: Panel
+  narrow: boolean
   projectAvailable: boolean
   onHide(): void
   onCloseTab?(surface: ConversationRightPanelSurface): void
   threadTitle(threadId: string): string | undefined
   children(surface: ConversationRightPanelSurface, selected: boolean): ReactNode
 }): JSX.Element | null {
-  const narrow = useNarrowConversationPanel()
   const id = useId()
   const tabs = useRef(new Map<string, HTMLButtonElement>())
   const focusTabs = useRef(true)

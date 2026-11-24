@@ -19,7 +19,7 @@ export interface KnowledgePort {
   documents(connection: ResolvedConnection, collectionId: string, page: number, signal?: AbortSignal, folderPath?: string): Promise<{ items: { id: string; title: string; fileType: string; parseStatus: string; folderPath?: string | null }[]; page: number; hasMore: boolean; total?: number }>
   folders(connection: ResolvedConnection, collectionId: string, signal?: AbortSignal): Promise<KnowledgeFolderTree>
   search(connection: ResolvedConnection, collectionIds: string[], query: string, limit: number, signal?: AbortSignal): Promise<{ items: KnowledgeRemoteHit[]; partial: boolean }>
-  read(connection: ResolvedConnection, documentId: string, collectionId: string, signal?: AbortSignal): Promise<{ title: string; text: string; mode: 'full' | 'unsupported'; truncated: boolean }>
+  read(connection: ResolvedConnection, documentId: string, collectionId: string, signal?: AbortSignal): Promise<{ title: string; text: string; mode: 'full' | 'unsupported'; truncated: boolean; documentRevision?: string }>
   publish(connection: ResolvedConnection, collectionId: string, input: KnowledgePublicationPayload, signal?: AbortSignal): Promise<{ documentId: string }>
 }
 

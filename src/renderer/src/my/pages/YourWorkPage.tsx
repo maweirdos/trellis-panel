@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
-import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, Loader2, MessageSquare, MoreHorizontal, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Bot, Check, CheckCircle2, Clock3, FileText, GitBranch, Inbox, ListTodo, Loader2, MoreHorizontal, Plus, RefreshCw, Star, Terminal, Users, X, type LucideIcon } from 'lucide-react'
 import { useApp } from '../../store'
 import { api, hasIpc } from '../../api'
 import { Select } from '../../components/Select'
@@ -19,7 +19,6 @@ import { TaskConversationAssociationModal } from '../components/TaskConversation
 import { TaskContinuationModal } from '../components/TaskContinuationModal'
 import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, useTaskConversations, type TaskConversationController } from '../use-task-conversations'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
-import { newDraft, readArchive, selectArchive, useConversations } from '../../conversations/workspace'
 
 type HomeView = 'assigned' | 'created' | 'favorites' | 'completed'
 type StatusFilter = 'open' | 'all' | 'ready' | 'active' | 'review' | 'completed'
@@ -48,8 +47,8 @@ export interface HomeTask {
 const TASK_LIMIT = 8
 const PRIORITY_ORDER: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
 const PRIORITY_LABELS: Record<Priority, string> = { urgent: '紧急', high: '高', medium: '中', low: '低', none: '无' }
-const VISIT_LABELS = { task: '任务', document: '文档', agent: '对话', chat: '问答' }
-const VISIT_ICONS = { task: ListTodo, document: BookOpen, agent: Bot, chat: MessageSquare }
+const VISIT_LABELS = { task: '任务', document: '文档' }
+const VISIT_ICONS = { task: ListTodo, document: BookOpen }
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'open', label: '未结束' },
   { value: 'all', label: '全部状态' },
@@ -373,7 +372,6 @@ export function YourWorkPage(): JSX.Element {
   }
   const startAgentConversation = (): void => {
     useMy.getState().setShellView('collaboration')
-    newDraft('work')
     useApp.getState().setPage('chat')
   }
   const openVisit = (entry: PersonalVisit): void => {
@@ -384,27 +382,7 @@ export function YourWorkPage(): JSX.Element {
       if (found) inspectTask(found)
       return
     }
-    if (entry.kind === 'document') app.openSpecDocument(entry.target)
-    else if (entry.kind === 'agent') {
-      useMy.getState().requestAgentView(null)
-      useMy.getState().setAgentSessionTarget(entry.target)
-      app.setPage('acp')
-    } else if (hasIpc) {
-      const navigation = app.navigationRevision
-      void readArchive(entry.target).then(() => {
-        const current = useApp.getState()
-        if (current.navigationRevision !== navigation || current.snapshot?.meta.root !== projectRoot || current.page !== 'dashboard' || current.openTaskDir || !canInteract()) return
-        if (!useConversations.getState().archiveReads[entry.target]?.value) { current.pushToast({ kind: 'error', title: '该问答已不可用' }); return }
-        useMy.getState().setShellView('collaboration')
-        selectArchive(entry.target, 'work')
-        current.setPage('chat')
-        rememberVisit(entry)
-      }).catch(() => {
-        const current = useApp.getState()
-        if (current.snapshot?.meta.root === projectRoot && current.page === 'dashboard') current.pushToast({ kind: 'error', title: '问答打开失败' })
-      })
-      return
-    } else return
+    app.openSpecDocument(entry.target)
     rememberVisit(entry)
   }
   const submitQuickTodo = async (): Promise<void> => {

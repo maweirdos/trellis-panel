@@ -989,7 +989,12 @@ export class WorkflowApplicationService {
     if (input.run && (!snapshot || canonicalWorkflowJson(snapshot.run.run) !== canonicalWorkflowJson(input.run))) throw new WorkflowApplicationError('NOT_FOUND', 'The exact requested run is absent from the retained owner scope')
     const [projection, source] = await Promise.all([this.projectSnapshot(scope, snapshot), inspectRecoverySource(this.projectRoot, scope, this.control)])
     this.assertOpen()
-    return { scope, ownership: { state: lease.state, leaseUntil: lease.leaseUntil, recoveryRequired: lease.recoveryRequired }, projection, source }
+    const run = snapshot?.run.run
+    const live = run && this.live.get(run.runId)
+    const stopTarget = live && canonicalWorkflowJson(live.scope) === canonicalWorkflowJson(scope) &&
+      canonicalWorkflowJson(live.run.run) === canonicalWorkflowJson(run) && !terminal.has(live.run.state)
+      ? { taskDir: live.taskDir, run: live.run.run } : undefined
+    return { scope, ownership: { state: lease.state, leaseUntil: lease.leaseUntil, recoveryRequired: lease.recoveryRequired }, projection, source, stopTarget }
   }
   private async eventsForCurrent(scope: WorkflowScope, run: RunRef): Promise<WorkflowApplicationEventPage['items']> {
     let cursor: WorkflowApplicationEventPage['cursor'] | null = null

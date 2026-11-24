@@ -20,6 +20,7 @@ import { ThreadCommands } from './ThreadCommands'
 import type { ConversationAuthority } from '../../../../shared/conversation/desktop'
 import type { ConversationThreadSnapshot } from '../../../../shared/conversation/command-runtime'
 import type { ConversationAttachmentReferences } from '../../../../shared/conversation/attachments'
+import type { ConversationProjectRoleSelection } from '../../../../shared/conversation/project-role'
 import type { ConversationAttachmentStore } from '../attachments'
 import { prepareConversationAttachmentClaim } from '../attachments/claims'
 import { assertPromptAttachments, type ConversationPromptAttachmentSupport } from '../providers/core/attachment-input'
@@ -32,6 +33,7 @@ export interface NewThreadRequest extends ConversationAttachmentReferences {
   readonly spaceId: string
   readonly title: string
   readonly text: string
+  readonly role?: ConversationProjectRoleSelection
   readonly driverKind: ProviderDriverKind
   readonly modelSelection: ModelSelection
   readonly messageId?: string
@@ -69,7 +71,7 @@ export class ThreadMessageIntake {
   ) {}
 
   launchThread(input: NewThreadRequest & { readonly commandId: string }, authority?: ConversationAuthority, configurationFingerprint?: string,
-    promptAttachments?: ConversationPromptAttachmentSupport): IntakeResult {
+    promptAttachments?: ConversationPromptAttachmentSupport, readRoleInstructions?: () => string): IntakeResult {
     const digest = commandPayloadDigest({ ...input, commandId: undefined })
     const existing = this.eventSink.readReceipt(input.commandId)
     if (existing) {
@@ -82,6 +84,7 @@ export class ThreadMessageIntake {
       if (!receipt) return { conflict: 'The original command has no readable thread.' }
       return { receipt, committed: false }
     }
+    const roleInstructions = readRoleInstructions?.()
     const timestamp = DateTime.nowUnsafe()
     const iso = DateTime.formatIso(timestamp)
     const threadId = newId('thr')
@@ -115,7 +118,8 @@ export class ThreadMessageIntake {
       { id: randomUUID() as never, threadId: threadId as never, runId: runId as never, occurredAt: timestamp, type: 'run.created', payload: run },
       { id: randomUUID() as never, threadId: threadId as never, runId: runId as never, occurredAt: timestamp, type: 'message.updated', payload: message },
     ]
-    const resultSequence = this.commitCommand(input.commandId, digest, thread, run, message, events, iso, input, authority, configurationFingerprint, attachmentClaim?.commit)
+    const resultSequence = this.commitCommand(input.commandId, digest, thread, run, message, events, iso, input, authority,
+      configurationFingerprint, attachmentClaim?.commit, roleInstructions)
     return { receipt: { threadId, runId, commandId: input.commandId, messageId, acceptedAt: iso, resultSequence }, committed: true }
   }
 
@@ -131,6 +135,7 @@ export class ThreadMessageIntake {
     authority?: ConversationAuthority,
     configurationFingerprint?: string,
     claimAttachments?: () => void,
+    roleInstructions?: string,
   ): number {
     const threadId = thread.id
     const runId = run.id
@@ -160,8 +165,18 @@ export class ThreadMessageIntake {
       this.database.prepare(`
         INSERT INTO conversation_v2_effect_outbox (effect_id, command_id, thread_id, effect_type, payload_json, status, available_at, created_at, updated_at)
         VALUES (?, ?, ?, 'provider-turn.start', ?, 'pending', ?, ?, ?)
-      `).run(randomUUID(), commandId, threadId, JSON.stringify({ runId, configurationFingerprint }), acceptedAt, acceptedAt, acceptedAt)
+      `).run(randomUUID(), commandId, threadId, JSON.stringify({ runId, configurationFingerprint, roleInstructions }), acceptedAt, acceptedAt, acceptedAt)
     })
+  }
+
+  readRoleInstructions(threadId: string): string | undefined {
+    const row = this.database.prepare(`
+      SELECT json_extract(effect.payload_json, '$.roleInstructions') AS instructions
+      FROM conversation_v2_command_receipts receipt
+      JOIN conversation_v2_effect_outbox effect ON effect.command_id = receipt.command_id
+      WHERE receipt.thread_id = ? AND receipt.command_type = 'thread.create' AND effect.effect_type = 'provider-turn.start'
+    `).get(threadId)
+    return typeof row?.instructions === 'string' ? row.instructions : undefined
   }
 
   readCommand(commandId: string, ownerId: string, spaceId: string, projectId: string): ConversationCommandReceipt | undefined {

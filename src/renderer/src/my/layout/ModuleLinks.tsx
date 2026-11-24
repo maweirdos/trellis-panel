@@ -7,10 +7,9 @@ import type { AgentView, KnowledgeView } from '../navigation'
 export const contextButtonClass = (selected: boolean): string => `my-context-button my-nav-item flex min-h-8 w-full items-center gap-2 rounded-my-md px-2.5 py-1.5 text-left text-my-sm transition-colors ${selected ? 'is-selected font-medium text-my-primary' : 'text-my-secondary'}`
 
 /** Embedded in the existing source browser: one sidebar, one route authority. */
-export function ModuleLinks({ domain, agentView, onAgentView }: {
+export function ModuleLinks({ domain, agentView }: {
   domain: 'agents' | 'knowledge'
   agentView?: AgentView
-  onAgentView?: (view: AgentView) => void
 }): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
@@ -19,8 +18,9 @@ export function ModuleLinks({ domain, agentView, onAgentView }: {
   const setKnowledgeView = useMy((state) => state.setKnowledgeView)
   const requestAgentView = useMy((state) => state.requestAgentView)
   const agent = (view: AgentView): void => {
-    if (useApp.getState().page === 'acp' && view !== 'native' && onAgentView) onAgentView(view)
-    else { requestAgentView(view); if (useApp.getState().page !== 'acp') setPage('acp') }
+    useMy.getState().setTaskConversationTarget(null)
+    requestAgentView(view)
+    if (useApp.getState().page !== 'acp') setPage('acp')
   }
   const knowledge = (view: KnowledgeView): void => {
     if (useMy.getState().knowledgeView !== view) setKnowledgeView(view)

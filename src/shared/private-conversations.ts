@@ -5,7 +5,6 @@ import type { IpcFail } from './ipc-errors'
 import { ACP_IMAGE_MIME_TYPES, ACP_IMAGE_MAX_BASE64 } from './acp-images'
 import { modelSelectionIdSchema } from './model-selection'
 import { teamTaskRefSchema } from './team-task-execution'
-import type { ConversationTaskSource } from './conversation-task'
 
 const id = z.string().uuid()
 const name = z.string().trim().min(1).max(200)
@@ -79,7 +78,6 @@ export interface ConversationRead {
 }
 export interface ConversationDirectoryGrant { grantId: string; path: string }
 export interface ConversationApi {
-  taskAction(id: string, input: import('./conversation-task').ConversationTaskAction): Promise<ConversationResult<import('./conversation-task').ConversationTaskResult>>
   taskSuggestion: {
     start(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionStart): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
     check(id: string, input: import('./crux-task-suggestions').TaskDescriptionSuggestionCheck): Promise<ConversationResult<import('./crux-task-suggestions').TaskDescriptionSuggestionResult>>
@@ -91,14 +89,6 @@ export interface ConversationApi {
   updateDraft(id: string, input: ConversationUpdateDraft): Promise<ConversationResult<ConversationRead>>
   read(id: string): Promise<ConversationResult<ConversationRead>>
   events(id: string, input?: { before?: string; after?: string; limit?: number }): Promise<ConversationResult<AcpHistoryEventPage | null>>
-  send(id: string, input: ConversationSend & { taskSource?: ConversationTaskSource }): Promise<ConversationResult<{ conversation: Conversation; session: AcpSessionRecord; turnId: string }>>
-  reconcileSend?(id: string, requestId: string): Promise<ConversationResult<{ state: 'sent' | 'not-sent' | 'unknown'; turnId?: string }>>
-  respond(id: string, input: ConversationRespond): Promise<ConversationResult<null>>
-  cancel(id: string, input?: ConversationConnection): Promise<ConversationResult<null>>
-  end(id: string, input?: ConversationConnection): Promise<ConversationResult<null>>
-  configure(id: string, input: import('./acp-configuration').ConversationConfigure): Promise<ConversationResult<AcpSessionRecord>>
-  recoverModel(id: string, input: import('./acp-configuration').ConversationRecoverModel): Promise<ConversationResult<AcpSessionRecord>>
-  connect?(id: string): Promise<ConversationResult<AcpSessionRecord>>
   pickDirectory(input?: { purpose: 'code' | 'trellis-requirement' }): Promise<ConversationResult<ConversationDirectoryGrant | null>>
   git(id: string): Promise<ConversationResult<import('./conversation-git').ConversationGitStatus>>
   requirements: import('./conversation-requirements').ConversationRequirementsApi
@@ -146,6 +136,7 @@ export const privateNativeReadSchema = privateNativeOwnerSchema.extend({
 export const privateNativeSendSchema = privateNativeOwnerSchema.extend({ operation: z.enum(['prepare', 'send']), agentId: z.string().min(1).max(200), initialModelId: modelSelectionIdSchema.optional(), displayText: z.string().min(1).max(200_000).optional(), input: conversationSendSchema }).strict()
 export const privateNativeControlSchema = privateNativeOwnerSchema.extend({
   expectedConnectionGeneration: z.string().min(1).max(200).optional(),
+  expectedTurnId: z.string().min(1).max(200).optional(),
   requestId: z.string().min(1).max(200).optional(), optionId: z.string().min(1).max(1000).optional()
 }).strict()
 export type PrivateNativeOwner = z.infer<typeof privateNativeOwnerSchema>

@@ -1438,39 +1438,13 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   conversationAttachmentList: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentList'>) => Promise<{ ok: true; attachments: readonly import('./conversation/attachments').StagedConversationAttachment[] } | IpcFail>
   conversationAttachmentRelease: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentRelease'>) => Promise<{ ok: true; released: boolean } | IpcFail>
   conversationAttachmentRead: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentRead'>) => Promise<{ ok: true; content: import('./conversation/attachments').ConversationAttachmentContent } | IpcFail>
-  /* --- ACP Agent 控制台 --- */
+  /* --- ACP 运行时设置、预览和实时事件 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
-  acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>
-  acpHistoryList: (input?: { limit?: number; cursor?: string; query?: string; filter?: 'all' | 'resumable' | 'transcript'; archive?: 'active' | 'archived' | 'all' }) => Promise<import('./acp-history').AcpHistoryListResult | IpcFail>
-  acpHistoryUpdate: (sessionId: string, input: import('./acp-history').AcpHistoryUpdateInput) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
-  acpHistoryDelete: (sessionId: string, input: import('./acp-history').AcpHistoryDeleteRequest) => Promise<import('./acp-history').AcpHistoryDeleteResult | IpcFail>
-  acpHistoryRegenerateTitle: (sessionId: string) => Promise<import('./acp-history').AcpHistoryUpdateResult | IpcFail>
-  onAcpHistoryChanged: (callback: (event: { projectRoot: string; sessionId: string; deleted?: boolean }) => void) => () => void
-  acpHistorySession: (sessionId: string) => Promise<{ ok: true; version: 1; session: import('./acp-history').AcpHistorySummary } | IpcFail>
-  acpHistoryEvents: (sessionId: string, input?: import('./acp-history').AcpHistoryEventsInput) => Promise<import('./acp-history').AcpHistoryEventPage | IpcFail>
-  acpConversationListSnapshot: (input?: import('./acp-projections').AcpConversationListInput) => Promise<import('./acp-projections').AcpConversationListSnapshot | IpcFail>
-  acpConversationDetailSnapshot: (sessionId: string) => Promise<import('./acp-projections').AcpConversationDetailSnapshot | IpcFail>
-  acpConversationEvents: (sessionId: string, input?: { after?: number; limit?: number }) => Promise<import('./acp-projections').AcpConversationEventPage | IpcFail>
-  acpPiImage: (sessionId: string, imageId: string) => Promise<{ ok: true; image: { mimeType: import('./acp-images').AcpImageMimeType; data: string } } | IpcFail>
-  acpPiImageSave: (sessionId: string, imageId: string) => Promise<{ ok: true; cancelled: boolean } | IpcFail>
-  acpPiDocumentOpen: (input: import('./pi-document').PiDocumentOpenInput) => Promise<import('./local-document-link').LocalDocumentOpenResult>
-  acpPiDocumentCancel: (operationId: string) => void
   acpPiWebPreviewOpen: (input: import('./pi-web-preview').PiWebPreviewOpenInput) => Promise<import('./pi-web-preview').PiWebPreviewOpenResult>
   acpPiWebPreviewStatus: (id: string) => Promise<import('./pi-web-preview').PiWebPreviewStatusResult>
   acpPiWebPreviewClose: (id: string) => Promise<{ ok: true } | IpcFail>
   acpPiWebPreviewOpenExternal: (id: string) => Promise<{ ok: true } | IpcFail>
-  acpHistoryRetry: (sessionId: string) => Promise<{ ok: true; historyPersistence: import('./acp-history').AcpHistoryPersistence } | IpcFail>
-  acpSessionNew: (input: { agentId: string; profileId?: string; taskDir?: string }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
-  acpSessionHandoffPreview: (sessionId: string, input: import('./acp-handoff').AcpHandoffPreviewInput) => Promise<import('./acp-handoff').AcpHandoffPreviewResult | IpcFail>
-  acpSessionHandoffCreate: (sessionId: string, input: import('./acp-handoff').AcpHandoffCreateInput) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
-  acpSessionHandoffStatus: (sessionId: string, operationId: string) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
-  acpSessionHandoffCancel: (sessionId: string, input: import('./acp-handoff').AcpHandoffCancelInput) => Promise<import('./acp-handoff').AcpHandoffOperationResult | IpcFail>
-  acpSessionPrompt: (sessionId: string, text: string, options?: AcpPromptOptions) => Promise<AcpPromptResult>
   acpKnowledgeReferenceCapability: () => Promise<{ supported: boolean }>
-  acpSessionBindTask: (sessionId: string, input: AcpBindTaskInput) => Promise<{ ok: boolean; error?: string; code?: string; session?: AcpSessionRecord }>
-  acpSessionCancel: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
-  acpSessionKill: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
-  acpPermissionRespond: (requestId: string, optionId: string) => Promise<{ ok: boolean; error?: string }>
   acpProfiles: () => Promise<{ ok: boolean; error?: string; profiles?: AcpAgentProfile[] }>
   acpProfileSave: (profile: AcpAgentProfile) => Promise<{ ok: boolean; error?: string; profile?: AcpAgentProfile }>
   acpProfileDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
@@ -1487,12 +1461,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   acpLocalProviderSave: (input: unknown) => Promise<{ ok: true; provider: AcpLocalProviderRecord } | IpcFail>
   acpLocalProviderDelete: (id: string) => Promise<{ ok: true } | IpcFail>
   acpProviderCapabilities: (runtimeId: string) => Promise<{ ok: true; registry?: AcpRegistryAgent; local?: AcpLocalProviderRecord; matrix: AcpCapabilityMatrixItem[] }>
-  acpSessionResume: (sessionId: string) => Promise<{ ok: boolean; error?: string; sessionId?: string }>
-  acpSessionConfigure: (sessionId: string, input: AcpConfigureInput) => Promise<{ ok: boolean; error?: string; session?: AcpSessionRecord }>
-  acpSessionRecoverModel: (sessionId: string, input: import('./acp-recovery').AcpRecoverModelInput) => Promise<import('./acp-recovery').AcpRecoverModelResult>
   onAcpState: (cb: (e: AcpStateEvent) => void) => () => void
   onAcpOutput: (cb: (e: TimelineEvent) => void) => () => void
-  onAcpPermission: (cb: (e: AcpPermissionPayload) => void) => () => void
   onAcpDone: (cb: (e: AcpDoneEvent) => void) => () => void
 
   /* --- GitLab connector --- */

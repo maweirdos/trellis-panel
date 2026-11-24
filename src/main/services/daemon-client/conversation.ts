@@ -5,6 +5,7 @@ import type { ConversationThreadCommandState, ConversationThreadEventPage, Conve
 import type { ConversationDriverDescriptor } from '../../../shared/conversation/driverCatalog'
 import type { ConversationAttachmentBytesInput, ConversationAttachmentContent, StagedConversationAttachment } from '../../../shared/conversation/attachments'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
+import type { ConversationKnowledgeAttachment } from '../../../shared/conversation/knowledge-reference'
 import { conversationTaskScopeSchema } from '../../../shared/conversation/task-scope'
 import type { NativeConversationTask } from '../../../shared/conversation/task-native'
 import type { RuntimeBody } from '../../../shared/daemon-runtime'
@@ -120,12 +121,21 @@ export const describeConversationDriver = async (root: string, input: RuntimeBod
   } catch (error) { return failure(error) }
 }
 
-export async function stageConversationAttachment(root: string, input: RuntimeBody<'runtime.conversationAttachmentList'> & ConversationAttachmentBytesInput, isCurrent: () => boolean): Promise<Awaited<ReturnType<TrellisApi['conversationAttachmentStage']>>> {
+export async function stageConversationAttachment(
+  root: string,
+  input: RuntimeBody<'runtime.conversationAttachmentList'> & (ConversationAttachmentBytesInput | { knowledge: ConversationKnowledgeAttachment }),
+  isCurrent: () => boolean,
+): Promise<Awaited<ReturnType<TrellisApi['conversationAttachmentStage']>>> {
   try {
-    const { bytes, ...metadata } = input
-    const attachment = await runtimeCall<StagedConversationAttachment, 'runtime.conversationAttachmentStage'>(root, 'runtime.conversationAttachmentStage', {
-      ...metadata, data: Buffer.from(bytes).toString('base64'),
-    }, undefined, isCurrent)
+    let wire: RuntimeBody<'runtime.conversationAttachmentStage'>
+    if ('knowledge' in input) wire = input
+    else {
+      const { bytes, ...metadata } = input
+      wire = { ...metadata, data: Buffer.from(bytes).toString('base64') }
+    }
+    const attachment = await runtimeCall<StagedConversationAttachment, 'runtime.conversationAttachmentStage'>(
+      root, 'runtime.conversationAttachmentStage', wire, undefined, isCurrent,
+    )
     return { ok: true, attachment }
   } catch (error) { return failure(error) }
 }

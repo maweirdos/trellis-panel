@@ -54,12 +54,13 @@ export type WorkflowPreparedPrompt = {
 
 /** Facade-owned processes, approvals, native sessions, leases and history stay intact. */
 export interface WorkflowAcpPort {
-  create(root: string, input: { agentId: string; profileId?: string; taskDir: string }): Promise<{ ok: true; sessionId: string } | IpcFail>
+  create(root: string, input: { agentId: string; profileId?: string; taskDir: string }): Promise<{ ok: true; sessionId: string; connectionGeneration: string } | IpcFail>
   list(root: string): { ok: true; sessions: AcpSessionRecord[] } | IpcFail
   get(root: string, sessionId: string): Promise<{ ok: true; session: AcpSessionMeta } | IpcFail>
   historyEvents(root: string, sessionId: string, input?: { limit?: number }): Promise<AcpHistoryEventPage | IpcFail>
   prompt(root: string, sessionId: string, text: string, options?: AcpPromptOptions, prepared?: WorkflowPreparedPrompt): Promise<{ ok: true; turnId: string } | IpcFail>
   cancel(root: string, sessionId: string): Promise<{ ok: true } | IpcFail>
+  stop(root: string, sessionId: string, connectionGeneration: string): Promise<{ stopped: boolean; cancellationAcknowledged: boolean }>
   end(root: string, sessionId: string): Promise<{ ok: true } | IpcFail>
   resume(root: string, sessionId: string): Promise<{ ok: true; sessionId: string } | IpcFail>
   flushHistory(): Promise<void>

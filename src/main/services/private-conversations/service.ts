@@ -418,7 +418,8 @@ export class PrivateConversations {
     await this.authorized(latest); this.observe(id)
     return { ok: true, value: { conversation: latest.conversation, session: sent.session, turnId: sent.turnId } }
   }
-  async control(operation: 'cancel' | 'end' | 'respond', id: string, raw: unknown = {}): Promise<contract.ConversationResult<null>> {
+  async control(operation: 'cancel' | 'end' | 'respond', id: string, raw: unknown = {}, guard?: { turnId: string; assertCurrent(): void }): Promise<contract.ConversationResult<null>> {
+    guard?.assertCurrent()
     const cleanup = operation !== 'respond'
     const input = operation === 'respond' ? contract.conversationRespondSchema.parse(raw) : contract.conversationConnectionSchema.parse(raw ?? {}), row = await this.owned(id, cleanup)
     const sending = this.sending.get(id)
@@ -426,8 +427,13 @@ export class PrivateConversations {
     await this.authorized(row, cleanup)
     if (!row.conversation.nativeRef) return { ok: true, value: null }
     const method = operation === 'cancel' ? 'runtime.privateCancel' : operation === 'end' ? 'runtime.privateEnd' : 'runtime.privateRespond'
-    const current = operation === 'respond' ? await this.planningHooks?.beforeRespond(id, contract.conversationRespondSchema.parse(input)) : undefined
-    const value = await this.ports.native<{ ok: true } | IpcFail, typeof method>(method, { ...this.nativeOwner(row), ...input }, undefined, current)
+    const planningCurrent = operation === 'respond' ? await this.planningHooks?.beforeRespond(id, contract.conversationRespondSchema.parse(input)) : undefined
+    const current = guard ? (): boolean => {
+      try { guard.assertCurrent(); return planningCurrent?.() ?? true } catch { return false }
+    } : planningCurrent
+    guard?.assertCurrent()
+    const value = await this.ports.native<{ ok: true } | IpcFail, typeof method>(method, { ...this.nativeOwner(row), ...input, ...(guard && { expectedTurnId: guard.turnId }) }, undefined, current)
+    guard?.assertCurrent()
     await this.authorized(row, cleanup)
     return value.ok ? { ok: true, value: null } : value
   }

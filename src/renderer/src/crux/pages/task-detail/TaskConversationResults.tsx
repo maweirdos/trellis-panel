@@ -7,9 +7,9 @@ import { CREATION_MAX_BODY_BYTES, type CreationCommand } from '@shared/creations
 import { buildDesignPrototype } from '@shared/design-prototype'
 import { Button, Modal } from '../../../my/ui'
 import { useCrux } from '../../store'
-import { openTaskConversationFromPost } from '../../../conversations/task-navigation'
 import { conversationError, conversationValue } from '../../../conversations/client'
 import { designClient } from '../../../designs/client'
+import { openDesign } from '../../../designs/navigation'
 import { creationApi, useCreationList } from '../../../creations/hooks'
 import { openCreation } from '../../../creations/navigation'
 import { stableCommandId } from '../../../utils/stable-command-id'
@@ -22,8 +22,6 @@ export interface TaskConversationResultsProps {
   task: CruxTask
   actorId?: string
   embedded?: boolean
-  onDesignAvailable?(available: boolean): void
-  onDevelop?(design: { documentId: string; conversationId: string; revision: string; title: string }): void
 }
 
 export type SharedTaskCreation = {
@@ -35,7 +33,7 @@ export type SharedTaskCreation = {
   ownerName: string
 }
 
-export function TaskConversationResults({ task, actorId, embedded = false, onDevelop, onDesignAvailable }: TaskConversationResultsProps): JSX.Element | null {
+export function TaskConversationResults({ task, actorId, embedded = false }: TaskConversationResultsProps): JSX.Element | null {
   const snapshot = useCrux((state) => state.snapshot)
   const context = useCrux((state) => state.workspaceContext)
   const source = useTaskSource({ spaceId: task.spaceId, taskId: task.id, embedded })
@@ -43,9 +41,8 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
   const conversations = useMemo(() => task.conversations?.filter(link => link.actorId === actorId && !link.id.startsWith('thr_')) ?? [], [task.conversations, actorId])
   const [documents, setDocuments] = useState<DesignConversationSummary[] | null>(null)
   const [readError, setReadError] = useState('')
-  useEffect(() => { onDesignAvailable?.(Boolean(documents?.some(document => !document.sourceError && !document.readOnly))) }, [documents, onDesignAvailable])
-  const [navigationError, setNavigationError] = useState('')
   const [shareError, setShareError] = useState('')
+  const [developmentDesign, setDevelopmentDesign] = useState<DesignConversationSummary>()
   const [shareDraft, setShareDraft] = useState<{ document: DesignConversationSummary; body: string; commandIds: { create: string; publish: string; adopt: string }; creationId: string; state: 'confirm' | 'running'; stage: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const request = useRef(0)
@@ -119,11 +116,7 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
   if (!conversations.length && !sharedCreations.length && !creations.error) return null
   if (!documents?.length && !sharedCreations.length && !busy && !readError && !creations.error) return null
   const openCanvas = (document: DesignConversationSummary, candidateId?: string): void => {
-    setNavigationError('')
-    const ticket = source.ticket()
-    void openTaskConversationFromPost(task, document.conversationId, () => source.owns(ticket), { canvas: { documentId: document.id, candidateId } }).catch((cause: unknown) => {
-      if (source.owns()) setNavigationError(cause instanceof Error ? cause.message : '原会话当前不可用。')
-    })
+    if (source.owns()) openDesign(document.id, candidateId)
   }
   const openShared = (creation: SharedTaskCreation): void => {
     if (!context.actorId) return
@@ -131,6 +124,8 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
   }
   const category = snapshot.taskStatuses.find(item => item.id === task.statusId)?.category
   const canRequestReview = (!task.workflow || canRestoreLightweightTask(task)) && category !== 'done' && category !== 'cancelled' && currentOutputReview(task).status !== 'awaiting_review'
+  const canPrepareDevelopment = Boolean(actorId && (!task.workflow || canRestoreLightweightTask(task)) &&
+    !task.triagePending && task.executor?.kind !== 'agent' && category !== 'done' && category !== 'cancelled')
   const share = async (requestReview: boolean): Promise<void> => {
     const draft = shareDraft
     const client = creationApi()
@@ -216,7 +211,6 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
       </Button>
     </header>
     {readError && <p role="alert" className="task-conversation-results-error">{readError}</p>}
-    {navigationError && <p role="alert" className="task-conversation-results-error">{navigationError}</p>}
     {shareError && <p role="alert" className="task-conversation-results-error">{shareError}</p>}
     {reviewError && <p role="alert" className="task-conversation-results-error">{reviewError}</p>}
     {documents?.map((document) => <article key={document.id} className="task-conversation-result">
@@ -227,7 +221,8 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
       </span>
       <Button size="sm" variant="ghost" onClick={() => openCanvas(document)}>查看设计</Button>
       {document.candidates.at(-1) && <Button size="sm" variant="ghost" onClick={() => openCanvas(document, document.candidates.at(-1)?.id)}>查看修改稿</Button>}
-      {onDevelop && !document.readOnly && !document.sourceError && <Button size="sm" variant="ghost" onClick={() => onDevelop({ documentId: document.id, conversationId: document.conversationId, revision: document.revision, title: document.title })}>按此设计开发</Button>}
+      {canPrepareDevelopment && !document.readOnly && !document.sourceError &&
+        <Button size="sm" variant="ghost" onClick={() => setDevelopmentDesign(document)}>按此设计开发</Button>}
       {context.state === 'connected' && context.actorId && <Button size="sm" variant="ghost" onClick={() => void prepareShare(document)}>共享此版本</Button>}
     </article>)}
     {sharedCreations.map((creation) => <article key={creation.creationId} className="task-conversation-result">
@@ -240,6 +235,20 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
       <TaskOutputReviewInlineActions task={task} actorId={actorId} output={creation} source={source} />
     </article>)}
     {creations.error && <p role="alert" className="task-conversation-results-error">{creations.error.error}</p>}
+    {developmentDesign && <Modal open width={520} ariaLabel="按此设计开发" onClose={() => setDevelopmentDesign(undefined)}>
+      <section className="space-y-3 p-4">
+        <h2 className="my-item-title">按此设计开发</h2>
+        <p className="my-item-description break-all">{developmentDesign.title} · {developmentDesign.revision.slice(0, 12)}</p>
+        <p className="my-item-description">当前任务入口还不能直接采用本机画布版本并启动开发。可以先把这个固定版本共享到任务。</p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setDevelopmentDesign(undefined)}>返回</Button>
+          {context.state === 'connected' && context.actorId && <Button size="sm" variant="primary" onClick={() => {
+            setDevelopmentDesign(undefined)
+            void prepareShare(developmentDesign)
+          }}>准备共享此版本</Button>}
+        </div>
+      </section>
+    </Modal>}
     {shareDraft && context.actorId && <Modal open width={520} ariaLabel="共享设计版本" onClose={() => { if (shareDraft.state !== 'running') setShareDraft(null) }}>
       <div className="space-y-4 p-4">
         <header className="flex items-center gap-2"><h2 className="my-item-title min-w-0 flex-1 break-words">共享此版本</h2><Button size="sm" variant="ghost" aria-label="关闭共享设计" disabled={shareDraft.state === 'running'} onClick={() => setShareDraft(null)}><X size={15} /></Button></header>

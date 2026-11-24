@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useApp } from '../store'
 import { projectRootKey } from '../my/navigation'
+import { useMy } from '../my/store'
 
 export interface KnowledgeRequestDraft {
   id: string
@@ -22,6 +23,8 @@ export const useKnowledgeRequest = create<RequestIntakeState>((set, get) => ({
     if (!input.title.trim() || projectRootKey(input.root) !== projectRootKey(useApp.getState().snapshot?.meta.root)) return false
     observeRoot()
     set({ draft: { ...input, id: crypto.randomUUID() } })
+    useMy.getState().setTaskConversationTarget(null)
+    useMy.getState().requestAgentView('conversation')
     useApp.getState().setPage('acp')
     return true
   },

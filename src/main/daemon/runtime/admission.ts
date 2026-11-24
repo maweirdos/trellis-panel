@@ -85,9 +85,6 @@ export const SessionReadServiceMethods = new Set<string>([
   'runtime.historySession',
   'runtime.historyEvents',
   'runtime.piImage',
-  'runtime.conversationProjectionList',
-  'runtime.conversationProjectionDetail',
-  'runtime.conversationProjectionEvents',
   'runtime.events',
 ])
 
@@ -97,9 +94,6 @@ export const ConversationReadServiceMethods = new Set<string>([
   'runtime.historySession',
   'runtime.historyEvents',
   'runtime.piImage',
-  'runtime.conversationProjectionList',
-  'runtime.conversationProjectionDetail',
-  'runtime.conversationProjectionEvents',
 ])
 
 export class AdmissionService {

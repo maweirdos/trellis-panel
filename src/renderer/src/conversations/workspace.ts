@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AcpHistoryEventPage } from '@shared/acp-history'
 import type { Conversation, ConversationDirectoryGrant, ConversationFile, ConversationProject, ConversationRead } from '@shared/private-conversations'
-import type { AcpAgentStatus, AcpPermissionPayload, AcpSessionRecord, ChatSessionMeta, ChatSessionView, TimelineEvent } from '@shared/types'
+import type { AcpAgentStatus, AcpSessionRecord, ChatSessionMeta, ChatSessionView, TimelineEvent } from '@shared/types'
 import type { AcpImageAttachment } from '@shared/acp-images'
 import type { CurrentTurnRequest } from '../acp/current-turn-activity'
 import { mergeEvents } from '../acp/timeline'
@@ -487,52 +487,6 @@ export function sessionRunning(current: WorkspaceEntry): boolean {
   if (!session || session.connectionOwned !== true || !session.connectionGeneration || !['starting', 'busy', 'awaiting_permission', 'cancelling'].includes(session.status)) return false
   return !current.events.some((event) => event.kind === 'turn-done' && event.sessionId === session.sessionId && projectRootKey(event.projectRoot) === projectRootKey(session.projectRoot) && event.connectionGeneration === session.connectionGeneration && event.turnId === session.turnId)
 }
-export function actionablePermissions(current: WorkspaceEntry, now: number): Record<string, AcpPermissionPayload> {
-  const session = current.session, conversation = current.conversation
-  if (!conversation || !session?.connectionOwned || !session.connectionGeneration) return {}
-  return Object.fromEntries((session.pendingPermissions ?? []).filter((permission) => ownsSession(permission, conversation) && permission.connectionGeneration === session.connectionGeneration && (!permission.turnId || permission.turnId === session.turnId) && (permission.expiresAt === undefined || permission.expiresAt > now)).map((permission) => [permission.requestId, permission]))
-}
-export function retainConversationDrafts(): void {
-  persistLocalDrafts()
-  if (!nativeNamespace || useConversations.getState().storageError) throw new Error(useConversations.getState().storageError ?? '本机草稿身份尚未确认')
-}
-function settleFailedSubmission(key: string, error: string): void {
-  const submission = entry(key)?.submission
-  if (!submission) return
-  patchEntry(key, { submission: { ...submission, state: 'failed' }, error, action: undefined, request: undefined, savedVersion: -1 })
-  persistLocalDrafts()
-  queueSave(key)
-}
-export function canRetryFailedSubmission(submission: WorkspaceEntry['submission']): boolean {
-  return submission?.state === 'failed' && (Boolean(submission.images?.length) || (submission.hasImages === false && Boolean(submission.draftText.trim())))
-}
-export function dismissFailedSubmission(key: string, requestId: string): void {
-  const current = entry(key)
-  if (!current || current.action || current.submission?.state !== 'failed' || current.submission.id !== requestId) return
-  patchEntry(key, { submission: undefined, error: undefined })
-  persistLocalDrafts()
-}
-export async function reconcileSubmittedMessage(key: string): Promise<void> {
-  const current = entry(key), client = conversationClient(), requestId = current?.submission?.id
-  if (!current || !requestId || current.submission?.state !== 'unknown') return
-  if (!current.conversation) { settleFailedSubmission(key, '发送失败。'); return }
-  try {
-    if (!client?.reconcileSend) { await readConversation(key); return }
-    const receipt = conversationValue(await client.reconcileSend(current.conversation.id, requestId))
-    const latest = entry(key)?.submission
-    if (latest?.id !== requestId || latest.state !== 'unknown') return
-    if (receipt.state === 'not-sent') {
-      await readConversation(key)
-      const reviewed = entry(key)?.submission
-      if (reviewed?.id === requestId && reviewed.state === 'unknown') settleFailedSubmission(key, '发送失败。')
-      return
-    }
-    patchEntry(key, value => ({ submission: value.submission ? { ...value.submission, state: receipt.state === 'sent' ? 'accepted' : 'unknown', turnId: receipt.turnId } : undefined }))
-    if (receipt.state === 'sent') consumeSubmittedReferences(key)
-    await readConversation(key)
-  } catch (cause) { if (entry(key)?.submission?.id === requestId) patchEntry(key, { error: conversationError(cause) }) }
-  finally { persistLocalDrafts() }
-}
 function submittedReferenceIds(current: WorkspaceEntry): string[] {
   const submitted = current.submission
   if (!submitted?.fileIds) return []
@@ -547,7 +501,7 @@ function consumeSubmittedReferences(key: string): void {
   patchEntry(key, { selectedInputIds: current.selectedInputIds?.filter(id => !consumed.includes(id)), excludedInputIds: [...new Set([...(current.excludedInputIds ?? []), ...consumed])] })
 }
 
-export function submittedMessageRecorded(current: Pick<WorkspaceEntry, 'events' | 'submission'>): boolean {
+function submittedMessageRecorded(current: Pick<WorkspaceEntry, 'events' | 'submission'>): boolean {
   const pending = current.submission
   if (!pending) return false
   return current.events.some(event => {
@@ -555,138 +509,6 @@ export function submittedMessageRecorded(current: Pick<WorkspaceEntry, 'events' 
     const action = event.payload.privateAction
     return Boolean(action && typeof action === 'object' && 'requestId' in action && action.requestId === pending.id) || Boolean(pending.turnId && event.turnId === pending.turnId)
   })
-}
-export async function sendMessage(key: string, retryRequestId?: string, taskSource?: StoredSubmission['taskSource']): Promise<void> { await submitMessage(key, retryRequestId, taskSource) }
-
-/** Only an explicit task action supplies a first request. Visiting a bound chat never sends one. */
-export async function sendTaskWorkRequest(key: string, request: 'analyze' | 'develop', source: NonNullable<StoredSubmission['taskSource']>, stillSelected: () => boolean): Promise<void> {
-  const originalText = entry(key)?.text ?? ''
-  const text = request === 'analyze'
-    ? '请结合任务正文、已确认的补充、评论和资料，分析目标和现状，给出可执行的方案。需要我决定的业务问题请直接指出。'
-    : '请依据这张任务和已选定的材料，在当前工程中查明现状、拟定方案并实施，完成后运行适用的检查，给出实际改动、检查结果和仍需测试的内容。遇到会改变业务范围的决定时，先向我确认。'
-  await readConversation(key)
-  const current = entry(key)
-  if (!stillSelected() || !current?.loaded || current.loadError || current.locked || current.conversation?.archivedAt !== undefined) {
-    throw Error('当前对话无法读取，请重新打开后再试。')
-  }
-  if (current.action || sessionRunning(current) || current.submission && current.submission.state !== 'accepted') throw Error('当前对话还有进行中的请求，请先查看它的结果。')
-  if (current.text || current.images?.length || current.selectedInputIds?.length) throw Error('已保留输入框中的草稿和附件，请在当前对话中继续。')
-  editDraft(key, text)
-  await sendMessage(key, undefined, source)
-}
-export async function reconnectConversation(key: string): Promise<void> {
-  const current = entry(key), client = conversationClient()
-  if (!current?.conversation?.nativeRef || !client?.connect || current.action || sessionRunning(current)) return
-  const owner = current.owner, id = current.conversation.id
-  patchEntry(key, { action: 'connect', error: undefined })
-  try {
-    const session = conversationValue(await client.connect(id))
-    const latest = entry(key)
-    if (!latest || latest.owner !== owner || latest.conversation?.id !== id || !ownsSession(session, latest.conversation)) return
-    patchEntry(key, { session, nativeError: undefined, modelConfirmationRequired: false })
-    await readConversation(key)
-  } catch (cause) { if (entry(key)?.owner === owner && entry(key)?.conversation?.id === id) patchEntry(key, { error: conversationError(cause) }); await readConversation(key) }
-  finally { if (entry(key)?.owner === owner && entry(key)?.conversation?.id === id) patchEntry(key, { action: undefined }) }
-}
-async function submitMessage(key: string, retryRequestId?: string, taskSource?: StoredSubmission['taskSource']): Promise<boolean> {
-  const current = entry(key), client = conversationClient(), state = useConversations.getState()
-  if (current?.conversation && (knownConversation(current.conversation.id)?.archivedAt !== undefined || state.managementBusy[current.conversation.id])) return false
-  if (!current || !client || current.action || !current.loaded || sessionRunning(current)) return false
-  const retry = retryRequestId && current.submission?.id === retryRequestId && canRetryFailedSubmission(current.submission) ? current.submission : undefined
-  if (retryRequestId && !retry) return false
-  if (!retry && current.submission && current.submission.state !== 'accepted') {
-    patchEntry(key, { error: current.submission.state === 'failed' ? '请先重新发送或移除上一条未发送的消息。' : '请先检查上一条消息的发送状态。' })
-    return false
-  }
-  const draftText = retry ? retry.draftText : current.text
-  const images = retry ? retry.images : current.images?.length ? current.images : undefined
-  if (!draftText.trim() && !images?.length) return false
-  if (images?.length && current.session && current.session.capabilities?.promptCapabilities?.image !== true) { patchEntry(key, { error: '当前执行引擎未声明支持图片输入，图片草稿已保留。' }); return false }
-  const runtimeId = current.session?.agentId ?? current.runtimeId ?? state.defaultRuntimeId
-  if (!current.conversation?.nativeRef && (!runtimeId || !state.runtimes.some((runtime) => runtime.id === runtimeId && runtime.enabled && runtime.available) || (runtimeId === 'pi' && !state.configuredPi))) {
-    patchEntry(key, { error: runtimeId === 'pi' ? '请先在设置中配置可用模型，草稿已保留。' : '请选择可用的执行引擎，草稿已保留。' }); return false
-  }
-  if (!current.conversation?.nativeRef && runtimeId === 'pi' && (current.modelTooLong || !state.piModels.some((model) => model.id === (current.modelId ?? state.defaultPiModelId) && model.available))) {
-    patchEntry(key, { error: current.modelTooLong ? '所选模型 ID 超出长度限制，请重新选择，草稿已保留。' : '所选模型已不可用或超出长度限制，请重新选择，草稿已保留。' }); return false
-  }
-  const initialModelId = !current.conversation?.nativeRef && runtimeId === 'pi' ? current.modelId ?? state.defaultPiModelId : undefined
-  const version = initialModelId && !current.modelId ? current.version + 1 : current.version
-  if (initialModelId && !current.modelId) patchEntry(key, { modelId: initialModelId, version })
-  const readRevision = metadataRevision
-  const requestId = crypto.randomUUID()
-  const inputFiles = retry ? [] : selectedInputFiles(current), fileReferenceVersion = current.fileReferenceVersion ?? 0
-  const text = retry?.text ?? (inputFiles.length ? `${draftText.trim()}\n\n会话输入文件（工作目录内的相对路径）：\n${inputFiles.map((file) => JSON.stringify(file.relativePath)).join('\n')}` : draftText.trim())
-  if (text.length > 200_000) { patchEntry(key, { error: '消息与文件路径超过长度上限，请缩短消息后再发送。' }); return false }
-  const ownsSubmission = (): boolean => entry(key)?.owner === current.owner && entry(key)?.submission?.id === requestId
-  stopSaveTimer(key)
-  patchEntry(key, {
-    action: 'sending',
-    submission: retry
-      ? { ...retry, id: requestId, state: 'pending', turnId: undefined }
-      : { id: requestId, taskSource, text, draftText, images, hasImages: Boolean(images?.length), version, state: 'pending', fileIds: inputFiles.map(file => file.id), fileReferenceVersion, fileReferenceVersions: Object.fromEntries(inputFiles.map(file => [file.id, current.inputReferenceVersions?.[file.id] ?? 0])) },
-    ...(retry ? {} : { text: '', images: undefined }), version: version + 1, savedVersion: -1, error: undefined, following: true
-  })
-  try { retainConversationDrafts() }
-  catch (cause) { patchEntry(key, { action: undefined, submission: current.submission, text: current.text, images: current.images, version, error: conversationError(cause) }); return false }
-  let dispatching = false
-  try {
-    await saving.get(key)
-    await saveDraft(key, true)
-    const conversation = await persistIdentity(key), latest = entry(key)
-    if (!latest || !ownsSubmission()) return false
-    const session = latest.session
-    if (session && !ownsSession(session, conversation)) throw new Error('会话来源已改变，草稿已保留。')
-    const generation = session?.connectionGeneration
-    patchEntry(key, { request: session ? { requestId, projectRoot: conversation.workspace.root, sessionId: session.sessionId, connectionGeneration: generation, previousTurnId: session.turnId, phase: 'submitting' } : undefined })
-    dispatching = true
-    const source = retry ? retry.taskSource : taskSource
-    const response = conversationValue(await client.send(conversation.id, { requestId, text, draftText, images, expectedConnectionGeneration: generation, ...(source && { taskSource: source }) }))
-    if (!ownsSubmission()) return false
-    if (response.conversation.id !== conversation.id || projectRootKey(response.conversation.workspace.root) !== projectRootKey(conversation.workspace.root) || !ownsSession(response.session, response.conversation) || conversation.nativeRef && response.session.sessionId !== conversation.nativeRef.sessionId) throw new Error('发送结果的会话来源不匹配，请核对历史后重试。')
-    const metadata = keepConversation(response.conversation, readRevision)
-    patchEntry(key, (value) => ({
-      conversation: metadata, session: newerSession(value.session, response.session), events: mergeEvents(response.session.events ?? [], mergeEvents(value.events, buffered(response.session))),
-      request: { requestId, projectRoot: response.conversation.workspace.root, sessionId: response.session.sessionId, connectionGeneration: response.session.connectionGeneration, previousTurnId: session?.turnId, turnId: response.turnId, phase: 'accepted' },
-      ...(value.version === version + 1 && !value.text ? { savedVersion: value.version } : { savedVersion: -1 }), action: undefined, ...{ selectedInputIds: value.selectedInputIds?.filter(id => !submittedReferenceIds(value).includes(id)), excludedInputIds: [...new Set([...(value.excludedInputIds ?? []), ...submittedReferenceIds(value)])] }, submission: value.submission ? { ...value.submission, state: 'accepted', turnId: response.turnId } : undefined, saveError: undefined
-    }))
-    void readConversation(key); void refreshFiles(key)
-    return true
-  } catch (cause) {
-    if (!ownsSubmission()) return false
-    const notSent = !dispatching || Boolean(cause && typeof cause === 'object' && 'notSent' in cause && cause.notSent === true)
-    if (submittedMessageRecorded(entry(key) as WorkspaceEntry)) { consumeSubmittedReferences(key); patchEntry(key, { error: undefined, request: undefined }); return true }
-    if (notSent) settleFailedSubmission(key, `发送失败：${conversationError(cause)}`)
-    else patchEntry(key, value => ({ error: conversationError(cause), request: undefined, savedVersion: -1,
-      submission: value.submission ? { ...value.submission, state: 'unknown' } : undefined }))
-    if (entry(key)?.conversation) void readConversation(key)
-    return false
-  } finally {
-    if (ownsSubmission()) { patchEntry(key, { action: undefined }); const latest = entry(key); if (latest && submittedMessageRecorded(latest)) patchEntry(key, { submission: undefined }); persistLocalDrafts(); if (latest && latest.version !== latest.savedVersion) queueSave(key) }
-  }
-}
-export async function controlConversation(key: string, action: 'cancel' | 'end'): Promise<void> {
-  const current = entry(key), client = conversationClient(), generation = current?.session?.connectionGeneration
-  if (!current?.conversation || !client || current.action || !generation || !current.session?.connectionOwned) return
-  const id = current.conversation.id
-  patchEntry(key, { action, error: undefined })
-  try {
-    conversationValue(await client[action](id, { expectedConnectionGeneration: generation }))
-    if (entry(key)?.conversation?.id === id && entry(key)?.session?.connectionGeneration === generation) { patchEntry(key, { request: undefined }); await readConversation(key) }
-  } catch (cause) { if (entry(key)?.session?.connectionGeneration === generation) patchEntry(key, { error: conversationError(cause) }) }
-  finally { patchEntry(key, { action: undefined }) }
-}
-export async function respondPermission(key: string, requestId: string, optionId: string): Promise<void> {
-  const current = entry(key), client = conversationClient()
-  if (!current?.conversation || !client || current.permissionPending[requestId]) return
-  const permission = actionablePermissions(current, Date.now())[requestId], generation = current.session?.connectionGeneration
-  if (!permission || !generation || !permission.options.some((option) => option.optionId === optionId)) return
-  patchEntry(key, { permissionPending: { ...current.permissionPending, [requestId]: true }, permissionErrors: { ...current.permissionErrors, [requestId]: '' } })
-  try {
-    conversationValue(await client.respond(current.conversation.id, { requestId, optionId, expectedConnectionGeneration: generation }))
-    if (entry(key)?.session?.connectionGeneration !== generation) return
-    patchEntry(key, (latest) => ({ session: latest.session ? { ...latest.session, pendingPermissions: latest.session.pendingPermissions?.filter((item) => item.requestId !== requestId) } : undefined }))
-  } catch (cause) { if (entry(key)?.session?.connectionGeneration === generation) patchEntry(key, (latest) => ({ permissionErrors: { ...latest.permissionErrors, [requestId]: conversationError(cause) } })) }
-  finally { patchEntry(key, (latest) => ({ permissionPending: { ...latest.permissionPending, [requestId]: false } })) }
 }
 export async function chooseDirectory(key: string): Promise<boolean> {
   const current = entry(key), client = conversationClient()

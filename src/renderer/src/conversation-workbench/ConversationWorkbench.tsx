@@ -2,12 +2,15 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type Rea
 import { ArrowLeft, ChevronDown, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
+import { conversationProjectRoleSchema, type ConversationProjectRole } from '../../../shared/conversation/project-role'
 import type { ConversationTaskScope } from '../../../shared/conversation/task-scope'
 import { ConversationListRow } from '../acp/ConversationListRow'
 import { ConversationSidebar } from '../acp/ConversationSidebar'
 import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
+import { ManagedWorkflowRecovery } from '../acp/workflow/ManagedWorkflowRecovery'
 import { api, hasIpc } from '../api'
 import { useCrux } from '../crux/store'
+import { ProjectConversationIntake } from '../knowledge/ProjectConversationIntake'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
@@ -58,6 +61,21 @@ function rememberThread(key: string, threadId: string | null): void {
   try {
     if (threadId) localStorage.setItem(`crux.conversation.selected:${key}`, threadId)
     else localStorage.removeItem(`crux.conversation.selected:${key}`)
+  } catch {}
+}
+
+function savedProjectRole(key: string): ConversationProjectRole | undefined {
+  try {
+    const role = conversationProjectRoleSchema.safeParse(JSON.parse(localStorage.getItem(`crux.conversation.project-role:${key}`) ?? 'null'))
+    if (role.success) return role.data
+  } catch {}
+}
+
+function rememberProjectRole(key: string, role: ConversationProjectRole | undefined): void {
+  try {
+    const storageKey = `crux.conversation.project-role:${key}`
+    if (role) localStorage.setItem(storageKey, JSON.stringify(role))
+    else localStorage.removeItem(storageKey)
   } catch {}
 }
 
@@ -119,11 +137,17 @@ interface ConversationWorkbenchProps {
   taskScope?: ConversationTaskScope
   onBackToTask?: () => void
   initialThreadId?: string
+  projectIntake?: boolean
+  compact?: boolean
+  projectRoleRequest?: ConversationProjectRole
+  onProjectRoleOpened?: () => void
 }
 
-export function ConversationWorkbench({ root, source = 'native', taskScope, onBackToTask, initialThreadId }: ConversationWorkbenchProps): JSX.Element {
+export function ConversationWorkbench({ root, source = 'native', taskScope, onBackToTask, initialThreadId,
+  projectIntake = false, compact = false, projectRoleRequest, onProjectRoleOpened }: ConversationWorkbenchProps): JSX.Element {
   const sidebarWidth = useSidebarWidthStyle()
   const collapsed = useMy((state) => state.sidebarCollapsed)
+  const agentView = useMy((state) => state.agentTarget)
   const workspaceContext = useCrux(state => state.workspaceContext)
   const task = taskScope?.locator
   const rootKey = taskScope ? JSON.stringify([
@@ -131,6 +155,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     taskScope.materialRevision, projectRootKey(root) ?? root,
   ]) : `${source}:${projectRootKey(root) ?? root}`
   const code = source === 'code'
+  const supportsProjectRole = code && !taskScope && !compact
   const workspaceLabel = taskScope ? '任务对话' : source === 'work' ? 'Work 对话' : code ? 'Code 对话' : '原生对话'
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
@@ -151,6 +176,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     const threadId = source === 'work' && initialThreadId ? initialThreadId : savedThread(rootKey)
     return threadId ? { threadId } : null
   })
+  const [projectRole, setProjectRole] = useState(() => supportsProjectRole ? savedProjectRole(rootKey) : undefined)
+  const draftRole = supportsProjectRole && !target ? projectRole : undefined
   const [optimistic, setOptimistic] = useState(() => emptyOptimisticUserMessages(''))
   const targetRef = useRef(target)
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -173,7 +200,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   ])
   const panelKey = hostThreadId ? conversationPanelKey(panelScopeKey, root, hostThreadId) : null
   const panel = useConversationRightPanel(panelKey, hostThreadId ?? null)
-  const narrowPanel = useNarrowConversationPanel()
+  const narrowWindow = useNarrowConversationPanel()
+  const narrowPanel = compact || narrowWindow
   const projectAvailable = hasIpc && typeof api.conversationProjectWorkbench === 'function'
   const run = target?.runId
     ? projection?.runs.find((item) => item.id === target.runId)
@@ -361,13 +389,26 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         existing => [...existing, message],
       ))
       if (openThreadId) reload()
-      else select({ threadId: receipt.threadId })
+      else {
+        if (draftRole) {
+          rememberProjectRole(rootKey, undefined)
+          setProjectRole(undefined)
+        }
+        select({ threadId: receipt.threadId })
+      }
     }
     setListRevision((value) => value + 1)
   }
 
+  useLayoutEffect(() => {
+    if (!supportsProjectRole || !writable || !projectRoleRequest) return
+    openDraft('', projectRoleRequest)
+    onProjectRoleOpened?.()
+  }, [onProjectRoleOpened, projectRoleRequest, supportsProjectRole, writable])
+
   const composer = useComposerSend({
     root, threadId: target?.threadId ?? null, scopeKey: rootKey, interactive: writable, task,
+    role: draftRole,
     running: Boolean(activeRun), canSteer, onAccepted,
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
     onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
@@ -404,12 +445,35 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
 
   const modelLabel = (id: string): string => catalog.models.find(model => model.instanceId === instanceId && model.id === id)?.displayName ?? id
 
-  function openDraft(text = ''): void {
+  function openDraft(text = '', role?: ConversationProjectRole): void {
+    if (supportsProjectRole) {
+      rememberProjectRole(rootKey, role)
+      setProjectRole(role)
+    }
     select(null)
     if (text) updateComposerDraft(composerDraftKey(root, null, rootKey), current => ({ ...current, text: current.text || text }))
     requestAnimationFrame(() => {
       if (!targetRef.current && canInteract()) composerRef.current?.focus({ preventScroll: true })
     })
+  }
+
+  function appendIntake(text: string, newConversation: boolean): boolean {
+    if (!writable || !canInteract()) return false
+    const threadId = newConversation ? null : targetRef.current?.threadId ?? null
+    if (!newConversation && (!threadId || projection?.thread.id !== threadId || archivedThread)) return false
+    let appended = false
+    updateComposerDraft(composerDraftKey(root, threadId, rootKey), current => {
+      if (current.state.phase !== 'idle' && (current.state.phase !== 'rejected' || !current.state.restored)) return current
+      const next = [current.text, text].filter(part => part.trim()).join('\n\n')
+      if (next.length > CONVERSATION_TEXT_LIMIT) return current
+      appended = true
+      return { ...current, text: next }
+    })
+    if (appended) {
+      if (newConversation) openDraft()
+      else focusComposer()
+    }
+    return appended
   }
 
   const runModel = run && modelLabel(run.modelSelection.model)
@@ -499,11 +563,12 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       </form>}
     </Modal>
     <ContextRegion collapsed={collapsed && !sidebarOpen}><div className="acp-navigation-host flex min-h-0 shrink-0">
-    <ConversationSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} ariaLabel={`${workspaceLabel}历史`}
+    <ConversationSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} ariaLabel={`${workspaceLabel}历史`} resizable={!compact}
       title={taskScope ? <strong className="my-item-title truncate" title={taskScope.title}>{taskScope.title}</strong>
         : <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={open} onClick={toggle}>
         <strong>{source === 'native' ? '原生对话' : '对话'}</strong><ChevronDown size={13} aria-hidden="true" />
-      </button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={code ? undefined : 'native'} /></div>}</Dropdown>}
+      </button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={projectIntake
+        ? agentView === 'native' ? 'native' : 'conversation' : code ? undefined : 'native'} /></div>}</Dropdown>}
       primaryAction={<div className="grid gap-2">{writable && <button type="button" className="my-nav-item" onClick={() => openDraft()}><Plus size={15} aria-hidden="true" />新建对话</button>}
         <SearchInput value={query} onChange={value => setQuery(value.slice(0, 160))} size="sm" placeholder="搜索对话" /></div>}>
       {listError && <ConversationIssue title="无法读取会话列表" reason={listError}
@@ -539,8 +604,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         <button type="button" className="my-icon-control acp-mobile-only"
           aria-label="打开会话导航" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><PanelLeft size={16} aria-hidden="true" /></button>
       </>}
-        identity={<strong>{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : '新建对话')}</strong>}
+        identity={<strong>{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>}
         actions={<>
+          {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
           {projection && projectAvailable && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
@@ -550,6 +616,17 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               else { panelReturnFocus.current = panelTrigger.current; panel.show() }
             }}><PanelRight size={17} aria-hidden="true" /></button>}
         </>} />
+      {projectIntake && <ProjectConversationIntake root={root} enabled={writable}
+        canAppend={Boolean(projection && !archivedThread)} onAppend={appendIntake}
+        canAddReference={(!hostThreadId || projection?.thread.id === hostThreadId) && !archivedThread &&
+          composer.attachmentIntake.available && composer.attachmentIntake.canEdit && !composer.attachmentIntake.state.pending}
+        onAddReference={async (knowledge, isCurrent) => {
+          const originalThread = targetRef.current?.threadId
+          const added = await composer.attachmentIntake.addKnowledge(knowledge,
+            () => isCurrent() && targetRef.current?.threadId === originalThread)
+          if (added) focusComposer()
+          return added
+        }} />}
       <div className="acp-content" data-empty={draftIsEmpty || undefined}>
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
           onOpenRelatedThread={openRelatedThread}
@@ -629,7 +706,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       </div>
     </section>
     {interactive && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
-      <ConversationRightPanel key={panelKey} panel={panel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
+      <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
         {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
           root={root} scopeKey={panelScopeKey} hostThreadId={hostThreadId}

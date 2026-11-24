@@ -9,6 +9,7 @@ import { readIntegrationState } from '../integrations/repository'
 import { kbSearch } from '../knowledge'
 import { readFileSync, statSync } from 'node:fs'
 import { relative } from 'node:path'
+import { computeRevision } from '../documents/controller'
 import { materialPath } from './materials'
 import { readKnowledgeState, updateKnowledgeState, knowledgeHash, type StoredKnowledgeSource } from './repository'
 import { artifactRead, assertArtifactCurrent, handoffKnowledgeArtifact, readTaskPrd, saveKnowledgeArtifact } from './materials'
@@ -98,6 +99,20 @@ export class KnowledgeAccessService {
       return item.source
     })
   }
+  async assertSelectedRemoteRevision(owner: KnowledgeOwner, source: KnowledgeSource, signal: AbortSignal): Promise<void> {
+    const scope = this.capture(owner)
+    const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
+    if (!source.collectionId || !scope.collectionIds.includes(source.collectionId) || !resolved.connection || scope.status !== 'ok'
+        || !source.documentRevision) throw new IntegrationError('原知识来源已失权或无法核对，请重新选择', 'denied')
+    const port = knowledgePort(resolved.connection)
+    if (!port.authorizeDocument) throw new IntegrationError('原知识来源无法证明当前读取权限', 'denied')
+    await port.authorizeDocument(resolved.connection, source.documentId, source.collectionId, signal)
+    const live = await port.read(resolved.connection, source.documentId, source.collectionId, signal)
+    ensureScope(owner, scope)
+    if (signal.aborted || live.mode !== 'full' || live.documentRevision !== source.documentRevision) {
+      throw new IntegrationError('原知识文档版本已变化或无法核对，请重新选择', 'conflict')
+    }
+  }
   recordSelectedDelivery(owner: KnowledgeOwner, references: Array<{ sourceId: string; contentHash: string }>, local: Array<{ relativePath: string; revision: string; text: string }>): string[] {
     const scope = this.capture(owner)
     const originals = this.selectedSources(owner, references)
@@ -170,8 +185,8 @@ export class KnowledgeAccessService {
       try {
         const path = materialPath(owner.root, relativePath)
         if (statSync(path).size > 512 * 1024) continue
-        const body = readFileSync(path, 'utf8'); const text = body.slice(0, 6000)
-        sources.push({ id: randomUUID(), sourceHandle: randomUUID(), title: hit.doc.title, text, contentHash: knowledgeHash(text), kind: 'local', documentId: relativePath, collectionId: null, relativePath, instanceId: null, fetchedAt: Date.now(), mode: 'excerpt', truncated: body.length > text.length, sessionId: owner.sessionId, turnId: owner.turnId, scopeRevision: scope.revision, suppliedToAgent: false, historical: false })
+        const bytes = readFileSync(path); const body = bytes.toString('utf8'); const text = body.slice(0, 6000)
+        sources.push({ id: randomUUID(), sourceHandle: randomUUID(), title: hit.doc.title, text, contentHash: knowledgeHash(text), kind: 'local', documentId: relativePath, collectionId: null, relativePath, instanceId: null, fetchedAt: Date.now(), mode: 'excerpt', truncated: body.length > text.length, sessionId: owner.sessionId, turnId: owner.turnId, scopeRevision: scope.revision, suppliedToAgent: false, historical: false, documentRevision: computeRevision(bytes) })
       } catch { /* Do not expose out-of-root or unreadable index entries. */ }
     }
     let status: KnowledgeSearchResult['status'] = sources.length ? 'ok' : 'empty'
@@ -208,17 +223,21 @@ export class KnowledgeAccessService {
     if (window && !window.success) throw new IntegrationError('读取分页参数无效：offset 必须是非负整数，limit 必须是 1..6000 的整数', 'invalid')
     if (signal?.aborted) return { operationId: input.requestId, status: 'cancelled', detail: '读取已取消，未取得新正文', source: null, persistence: 'durable' }
     try {
-      let value: { title: string; text: string; mode: 'full' | 'unsupported'; truncated: boolean }
+      let value: Awaited<ReturnType<KnowledgePort['read']>>
+      let documentRevision: string | undefined
       if (stored.source.kind === 'local') {
         if (!stored.source.relativePath) throw new IntegrationError('本地来源身份不完整', 'denied')
         const path = materialPath(owner.root, stored.source.relativePath)
         if (statSync(path).size > 512 * 1024) throw new IntegrationError('本地来源超过读取限额', 'io')
-        const body = readFileSync(path, 'utf8'); value = { title: stored.source.title, text: ranged ? body : body.slice(0, 100_000), mode: 'full', truncated: !ranged && body.length > 100_000 }
+        const bytes = readFileSync(path); const body = bytes.toString('utf8')
+        documentRevision = computeRevision(bytes)
+        value = { title: stored.source.title, text: ranged ? body : body.slice(0, 100_000), mode: 'full', truncated: !ranged && body.length > 100_000 }
       } else {
         if (!stored.source.collectionId || !scope.collectionIds.includes(stored.source.collectionId)) throw new IntegrationError('来源不在当前知识范围', 'denied')
         const resolved = resolveScope(owner, scope.overridden ? scope.collectionIds : undefined)
         if (!resolved.connection) throw new IntegrationError('WeKnora 连接不可用', 'denied')
         value = await knowledgePort(resolved.connection).read(resolved.connection, stored.source.documentId, stored.source.collectionId, signal)
+        if (value.mode === 'full') documentRevision = value.documentRevision
       }
       ensureScope(owner, scope)
       if ((this.selectionEpochs.get(this.overrideKey(owner)) ?? 0) !== selectionEpoch) throw new IntegrationError('项目知识范围已变化，请重新读取', 'conflict')
@@ -254,7 +273,7 @@ export class KnowledgeAccessService {
         range = { offset, length: text.length, total: value.text.length, unit: 'utf16-code-units', totalIsComplete: !value.truncated }
         nextOffset = end < value.text.length ? end : null
       }
-      const source: KnowledgeSource = { ...stored.source, id: randomUUID(), sourceHandle: randomUUID(), scopeRevision: scope.revision, sessionId: owner.sessionId, turnId: owner.turnId, title: value.title, text, contentHash: knowledgeHash(text), mode, truncated, fetchedAt: Date.now(), suppliedToAgent: false, historical: false }
+      const source: KnowledgeSource = { ...stored.source, id: randomUUID(), sourceHandle: randomUUID(), scopeRevision: scope.revision, sessionId: owner.sessionId, turnId: owner.turnId, title: value.title, text, contentHash: knowledgeHash(text), mode, truncated, fetchedAt: Date.now(), suppliedToAgent: false, historical: false, documentRevision }
       // A page handle retains document identity; a later full UI read has no inherited range.
       delete source.range
       if (range) source.range = range

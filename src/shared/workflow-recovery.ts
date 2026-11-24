@@ -1,6 +1,6 @@
 /** Read-only recovery requests carry no task scope, owner, path or native grant. */
 import { z } from 'zod'
-import { runRefSchema, type WorkflowScope } from './workflow'
+import { runRefSchema, type RunRef, type WorkflowScope } from './workflow'
 import type { WorkflowApplicationSnapshot } from './workflow-application'
 
 export const workflowWorkspaceRecoveryInputSchema = z.object({ run: runRefSchema.optional() }).strict()
@@ -18,4 +18,5 @@ export type WorkflowWorkspaceRecovery = {
   ownership: { state: 'active' | 'recovery-required' | 'released'; leaseUntil: number; recoveryRequired: boolean } | null;
   projection: WorkflowApplicationSnapshot | null;
   source: WorkflowRecoverySource
+  stopTarget?: { taskDir: string; run: RunRef }
 }

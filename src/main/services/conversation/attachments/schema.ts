@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS conversation_v2_attachment_content (
   bytes BLOB NOT NULL CHECK (length(bytes) = size_bytes)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS conversation_v2_attachment_knowledge (
+  content_id TEXT PRIMARY KEY REFERENCES conversation_v2_attachment_content(content_id) ON DELETE CASCADE,
+  reference_json TEXT NOT NULL CHECK (json_valid(reference_json))
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS conversation_v2_attachment_drafts (
   content_id TEXT PRIMARY KEY REFERENCES conversation_v2_attachment_content(content_id),
   owner_id TEXT NOT NULL,

@@ -15,7 +15,7 @@ export function conversationAttachmentDraftScope(authority: ConversationAuthorit
   const draftId = createHash('sha256').update(JSON.stringify(target.requestId
     ? [projectId, identity, target.threadId, target.draftId, target.requestId, target.generation]
     : [projectId, identity, target.threadId ?? null, target.draftId])).digest('hex')
-  return { ownerId, spaceId, root, draftId }
+  return { ownerId, spaceId, root, draftId, knowledgePageId: target.requestId ? undefined : authority.knowledgePageId }
 }
 
 export function prepareConversationAttachmentClaim(

@@ -57,7 +57,7 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /** One accepted control outbox identity authorizes at most one initial native dispatch. */
 export class AcpxWorkflowDriver implements WorkflowDriverPort {
   private readonly stages = new Map<string, LiveStage>()
-  private readonly sessions = new Map<string, { root: string; sessionId: string; lastUsed: number }>()
+  private readonly sessions = new Map<string, { root: string; sessionId: string; generation: string; lastUsed: number }>()
   private readonly epoch = randomUUID()
   private sequence = 0
   constructor(private readonly options: WorkflowStageDriverOptions) {}
@@ -127,15 +127,14 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
 
   private stopNative(stage: LiveStage): Promise<{ stopped: boolean; cancellationAcknowledged: boolean }> {
     if (stage.shutdown) return stage.shutdown
-    const root = stage.projectRoot; const sessionId = stage.sessionId
+    const { projectRoot: root, sessionId, generation } = stage
     // Do not cache a missing identity: a late in-flight create still needs its
     // real native session shut down before cancellation can be confirmed.
-    if (!root || !sessionId) return Promise.resolve({ stopped: false, cancellationAcknowledged: false })
+    if (!root || !sessionId || !generation) return Promise.resolve({ stopped: false, cancellationAcknowledged: false })
     stage.shutdown = Promise.resolve().then(async () => {
-      const cancelled = await this.options.acp.cancel(root, sessionId).catch(() => ({ ok: false }))
-      const ended = await this.options.acp.end(root, sessionId).catch(() => ({ ok: false }))
-      stage.stopConfirmed = ended.ok === true
-      return { stopped: stage.stopConfirmed, cancellationAcknowledged: cancelled.ok === true }
+      const result = await this.options.acp.stop(root, sessionId, generation).catch(() => ({ stopped: false, cancellationAcknowledged: false }))
+      stage.stopConfirmed = result.stopped
+      return result
     })
     return stage.shutdown
   }
@@ -174,7 +173,7 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
       const key = canonicalWorkflowJson({ scope: request.manifest.scope, executor: request.node.executor })
       const reuse = this.sessions.get(key)
       let session = reuse ? await this.options.acp.get(plan.projectRoot, reuse.sessionId) : null
-      if (!session?.ok || session.session.status !== 'ready' || session.session.cleanupRequired) {
+      if (!session?.ok || session.session.status !== 'ready' || session.session.cleanupRequired || session.session.connectionGeneration !== reuse?.generation) {
         await this.retireIdleSession()
         if (stage.stopRequested) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Stage was stopped before native session admission')
         stage.creationInFlight = true
@@ -183,12 +182,16 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
         finally { stage.creationInFlight = false }
         if (!created.ok) throw new WorkflowRuntimeError('EXECUTOR_UNAVAILABLE', created.error)
         stage.sessionId = created.sessionId
+        stage.generation = created.connectionGeneration
         session = await this.readySession(plan, stage)
         if (!session.ok) throw new WorkflowRuntimeError('EXECUTOR_UNAVAILABLE', session.error)
-        this.sessions.set(key, { root: plan.projectRoot, sessionId: created.sessionId, lastUsed: Date.now() })
-      } else { stage.sessionId = reuse?.sessionId ?? null; if (reuse) reuse.lastUsed = Date.now() }
-      if (!stage.sessionId || !session.ok || !session.session.connectionGeneration) throw new WorkflowRuntimeError('EXECUTOR_UNAVAILABLE', 'No verified ready ACP session identity')
-      stage.generation = session.session.connectionGeneration
+        this.sessions.set(key, { root: plan.projectRoot, sessionId: created.sessionId, generation: created.connectionGeneration, lastUsed: Date.now() })
+      } else if (reuse) {
+        stage.sessionId = reuse.sessionId
+        stage.generation = reuse.generation
+        reuse.lastUsed = Date.now()
+      }
+      if (!stage.sessionId || !stage.generation || !session.ok || session.session.connectionGeneration !== stage.generation) throw new WorkflowRuntimeError('EXECUTOR_UNAVAILABLE', 'No verified ready ACP session identity')
       if (session.session.taskDir !== plan.taskDir || session.session.agentId !== plan.executor.agentId) throw new WorkflowRuntimeError('SCOPE_CHANGED', 'Native session does not match the task and selected engine')
       const native = session.session
       await this.report(stage, 'workflow.native-provenance', {
@@ -302,6 +305,7 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
       plan.assertCurrent()
       if (stage.stopRequested) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Stop requested while preparing the native session')
       const result = await this.options.acp.get(plan.projectRoot, stage.sessionId)
+      if (result.ok && result.session.connectionGeneration !== stage.generation) throw new WorkflowRuntimeError('OUTCOME_UNKNOWN', 'Native connection changed while preparing the stage')
       if (result.ok && result.session.status === 'ready') return result
       if (result.ok && ['error', 'closed', 'legacy', 'disconnected'].includes(result.session.status)) throw new WorkflowRuntimeError('EXECUTOR_UNAVAILABLE', result.session.error ?? 'Native session did not become ready')
       await delay(100)
@@ -430,10 +434,10 @@ export class AcpxWorkflowDriver implements WorkflowDriverPort {
     for (const [key, candidate] of candidates) {
       if ([...this.stages.values()].some((stage) => !stage.settled && stage.sessionId === candidate.sessionId)) continue
       const session = await this.options.acp.get(candidate.root, candidate.sessionId)
-      if (!session.ok || session.session.status === 'closed') { this.sessions.delete(key); return }
+      if (!session.ok || session.session.status === 'closed' || session.session.connectionGeneration !== candidate.generation) { this.sessions.delete(key); return }
       if (session.session.status !== 'ready' || session.session.directoryLeaseReason || session.session.pendingPermissions?.length) continue
-      const ended = await this.options.acp.end(candidate.root, candidate.sessionId)
-      if (ended.ok) { this.sessions.delete(key); return }
+      const ended = await this.options.acp.stop(candidate.root, candidate.sessionId, candidate.generation)
+      if (ended.stopped) { this.sessions.delete(key); return }
     }
   }
 }

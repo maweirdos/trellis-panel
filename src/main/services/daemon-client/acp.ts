@@ -7,7 +7,6 @@ import type { AcpHandoffPreviewInput, AcpHandoffCreateInput, AcpHandoffCancelInp
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { runtimeCall } from './runtime'
 import type { RuntimeBody, RuntimeBodyMethod } from '../../../shared/daemon-runtime'
-import type { AcpConversationDetailSnapshot, AcpConversationEventPage, AcpConversationListSnapshot } from '../../../shared/acp-projections'
 import { pickAcpNode as pickLocalNode, pickAcpRuntimePath as pickLocalRuntimePath } from '../acp/setup'
 import { writeNativeSettings } from './native-state'
 export const pickAcpNode = () => pickLocalNode(writeNativeSettings)
@@ -32,17 +31,6 @@ export const listAcpProfiles = (root: string) => call<'listAcpProfiles', 'runtim
 export const saveAcpProfile = (root: string, input: unknown) => call<'saveAcpProfile', 'runtime.profileSave'>(root, 'runtime.profileSave', { input })
 export const deleteAcpProfile = (root: string, profileId: string) => call<'deleteAcpProfile', 'runtime.profileDelete'>(root, 'runtime.profileDelete', { profileId })
 export const listAcpHistorySessions = (root: string, input?: unknown) => call<'listAcpHistorySessions', 'runtime.historyList'>(root, 'runtime.historyList', { input: input as RuntimeBody<'runtime.historyList'>['input'] })
-export async function listAcpConversationProjections(root: string, input?: unknown): Promise<AcpConversationListSnapshot | IpcFail> {
-  return runtimeCall<AcpConversationListSnapshot | IpcFail, 'runtime.conversationProjectionList'>(root, 'runtime.conversationProjectionList', { input: (input ?? {}) as RuntimeBody<'runtime.conversationProjectionList'>['input'] })
-}
-export async function getAcpConversationProjection(root: string, sessionId: string): Promise<AcpConversationDetailSnapshot | IpcFail> {
-  return runtimeCall<AcpConversationDetailSnapshot | IpcFail, 'runtime.conversationProjectionDetail'>(root, 'runtime.conversationProjectionDetail', { sessionId })
-}
-export async function readAcpConversationProjectionEvents(root: string, sessionId: string, input: unknown): Promise<AcpConversationEventPage | IpcFail> {
-  return runtimeCall<AcpConversationEventPage | IpcFail, 'runtime.conversationProjectionEvents'>(root, 'runtime.conversationProjectionEvents', {
-    sessionId, after: 0, limit: 100, ...(typeof input === 'object' && input !== null ? input as Record<string, unknown> : {}),
-  })
-}
 export const getAcpHistorySession = (root: string, sessionId: string) => call<'getAcpHistorySession', 'runtime.historySession'>(root, 'runtime.historySession', { sessionId })
 export const getAcpHistoryEvents = (root: string, sessionId: string, input?: unknown) => call<'getAcpHistoryEvents', 'runtime.historyEvents'>(root, 'runtime.historyEvents', { sessionId, input: input as RuntimeBody<'runtime.historyEvents'>['input'] })
 export const getAcpPiImage = (root: string, sessionId: string, imageId: string) => call<'getAcpPiImage', 'runtime.piImage'>(root, 'runtime.piImage', { sessionId, imageId })

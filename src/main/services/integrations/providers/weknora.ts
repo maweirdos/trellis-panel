@@ -1,4 +1,5 @@
 import { net } from 'electron'
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { IntegrationError, type KnowledgePort, type ResolvedConnection } from '../types'
 import type { KnowledgeFolder } from '../../../../shared/knowledge-access'
@@ -142,7 +143,8 @@ export const weknoraKnowledgePort: KnowledgePort = {
     const title = row.title || row.file_name || row.id
     if (!row.file_type || !textTypes.has(row.file_type.toLowerCase())) return { title, text: '', mode: 'unsupported', truncated: false }
     const text = parse(z.string().max(MAX_RESPONSE), await request(connection, path + '/preview', signal))
-    return { title, text: text.slice(0, 100_000), mode: 'full', truncated: text.length > 100_000 }
+    return { title, text: text.slice(0, 100_000), mode: 'full', truncated: text.length > 100_000,
+      documentRevision: createHash('sha256').update(text).digest('hex') }
   },
   async authorizeDocument(connection, documentId, collectionId, signal) {
     const row = parse(document, await request(connection, `/knowledge/${encodeURIComponent(documentId)}`, signal))

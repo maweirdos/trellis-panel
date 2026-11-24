@@ -81,8 +81,6 @@ export interface MyStore {
   setTeamView: (view: TeamView) => void
   toolView: ToolView
   setToolView: (view: ToolView) => void
-  agentSessionTarget: string | null
-  setAgentSessionTarget: (id: string | null) => void
   agentTarget: AgentView | null
   requestAgentView: (view: AgentView | null) => void
   knowledgeView: KnowledgeView
@@ -168,7 +166,6 @@ export const useMy = create<MyStore>()((set, get) => ({
         itemsGroupBy: 'state' as const,
         teamView: 'overview' as const,
         toolView: 'git' as const,
-        agentSessionTarget: null,
         taskConversationTarget: null,
         agentTarget: null,
         knowledgeView: 'materials' as const,
@@ -235,8 +232,6 @@ export const useMy = create<MyStore>()((set, get) => ({
   setTeamView: (teamView) => set({ teamView }),
   toolView: 'git',
   setToolView: (toolView) => set({ toolView }),
-  agentSessionTarget: null,
-  setAgentSessionTarget: (agentSessionTarget) => set({ agentSessionTarget }),
   agentTarget: null,
   requestAgentView: (agentTarget) => set({ agentTarget }),
   knowledgeView: 'materials',

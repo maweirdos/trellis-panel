@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, type SetStateAction } 
 import type { ConversationThreadCommandState } from '../../../shared/conversation/command-runtime'
 import type { ConversationCommandState } from '../../../shared/conversation/desktop'
 import type { ProviderOptionSelections } from '../../../shared/conversation/model'
+import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { conversationHistoryReferenceSchema } from '../../../shared/conversation/thread-relations'
 import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
@@ -33,6 +34,7 @@ interface Submission {
   readonly root: string
   readonly threadId: string | null
   readonly task?: ConversationTaskLocator
+  readonly role?: ConversationProjectRoleSelection
   readonly model: ComposerModel
   readonly message: OptimisticUserMessage
   readonly sourceText: string
@@ -60,6 +62,7 @@ export interface ComposerSendInput {
   readonly threadId: string | null
   readonly scopeKey?: string
   readonly task?: ConversationTaskLocator
+  readonly role?: ConversationProjectRoleSelection
   readonly interactive: boolean
   readonly running: boolean
   readonly canSteer: boolean
@@ -94,6 +97,7 @@ async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 
     const title = Array.from(titleSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
     return api.conversationCreate({ cwd: root, commandId, messageId: message.id, text,
       title, instanceId: model.instanceId, model: model.id, ...(options ? { options } : {}),
+      ...(submission.role ? { role: submission.role } : {}),
       ...(task ? { task } : {}), ...attachments })
   }
   const result = await api.conversationApply({ cwd: root, ...(task ? { task } : {}), command: {
@@ -139,9 +143,9 @@ export function parseSideChatCommand(text: string): { readonly prompt: string } 
 }
 
 export function useComposerSend({
-  root, threadId, scopeKey, task, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
+  root, threadId, scopeKey, task, role, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
 }: ComposerSendInput) {
-  const key = composerDraftKey(root, threadId, scopeKey)
+  const key = composerDraftKey(root, threadId, !threadId && role ? JSON.stringify([scopeKey, 'project-role', role.id]) : scopeKey)
   const currentKey = useRef(key)
   currentKey.current = key
   const canInteract = useInteractionGuard()
@@ -229,6 +233,7 @@ export function useComposerSend({
     const submission: Submission = {
       commandId: crypto.randomUUID(),
       root, threadId, ...(task ? { task: { ...task } } : {}),
+      ...(!threadId && role ? { role: { id: role.id, revision: role.revision } } : {}),
       model: selection, sourceText: current.text, source: draftContent(current),
       draftId: current.draftId ?? undefined,
       wireText: text || (references.length ? '请结合引用的会话内容回复。' : attachmentOnlyPrompt),

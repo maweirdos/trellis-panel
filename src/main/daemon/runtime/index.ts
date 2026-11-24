@@ -37,7 +37,6 @@ import { writeExclusiveAtomic } from '../files'
 import type { DaemonActivity } from '../../../shared/daemon/lifecycle'
 import { assertNativePreparationAvailable, countOwnedWorkflowApplications, hasWorkflowApplications, setWorkflowAdmissionClosed, shutdownWorkflowApplications } from '../../services/workflow-desktop'
 import { PI_VERSION } from '../../services/pi/protocol'
-import { AcpConversationProjectionService } from '../../services/acp/control-plane-service'
 import { AdmissionService, isGlobalRuntimeMethod, type RuntimeDispatchContext } from './admission'
 import { ConversationReadService } from './conversation-read'
 import { RuntimeSessionService } from './session-runtime'
@@ -54,6 +53,7 @@ import { resolveTaskPlanningLaunch } from '../../services/task-planning/runtime-
 import { observePlanningConversation, startPlanningConversation } from './planning-conversations'
 import type { TaskPlanningRuntimeCatalog } from '../../../shared/conversation/task-planning-runtime'
 import { managedTaskConversationPort } from './managed-task-conversation'
+import { readProjectRoleInstructions } from '../../services/conversation/project-role'
 
 export type { RuntimeDispatchContext } from './admission'
 
@@ -173,11 +173,10 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
   let operations = 0, sessionAdmissions = 0
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
-  const conversationProjections = new AcpConversationProjectionService(ports.userData ?? ports.directory)
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const admission = new AdmissionService(ports)
-  const conversationReads = new ConversationReadService({ acp, projections: conversationProjections })
+  const conversationReads = new ConversationReadService({ acp })
   const sessionRuntime = new RuntimeSessionService({ admission, events, isClosed: () => closed })
   const lifecycle = new LifecycleService({
     acp,
@@ -188,7 +187,6 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     workcopies,
     materialTimers,
     watchers,
-    conversationProjections,
     conversation,
     stopKnowledgeReads: () => knowledge.stopReads(),
     workflow: {
@@ -370,7 +368,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     }
     if (method === 'runtime.cruxProgress') {
       const input = runtimeBodies[method].parse(raw)
-      if (closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new DaemonError('E_UNAVAILABLE', 'Task execution admission is closed.')
+      if (closed && !['catalog', 'read', 'official'].includes(input.operation)) throw new DaemonError('E_UNAVAILABLE', 'Task execution admission is closed.')
       return taskProgress.execute(input)
     }
     if (method === 'runtime.knowledge') return knowledge.execute(root, 0, raw)
@@ -477,11 +475,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       return conversation.describeDriver(root, authority.projectId, instanceId, authority.assertSpawnCurrent, authority.binding.kind === 'task')
     }
     if (method === 'runtime.conversationCreate') {
-      const input = runtimeBodies[method].parse(raw)
+      const { role, ...input } = runtimeBodies[method].parse(raw)
       if (context.commandId !== input.commandId) throw new DaemonError('E_DENIED', 'The conversation command ID does not match its admitted dispatch.')
       const authority = await scopedConversation()
       if (authority.taskWritable === false) throw new DaemonError('E_DENIED', '任务当前不可发送消息。')
-      return conversation.createThread({ ...input, ...authority,
+      if (role && (authority.binding.kind !== 'personal' ||
+          pathKey(authority.cwd) === pathKey(join(ports.userData ?? ports.directory, 'conversation-v2-workspace')))) {
+        throw new DaemonError('E_DENIED', '项目角色只能从当前工程开始对话。')
+      }
+      return conversation.createThread({ ...input, ...authority, knowledgePageId: input.knowledgePageId,
+        ...(role && { role: { selection: role, readInstructions: () => readProjectRoleInstructions(authority.cwd, role) } }),
         assertCurrent: authority.assertSpawnCurrent,
         assertAuthorityCurrent: authority.assertCurrent,
       })
@@ -506,9 +509,9 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       return conversation.readEvents(input, await scopedConversation())
     }
     if (method === 'runtime.conversationApply') {
-      const { command } = runtimeBodies[method].parse(raw)
+      const { command, knowledgePageId } = runtimeBodies[method].parse(raw)
       if (context.commandId !== command.commandId) throw new DaemonError('E_DENIED', 'The conversation command ID does not match its admitted dispatch.', 'not-admitted')
-      return conversation.command(command, await scopedConversation())
+      return conversation.command(command, { ...await scopedConversation(), knowledgePageId })
     }
     if (method === 'runtime.conversationThreadCommand') {
       return conversation.readThreadCommand(runtimeBodies[method].parse(raw), await scopedConversation())
@@ -520,12 +523,16 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       return conversation.readHistory(runtimeBodies[method].parse(raw), await scopedConversation())
     }
     if (method === 'runtime.conversationAttachmentStage') {
-      const { draftId, threadId, requestId, generation, data, name, mimeType, source } = runtimeBodies[method].parse(raw)
+      const input = runtimeBodies[method].parse(raw)
+      const { draftId, threadId, requestId, generation } = input
       const authority = await scopedConversation()
       if (authority.taskWritable === false) throw new DaemonError('E_DENIED', '任务当前不可添加附件。')
+      const target = { draftId, threadId, requestId, generation }
+      if ('knowledge' in input) return conversation.stageKnowledgeAttachment(target, input.knowledge, authority)
+      const { data, name, mimeType, source } = input
       const bytes = Buffer.from(data, 'base64')
       if (bytes.toString('base64') !== data) throw new DaemonError('E_INVALID_ARG', '附件内容编码无效。')
-      return conversation.stageAttachment({ draftId, threadId, requestId, generation }, { name, mimeType, source, bytes }, authority)
+      return conversation.stageAttachment(target, { name, mimeType, source, bytes }, authority)
     }
     if (method === 'runtime.conversationAttachmentList') {
       return conversation.listAttachments(runtimeBodies[method].parse(raw), await scopedConversation())

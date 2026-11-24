@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import { z } from 'zod'
 import type { CruxProgressQuery, CruxProgressSession, CruxProgressValue } from '../../../shared/crux-task-progress'
 import { cruxProgressSessionSchema } from '../../../shared/crux-task-progress'
@@ -21,8 +21,8 @@ import { installTaskInputRulesAuthority, type TaskInputRulesInput, type TaskInpu
 import type { CruxWorkSource } from './task-workspace-source'
 import { TaskOutputCoordinator } from './task-outputs'
 import { DaemonError } from '../../daemon/errors'
-import { resolveWorkcopy, workcopyUseDirectory } from '../workcopy-use'
-import { readTaskSessionIntent } from '../workcopy-use/task-session-intent'
+import { resolveWorkcopy, workcopyUseDirectory, workcopyUseRegistry } from '../workcopy-use'
+import { readTaskSessionIntent, type TaskSessionExpected } from '../workcopy-use/task-session-intent'
 
 const rowSchema = z.object({
   pin: taskProgressPinSchema, plan: taskProgressPlanSchema.nullable(),
@@ -31,6 +31,7 @@ const rowSchema = z.object({
   server: teamTaskProgressDtoSchema, bindingId: z.string().uuid().nullable(), bindingGeneration: z.number().int().nonnegative().safe().nullable().default(null), seq: z.number().int().nonnegative().safe(),
   dispatch: z.enum(['not_sent', 'dispatching', 'sent', 'unknown']), errorCode: z.string().nullable(),
   projectionActive: z.boolean().default(false),
+  nativeCleanupConfirmed: z.boolean().optional(),
   creationBinding: z.object({ commandId: z.string().uuid(), generation: z.number().int().nonnegative().safe(), bindingId: z.string().uuid().nullable() }).strict().optional(),
   queue: z.array(z.object({ command: teamTaskProgressCommandSchema, state: z.enum(['queued', 'dispatching', 'unknown', 'settled']), attempts: z.number().int().nonnegative() }).strict()).max(4)
 }).strict()
@@ -38,7 +39,7 @@ const storeSchema = z.object({ version: z.literal(1), rows: z.array(rowSchema).m
 type Row = z.infer<typeof rowSchema>
 type QueueItem = Row['queue'][number]
 export type TaskProgressDelivery = { pin: Row['pin']; command: TeamTaskProgressCommand }
-export type TaskProgressNativeView = { value: CruxProgressValue; pin: Row['pin']; plan: Row['plan'] }
+export type TaskProgressNativeView = { value: CruxProgressValue; pin: Row['pin'] }
 const key = (q: CruxProgressQuery): string => JSON.stringify([q.workspaceKey, q.taskId])
 const rootKey = (s: string): string => process.platform === 'win32' ? s.toLowerCase() : s
 const MAX_STORE_BYTES = 8 * 1024 * 1024
@@ -61,50 +62,18 @@ export class CruxTaskProgressRuntime {
     this.file = join(dataDir, 'crux-progress', 'state.json')
     this.rows = existsSync(this.file) ? storeSchema.parse(JSON.parse(readBounded(this.file, MAX_STORE_BYTES))).rows : []
     for (const row of this.rows) {
-      if (row.state === 'preparing') row.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED'
+      if (row.state === 'preparing' && this.needsCleanup(row)) row.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED'
       for (const item of row.queue) if (item.state === 'dispatching') item.state = 'unknown'
       if (row.dispatch === 'dispatching') row.dispatch = 'unknown'
     }
     this.dispose = installTaskProgressEvents({
       state: (owner, status, outcome) => this.observeState(owner, status, outcome),
-      report: async (owner, summary) => {
-        const row = this.owned(owner)
-        if (!row || row.state !== 'active') throw new Error('The original task reporting handle is no longer active')
-        this.report(row.pin, taskProgressSummarySchema.parse(summary))
-        return { queued: true, acknowledged: false }
-      },
-      assertCurrent: async owner => {
-        this.assertSending()
-        if (this.closed) throw new Error('原任务执行所有者已关闭，不能发送命令')
-        const row = this.owned(owner)
-        if (!row || row.state !== 'active' || !row.bindingId || row.server.binding?.bindingId !== row.bindingId) throw new Error('原任务执行身份不可用，不能发送命令')
-        if (row.plan?.development && owner.taskProgress?.workcopyTaskKey !== this.taskKey(row)) throw new Error('旧任务会话缺少当前服务世代的工作副本身份，请保留原会话并建立新会话')
-        const original = JSON.stringify([row.pin, row.plan, row.nativeAlias, row.session, row.bindingId])
-        const sender = await this.sender(row.pin)
-        await this.inputCurrent(row, sender)
-        const server = await sender.status()
-        if (server.binding?.bindingId !== row.bindingId || server.binding.reporterId !== row.pin.ownerId || server.binding.deviceId !== row.pin.deviceId) throw new Error('原任务权限或执行绑定已变化，不能发送命令')
-        const assertCurrent = (): void => {
-          this.assertSending()
-          const current = this.owned(owner)
-          if (this.closed || !current || current.state !== 'active' || current.server.binding?.bindingId !== row.bindingId || JSON.stringify([current.pin, current.plan, current.nativeAlias, current.session, current.bindingId]) !== original) throw new Error('原任务权限或执行绑定已变化，不能发送命令')
-        }
-        assertCurrent()
-        return assertCurrent
-      },
-      context: owner => {
-        const row = this.owned(owner)
-        if (!row || !['binding', 'active'].includes(row.state)) return undefined
-        return { id: 'team-task', version: row.plan?.inputVersion ?? row.pin.epoch, title: 'Bound team task', body: [
-          `Task: ${row.pin.taskId}; space: ${row.pin.spaceId}; input version: ${row.plan?.inputVersion ?? row.pin.epoch}.`,
-          'The daemon owns this original task handle. report_progress accepts only activity, step and blocker; it cannot select another task.',
-          'Report only a short step/blocker. Never upload tool calls, raw logs, tokens or credentials. A queued report is not server acknowledgement.',
-          'A finished turn means idle. Business approval, testing and completion require the team task transition actions.'
-        ].join('\n') }
-      }
+      report: async () => { throw new DaemonError('E_UNAVAILABLE', '原会话已停用，请从团队任务更新进度。') },
+      assertCurrent: async () => { throw new DaemonError('E_UNAVAILABLE', '请在任务中使用新版会话或正式执行入口。') },
+      context: () => undefined
     })
     this.disposeRules = installTaskInputRulesAuthority(input => this.captureTaskRules(input))
-    if (this.rows.some(row => row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state)) || this.outputs.hasWork()) this.schedule()
+    if (this.rows.some(row => this.needsCleanup(row) || row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state)) || this.outputs.hasWork()) this.schedule()
   }
   async close(): Promise<void> { this.closed = true; if (this.timer) clearTimeout(this.timer); this.timer = undefined; await Promise.allSettled([...this.work.values()]); await this.outputs.close(); this.disposeRules(); this.dispose() }
   busy(): boolean { return this.pumping || this.work.size > 0 }
@@ -156,10 +125,11 @@ export class CruxTaskProgressRuntime {
     this.pumping = true
     try {
       if (this.outputs.hasWork()) await this.outputs.pump()
-      const rows = this.rows.filter(row => row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state))
-      const picked = Array.from({ length: Math.min(2, rows.length) }, (_, index) => rows[(this.offset + index) % rows.length])
-      this.offset = rows.length ? (this.offset + picked.length) % rows.length : 0
-      const results = await Promise.allSettled(picked.map(row => this.execute({ operation: 'sync', query: { workspaceKey: row.pin.workspaceKey, taskId: row.pin.taskId } })))
+      const scopes = [...new Map(this.rows.filter(row => this.needsCleanup(row) || row.projectionActive || ['binding', 'active', 'releasing'].includes(row.state))
+        .map(({ pin: { workspaceKey, taskId } }) => [key({ workspaceKey, taskId }), { workspaceKey, taskId }])).values()]
+      const picked = Array.from({ length: Math.min(2, scopes.length) }, (_, index) => scopes[(this.offset + index) % scopes.length])
+      this.offset = scopes.length ? (this.offset + picked.length) % scopes.length : 0
+      const results = await Promise.allSettled(picked.map(query => this.execute({ operation: 'sync', query })))
       this.failures = results.some(result => result.status === 'rejected') ? Math.min(5, this.failures + 1) : 0
     } finally { this.pumping = false }
   }
@@ -216,10 +186,31 @@ export class CruxTaskProgressRuntime {
       }
     }
   }
-  private async stopOld(row: Row): Promise<void> {
-    if (!row.session) return
-    const acp = await import('../acp')
-    await acp.cancelAcpSession(row.session.projectRoot, row.session.sessionId).catch(() => {})
+  private needsCleanup(row: Row): boolean {
+    return Boolean(row.plan && !row.nativeCleanupConfirmed)
+  }
+  private pendingCleanup(query: CruxProgressQuery): Row[] {
+    return this.rows.filter(row => key(row.pin) === key(query) && this.needsCleanup(row))
+  }
+  private async closeOriginal(row: Row): Promise<void> {
+    if (!row.plan || !this.needsCleanup(row)) return
+    this.assertOwner()
+    const editOriginal = (change: (original: Row) => void): void => this.commit(rows => {
+      const original = rows.find(item => key(item.pin) === key(row.pin) && item.nativeAlias === row.nativeAlias)
+      if (!original) throw new DaemonError('E_UNKNOWN', '原执行清理记录已变化。', 'unknown')
+      change(original)
+    })
+    try {
+      const acp = await import('../acp')
+      await acp.closeRetiredTaskSession(row.plan.root, row.nativeAlias, this.recoveryExpected(row), row.session)
+      editOriginal(original => {
+        original.nativeCleanupConfirmed = true
+        if (['NATIVE_CREATION_RECOVERY_REQUIRED', 'NATIVE_CLEANUP_REQUIRED'].includes(original.errorCode ?? '')) original.errorCode = null
+      })
+    } catch (error) {
+      if (row.errorCode !== 'NATIVE_CLEANUP_REQUIRED') editOriginal(original => { original.errorCode = 'NATIVE_CLEANUP_REQUIRED' })
+      throw error
+    }
   }
   private taskKey(row: Row): string {
     const development = row.plan?.development
@@ -227,41 +218,28 @@ export class CruxTaskProgressRuntime {
     return taskDevelopmentKey({ workspaceKey: row.pin.workspaceKey, actorId: row.pin.ownerId, spaceId: row.pin.spaceId, taskId: row.pin.taskId,
       taskCreatedAt: development.taskCreatedAt, instanceId: row.pin.instanceId, epoch: row.pin.epoch })
   }
-  private sessionExpected(row: Row): Parameters<typeof import('../acp').reserveTaskSession>[2] {
+  private sessionExpected(row: Row): TaskSessionExpected {
     if (!row.plan) throw new Error('Manual reporting has no native session intent')
     const plan = row.plan
     return { engine: plan.engine, taskDir: plan.taskDir, task: { taskId: row.pin.taskId, spaceId: row.pin.spaceId, inputVersion: plan.inputVersion,
       ...(plan.development ? { workcopyTaskKey: this.taskKey(row) } : {}) } }
   }
-  private recoveryExpected(row: Row): Parameters<typeof import('../acp').reserveTaskSession>[2] {
+  private recoveryExpected(row: Row): TaskSessionExpected {
     if (!row.plan) throw new Error('原任务没有本机会话')
     const intent = readTaskSessionIntent(workcopyUseDirectory(), row.plan.root, row.nativeAlias)
-    if (!intent) throw new DaemonError('E_UNKNOWN', '原任务创建意图缺失，无法判定旧工作副本身份；请核对原会话清理。', 'unknown')
     const current = this.sessionExpected(row)
+    if (!intent) return current
     const legacy = row.plan.development ? { ...current, task: { ...current.task, workcopyTaskKey: legacyTaskDevelopmentKey({ workspaceKey: row.pin.workspaceKey, actorId: row.pin.ownerId,
       spaceId: row.pin.spaceId, taskId: row.pin.taskId, taskCreatedAt: row.plan.development.taskCreatedAt }) } } : current
     if (JSON.stringify(intent.expected) !== JSON.stringify(current) && JSON.stringify(intent.expected) !== JSON.stringify(legacy)) throw new DaemonError('E_UNKNOWN', '原创建意图与任务身份不一致，未接管原会话。', 'unknown')
     return intent.expected
   }
-  private async reconcileCreation(row: Row, sender: NativeTaskProgressSender): Promise<Row> {
+  private async reconcileCreation(row: Row): Promise<Row> {
     if (row.plan) {
-      const original = this.recoveryExpected(row)
-      if (original.task?.workcopyTaskKey !== this.sessionExpected(row).task?.workcopyTaskKey) throw new DaemonError('E_UNKNOWN', '旧任务会话仅可核对或清理，请建立新会话继续开发。', 'unknown')
-      const acp = await import('../acp')
-      const proof = await acp.reconcileTaskSession(row.plan.root, row.nativeAlias, original)
-      if (proof.status === 'unknown') {
-        this.edit(row.pin, current => { current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
-        throw new DaemonError('E_UNKNOWN', proof.reason, 'unknown')
-      }
-      if (proof.status === 'settled') {
-        this.edit(row.pin, current => { current.state = 'stopped'; current.projectionActive = false; current.errorCode = proof.outcome === 'not-created' ? 'NATIVE_CREATION_NOT_ADMITTED' : 'NATIVE_CREATION_CLEANED';
-          if (current.dispatch !== 'sent' && proof.dispatch !== 'not-sent') current.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
-        return this.require(row.pin)
-      }
-      this.edit(row.pin, current => { current.session = proof.session; if (current.dispatch !== 'sent' && proof.dispatch !== 'not-sent') current.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
-      row = this.require(row.pin)
-      await this.inputCurrent(row, sender)
+      this.edit(row.pin, current => { current.state = 'stopped' })
+      return this.require(row.pin)
     }
+    const sender = await this.sender(row.pin)
     const server = await sender.status(), expected = row.creationBinding ?? { commandId: randomUUID(), generation: 0, bindingId: null }
     if (server.generation !== expected.generation || (server.binding?.bindingId ?? null) !== expected.bindingId) {
       this.edit(row.pin, current => { current.server = server; current.state = 'stopped'; current.errorCode = 'TASK_PROGRESS_BINDING_CONFLICT'; current.projectionActive = false })
@@ -270,15 +248,15 @@ export class CruxTaskProgressRuntime {
     this.edit(row.pin, current => {
       current.server = server; current.creationBinding = expected; current.errorCode = null; current.state = 'binding'
       current.queue.push({ command: { commandId: expected.commandId, expectedEpoch: current.pin.epoch, kind: 'bind', expectedGeneration: expected.generation, expectedBindingId: expected.bindingId,
-        source: { kind: 'desktop', sessionId: current.nativeAlias, engine: current.plan?.engine ?? 'manual', directoryName: current.plan ? basename(current.plan.root).slice(0, 100) || 'Task' : 'Manual progress' } }, state: 'queued', attempts: 0 })
+        source: { kind: 'desktop', sessionId: current.nativeAlias, engine: 'manual', directoryName: 'Manual progress' } }, state: 'queued', attempts: 0 })
     })
     return this.require(row.pin)
   }
   private async sync(query: CruxProgressQuery): Promise<TaskProgressNativeView> {
+    for (const original of this.pendingCleanup(query)) await this.closeOriginal(original).catch(() => {})
     let row = this.require(query)
     if (row.state === 'preparing') {
-      row = await this.reconcileCreation(row, await this.sender(row.pin))
-      if (row.state === 'stopped') return this.view(row)
+      row = await this.reconcileCreation(row)
     }
     if (!row.projectionActive && !['binding', 'active', 'releasing'].includes(row.state)) return this.view(row)
     const sender = await this.sender(row.pin)
@@ -289,7 +267,23 @@ export class CruxTaskProgressRuntime {
       if (!['binding', 'active', 'releasing'].includes(this.require(query).state)) return this.view(this.require(query))
       const server = await sender.status()
       await this.executeOwned({ operation: 'observe', query, server })
-      if (this.require(query).state === 'stopped') { await this.stopOld(row); return this.view(this.require(query)) }
+      if (this.require(query).state === 'stopped') return this.view(this.require(query))
+      if (row.plan && row.state === 'binding') {
+        const bind = row.queue[0]?.command, binding = server.binding
+        this.edit(query, current => {
+          if (bind?.kind === 'bind' && binding?.source.kind === 'desktop' && binding.source.sessionId === row.nativeAlias
+            && binding.reporterId === row.pin.ownerId && binding.deviceId === row.pin.deviceId && binding.generation === bind.expectedGeneration + 1) {
+            current.bindingId = binding.bindingId
+            current.bindingGeneration = binding.generation
+            current.state = 'active'
+            current.queue.shift()
+          } else {
+            current.state = 'stopped'
+            current.errorCode = 'TASK_PROGRESS_BINDING_CONFLICT'
+          }
+        })
+        return this.view(this.require(query))
+      }
       for (let count = 0; count < 4; count++) {
         row = this.require(query)
         if (!row.queue.length || !['binding', 'active', 'releasing'].includes(row.state)) break
@@ -305,7 +299,6 @@ export class CruxTaskProgressRuntime {
       const code = error instanceof DesktopTeamError ? error.code : 'LOCAL_PROGRESS_CONFLICT'
       const retry = ['NETWORK_UNAVAILABLE', 'ACKNOWLEDGEMENT_UNKNOWN'].includes(code)
       await this.executeOwned({ operation: 'fail', query, commandId, code, uncertain: Boolean(commandId) && (retry || error instanceof DesktopTeamError && error.outcomeUnknown), terminal: !retry })
-      if (!retry) await this.stopOld(row)
       throw error
     }
   }
@@ -330,15 +323,13 @@ export class CruxTaskProgressRuntime {
   }
   private value(row: Row, freshness: CruxProgressValue['freshness'] = 'pending'): CruxProgressValue {
     return { workspaceKey: row.pin.workspaceKey, taskId: row.pin.taskId, server: structuredClone(row.server), freshness,
-      local: { state: row.state, pendingCount: row.queue.filter(item => item.state !== 'settled').length, outcomeUnknown: row.state === 'preparing' || row.dispatch === 'unknown' || row.queue.some(item => item.state === 'dispatching' || item.state === 'unknown'),
-        ...(row.plan && (row.state === 'preparing' || !row.session) ? { creationSessionId: row.nativeAlias, creationRecoveryRequired: row.state === 'preparing' || row.dispatch === 'unknown' } : {}),
-        ...(row.plan ? { workcopyRoot: row.plan.root } : {}),
+      local: { state: row.state, pendingCount: row.state === 'stopped' ? 0 : row.queue.filter(item => item.state !== 'settled').length, outcomeUnknown: row.state !== 'stopped' && (row.state === 'preparing' || row.queue.some(item => item.state === 'dispatching' || item.state === 'unknown')),
         ownsBinding: row.state === 'active' && row.bindingId !== null && row.server.binding?.bindingId === row.bindingId
           && row.server.binding.generation === row.bindingGeneration && row.server.binding.reporterId === row.pin.ownerId && row.server.binding.deviceId === row.pin.deviceId,
-        errorCode: row.errorCode, session: structuredClone(row.session), inputVersion: row.plan?.inputVersion ?? row.pin.epoch,
-        dispatch: row.dispatch, managedDirectory: row.plan?.managedDirectory ?? false } }
+        errorCode: row.errorCode, inputVersion: row.plan?.inputVersion ?? row.pin.epoch,
+        cleanupRequired: this.pendingCleanup(row.pin).length > 0 } }
   }
-  private view(row: Row): TaskProgressNativeView { return { value: this.value(row), pin: structuredClone(row.pin), plan: structuredClone(row.plan) } }
+  private view(row: Row): TaskProgressNativeView { return { value: this.value(row), pin: structuredClone(row.pin) } }
   private owned(owner: Pick<AcpSessionRecord, 'sessionId' | 'projectRoot' | 'cwd' | 'connectionGeneration' | 'backendSessionId'>): Row | undefined {
     let root: string, cwd: string
     try { root = rootKey(realpathSync.native(owner.projectRoot)); cwd = rootKey(realpathSync.native(owner.cwd ?? owner.projectRoot)) } catch { return undefined }
@@ -378,14 +369,14 @@ export class CruxTaskProgressRuntime {
   }
   async execute(raw: unknown): Promise<unknown> {
     const input = taskProgressNativeSchema.parse(raw)
-    const scope = 'query' in input ? key(input.query) : 'input' in input ? key(input.input) : input.operation === 'prepare' ? key(input.pin) : '@catalog'
+    const scope = 'query' in input ? key(input.query) : input.operation === 'prepare' ? key(input.pin) : '@catalog'
     const previous = this.work.get(scope) ?? Promise.resolve()
     const current = previous.catch(() => {}).then(() => this.executeOwned(input))
     this.work.set(scope, current)
     try { return await current } finally { if (this.work.get(scope) === current) this.work.delete(scope) }
   }
   private async executeOwned(input: TaskProgressNativeInput): Promise<unknown> {
-    if (this.closed && !['catalog', 'read', 'conversation', 'events', 'cancel', 'official'].includes(input.operation)) throw new Error('Task execution admission is closed')
+    if (this.closed && !['catalog', 'read', 'official'].includes(input.operation)) throw new Error('Task execution admission is closed')
     if (input.operation.startsWith('outputs.')) {
       const result = await this.outputs.execute(input)
       if (this.outputs.hasWork()) this.schedule()
@@ -394,7 +385,6 @@ export class CruxTaskProgressRuntime {
     if (input.operation === 'catalog') return this.rows.filter(row => ['binding', 'active', 'releasing'].includes(row.state)).map(row => this.view(row))
     if (input.operation === 'read') { const row = this.find(input.query); return row ? this.view(row) : null }
     if (input.operation === 'prepare') return this.prepare(input)
-    if (['conversation', 'events', 'send', 'respond', 'cancel', 'resume'].includes(input.operation)) return this.conversation(input)
     if (!('query' in input)) throw new Error('Task progress operation is invalid')
     const row = this.require(input.query)
     switch (input.operation) {
@@ -406,11 +396,11 @@ export class CruxTaskProgressRuntime {
             current.state = 'stopped'; current.errorCode = 'TASK_PROGRESS_BINDING_CONFLICT'
           }
         })
-        if (this.require(input.query).state === 'stopped') await this.stopOld(row)
         break
       }
       case 'take': {
-        if (!['binding', 'active', 'releasing'].includes(row.state) || !row.queue.length || row.queue[0].state === 'dispatching') return null
+        if (!['binding', 'active', 'releasing'].includes(row.state) || row.plan && row.state === 'binding'
+          || !row.queue.length || row.queue[0].state === 'dispatching') return null
         this.edit(input.query, current => { const item = current.queue[0]; item.state = 'dispatching'; item.attempts++ })
         return { pin: structuredClone(row.pin), command: structuredClone(this.require(input.query).queue[0].command) } satisfies TaskProgressDelivery
       }
@@ -444,6 +434,7 @@ export class CruxTaskProgressRuntime {
       }
       case 'report': this.report(input.query, input.summary); break
       case 'detach': {
+        await this.closeOriginal(row)
         this.edit(input.query, current => {
           if (current.state === 'detached' || current.state === 'releasing') return
           if (current.state !== 'active' || !current.bindingId) throw new Error('Reconcile the original binding before detaching it')
@@ -454,7 +445,14 @@ export class CruxTaskProgressRuntime {
         })
         break
       }
-      case 'run': return this.run(input.query)
+      case 'cleanup': {
+        let failure: unknown
+        for (const original of this.pendingCleanup(input.query)) {
+          try { await this.closeOriginal(original) } catch (error) { failure ??= error }
+        }
+        if (failure !== undefined) throw failure
+        return { ok: true }
+      }
       case 'sync': return this.sync(input.query)
       case 'official': {
         const sender = await this.sender(row.pin), snapshot = await sender.snapshot()
@@ -467,149 +465,27 @@ export class CruxTaskProgressRuntime {
     }
     return this.view(this.require(input.query))
   }
-  private async conversation(input: TaskProgressNativeInput): Promise<unknown> {
-    if (!('query' in input) && !('input' in input)) throw new Error('A task conversation requires its original handle')
-    const query = 'query' in input ? input.query : input.input
-    const row = this.require(query), owner = row.session
-    if (!owner) throw new Error('This task has no native conversation')
-    const acp = await import('../acp')
-    const read = () => acp.getAcpHistorySession(owner.projectRoot, owner.sessionId)
-    const current = await read()
-    if (!current.ok || current.session.backendSessionId !== owner.backendSessionId || rootKey(current.session.projectRoot) !== rootKey(owner.projectRoot)
-      || rootKey(current.session.cwd ?? current.session.projectRoot) !== rootKey(owner.cwd) || current.session.taskProgress?.taskId !== row.pin.taskId
-      || current.session.taskProgress.inputVersion !== row.plan?.inputVersion) throw new Error('The original native conversation identity cannot be verified')
-    if (input.operation === 'conversation') return current
-    if (input.operation === 'events') {
-      const { workspaceKey: _w, taskId: _t, ...paging } = input.input
-      return acp.getAcpHistoryEvents(owner.projectRoot, owner.sessionId, paging)
-    }
-    if (input.operation === 'cancel') return acp.cancelAcpSession(owner.projectRoot, owner.sessionId)
-    if (row.state !== 'active' || row.server.binding?.bindingId !== row.bindingId) throw new Error('The original task progress handle is no longer active')
-    if (input.operation === 'resume') {
-      await this.inputCurrent(row, await this.sender(row.pin))
-      const result = await acp.resumeAcpSession(owner.projectRoot, owner.sessionId)
-      if (!result.ok) return result
-      const restored = await read()
-      if (!restored.ok || restored.session.backendSessionId !== owner.backendSessionId || !restored.session.connectionGeneration
-        || rootKey(restored.session.cwd ?? restored.session.projectRoot) !== rootKey(owner.cwd)) throw new Error('Original native session restore was not confirmed')
-      this.edit(query, next => { if (next.session) next.session.connectionGeneration = restored.session.connectionGeneration as string })
-      return result
-    }
-    if (current.session.connectionGeneration !== owner.connectionGeneration) throw new Error('Original conversation connection changed; explicitly resume the same session')
-    if (input.operation === 'send') {
-      if (input.input.expectedConnectionGeneration !== owner.connectionGeneration) throw new Error('The task conversation connection is stale')
-      await this.inputCurrent(row, await this.sender(row.pin))
-      return acp.promptAcpSession(owner.projectRoot, owner.sessionId, input.input.text, { expectedConnectionGeneration: owner.connectionGeneration }, () => this.require(query).state === 'active')
-    }
-    if (input.operation === 'respond') {
-      const request = current.session.pendingPermissions?.find(item => item.requestId === input.input.requestId && item.connectionGeneration === owner.connectionGeneration)
-      const option = request?.options.find(item => item.optionId === input.input.optionId)
-      if (input.input.expectedConnectionGeneration !== owner.connectionGeneration || !request || !option) throw new Error('The task permission request is no longer current')
-      if (option.kind === 'allow_once' || option.kind === 'allow_always') await this.inputCurrent(row, await this.sender(row.pin))
-      return acp.respondAcpPermission(owner.projectRoot, input.input.requestId, input.input.optionId)
-    }
-    throw new Error('Unsupported task conversation action')
-  }
   private async prepare(input: Extract<TaskProgressNativeInput, { operation: 'prepare' }>): Promise<TaskProgressNativeView> {
-    if (this.rows.length >= 128) throw new DesktopTeamError('CAPACITY_EXCEEDED', '本机任务进度绑定已达 128 条上限；原待确认与投影记录已保留')
     const old = this.find(input.pin)
-    if (old) {
-      if (JSON.stringify(old.pin) !== JSON.stringify(input.pin)) throw new Error('Original progress identity cannot be retargeted')
-      if (old.state !== 'detached' && !input.takeover) return this.view(old)
-      const nativeOwner = old.plan ? old : input.plan ? [...this.rows].reverse().find(row => key(row.pin) === key(input.pin) && row.plan) : undefined
-      if (nativeOwner?.plan) {
-        const acp = await import('../acp'), proof = await acp.reconcileTaskSession(nativeOwner.plan.root, nativeOwner.nativeAlias, this.recoveryExpected(nativeOwner))
-        let sameCopy = true
-        if (input.plan) {
-          try { const previous = resolveWorkcopy(nativeOwner.plan.root), next = resolveWorkcopy(input.plan.root); sameCopy = previous.id === next.id || previous.physicalId === next.physicalId } catch { /* Without physical proof, the original copy remains protected. */ }
-        }
-        if (proof.status === 'unknown' && input.plan && sameCopy) {
-          this.edit(old.pin, current => { if (nativeOwner === old) current.state = 'preparing'; current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
-          throw new DaemonError('E_UNKNOWN', `${proof.reason} 原副本尚不能启动替代会话；请先核对原创建，或明确选择可证明独立的副本。`, 'unknown')
-        }
-        if (proof.status === 'present' && proof.connection === 'live') {
-          const stopped = await acp.killAcpSession(proof.session.projectRoot, proof.session.sessionId)
-          if (!stopped.ok && input.plan && sameCopy) {
-            this.edit(old.pin, current => { if (nativeOwner === old) current.state = 'preparing'; current.errorCode = 'NATIVE_CREATION_RECOVERY_REQUIRED' })
-            throw new DaemonError('E_UNKNOWN', stopped.error, 'unknown')
-          }
-        }
-      }
-    }
+    if (old && JSON.stringify(old.pin) !== JSON.stringify(input.pin)) throw new Error('Original progress identity cannot be retargeted')
+    if (old && !['detached', 'stopped'].includes(old.state) && !input.takeover) return this.view(old)
     if (input.server.binding && !input.takeover) throw new Error('This task already has a progress reporter; explicitly confirm takeover first')
+    if (this.rows.length >= 128) throw new DesktopTeamError('CAPACITY_EXCEEDED', '本机任务进度绑定已达 128 条上限；原待确认与投影记录已保留')
     if (input.server.instanceId !== input.pin.instanceId || input.server.epoch !== input.pin.epoch || input.server.taskId !== input.pin.taskId
       || input.server.spaceId !== input.pin.spaceId || input.server.projectId !== input.pin.projectId) throw new Error('Task progress admission authority mismatch')
-    const nativeAlias = `task-${randomUUID()}`
-    let plan = input.plan
-    if (plan?.managedDirectory) {
-      if (!plan.material) throw new Error('General task requires its complete frozen input')
-      const material = JSON.stringify(plan.material)
-      if (Buffer.byteLength(material) > 256 * 1024 || createHash('sha256').update(material).digest('hex') !== plan.inputVersion) throw new Error('General task material exceeds capacity or has a different version')
-      const directory = join(this.dataDir, 'crux-progress', 'work', createHash('sha256').update(key(input.pin)).digest('hex'), nativeAlias)
-      mkdirSync(directory, { recursive: true })
-      plan = { ...plan, root: realpathSync.native(directory) }
-      writeAtomic(join(plan.root, 'task-input.json'), JSON.stringify({ inputVersion: plan.inputVersion, material: plan.material }))
-    } else if (plan) plan = { ...plan, root: realpathSync.native(plan.root) }
-    const created: Row = { pin: input.pin, plan, session: null, nativeAlias, state: 'preparing', server: input.server, bindingId: null, bindingGeneration: null,
-      seq: 0, dispatch: 'not_sent', errorCode: null, queue: [], projectionActive: Boolean(plan?.taskDir),
-      creationBinding: { commandId: randomUUID(), generation: input.server.generation, bindingId: input.server.binding?.bindingId ?? null } }
-    if (plan) {
-      await this.inputCurrent(created, await this.sender(input.pin))
-      const acp = await import('../acp')
-      await acp.reserveTaskSession(plan.root, nativeAlias, this.sessionExpected(created))
-    }
+    const nativeAlias = `manual-${randomUUID()}`
+    const command: TeamTaskProgressCommand = { commandId: randomUUID(), expectedEpoch: input.pin.epoch, kind: 'bind', expectedGeneration: input.server.generation,
+      expectedBindingId: input.server.binding?.bindingId ?? null, source: { kind: 'desktop', sessionId: nativeAlias, engine: 'manual', directoryName: 'Manual progress' } }
+    const created: Row = { pin: input.pin, plan: null, session: null, nativeAlias, state: 'binding', server: input.server, bindingId: null, bindingGeneration: null,
+      seq: 0, dispatch: 'not_sent', errorCode: null, queue: [{ command, state: 'queued', attempts: 0 }], projectionActive: false }
     this.commit(rows => {
-      if (old) { const previous = [...rows].reverse().find(row => key(row.pin) === key(input.pin)); if (previous) { previous.state = 'stopped'; previous.errorCode = 'EXPLICIT_TAKEOVER'; previous.projectionActive = false } }
-      rows.push(created)
-    })
-    if (old?.session) {
-      const acp = await import('../acp')
-      // A cancellation request is not a claim that another machine/process has stopped.
-      await acp.cancelAcpSession(old.session.projectRoot, old.session.sessionId).catch(() => {})
-    }
-    if (plan) {
-      const acp = await import('../acp')
-      const session = await acp.newTaskAcpSession(plan.root, { agentId: plan.agentId ?? (plan.engine === 'pi' ? 'pi' : 'codex'), taskDir: plan.taskDir }, nativeAlias, plan.engine,
-        this.sessionExpected(created).task)
-      if (!session.ok) {
-        const proof = await acp.reconcileTaskSession(plan.root, nativeAlias, this.sessionExpected(created))
-        this.edit(input.pin, row => { row.state = proof.status === 'settled' ? 'stopped' : 'preparing'; row.errorCode = proof.status === 'settled' ? session.code : 'NATIVE_CREATION_RECOVERY_REQUIRED';
-          if (proof.status === 'present') row.session = proof.session
-          if (proof.dispatch !== 'not-sent') row.dispatch = proof.dispatch === 'sent' ? 'sent' : 'unknown' })
-        const knownUnsent = proof.status === 'settled' && proof.dispatch === 'not-sent'
-        throw new DaemonError(knownUnsent ? 'E_CONFLICT' : 'E_UNKNOWN', proof.status === 'unknown' ? proof.reason : session.error, knownUnsent ? 'not-admitted' : 'unknown')
+      const previous = rows.findLast(row => key(row.pin) === key(input.pin))
+      if (previous) {
+        previous.state = 'stopped'; previous.errorCode = 'EXPLICIT_TAKEOVER'; previous.projectionActive = false
       }
-      this.edit(input.pin, row => { row.session = session.session })
-    }
-    this.edit(input.pin, row => {
-      const source = { kind: 'desktop' as const, sessionId: nativeAlias, engine: plan?.engine ?? 'manual', directoryName: plan ? basename(plan.root).slice(0, 100) || 'Task' : 'Manual progress' }
-      row.queue.push({ command: { commandId: row.creationBinding?.commandId ?? randomUUID(), expectedEpoch: row.pin.epoch, kind: 'bind', expectedGeneration: row.creationBinding?.generation ?? row.server.generation, expectedBindingId: row.creationBinding ? row.creationBinding.bindingId : row.server.binding?.bindingId ?? null, source }, state: 'queued', attempts: 0 })
-      row.state = 'binding'
+      rows.push(created)
     })
     this.schedule()
     return this.view(this.require(input.pin))
-  }
-  private async run(query: CruxProgressQuery): Promise<TaskProgressNativeView> {
-    let row = this.require(query)
-    if (row.state !== 'active' || row.queue.length || !row.bindingId) throw new Error('Server must confirm the original progress binding before task delivery')
-    if (!row.plan || !row.session || row.dispatch === 'sent') return this.view(row)
-    if (row.dispatch !== 'not_sent') throw new Error('Original task delivery is uncertain; inspect the retained session without replaying its prompt')
-    const sender = await this.sender(row.pin)
-    const confirmed = await sender.status()
-    await this.executeOwned({ operation: 'observe', query, server: confirmed })
-    if (this.require(query).state !== 'active') throw new Error('Original server binding is no longer current')
-    await this.project(this.require(query), true, sender)
-    await this.inputCurrent(this.require(query), sender)
-    const acp = await import('../acp')
-    const current = await acp.getAcpHistorySession(row.session.projectRoot, row.session.sessionId)
-    if (!current.ok || current.session.backendSessionId !== row.session.backendSessionId || current.session.connectionGeneration !== row.session.connectionGeneration
-      || rootKey(current.session.cwd ?? current.session.projectRoot) !== rootKey(row.session.cwd)) throw new Error('Original native session identity changed; task was not sent')
-    this.edit(query, owned => { owned.dispatch = 'dispatching' })
-    const result = await acp.promptAcpSession(row.session.projectRoot, row.session.sessionId, row.plan.prompt,
-      { expectedConnectionGeneration: row.session.connectionGeneration }, () => this.require(query).state === 'active')
-    this.edit(query, owned => { owned.dispatch = result.ok ? 'sent' : 'unknown'; if (!result.ok) owned.errorCode = result.code })
-    row = this.require(query)
-    if (!result.ok) throw new Error(result.error)
-    return this.view(row)
   }
 }

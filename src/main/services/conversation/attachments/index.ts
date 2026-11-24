@@ -22,7 +22,9 @@ import {
   type ChatAttachment,
 } from '../../../../shared/conversation/chatAttachment'
 import { DaemonError } from '../../../daemon/errors'
+import { conversationKnowledgeAttachmentSchema, type ConversationKnowledgeAttachment } from '../../../../shared/conversation/knowledge-reference'
 import { CONVERSATION_ATTACHMENT_DDL } from './schema'
+import { knowledgeAttachmentFile, prepareConversationKnowledge } from './knowledge'
 
 export interface ConversationAttachmentThreadScope {
   readonly ownerId: string
@@ -32,6 +34,7 @@ export interface ConversationAttachmentThreadScope {
 
 export interface ConversationAttachmentDraftScope extends ConversationAttachmentThreadScope {
   readonly draftId: string
+  readonly knowledgePageId?: string
 }
 
 interface ContentRow {
@@ -160,6 +163,12 @@ export class ConversationAttachmentStore {
     return this.storeBytes(draftScope(scope), input, limits)
   }
 
+  stageKnowledge(scope: ConversationAttachmentDraftScope, knowledge: ConversationKnowledgeAttachment): StagedConversationAttachment {
+    const binding = draftScope(scope)
+    const prepared = prepareConversationKnowledge(scope.root, scope.knowledgePageId, knowledge)
+    return this.storeBytes(binding, knowledgeAttachmentFile(prepared), { fileBytes: 128 * 1024 }, knowledge)
+  }
+
   async stageHostFile(scope: ConversationAttachmentDraftScope, selectedPath: string, limits?: ConversationAttachmentLimits): Promise<StagedConversationAttachment> {
     const binding = draftScope(scope)
     const input = await readHostConversationAttachmentFile(selectedPath)
@@ -171,14 +180,14 @@ export class ConversationAttachmentStore {
   }
 
   previewClaim(scope: ConversationAttachmentDraftScope, input: ConversationAttachmentClaimInput, limits?: ConversationAttachmentLimits): readonly ChatAttachment[] {
-    return this.resolveClaim(draftScope(scope), input, limits).attachments
+    return this.resolveClaim(draftScope(scope), input, scope, limits).attachments
   }
 
   /** Join the command transaction on this same connection. A rollback preserves the draft. */
   claim(scope: ConversationAttachmentDraftScope, input: ConversationAttachmentClaimInput, limits?: ConversationAttachmentLimits): readonly ChatAttachment[] {
     if (!this.database.isTransaction) throw new Error('Attachment claims require the conversation command transaction.')
     const binding = draftScope(scope)
-    const result = this.resolveClaim(binding, input, limits)
+    const result = this.resolveClaim(binding, input, scope, limits, false)
     if (result.existing) return result.attachments
     const insert = this.database.prepare(`INSERT INTO conversation_v2_attachment_claims
       (attachment_id, thread_id, claim_id, ordinal, content_id, source_attachment_id, owner_id, space_id, root_key, draft_id)
@@ -198,6 +207,14 @@ export class ConversationAttachmentStore {
       WHERE claim.attachment_id = ? AND claim.thread_id = ? AND claim.owner_id = ? AND claim.space_id = ? AND claim.root_key = ?`)
       .get(input.attachmentId, input.threadId, ...binding) as (ContentRow & { bytes: Uint8Array }) | undefined
     return row ? checkedBytes(row, input.attachmentId) : null
+  }
+
+  claimedKnowledge(scope: ConversationAttachmentThreadScope, input: ConversationAttachmentLocator): ConversationKnowledgeAttachment | undefined {
+    const row = this.database.prepare(`SELECT knowledge.reference_json FROM conversation_v2_attachment_claims claim
+      JOIN conversation_v2_attachment_knowledge knowledge ON knowledge.content_id = claim.content_id
+      WHERE claim.attachment_id = ? AND claim.thread_id = ? AND claim.owner_id = ? AND claim.space_id = ? AND claim.root_key = ?`)
+      .get(input.attachmentId, input.threadId, ...threadScope(scope)) as { reference_json: string } | undefined
+    return row ? conversationKnowledgeAttachmentSchema.parse(JSON.parse(row.reference_json)) : undefined
   }
 
   readDraft(scope: ConversationAttachmentDraftScope, attachmentId: string): ConversationAttachmentContent | null {
@@ -255,7 +272,9 @@ export class ConversationAttachmentStore {
     this.lastSweepAt = now
   }
 
-  private storeBytes(binding: ReturnType<typeof draftScope>, input: ConversationAttachmentBytesInput, limits?: ConversationAttachmentLimits): StagedConversationAttachment {
+  private storeBytes(binding: ReturnType<typeof draftScope>, input: ConversationAttachmentBytesInput, limits?: ConversationAttachmentLimits,
+    knowledge?: ConversationKnowledgeAttachment,
+  ): StagedConversationAttachment {
     const parsed = ConversationAttachmentBytesInputSchema.safeParse(input)
     if (!parsed.success || parsed.data.name === '.' || parsed.data.name === '..') {
       throw new DaemonError('E_INVALID_ARG', '附件名称或大小无效。')
@@ -294,11 +313,15 @@ export class ConversationAttachmentStore {
       this.database.prepare(`INSERT INTO conversation_v2_attachment_drafts
         (content_id, owner_id, space_id, root_key, draft_id, expires_at) VALUES (?, ?, ?, ?, ?, ?)`)
         .run(content.content_id, ...binding, expiresAt)
+      if (knowledge) this.database.prepare('INSERT INTO conversation_v2_attachment_knowledge (content_id, reference_json) VALUES (?, ?)')
+        .run(content.content_id, JSON.stringify(knowledge))
       return { ...attachment, sha256: content.sha256, expiresAt }
     })
   }
 
-  private resolveClaim(binding: ReturnType<typeof draftScope>, input: ConversationAttachmentClaimInput, limits?: ConversationAttachmentLimits) {
+  private resolveClaim(binding: ReturnType<typeof draftScope>, input: ConversationAttachmentClaimInput, scope: ConversationAttachmentDraftScope,
+    limits?: ConversationAttachmentLimits, preview = true,
+  ) {
     const { threadId, claimId } = input
     this.assertThreadScope(binding, threadId, true)
     const parsed = ConversationAttachmentIdsSchema.safeParse(input.attachmentIds)
@@ -336,6 +359,19 @@ export class ConversationAttachmentStore {
     })
     if (new Set(contents.map(row => row.content_id)).size !== contents.length) {
       throw new DaemonError('E_INVALID_ARG', '同一附件不能重复引用。')
+    }
+    if (preview) {
+      const knowledge = this.database.prepare('SELECT reference_json FROM conversation_v2_attachment_knowledge WHERE content_id = ?')
+      const references = new Set<string>()
+      for (const content of contents) {
+        const row = knowledge.get(content.content_id) as { reference_json: string } | undefined
+        if (!row) continue
+        const source = conversationKnowledgeAttachmentSchema.parse(JSON.parse(row.reference_json))
+        const key = JSON.stringify(source.reference)
+        if (references.has(key)) throw new DaemonError('E_INVALID_ARG', '同一份知识资料不能重复引用。')
+        references.add(key)
+        prepareConversationKnowledge(scope.root, scope.knowledgePageId, source)
+      }
     }
     const attachments = contents.map((row, index) => toAttachment(row, this.claimedId(input, attachmentIds[index])))
     this.assertBudget(attachments, limits)

@@ -7,6 +7,7 @@
 .knowledge-discussion-source[data-panel='true'] > [data-page-layout] { flex: 1; min-height: 0; height: auto; }
 .knowledge-discussion-header { display: flex; flex: 0 0 auto; align-items: center; gap: var(--my-space-8); min-height: var(--my-workspace-header-height); padding: 0 var(--my-space-12); border-bottom: 1px solid var(--my-border-subtle); background: var(--my-bg-layer-1); }
 .knowledge-discussion-header strong { flex: 1; min-width: 0; font-size: var(--my-text-item-title); font-weight: var(--my-weight-medium); color: var(--my-txt-item-title); }
+.my-root .knowledge-discussion-source[data-panel='true'] .conversation-workbench > .my-context-region { grid-template-columns: 0; overflow: visible; }
 .knowledge-discussion-source[data-panel='true'] .acp-navigation { display: none; }
 .knowledge-discussion-source[data-panel='true'] .acp-navigation.is-open { position: absolute; inset: 0 auto 0 0; display: flex; width: var(--acp-sidebar-width); max-width: calc(100% - var(--my-space-32)); z-index: var(--my-z-sidebar); }
 .knowledge-discussion-source[data-panel='true'] .acp-sidebar-scrim { display: block; position: absolute; inset: 0; background: var(--my-bg-backdrop); z-index: var(--my-z-sidebar-scrim); }

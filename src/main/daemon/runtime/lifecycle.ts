@@ -16,7 +16,6 @@ export interface RuntimeLifecyclePorts {
   workcopies: RuntimeWorkcopyLifecyclePort
   materialTimers: Map<string, ReturnType<typeof setTimeout>>
   watchers: Map<string, import('chokidar').FSWatcher>
-  conversationProjections: { close(): void }
   /** The new conversation kernel owns Codex child processes and must release them on quit. */
   conversation: { shutdown(): Promise<void>; activityCount(): number; ownsWorkspace(within: (path: string) => boolean): boolean }
   stopKnowledgeReads(): void
@@ -197,7 +196,6 @@ export class LifecycleService {
         this.ports.taskProgress.close(),
         this.ports.commands.drain(),
       ])
-      this.ports.conversationProjections.close()
       for (const timer of this.ports.materialTimers.values()) clearTimeout(timer)
       this.ports.materialTimers.clear()
       await Promise.all([...this.ports.watchers.values()].map(watcher => watcher.close()))

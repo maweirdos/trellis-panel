@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { conversationKnowledgeAttachmentSchema, conversationKnowledgeReferenceSchema } from './knowledge-reference'
 import {
   getProviderAttachmentLimitError,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -42,14 +43,18 @@ export const ConversationAttachmentBytesInputSchema = z.strictObject({
 
 export type ConversationAttachmentBytesInput = z.input<typeof ConversationAttachmentBytesInputSchema>
 
-export const ConversationAttachmentWireStageSchema = ConversationAttachmentDraftTargetSchema.extend(
+export const ConversationAttachmentWireBytesSchema = ConversationAttachmentDraftTargetSchema.extend(
   ConversationAttachmentBytesInputSchema.omit({ bytes: true }).shape,
 ).extend({
   data: z.string().min(4).max(4 * Math.ceil(PROVIDER_SEND_TURN_MAX_FILE_BYTES / 3)),
 })
+export const ConversationAttachmentWireKnowledgeSchema = ConversationAttachmentDraftTargetSchema.extend({
+  knowledge: conversationKnowledgeAttachmentSchema,
+})
 
 export type ConversationAttachmentDraftTarget = z.infer<typeof ConversationAttachmentDraftTargetSchema>
-export type ConversationAttachmentStageInput = { cwd: string } & ConversationAttachmentDraftTarget & ConversationAttachmentBytesInput
+export type ConversationAttachmentStageInput = { cwd: string } & ConversationAttachmentDraftTarget &
+  (ConversationAttachmentBytesInput | { knowledge: z.input<typeof conversationKnowledgeReferenceSchema> })
 
 export interface ConversationAttachmentClaimInput {
   readonly threadId: string

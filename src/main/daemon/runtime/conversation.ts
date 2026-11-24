@@ -5,6 +5,9 @@ import * as Schema from 'effect/Schema'
 import { openConversationDatabase } from '../../services/conversation/persistence/database'
 import { ConversationAttachmentStore } from '../../services/conversation/attachments'
 import { conversationAttachmentDraftScope, prepareConversationAttachmentClaim } from '../../services/conversation/attachments/claims'
+import { prepareConversationKnowledge } from '../../services/conversation/attachments/knowledge'
+import type { ConversationKnowledgeAttachment } from '../../../shared/conversation/knowledge-reference'
+import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
 import { ThreadMessageIntake } from '../../services/conversation/orchestration/ThreadMessageIntake'
 import { ConversationEventSink } from '../../services/conversation/orchestration/EventSink'
 import { ThreadCommands, lifecycleEvent, type ThreadEffectRow } from '../../services/conversation/orchestration/ThreadCommands'
@@ -376,6 +379,14 @@ export class ConversationRuntime {
     return this.attachments.stageBytes(scope, input, target.requestId ? { totalBytes: ANSWER_ATTACHMENT_MAX_BYTES } : undefined)
   }
 
+  async stageKnowledgeAttachment(target: ConversationAttachmentDraftTarget, knowledge: ConversationKnowledgeAttachment, authority: CommandAuthority) {
+    if (target.requestId || authority.binding.kind !== 'personal' || (target.threadId && this.commands.isArchived(target.threadId))) {
+      throw new DaemonError('E_DENIED', '只能将资料加入原工程中可编辑的会话草稿。')
+    }
+    const scope = await this.attachmentDraftAuthority(target, { ...authority, knowledgePageId: knowledge.pageId })
+    return this.attachments.stageKnowledge(scope, knowledge)
+  }
+
   async listAttachments(target: ConversationAttachmentDraftTarget, authority: CommandAuthority) {
     const scope = await this.attachmentDraftAuthority(target, authority)
     return this.attachments.listDraft(scope)
@@ -418,6 +429,7 @@ export class ConversationRuntime {
     readonly assertAuthorityCurrent?: () => void | Promise<void>
     readonly assertSpawnCurrent?: () => void
     readonly taskContext?: string
+    readonly role?: { readonly selection: ConversationProjectRoleSelection; readonly readInstructions: () => string }
   }): ConversationCommandState {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed.')
@@ -447,8 +459,10 @@ export class ConversationRuntime {
       projectId: input.projectId, ownerId: input.ownerId, spaceId: input.spaceId, title: input.title ?? '',
       text: input.text, driverKind, modelSelection: decodeModelSelection({ instanceId: input.instanceId, model: input.model, options: input.options }),
       commandId: input.commandId, messageId: input.messageId,
+      ...(input.role && { role: input.role.selection }),
       ...(input.attachmentIds !== undefined ? { attachmentIds: input.attachmentIds, draftId: input.draftId } : {}),
-    }, input, registration ? this.configurationFingerprint(registration) : undefined, registration?.promptAttachments)
+    }, input, registration ? this.configurationFingerprint(registration) : undefined, registration?.promptAttachments,
+    input.role?.readInstructions)
     if ('conflict' in accepted) throw new DaemonError('E_CONFLICT', accepted.conflict)
     if (!accepted.committed) return this.commandState(accepted.receipt)
     const authority = { ...input, assertCurrent: input.assertAuthorityCurrent ?? input.assertCurrent }
@@ -1220,6 +1234,17 @@ export class ConversationRuntime {
       const message = compaction ? { text: '', attachments: undefined } : this.commands.readUserMessage(runId)
       assertPromptAttachments(message.attachments, registration.promptAttachments)
       const attachments = this.readAttachmentContents(threadId, message.attachments, authority)
+      const knowledge = attachments.flatMap(({ attachment }) => {
+        const source = this.attachments.claimedKnowledge({ ownerId: authority.ownerId, spaceId: authority.spaceId, root: cwd },
+          { threadId, attachmentId: attachment.id })
+        return source ? [prepareConversationKnowledge(cwd, authority.knowledgePageId, source)] : []
+      })
+      const assertKnowledgeCurrent = (): void => {
+        try { for (const source of knowledge) source.assertCurrent() }
+        catch (cause) {
+          throw new ConversationTurnRejectedError(cause instanceof Error ? cause.message : '所选资料已失效，请重新选择。', { cause })
+        }
+      }
       for (const content of attachments) if (content.attachment.type === 'file') nativeTextAttachment(content)
       if (selection.options?.length && !registration.turnModelOptions) {
         throw new ConversationTurnRejectedError('原引擎已无法应用排队回合的模型参数。')
@@ -1254,8 +1279,12 @@ export class ConversationRuntime {
         this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource)))
       if (!nativeThreadId) throw new ConversationTurnRejectedError('引擎未返回接力会话身份。')
       if (completion && nativeThreadId !== completion.nativeThreadId) throw new ConversationTurnRejectedError('引擎没有接回原委派的父会话。')
+      for (const source of knowledge) await source.assertRemoteCurrent(AbortSignal.any([
+        this.shutdownController.signal, AbortSignal.timeout(this.deadlines.thread),
+      ]))
       await this.assertCurrent(threadId, authority)
       fence()
+      assertKnowledgeCurrent()
       for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
       const goal = compaction || completion ? null : this.continuation.readGoal(threadId)
       const { text: contextText, ...coverage } = renderPortableHistory(histories)
@@ -1263,8 +1292,10 @@ export class ConversationRuntime {
         sourceRunId: handoffSource.previous_run_id, sourceInstanceId: handoffSource.instance_id,
         targetInstanceId: selection.instanceId, ...coverage, state: 'prepared',
       } : undefined
+      const roleInstructions = compaction || completion ? undefined : this.intake.readRoleInstructions(threadId)
       const prompt = [
         ...(run.ordinal === 1 && ordinaryTask && authority.taskContext ? [`以下是原团队任务的固定材料摘要。\n\n${authority.taskContext}`] : []),
+        ...(roleInstructions?.trim() ? [`当前工程中用户选定的角色指令（Crux）\n${roleInstructions}`] : []),
         ...(goal?.status === 'active' ? [`当前会话的用户目标（Crux）\n${goal.objective}`] : []),
         `${contextText}${message.text}`,
       ].filter(Boolean).join('\n\n')
@@ -1305,15 +1336,19 @@ export class ConversationRuntime {
       unpin()
       unpin = undefined
       const onEvent = (event: ConversationDriverTurnEvent): void => this.observeTurn(active, event)
+      const sendFence = knowledge.length ? (): void => {
+        fence()
+        if (!active.controlTurnId) assertKnowledgeCurrent()
+      } : fence
       const context = {
-          requestId: row.command_id, modelOptions: selection.options, assertCurrent: fence,
+          requestId: row.command_id, modelOptions: selection.options, assertCurrent: sendFence,
           ...((restricted || managedExecution) && { assertAuthorized: () => this.assertCurrent(threadId, authority) }),
           ...(attachments.length ? { attachments } : {}),
           ...(registration.ordinaryTaskAccess === 'native-read-only' && authority.binding.kind === 'personal' && !compaction && !completion && !related && {
               delegation: (call: ConversationDelegationCall) => this.acceptDelegationCall(active, call),
             }),
       }
-      const acceptedTurnId = await this.driverFence.run(fence, () => runBounded(
+      const acceptedTurnId = await this.driverFence.run(sendFence, () => runBounded(
         compaction && driver.compactThread
           ? driver.compactThread({ nativeThreadId, cwd, model: selection.model, instructions: compaction.instructions, onEvent, context })
           : driver.startTurn(nativeThreadId, cwd, prompt, selection.model, onEvent, context),

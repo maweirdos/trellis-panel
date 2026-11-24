@@ -65,7 +65,8 @@ export async function privateNativeControl(operation: 'cancel' | 'end' | 'respon
   if (input.expectedConnectionGeneration && session.session.connectionGeneration !== input.expectedConnectionGeneration) return ipcFail(IpcErrorCode.Conflict, '原生连接已变化')
   if (operation === 'cancel') return acp.cancelAcpSession(input.root, input.sessionId)
   if (operation === 'end') return acp.killAcpSession(input.root, input.sessionId)
-  const pending = (session.session.pendingPermissions ?? []).find(item => item.requestId === input.requestId && item.sessionId === input.sessionId && item.connectionGeneration === input.expectedConnectionGeneration)
+  const pending = (session.session.pendingPermissions ?? []).find(item => item.requestId === input.requestId && item.sessionId === input.sessionId && item.connectionGeneration === input.expectedConnectionGeneration
+    && (!input.expectedTurnId || item.turnId === input.expectedTurnId && session.session.turnId === input.expectedTurnId))
   if (!pending || !input.expectedConnectionGeneration || !input.optionId || !pending.options.some(option => option.optionId === input.optionId)) return ipcFail(IpcErrorCode.Denied, '权限请求已结束或不属于原会话')
   if (session.session.privateConversation?.planningPolicy) return acp.respondTaskPlanningPermission(input.root, pending.requestId, input.optionId)
   return acp.respondAcpPermission(input.root, pending.requestId, input.optionId)

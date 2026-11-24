@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ConversationRead } from './private-conversations'
-import type { AcpSessionRecord } from './types'
+import type { AcpPermissionPayload, AcpSessionRecord } from './types'
 import type { IpcFail } from './ipc-errors'
 import { designGenerationPageIdSchema, designGenerationPageInputSchema, DESIGN_GENERATION_MAX_PAGES, DESIGN_GENERATION_PAGE_MAX_BYTES, DESIGN_GENERATION_TOTAL_MAX_BYTES } from './design-generation'
 
@@ -47,6 +47,7 @@ export const designDocumentSchema = designSummarySchema.extend({
 }).strict()
 export const designGetSchema = z.object({ documentId: id }).strict()
 export const designSyncSchema = z.object({ conversationId: id }).strict()
+export const designTurnSyncSchema = designSyncSchema.extend({ turnId: z.string().min(1).max(200).optional() })
 export const designCreateConversationSchema = z.object({ kind: z.enum(['web', 'app', 'prototype']).optional(), text: z.string().max(16_000).optional() }).strict()
 export const designSaveSchema = z.object({
   documentId: id, expectedRevision: revision, commandId: id, pages: designPagesSchema.optional(), frames: z.array(designFrameSchema).max(DESIGN_GENERATION_MAX_PAGES).optional()
@@ -55,7 +56,15 @@ export const designSelectionSchema = z.object({
   pageId, frameId: pageId.optional(), revision, selector: z.string().min(1).max(2000),
   tagName: z.string().max(100).optional(), text: z.string().max(4000).optional(), outerHTML: z.string().max(16_000).optional()
 }).strict()
-export const designSendSchema = z.object({ documentId: id, requestId: id, text: z.string().trim().min(1).max(16_000), selection: designSelectionSchema.optional() }).strict()
+const designRequestFields = { requestId: id, text: z.string().trim().min(1).max(16_000) }
+export const designSendSchema = z.union([
+  z.object({ ...designRequestFields, documentId: id, expectedRevision: revision.optional(), selection: designSelectionSchema.optional() }).strict(),
+  z.object({ ...designRequestFields, conversationId: id }).strict(),
+])
+export const designTurnStatusSchema = z.object({ conversationId: id, requestId: id, turnId: z.string().min(1).max(200) }).strict()
+export const designTurnRespondSchema = designTurnStatusSchema.extend({
+  permissionRequestId: z.string().min(1).max(200), optionId: z.string().min(1).max(1000),
+}).strict()
 export const designAdoptSchema = z.object({ documentId: id, candidateId: id, expectedRevision: revision, commandId: id }).strict()
 export const designDiscardSchema = designAdoptSchema
 export const designExportSchema = z.object({ documentId: id, format: z.enum(['source', 'prototype']), expectedRevision: revision.optional() }).strict()
@@ -78,14 +87,18 @@ export type DesignExport = z.infer<typeof designExportSchema>
 export type DesignSendFailure = IpcFail & { requestId?: string; notSent?: boolean; outcomeUnknown?: boolean; outcome?: string }
 export type DesignResult<T> = { ok: true; value: T } | DesignSendFailure
 export type DesignSendReceipt = { conversationId: string; requestId: string; session: AcpSessionRecord; turnId: string }
+export type DesignTurnLocator = z.infer<typeof designTurnStatusSchema>
+export type DesignTurnStatus = { permissions: AcpPermissionPayload[]; terminal?: 'completed' | 'failed' | 'cancelled' }
 export interface DesignWorkspaceApi {
   list(): Promise<DesignResult<DesignLibrary>>
   get(input: { documentId: string }): Promise<DesignResult<DesignDocument>>
   listConversation(input: { conversationId: string }): Promise<DesignResult<DesignConversationSummary[]>>
-  sync(input: { conversationId: string }): Promise<DesignResult<DesignDocument[]>>
+  sync(input: z.infer<typeof designTurnSyncSchema>): Promise<DesignResult<DesignDocument[]>>
   createConversation(input?: DesignCreateConversation): Promise<DesignResult<ConversationRead>>
   save(input: DesignSave): Promise<DesignResult<DesignDocument>>
   send(input: DesignSend): Promise<DesignResult<DesignSendReceipt>>
+  status(input: DesignTurnLocator): Promise<DesignResult<DesignTurnStatus>>
+  respond(input: z.infer<typeof designTurnRespondSchema>): Promise<DesignResult<null>>
   adopt(input: DesignAdopt): Promise<DesignResult<DesignDocument>>
   discard(input: DesignDiscard): Promise<DesignResult<DesignDocument>>
   export(input: DesignExport): Promise<DesignResult<{ cancelled: boolean }>>

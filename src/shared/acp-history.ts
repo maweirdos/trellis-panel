@@ -18,8 +18,6 @@ export const acpHistoryUpdateInputSchema = z.object({
 export type AcpHistoryUpdateInput = z.infer<typeof acpHistoryUpdateInputSchema>
 export type AcpHistoryUpdateResult = { ok: true; version: 1; session: AcpHistorySummary }
 export const acpHistoryDeleteInputSchema = z.object({ token: z.string().uuid() }).strict()
-export const acpHistoryDeleteRequestSchema = z.object({ expectedRoot: z.string().min(1).max(8192), expectedConnectionGeneration: z.string().min(1).max(200).optional() }).strict()
-export type AcpHistoryDeleteRequest = z.infer<typeof acpHistoryDeleteRequestSchema>
 export type AcpHistoryDeletePreview = { ok: true; sessionId: string; title: string; token: string; scope: string[]; excluded: string[] }
 export type AcpHistoryDeleteResult = { ok: true; sessionId: string; deleted: true } | { ok: true; sessionId: string; cancelled: true }
 export interface AcpTitleProvenance {

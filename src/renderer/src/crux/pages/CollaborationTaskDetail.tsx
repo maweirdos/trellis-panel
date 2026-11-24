@@ -2,15 +2,12 @@ import { useId, useRef, useState, type JSX, type ReactNode } from 'react'
 import { Check, Code2, MessageSquare, MoreHorizontal, Star, Trash2, X } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { currentPostInput, fixedPostInput } from '@shared/crux'
-import type { ConversationTaskDesign } from '@shared/conversation-task'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { isOrdinaryConversationTask } from '@shared/conversation/task-scope'
 import { canStartAssignedTaskPlan, getCruxTaskStageMetadata } from '@shared/crux-domain/workflow'
 import { taskInputCanonical } from '@shared/team-canonical'
 import type { TaskInputRead } from '@shared/team-task-inputs'
 import { api, hasIpc } from '../../api'
-import { conversationClient } from '../../conversations/client'
-import { useConversations } from '../../conversations/workspace'
 import { confirmDialog } from '../../components/Dialogs'
 import { PageContent, PageLayout } from '../../my/layout/PageLayout'
 import { Button, Dropdown, DropdownItem, Tooltip } from '../../my/ui'
@@ -33,7 +30,6 @@ import { TaskProgressPanel } from './task-detail/TaskProgressPanel'
 import { TaskCodeResources } from '../code-resources/TaskCodeResources'
 import { TaskInputPanel } from '../governance/TaskInputPanel'
 import { TaskHandoffProvenance } from './task-detail/TaskHandoffProvenance'
-import { ensureTaskConversationFromPost, openTaskConversationFromPost, type TaskConversationIntent } from '../../conversations/task-navigation'
 import { openOrdinaryTaskConversation } from '../task-conversation'
 import { openTaskWorkThread } from '../../conversation-workbench/task-work-navigation'
 
@@ -103,8 +99,6 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const [conversationPending, setConversationPending] = useState(false)
   const openingConversation = useRef(false)
   const [conversationError, setConversationError] = useState('')
-  const [hasDesign, setHasDesign] = useState(false)
-  const localChats = useConversations(state => state.conversations)
   const inputsRef = useRef<HTMLDetailsElement>(null)
   const space = snapshot.spaces.find((candidate) => candidate.id === task.spaceId)
   if (!source.available || !space) return null
@@ -121,23 +115,18 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const confirmed = task.clarifications?.filter(note => !note.withdrawn) ?? []
   const basis = fixedPostInput(task)
   const changedBasis = basis && taskInputCanonical(basis) !== taskInputCanonical(currentPostInput(task, snapshot.comments))
-  const links = task.conversations?.filter(link => link.actorId === actorId && !link.id.startsWith('thr_')) ?? []
   const workSources = task.conversations?.filter(link => link.actorId === actorId && link.id.startsWith('thr_')) ?? []
   const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId)
   const simple = flow.lightweight || flow.canRestore
-  const desktop = Boolean(conversationClient())
+  const desktop = hasIpc && typeof api.conversationRead === 'function'
   const availableTabs: PostTab[] = ['activity']
-  if (desktop && links.length) availableTabs.push('conversations')
+  if (desktop && workSources.length) availableTabs.push('conversations')
   if (!simple) availableTabs.push('workflow')
   const section = availableTabs.includes(selectedSection) ? selectedSection : 'activity'
   const status = snapshot.taskStatuses.find(item => item.id === task.statusId)
   const closed = status?.category === 'done' || status?.category === 'cancelled'
-  const ordinaryTaskChat = context.state === 'connected' && isOrdinaryConversationTask(task) && !links.length
+  const ordinaryTaskChat = context.state === 'connected' && isOrdinaryConversationTask(task)
   const mayOpenOrdinaryChat = ordinaryTaskChat && Boolean(actorId && task.assigneeIds[0] === actorId && !task.triagePending && !disabled)
-  const assignedTeamAgent = context.state === 'connected' && task.executor?.kind === 'agent'
-  const existingCode = localChats.find(chat => chat.kind === 'code' && chat.nativeRef && chat.archivedAt === undefined && links.some(link => link.id === chat.id))
-  const codeLabel = existingCode ? '继续工程对话' : '让 Agent 在工程中开发'
-  const mayDevelop = desktop && !assignedTeamAgent && simple && !closed && !task.triagePending && Boolean(actorId) && !disabled
   const canPlanInProject = context.state === 'connected' && !closed && canStartAssignedTaskPlan(task, actorId)
   const project = task.projectId ? snapshot.projects.find(item => item.id === task.projectId && item.spaceId === task.spaceId) : undefined
   const workLabel = task.workflow?.stage === 'testing' ? '查看测试交付' : task.workflow?.stage === 'acceptance' ? '查看验收' : '查看当前工作'
@@ -151,23 +140,18 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
     requestAnimationFrame(() => tabBar.current?.parentElement?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)?.focus())
   }
   const close = (): void => { if (!embedded && source.owns()) useCrux.getState().openTask(null); if (embedded) onClose() }
-  const askTaskAgent = async (conversationId?: string, kind: 'work' | 'code' = 'work', design?: ConversationTaskDesign, request?: TaskConversationIntent['request']): Promise<void> => {
-    if (openingConversation.current || !actorId || (request && disabled)) return
-    const openOrdinary = !conversationId && kind === 'work' && ordinaryTaskChat
+  const askTaskAgent = async (conversationId?: string): Promise<void> => {
+    if (openingConversation.current || !actorId) return
     const workSource = conversationId && workSources.find(link => link.id === conversationId)
-    if (openOrdinary && !mayOpenOrdinaryChat) return
-    if (!openOrdinary && !conversationId && onContinue && kind === 'work' && !request) { onContinue(); return }
-    const existingLink = conversationId ? links.find(link => link.id === conversationId) : links[0]
-    if (!existingLink && !workSource && (conversationId || disabled)) return
+    if (!conversationId && !ordinaryTaskChat && onContinue) { onContinue(); return }
+    if (!workSource && (conversationId || !mayOpenOrdinaryChat)) return
     const ticket = source.ticket()
     openingConversation.current = true
     setConversationPending(true); setConversationError('')
     const current = () => source.owns(ticket)
     try {
       if (workSource) await openTaskWorkThread(task, workSource.id, current)
-      else if (openOrdinary) await openOrdinaryTaskConversation(context.key, task, current)
-      else if (kind === 'code' || !existingLink) await ensureTaskConversationFromPost(task, kind, current, design, request)
-      else await openTaskConversationFromPost(task, existingLink.id, current, { request })
+      else await openOrdinaryTaskConversation(context.key, task, current)
     }
     catch (cause) { if (source.owns(ticket)) setConversationError(cause instanceof Error ? cause.message : String(cause)) }
     finally { openingConversation.current = false; if (source.owns(ticket)) setConversationPending(false) }
@@ -188,7 +172,6 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
           <Tooltip label={following ? '取消关注' : '关注任务'}><Button size="sm" variant="ghost" disabled={disabled || !actorId} aria-label={following ? '取消关注任务' : '关注任务'} aria-pressed={following} onClick={() => { if (actorId) void mutate('更新任务关注', () => api.crux.updateTask({ id: task.id, patch: { followerToggle: actorId } })) }}><Star size={15} className={following ? 'fill-current' : ''} /></Button></Tooltip>
           <Dropdown align="right" width={170} trigger={({ toggle, open }) => <Tooltip label="更多任务操作"><Button size="sm" variant="ghost" aria-label="更多任务操作" aria-expanded={open} aria-haspopup="true" onClick={toggle}><MoreHorizontal size={16} /></Button></Tooltip>}>
             {(dismiss) => <>
-              {hasDesign && mayDevelop && <DropdownItem icon={<Code2 size={14} />} disabled={conversationPending} onClick={() => { dismiss(); void askTaskAgent(undefined, 'code', undefined, 'develop') }}>{codeLabel}</DropdownItem>}
               {context.state === 'connected' && api.teamContent && <DropdownItem onClick={() => { dismiss(); setPanel('research') }}>Agent 调研</DropdownItem>}
               <DropdownItem danger disabled={disabled} icon={<Trash2 size={14} />} onClick={() => { dismiss(); void removeTask() }}>删除任务</DropdownItem>
             </>}
@@ -210,21 +193,17 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
               </div>
               <TaskPostBody task={task} draft={draft} disabled={disabled || !actorId} mutate={mutate} onQuote={embedded ? onQuote : undefined} onPolish={embedded ? onPolish : undefined} editorDecoration={editorDecoration} />
               {embedded && reviewSlot}
-              <TaskConversationResults task={task} actorId={actorId} embedded={embedded}
-                onDesignAvailable={setHasDesign}
-                onDevelop={mayDevelop && !conversationPending ? design => void askTaskAgent(undefined, 'code', design, 'develop') : undefined}
-              />
+              <TaskConversationResults task={task} actorId={actorId} embedded={embedded} />
               <div className="flex flex-wrap items-center gap-2">
-                {desktop && (!closed || mayOpenOrdinaryChat || links.length > 0) && <Button size="sm" variant="outline"
-                  disabled={conversationPending || (ordinaryTaskChat ? !mayOpenOrdinaryChat : !actorId || (!links.length && disabled))}
-                  onClick={() => void askTaskAgent(undefined, 'work', undefined, links.length || closed || assignedTeamAgent || ordinaryTaskChat ? undefined : 'analyze')}>
-                  <MessageSquare size={14} aria-hidden="true" />{conversationPending ? '正在打开…' : links.length ? '继续对话' : ordinaryTaskChat || assignedTeamAgent ? '任务对话' : '让 Agent 分析'}
+                {desktop && (ordinaryTaskChat || onContinue) && <Button size="sm" variant="outline"
+                  disabled={conversationPending || (ordinaryTaskChat ? !mayOpenOrdinaryChat : !actorId || disabled)}
+                  onClick={() => void askTaskAgent()}>
+                  <MessageSquare size={14} aria-hidden="true" />{conversationPending ? '正在打开…' : '任务对话'}
                 </Button>}
                 {desktop && workSources.map(link => <Button key={link.id} size="sm" variant="ghost" disabled={conversationPending}
                   aria-label={`回看原 Work 对话 · ${link.title}`} onClick={() => void askTaskAgent(link.id)}>
                   <MessageSquare size={14} aria-hidden="true" />回看原 Work 对话
                 </Button>)}
-                {!hasDesign && mayDevelop && (!existingCode || existingCode.id !== links[0]?.id) && <Button size="sm" variant="ghost" disabled={conversationPending} onClick={() => void askTaskAgent(undefined, 'code', undefined, 'develop')}><Code2 size={14} />{codeLabel}</Button>}
                 {canPlanInProject && <Button size="sm" variant="outline" disabled={disabled} onClick={async () => {
                   const result = await mutate('打开工程规划', () => api.crux.transitionTask({
                     taskId: task.id, action: 'begin_development', expectedUpdatedAt: task.updatedAt
@@ -245,7 +224,7 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                 </div>)}
               </details>}
               {task.handoff?.files?.length ? <TaskPostFiles scope={{ workspaceKey: context.key, taskId: task.id, spaceId: task.spaceId, taskCreatedAt: task.createdAt }} sourceId={task.handoff.id} files={task.handoff.files} current={source.owns} /> : null}
-              {(task.handoff || Boolean(task.sharedMaterials?.length)) && <TaskHandoffProvenance key={JSON.stringify([taskSourceKey(snapshot, context), task.id, task.createdAt, task.handoff, task.sharedMaterials])} task={task} source={source} onOpenConversation={embedded ? conversationId => void openTaskConversationFromPost(task, conversationId) : undefined} />}
+              {(task.handoff || Boolean(task.sharedMaterials?.length)) && <TaskHandoffProvenance key={JSON.stringify([taskSourceKey(snapshot, context), task.id, task.createdAt, task.handoff, task.sharedMaterials])} task={task} source={source} />}
               {!simple && basis && <details><summary>{changedBasis ? '本轮规划依据（与当前任务有差异）' : '本轮规划依据'}</summary>
                 {task.workflow?.history.filter(event => event.postInput).slice().reverse().map(event => event.postInput && <section key={event.id} className="mt-3">
                   <h3 className="my-item-title">{event.postInput.title} · {formatCollaborationTime(event.at)}</h3>
@@ -270,16 +249,12 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                 <div id={`${sectionId}-panel`} role="tabpanel" aria-labelledby={`${sectionId}-${section}`} className="task-post-tab-content">
                   {section === 'activity' && <TaskDiscussion taskDraft={draft} snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} source={source} />}
                   {section === 'conversations' && <div className="task-post-conversations">
-                    {links.map(link => {
-                      const chat = localChats.find(item => item.id === link.id)
-                      return <button key={link.id} className="task-post-conversation" disabled={conversationPending} onClick={() => void askTaskAgent(link.id)}>
+                    {workSources.map(link =>
+                      <button key={link.id} type="button" className="task-post-conversation" disabled={conversationPending} onClick={() => void askTaskAgent(link.id)}>
                         <MessageSquare size={16} aria-hidden="true" />
-                        <span><strong className="my-item-title">{chat?.title ?? link.title}</strong>
-                          {chat?.conversationPreview && <span className="my-item-description">{chat.conversationPreview}</span>}
-                        </span>
+                        <span className="my-item-title">{link.title}</span>
                       </button>
-                    })}
-                    {!links.length && <Button variant="ghost" size="sm" disabled={!actorId || disabled || conversationPending} onClick={() => void askTaskAgent()}>问 Agent</Button>}
+                    )}
                   </div>}
                   {section === 'workflow' && <div className="flex flex-col gap-4">
               <TaskWorkflow snapshot={snapshot} task={task} source={source} resourceRefresh={resourceRefresh} workflowInputs={context.state === 'local' ? undefined : workflowInputs} onMaterialCommitted={() => { if (source.owns()) { setMaterialRefresh((value) => value + 1); setResourceRefresh((value) => value + 1) } }} onOpenInputs={sharedInputs ? () => {

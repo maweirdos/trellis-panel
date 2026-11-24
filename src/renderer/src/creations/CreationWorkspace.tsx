@@ -23,7 +23,8 @@ import { DesignWorkspace } from '../designs/DesignWorkspace'
 import { DesignLibraryCard, DesignNewTypes, formatRelativeTime } from '../designs/DesignLibrary'
 import { useDesignLibrary } from '../designs/hooks'
 import { closeDesign, openDesign, useDesignNavigation } from '../designs/navigation'
-import { designClient, startDesignConversation } from '../designs/client'
+import { designClient } from '../designs/client'
+import { DesignTurnDialog, type DesignMedium } from '../designs/DesignTurnDialog'
 import './creation-workspace.css'
 
 type WorkspaceTab = 'edit' | 'preview' | 'review'
@@ -365,9 +366,9 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [showWhiteboard, setShowWhiteboard] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
-  const [designStarting, setDesignStarting] = useState(false)
-  const [designError, setDesignError] = useState('')
+  const [newDesign, setNewDesign] = useState<DesignMedium>()
   const designDocumentId = useDesignNavigation(state => state.documentId)
+  const designVersion = useDesignNavigation(state => state.versionRequest)
   const designs = useDesignLibrary(scope === 'personal' && !designDocumentId)
   const listScroll = useRef(0)
   const listMarker = useRef<HTMLDivElement>(null)
@@ -394,7 +395,7 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
     if (!context.actorId) return
     openCreation({ workspaceKey: context.key, actorId: context.actorId, creationId: item.creationId, ...(item.canEdit ? {} : { revisionId: item.latestPublished?.revisionId }), scope: activeScope, ...(spaceId ? { spaceId } : {}) })
   }
-  if (scope === 'personal' && designDocumentId) return <DesignWorkspace key={designDocumentId} documentId={designDocumentId} onClose={closeDesign} />
+  if (scope === 'personal' && designDocumentId) return <DesignWorkspace key={designDocumentId} documentId={designDocumentId} versionRequest={designVersion} onClose={closeDesign} />
   if (matching) return <CreationDetail key={`${identity}:${matching.creationId}`} location={matching} onBack={clearCreationTarget} onRevision={(revisionId) => useCreationNavigation.setState({ target: { ...matching, revisionId } })} />
   const whiteboardAvailable = Boolean(WHITEBOARD_V2_CAPABILITIES.read && WHITEBOARD_V2_CAPABILITIES.create && hasIpc && api?.whiteboardV2 && activeScope === 'personal' && context.state === 'local' && context.actorId && snapshot)
   if (showWhiteboard && whiteboardAvailable) return <Suspense fallback={<Loading>正在加载白板…</Loading>}><WhiteboardEntry onBack={() => setShowWhiteboard(false)} /></Suspense>
@@ -438,14 +439,6 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
 
   const initiallyLoading = pendingSearch || (!combined.length && ((query.busy && !data) || (activeScope === 'personal' && designs.busy && !designs.items.length)))
   const workspaceName = context.key || 'local'
-
-  const startDesign = async (kind: 'web' | 'app' | 'prototype'): Promise<void> => {
-    if (designStarting) return
-    setDesignStarting(true); setDesignError('')
-    try { await startDesignConversation({ kind, text: kind === 'app' ? '设计一个应用界面：' : kind === 'prototype' ? '设计一个可交互原型：' : '设计一个网页：' }) }
-    catch (cause) { setDesignError(cause instanceof Error ? cause.message : '新建设计未完成，请重试。') }
-    finally { setDesignStarting(false) }
-  }
 
   return (
     <PageLayout variant="full" className="creation-workspace">
@@ -538,23 +531,14 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
           {/* New types 5-card row */}
           {activeScope === 'personal' && designClient() && (
             <DesignNewTypes
-              busy={designStarting}
-              onStartDesign={() => void startDesign('web')}
+              busy={Boolean(newDesign)}
+              onStartDesign={() => setNewDesign('web')}
               onDocument={() => setCreating(true)}
               onSlides={() => setCreating(true)}
               onChart={() => setCreating(true)}
               onWhiteboard={() => setShowWhiteboard(true)}
               documentDisabled={!canCreate}
             />
-          )}
-
-          {designError && (
-            <div className="creation-error" role="alert">
-              {designError}
-              <Button size="sm" variant="ghost" aria-label="收起新建设计错误" onClick={() => setDesignError('')}>
-                <X size={14} />
-              </Button>
-            </div>
           )}
 
           {/* Category Tabs */}
@@ -686,6 +670,7 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
         </div>
       </PageBody>
 
+      {newDesign && <DesignTurnDialog medium={newDesign} onClose={() => setNewDesign(undefined)} />}
       {creating && (
         <CreateCreationDialog
           key={identity}

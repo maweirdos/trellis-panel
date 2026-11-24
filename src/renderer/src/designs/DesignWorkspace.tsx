@@ -16,7 +16,8 @@ import { confirmDialog } from '../components/Dialogs'
 import { IpcErrorCode } from '@shared/ipc-errors'
 import { notifyDesignChanged, requireDesignClient } from './client'
 import { closeDesign, openDesign } from './navigation'
-import { openDesignConversation, type DesignConversationReference } from './conversation'
+import { DesignTurnDialog, type DesignTurnTarget } from './DesignTurnDialog'
+import { DesignSourceDialog } from './DesignSourceDialog'
 import { useDesignDocument } from './hooks'
 import { DesignCanvas } from './DesignCanvas'
 import { DesignPublishedPreview } from './DesignPublishedPreview'
@@ -27,7 +28,7 @@ import './design-workspace.css'
 interface DesignBuffer { baseRevision: string; pages: DesignPage[]; frames: DesignFrame[]; dirty: boolean; pending?: DesignSave | DesignAdopt & { action: 'adopt' | 'discard' }; error: string }
 const retained = new Map<string, DesignBuffer>()
 const cleanBuffer = (document: DesignDocument): DesignBuffer => ({ baseRevision: document.revision, pages: document.pages, frames: document.frames, dirty: false, error: '' })
-interface Props { documentId: string; versionRequest?: { version: string; token: string } | null; onClose(): void; embedded?: boolean; onReference?(reference: DesignConversationReference): void; restoreSelection?: DesignSelection; onExpandedChange?(): void }
+interface Props { documentId: string; versionRequest?: { version: string; token: string } | null; onClose(): void; embedded?: boolean; onReference?(reference: DesignTurnTarget): void; restoreSelection?: DesignSelection; onExpandedChange?(): void }
 
 export function DesignWorkspace(props: Props): JSX.Element {
   const query = useDesignDocument(props.documentId)
@@ -42,6 +43,8 @@ export function DesignWorkspace(props: Props): JSX.Element {
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null)
   const [textEdit, setTextEdit] = useState<{ pick: DesignElementPick; text: string } | null>(null)
   const [issue, setIssue] = useState(''), [saved, setSaved] = useState(false), [publish, setPublish] = useState<{ title: string; body: string } | null>(null)
+  const [turnTarget, setTurnTarget] = useState<DesignTurnTarget>()
+  const [sourceDialog, setSourceDialog] = useState(false)
   const ports = useRef(new Map<string, DesignPreviewPort>()), mounted = useRef(false), live = useRef({ bufferKey, document, buffer })
   const canvasHistory = useRef<Array<string | null>>([])
   const frameGesture = useRef<{ bufferKey: string; buffer: DesignBuffer; frame: DesignFrame; saved: boolean } | null>(null)
@@ -113,12 +116,15 @@ export function DesignWorkspace(props: Props): JSX.Element {
     finally { if (mounted.current && live.current.bufferKey === captured) setBusy(false) }
   }
   const chooseVersion = (key: string): void => { setVersion(key); setComparing(false); setPrototype(false); setSourceOpen(false); setPick(null) }
-  const reference = async (): Promise<void> => {
+  const reference = async (selection?: DesignElementPick): Promise<void> => {
     if (!document || !buffer || version !== 'current' || buffer.dirty || conflict || readOnly || !canInteract()) return
-    if (pick && !await ports.current.get(pick.frameId ?? '')?.validate(pick)) { setPick(null); setIssue('页面选区已变化，请重新选择。'); return }
-    const target: DesignConversationReference = { documentId: document.id, revision: document.revision, title: document.title, ...(pick ? { selection: sourceSelection(pick), validate: () => ports.current.get(pick.frameId ?? '')?.validate(pick) ?? Promise.resolve(false) } : {}) }
+    const validate = selection ? () => ports.current.get(selection.frameId ?? '')?.validate(selection) ?? Promise.resolve(false) : undefined
+    if (validate && !await validate()) { setPick(null); setIssue('页面选区已变化，请重新选择。'); return }
+    if (!mounted.current || !canInteract() || live.current.document?.revision !== document.revision) return
+    const target: DesignTurnTarget = { conversationId: document.conversationId, documentId: document.id, revision: document.revision,
+      title: document.title, ...(selection && { selection: sourceSelection(selection), validate }) }
     if (props.onReference) props.onReference(target)
-    else { await openDesignConversation(document, pick ? sourceSelection(pick) : undefined) }
+    else setTurnTarget(target)
   }
   const exporting = async (format: 'source' | 'prototype'): Promise<void> => {
     if (!document || buffer?.dirty || busy || buffer?.pending || !canInteract()) return
@@ -160,14 +166,14 @@ export function DesignWorkspace(props: Props): JSX.Element {
     if (value && (version !== 'current' || conflict)) { setPick(null); return }
     if (value?.frameId) setSelectedFrameId(value.frameId)
     setPick(value); if (value) setTextEdit(null)
-    if (value && props.restoreSelection && value.selector === props.restoreSelection.selector && value.pageId === props.restoreSelection.pageId && value.revision === document.revision && props.onReference) props.onReference({ documentId: document.id, revision: document.revision, title: document.title, selection: sourceSelection(value), validate: () => ports.current.get(value.frameId ?? '')?.validate(value) ?? Promise.resolve(false) })
+    if (value && props.restoreSelection && value.selector === props.restoreSelection.selector && value.pageId === props.restoreSelection.pageId && value.revision === document.revision && props.onReference) void reference(value).catch(fail)
   }
   const revisionTitle = candidate ? `候选 · ${new Date(candidate.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : historical ? `历史 · ${new Date(historical.createdAt).toLocaleString()}` : shownLatest ? '最新修订' : '当前稿'
   return <section className={`design-workspace${props.embedded ? ' is-embedded' : ''}`} data-design-document={document.id} aria-label="设计工作台">
     <header className="design-workspace-heading"><div className="design-identity"><FileText size={16} /><div><strong className="my-item-title" title={document.title}>{document.title}</strong><span className="my-item-description">{document.pages.length} 页 · {revisionTitle}</span></div></div><span className="design-grow" />
       <span className="design-save-state" role="status">{busy ? <Loader2 size={14} className="design-spinner" /> : buffer.pending ? '待核对' : buffer.dirty ? '未保存' : saved ? <Check size={14} /> : null}</span>
       {version === 'current' && <Button size="sm" variant={buffer.dirty ? 'primary' : 'ghost'} disabled={busy || (conflict || sourceReadOnly) && !buffer.pending || !buffer.dirty && !buffer.pending} onClick={() => void save()}><Save size={14} /><span>{buffer.pending ? '核对保存' : '保存'}</span></Button>}
-      <Dropdown align="right" trigger={({ open, toggle }) => <Button size="sm" variant="ghost" aria-label="导出与整理设计" aria-expanded={open} disabled={busy || buffer.dirty || Boolean(buffer.pending)} onClick={toggle}><Download size={15} /><ChevronDown size={12} /></Button>}>{close => <><DropdownHeader>当前修订</DropdownHeader><DropdownItem icon={<Code2 size={14} />} onClick={() => { close(); void exporting('source') }}>导出设计源包</DropdownItem><DropdownItem icon={<Eye size={14} />} onClick={() => { close(); void exporting('prototype') }}>导出可运行原型</DropdownItem><DropdownItem icon={<ArrowUpRight size={14} />} onClick={() => { close(); preparePublish() }}>整理为可发布产物</DropdownItem><DropdownItem icon={<MessageSquare size={14} />} onClick={() => { close(); void openDesignConversation(document).catch(fail) }}>来源会话</DropdownItem></>}</Dropdown>
+      <Dropdown align="right" trigger={({ open, toggle }) => <Button size="sm" variant="ghost" aria-label="导出与整理设计" aria-expanded={open} disabled={busy || buffer.dirty || Boolean(buffer.pending)} onClick={toggle}><Download size={15} /><ChevronDown size={12} /></Button>}>{close => <><DropdownHeader>当前修订</DropdownHeader><DropdownItem icon={<Code2 size={14} />} onClick={() => { close(); void exporting('source') }}>导出设计源包</DropdownItem><DropdownItem icon={<Eye size={14} />} onClick={() => { close(); void exporting('prototype') }}>导出可运行原型</DropdownItem><DropdownItem icon={<ArrowUpRight size={14} />} onClick={() => { close(); preparePublish() }}>整理为可发布产物</DropdownItem><DropdownItem icon={<MessageSquare size={14} />} onClick={() => { close(); setSourceDialog(true) }}>来源会话</DropdownItem></>}</Dropdown>
       {props.embedded && <Button size="sm" variant="ghost" title="全屏打开设计" aria-label="全屏打开设计" onClick={() => openDesign(document.id)}><Maximize2 size={15} /></Button>}
       {!props.embedded && <Button size="sm" variant="ghost" title="返回产物库" aria-label="返回产物库" onClick={props.onClose}><X size={15} /></Button>}
     </header>
@@ -186,10 +192,12 @@ export function DesignWorkspace(props: Props): JSX.Element {
       {prototype ? <DesignPublishedPreview key={`${document.id}:${revision}`} bundle={{ version: 1, id: document.id, title: document.title, revision, pages }} /> : <DesignCanvas documentId={document.id} revision={revision} pages={pages} frames={frames} pageId={pageId} selectedFrameId={selectedFrameId ?? undefined} disabled={!canModify} mode={readOnly ? mode === 'interact' ? 'interact' : 'read' : mode} onFrames={changeFrames} onSelectFrame={id => { setSelectedFrameId(id); if (pick?.frameId !== id) { setPick(null); setTextEdit(null) } }} onFrameGestureStart={frame => { frameGesture.current = { bufferKey, buffer, frame, saved } }} onFrameGestureEnd={endFrameGesture} onPick={showPick} onNavigate={id => { if (id !== pageId) { canvasHistory.current.push(pageId); setPageId(id) }; setMode('interact') }} onBack={() => setPageId(canvasHistory.current.pop() ?? null)} previewPorts={ports.current} restoreSelection={props.restoreSelection} />}
       {sourceOpen && currentPage && <section className="design-source-panel"><div className="design-toolbar"><span className="my-item-title">{currentPage.title} · HTML</span><span className="design-grow" /><Button size="sm" variant="ghost" aria-label="关闭源码" onClick={() => setSourceOpen(false)}><X size={14} /></Button></div><textarea className="my-input design-source-editor" aria-label={`${currentPage.title} HTML 源码`} spellCheck={false} readOnly={!canModify} value={currentPage.html} onChange={event => patch({ pages: buffer.pages.map(page => page.id === currentPage.id ? { ...page, html: event.target.value } : page) })} /></section>}
     </div>
-    {pick && !readOnly && !prototype && <section className="design-selection" aria-label="所选元素"><div className="design-selection-main"><div className="design-selection-label"><span className="my-item-title">{pick.tagName} · {(pick.text ?? '').trim().slice(0, 70) || '元素'}</span><span className="my-item-description" title={pick.selector}>{pick.path}</span></div><Button size="sm" variant="ghost" title="选择父级 Alt+↑" disabled={!pick.hasParent} onClick={() => ports.current.get(pick.frameId ?? '')?.parent()}><ArrowUp size={14} />父级</Button><Button size="sm" variant="ghost" onClick={() => ports.current.get(pick.frameId ?? '')?.locate()}>定位</Button><Button size="sm" variant="ghost" disabled={!pick.canEditText || buffer.dirty} onClick={() => setTextEdit({ pick, text: pick.text ?? '' })}><Type size={14} />文字</Button><Button size="sm" variant="primary" disabled={buffer.dirty || conflict} onClick={() => void reference().catch(fail)}><Send size={14} />让助手修改</Button><Button size="sm" variant="ghost" aria-label="清除选区" onClick={() => { ports.current.get(pick.frameId ?? '')?.clear(); setPick(null); setTextEdit(null) }}><X size={14} /></Button></div>
+    {pick && !readOnly && !prototype && <section className="design-selection" aria-label="所选元素"><div className="design-selection-main"><div className="design-selection-label"><span className="my-item-title">{pick.tagName} · {(pick.text ?? '').trim().slice(0, 70) || '元素'}</span><span className="my-item-description" title={pick.selector}>{pick.path}</span></div><Button size="sm" variant="ghost" title="选择父级 Alt+↑" disabled={!pick.hasParent} onClick={() => ports.current.get(pick.frameId ?? '')?.parent()}><ArrowUp size={14} />父级</Button><Button size="sm" variant="ghost" onClick={() => ports.current.get(pick.frameId ?? '')?.locate()}>定位</Button><Button size="sm" variant="ghost" disabled={!pick.canEditText || buffer.dirty} onClick={() => setTextEdit({ pick, text: pick.text ?? '' })}><Type size={14} />文字</Button><Button size="sm" variant="primary" disabled={buffer.dirty || conflict} onClick={() => void reference(pick).catch(fail)}><Send size={14} />让助手修改</Button><Button size="sm" variant="ghost" aria-label="清除选区" onClick={() => { ports.current.get(pick.frameId ?? '')?.clear(); setPick(null); setTextEdit(null) }}><X size={14} /></Button></div>
       {textEdit && <div className="design-text-editor"><textarea className="my-input" aria-label="元素文字" value={textEdit.text} maxLength={4000} rows={2} onChange={event => setTextEdit({ ...textEdit, text: event.target.value })} /><Button size="sm" variant="primary" disabled={busy || textEdit.text === textEdit.pick.text} onClick={() => { try { const page = buffer.pages.find(page => page.id === textEdit.pick.pageId); if (!page) throw new Error('页面已不存在，请重新选择。'); const next = replaceDesignElementText(page, textEdit.pick, textEdit.text); void save(buffer.pages.map(page => page.id === next.id ? next : page)) } catch (cause) { fail(cause) } }}><Save size={14} />保存文字</Button><Button size="sm" variant="ghost" onClick={() => setTextEdit(null)}>取消</Button></div>}
     </section>}
-    <footer className="design-footer"><span className="my-item-description">{version === 'current' ? '当前稿' : candidate ? '候选预览' : '历史预览'} · {pages.length} 页</span><span className="design-grow" /><Button size="sm" variant="ghost" aria-pressed={sourceOpen} onClick={() => setSourceOpen(value => !value)}><Code2 size={14} />源码</Button>{!props.embedded && <Button size="sm" disabled={buffer.dirty || busy} onClick={() => void openDesignConversation(document).catch(fail)}><MessageSquare size={14} />继续会话</Button>}{props.embedded && !pick && <Button size="sm" disabled={!canModify || buffer.dirty} onClick={() => void reference().catch(fail)}>引用整个设计</Button>}</footer>
+    <footer className="design-footer"><span className="my-item-description">{version === 'current' ? '当前稿' : candidate ? '候选预览' : '历史预览'} · {pages.length} 页</span><span className="design-grow" /><Button size="sm" variant="ghost" aria-pressed={sourceOpen} onClick={() => setSourceOpen(value => !value)}><Code2 size={14} />源码</Button>{!props.embedded && <Button size="sm" disabled={!canModify || buffer.dirty} onClick={() => void reference().catch(fail)}><MessageSquare size={14} />继续设计</Button>}{props.embedded && !pick && <Button size="sm" disabled={!canModify || buffer.dirty} onClick={() => void reference().catch(fail)}>引用整个设计</Button>}</footer>
+    {turnTarget && <DesignTurnDialog target={turnTarget} onClose={() => setTurnTarget(undefined)} />}
+    {sourceDialog && <DesignSourceDialog document={document} onClose={() => setSourceDialog(false)} />}
     {publish && <CreateCreationDialog scope="personal" initialDraft={{ title: publish.title, kind: 'prototype', body: publish.body }} onClose={() => setPublish(null)} onCreated={creationId => { setPublish(null); const context = useCrux.getState().workspaceContext; if (context.actorId && context.key === libraryContext.key && context.actorId === libraryContext.actorId) { closeDesign(); openCreation({ workspaceKey: context.key, actorId: context.actorId, creationId, scope: 'personal' }); useApp.getState().setPage('creations') } }} />}
   </section>
 }

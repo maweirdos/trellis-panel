@@ -49,11 +49,12 @@ blocking reason, responsible person and synchronization information. **更新摘
 replaces the current short summary. Clearing the blocking-reason field removes a
 previous blocker. Saved summaries do not advance the formal task workflow.
 
-The native client can start an explicitly bound Pi or installed ACP engine from
-the task. Code tasks first use the existing preparation, plan and acceptance
-flow. **在 Agent 继续** opens the original task conversation, retaining its native
-identity and return destination. Browser hosting can update manual progress but
-cannot execute a local Agent.
+**任务对话** opens the ordinary task's conversation in the desktop Workbench
+under its current task and assignee. Start formal engineering work from
+**本机开发环境** after preparing the task and selecting an available engine and
+model. On an upgraded device, **核对原清理** checks the original session's
+process ownership and releases its workcopy only after confirming cleanup.
+Browser hosting supports manual progress updates.
 
 The primary reporting binding belongs to one current handler and execution
 identity. Taking over a binding requires confirming the observed binding and

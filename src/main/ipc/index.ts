@@ -81,7 +81,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerCruxGovernanceIpc(ipcInvoke.cruxGovernance)
   const taskWorkspace = registerCruxWorkIpc({ getProjectRoot, getProjectGeneration, getMain: deps.getMain, creationReferences: taskCreationReferences, creationFiles: taskCreationFiles,
     taskCodeResource: (query) => codeResources.taskForPreparation(query.workspaceKey, query.taskId) })
-  const taskProgress = registerCruxProgressIpc(taskWorkspace, deps.getMain)
+  const taskProgress = registerCruxProgressIpc(deps.getMain)
   registerProductTaskEntryIpc(taskWorkspace, deps.getMain)
   registerCruxTaskOutputsIpc({
     getMain: deps.getMain, channels: ipcInvoke.taskOutputs,

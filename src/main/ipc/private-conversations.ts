@@ -1,7 +1,4 @@
 import { aiChat } from '../services/ai'
-import { conversationTaskActions } from '../services/private-conversations/task-conversion'
-import { sendTaskQuestion } from '../services/private-conversations/task-question'
-import { createCruxTaskMaterialsService } from '../services/crux/task-materials'
 import { conversationTaskDescriptionSuggestions } from '../services/private-conversations/task-description-suggestions'
 import { getSettings } from '../services/store'
 import { app, dialog, shell, type IpcMainInvokeEvent } from 'electron'
@@ -43,7 +40,7 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
     publish: (channel, payload) => { if (Object.values(ipcEvent).includes(channel as typeof ipcEvent.acpOutput)) broadcastToWindows(channel, payload) },
     active: () => { const main = deps.getMain(); return Boolean(main && !main.isDestroyed() && main.isVisible() && !main.isMinimized()) } })
   registerTaskPlanningIpc(service, deps.getMain)
-  const designs = registerDesignWorkspaceIpc(deps, service)
+  registerDesignWorkspaceIpc(deps, service)
   requirements = new ConversationRequirements({
     metaDirectory: () => service.metadataDirectory(),
     polish: async (input, signal) => {
@@ -140,27 +137,11 @@ export function registerPrivateConversationsIpc(deps: WindowDeps): PrivateConver
   wrapped(channels.updateDraft, (event, args) => service.updateDraft(id(args[0]), args[1], documentOwner(event)))
   wrapped(channels.read, (_event, args) => service.read(id(args[0])))
   direct(channels.events, args => service.events(id(args[0]), args[1] as Parameters<typeof service.events>[1]))
-  const taskMaterials = createCruxTaskMaterialsService(app.getPath('userData'))
-  direct(channels.send, (args, current) => {
-    const input = args[1]
-    return input && typeof input === 'object' && 'taskSource' in input && input.taskSource
-      ? sendTaskQuestion(service, taskMaterials, id(args[0]), input, current, designs)
-      : service.send(id(args[0]), input, undefined, current)
-  })
-  wrapped(channels.reconcileSend, (_event, args) => service.reconcileSend(id(args[0]), id(args[1])))
-  const taskAction = conversationTaskActions(service)
   const taskSuggestion = conversationTaskDescriptionSuggestions(service)
-  wrapped(channels.taskAction, (_event, args, current) => taskAction(id(args[0]), args[1], current))
   wrapped(channels.taskSuggestion.start, (_event, args, current) => taskSuggestion.start(id(args[0]), args[1], current))
   wrapped(channels.taskSuggestion.check, (_event, args, current) => taskSuggestion.check(id(args[0]), args[1], current))
   wrapped(channels.taskSuggestion.adopt, (_event, args, current) => taskSuggestion.adopt(id(args[0]), args[1], current))
   wrapped(channels.taskSuggestion.close, (_event, args, current) => taskSuggestion.close(id(args[0]), args[1], current))
-  direct(channels.respond, args => service.control('respond', id(args[0]), args[1]))
-  direct(channels.cancel, args => service.control('cancel', id(args[0]), args[1]))
-  direct(channels.end, args => service.control('end', id(args[0]), args[1]))
-  direct(channels.configure, args => service.configure(id(args[0]), args[1]))
-  direct(channels.recoverModel, args => service.recoverModel(id(args[0]), args[1]))
-  direct(channels.connect, (args, current) => service.connect(id(args[0]), current))
   wrapped(channels.projects, () => service.projects())
   wrapped(channels.createProject, (_event, args) => service.createProject(args[0]))
   wrapped(channels.reclassify, (_event, args) => service.reclassify(id(args[0]), args[1]))
