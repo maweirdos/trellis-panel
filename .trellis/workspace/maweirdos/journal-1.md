@@ -1723,3 +1723,39 @@ Work、Code 与普通任务统一到 v2。最终 Windows 安装包已生成，�
 ### Next Steps
 
 - F 保留在进行中。待核实真实模型写入与冷重开自动恢复子标签。
+
+
+## Session 54: 侧栏冷重开与 ACP 旧名单切换
+<!-- trellis-session: v=2 fp=b21585bc4a1ec921 -->
+
+**Date**: 2026-11-24
+**Task**: 侧栏冷重开与 ACP 旧名单切换
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+原父会话按授权工程和新版存储身份恢复子代理与 BTW。普通历史使用 v2，旧 ACP 全量名单入口已移除。
+
+### Main Changes
+
+- 标准化 Windows 工程根和默认本机身份。恢复侧栏用当前父会话的授权关系过滤子项，并保留原选中项。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `91daa04c31acb5b22a41b6a74c7faa152fe37551` | fix(conversation): 冷启动恢复原侧栏标签与选中项 |
+| `cdacc616bea82d354016a812e0094df2a5abd3a6` | refactor(conversation): 移除旧 ACP 全量历史查询 |
+
+### Testing
+
+- [OK] 隔离桌面冷重开复原两个子代理和选中的 BTW。已删子线程与另一存储的布局没有恢复，新增原生调用为零。
+- [OK] 旧名单请求被协议、分发和 worker 拒绝。v2 SQLite 的列表、搜索、归档和隔离通过，专用 ACP 仍能按原会话读取完整回合。生产门禁通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- F 的独立工作树整轮桌面结果仍为部分通过，controlledPair 为 failed，真实写盘 actualWrite 为 false。I 的专用历史切换与已批准的隔离安装验收仍开放。

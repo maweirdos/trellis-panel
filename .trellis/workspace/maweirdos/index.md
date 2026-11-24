@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 53
+- **Total Sessions**: 54
 - **Last Active**: 2026-11-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1725 | Active |
+| `journal-1.md` | ~1761 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 54 | 2026-11-24 | 侧栏冷重开与 ACP 旧名单切换 | `91daa04c31acb5b22a41b6a74c7faa152fe37551`, `cdacc616bea82d354016a812e0094df2a5abd3a6` | `codex/team-task-execution` |
 | 53 | 2026-11-24 | 委派子代理独立工作树与双线程停止 | `c1d2f3279b119c79821449cd626bf245ba62fa11` | `codex/team-task-execution` |
 | 52 | 2026-11-24 | 桌面对话原生切换与发布复核 | `2356307`, `903657e` | `codex/team-task-execution` |
 | 51 | 2026-11-24 | T3 线程关系、工程面板与任务交付 | `75dca18`, `55b3557`, `f0de292`, `dd896ea` | `codex/team-task-execution` |
