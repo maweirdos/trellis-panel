@@ -110,7 +110,7 @@ export class CodexDriver implements ConversationDriverSession {
     private readonly cwd?: string,
     private readonly ordinaryTask = false,
     private readonly managedExecution = false,
-    private readonly planning = false,
+    private readonly ownerScope?: string,
   ) {}
 
   static readonly open = (input: ConversationDriverOpenInput): Effect.Effect<CodexDriver, Error> =>
@@ -130,7 +130,7 @@ export class CodexDriver implements ConversationDriverSession {
       const scope = yield* Scope.make()
       const child = owned.child
       const driver = new CodexDriver(owned, scope, stoppedSignal, codexConfigurationKey(environment, input.fingerprintKey),
-        input.cwd, input.ordinaryTask, input.managedExecution, input.ownerScope?.startsWith('planning:'))
+        input.cwd, input.ordinaryTask, input.managedExecution, input.ownerScope)
       let stderr = ''
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString('utf8')).slice(-16_384) })
       child.on('error', error => driver.stopTransport(error))
@@ -324,9 +324,12 @@ export class CodexDriver implements ConversationDriverSession {
             ...servers.map(name => [`mcp_servers.${name}.enabled`, false] as const),
             ['features.skip_host_skill_discovery', true] as const,
             ['web_search', 'disabled'] as const,
-            ...(this.planning ? [
+            ...(this.ownerScope?.startsWith('planning:') ? [
               ['project_doc_max_bytes', 0] as const,
               ['project_doc_fallback_filenames', [] as string[]] as const,
+            ] : []),
+            ...(this.ownerScope?.startsWith('delegated:') ? [
+              ['features.default_mode_request_user_input', true] as const,
             ] : []),
             ...(this.managedExecution ? [
               ['sandbox_workspace_write.writable_roots', [cwd]] as const,
