@@ -1687,3 +1687,39 @@ Work、Code 与普通任务统一到 v2。最终 Windows 安装包已生成，�
 ### Next Steps
 
 - 验证隔离 Windows 安装与卸载、OpenCode 与 Pi 真实回复、托管写入与复测闭环、独立可写工作树及专用历史迁移。
+
+
+## Session 53: 委派子代理独立工作树与双线程停止
+<!-- trellis-session: v=2 fp=32594cc181c54bd0 -->
+
+**Date**: 2026-11-24
+**Task**: 委派子代理独立工作树与双线程停止
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+显式工作树委派固定父提交并绑定子目录。已验证真实 Git、Windows Job、受控双子独立停止与原卡重开。
+
+### Main Changes
+
+- 原 Git 准备先持久写入私有准入凭据，重开只核对原命令。子引擎写入登记按原 Windows Job 代次持有。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c1d2f3279b119c79821449cd626bf245ba62fa11` | feat(conversation): 接通子代理独立工作树与原代清理 |
+
+### Testing
+
+- [OK] 生产检查通过。受控双子使用各自原目录与 Job，A 停止后 B 继续完成，从原卡重开时零新增引擎调用。证据已索引到 F。
+- [OK] 普通 Code 双线程联验 90.3 秒，B 的排队消息派发一次，A 的队列仍暂停。证据已索引到 I。
+- [OK] 真实 Codex 0.171.0 在 21.4 秒内完成 Git 准备并返回 readOnly。子回合未发送，实际写盘待验证。最新构建的额外冷启动样本在工作台就绪前超时。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- F 保留在进行中。待核实真实模型写入与冷重开自动恢复子标签。
