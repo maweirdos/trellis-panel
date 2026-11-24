@@ -35,7 +35,7 @@ import { ConversationRightPanel, useNarrowConversationPanel } from './Conversati
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline } from './ConversationTimeline'
-import { conversationPanelKey, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { conversationPanelKey, conversationPanelScope, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt } from './useComposerSend'
@@ -191,15 +191,24 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     return () => { mounted.current = false }
   }, [])
 
-  const controller = useConversationThread(root, target, interactive && hasIpc, rootKey, task)
-  const { active: read, reload, loadEarlier, loadingEarlier, stop, queue } = controller
-  const projection = read?.projection
-  const hostThreadId = target?.threadId
   const panelScopeKey = taskScope ? rootKey : JSON.stringify([
     rootKey, workspaceContext.key, workspaceContext.actorId, workspaceContext.instanceId, workspaceContext.epoch,
   ])
-  const panelKey = hostThreadId ? conversationPanelKey(panelScopeKey, root, hostThreadId) : null
-  const panel = useConversationRightPanel(panelKey, hostThreadId ?? null)
+  const readScopeKey = JSON.stringify([conversationPanelScope(panelScopeKey), workspaceContext.authorizationRevision ?? 0])
+  const controller = useConversationThread(root, target, interactive && hasIpc, readScopeKey, task)
+  const { active: read, reload, loadEarlier, loadingEarlier, stop, queue } = controller
+  const projection = read?.projection
+  const hostThreadId = target?.threadId
+  const panelStorage = !read?.error && projection?.cursor?.threadId === hostThreadId ? projection?.cursor?.storageId : undefined
+  const panelKey = hostThreadId && panelStorage ? conversationPanelKey(panelScopeKey, root, hostThreadId, panelStorage) : null
+  const sideCleanupKey = hostThreadId ? JSON.stringify([panelScopeKey, root, hostThreadId]) : null
+  const relatedThreads = new Set<string>()
+  if (!read?.error && projection?.thread.id === hostThreadId) {
+    for (const relation of projection?.relations.children ?? []) {
+      if (relation.parentThreadId === hostThreadId && relation.childThreadId) relatedThreads.add(relation.childThreadId)
+    }
+  }
+  const panel = useConversationRightPanel(panelKey, hostThreadId ?? null, relatedThreads)
   const narrowWindow = useNarrowConversationPanel()
   const narrowPanel = compact || narrowWindow
   const projectAvailable = hasIpc && typeof api.conversationProjectWorkbench === 'function'
@@ -256,23 +265,23 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   })
 
   async function settleSideCleanup(threadId: string, commandId: string, check = false): Promise<void> {
-    if (!panelKey || !writable || !canInteract() || cleaningSide.current) return
+    if (!panelKey || !sideCleanupKey || !writable || !canInteract() || cleaningSide.current) return
     cleaningSide.current = true
-    const pending = pendingSideCleanup(panelKey) ?? { threadId, commandId, reason: '侧聊清理尚无确定回执。' }
-    rememberSideCleanup(panelKey, pending)
+    const pending = pendingSideCleanup(sideCleanupKey) ?? { threadId, commandId, reason: '侧聊清理尚无确定回执。' }
+    rememberSideCleanup(sideCleanupKey, pending)
     try {
       const result = await closeUnusedSideThread({ root, task, threadId, commandId, check })
       const unresolved = result.ok
         ? result.receipt.dispatch !== 'completed' ? pending : undefined
         : result.uncertain ? { ...pending, reason: result.reason } : undefined
-      rememberSideCleanup(panelKey, unresolved)
+      rememberSideCleanup(sideCleanupKey, unresolved)
       if (mounted.current && canInteract() && currentPanelOwner.current === panelKey) {
         setSideCleanup(unresolved && { owner: panelKey, ...unresolved })
         if (result.ok && !unresolved) reload()
       }
     } catch (error) {
       const unresolved = { ...pending, reason: conversationError(error) }
-      rememberSideCleanup(panelKey, unresolved)
+      rememberSideCleanup(sideCleanupKey, unresolved)
       if (mounted.current && canInteract() && currentPanelOwner.current === panelKey) {
         setSideCleanup({ owner: panelKey, ...unresolved })
       }
@@ -280,7 +289,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   }
 
   function closePanelTab(surface: ConversationRightPanelSurface): void {
-    if (surface.kind !== 'thread' || !hostThreadId || !panelKey || sideCleanup?.owner === panelKey || pendingSideCleanup(panelKey)) return
+    if (surface.kind !== 'thread' || !hostThreadId || !panelKey || sideCleanup?.owner === panelKey || pendingSideCleanup(sideCleanupKey)) return
     const relation = projection?.relations.children.find(item => item.childThreadId === surface.threadId)
     if (relation?.kind !== 'side-chat') return
     const draft = readComposerDraft(composerDraftKey(root, surface.threadId, sideThreadDraftScope(panelScopeKey, root, hostThreadId)))
@@ -509,7 +518,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       onClick={() => void applyThreadChange(pendingChange)}>继续清理</Button>}
   </>
   const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
-  const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(panelKey)
+  const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(sideCleanupKey)
 
   return <div className="acp-workspace conversation-workbench" style={sidebarWidth}>
     {workTask.dialog}
@@ -705,11 +714,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         />}
       </div>
     </section>
-    {interactive && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
+    {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
       <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
         {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
-          root={root} scopeKey={panelScopeKey} hostThreadId={hostThreadId}
+          root={root} scopeKey={readScopeKey} hostThreadId={hostThreadId}
           threadId={surface.threadId} task={task} interactive={interactive && hasIpc} writable={writable}
           onOpenParent={() => hidePanel()}
           onAddToParentDraft={writable ? reference => {

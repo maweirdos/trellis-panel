@@ -1,4 +1,5 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react'
+import { projectRootKey } from '../my/navigation'
 
 export type ConversationThreadSurface = { readonly id: `thread:${string}`; readonly kind: 'thread'; readonly threadId: string }
 export type ConversationRightPanelSurface =
@@ -14,12 +15,21 @@ export interface ConversationRightPanelState {
 
 const EMPTY_PANEL: ConversationRightPanelState = { isOpen: false, surfaces: [], activeSurfaceId: null }
 const MAX_SURFACES = 24
-const STORAGE_PREFIX = 'crux.conversation.right-panel.v1:'
+const STORAGE_PREFIX = 'crux.conversation.right-panel.v2:'
 const panels = new Map<string, ConversationRightPanelState>()
 const listeners = new Map<string, Set<() => void>>()
 
-export function conversationPanelKey(scopeKey: string, root: string, hostThreadId: string): string {
-  return JSON.stringify([scopeKey, root, hostThreadId])
+export function conversationPanelScope(scopeKey: string): string {
+  const fields: unknown = JSON.parse(scopeKey)
+  if (!Array.isArray(fields) || fields.length !== 5) return scopeKey
+  const [root, workspace, actor, instance, epoch] = fields
+  return workspace === 'local' && actor === 'local-owner' && instance === null && epoch === null
+    ? JSON.stringify([root, workspace, null, instance, epoch])
+    : scopeKey
+}
+
+export function conversationPanelKey(scopeKey: string, root: string, hostThreadId: string, storageId: string): string {
+  return JSON.stringify([conversationPanelScope(scopeKey), projectRootKey(root) ?? root, hostThreadId, storageId])
 }
 
 export function conversationThreadSurface(threadId: string): ConversationThreadSurface {
@@ -88,7 +98,14 @@ export function closeConversationSurface(state: ConversationRightPanelState, sur
     activeSurfaceId: state.activeSurfaceId === surfaceId ? fallback?.id ?? null : state.activeSurfaceId }
 }
 
-export function useConversationRightPanel(ownerKey: string | null, hostThreadId: string | null) {
+function visiblePanel(state: ConversationRightPanelState, relatedThreads: ReadonlySet<string>): ConversationRightPanelState {
+  const surfaces = state.surfaces.filter(surface => surface.kind !== 'thread' || relatedThreads.has(surface.threadId))
+  if (surfaces.length === state.surfaces.length) return state
+  const selected = surfaces.find(surface => surface.id === state.activeSurfaceId) ?? surfaces[0]
+  return { surfaces, activeSurfaceId: selected?.id ?? null, isOpen: Boolean(selected && state.isOpen) }
+}
+
+export function useConversationRightPanel(ownerKey: string | null, hostThreadId: string | null, relatedThreads: ReadonlySet<string>) {
   const latestOwner = useRef(ownerKey)
   latestOwner.current = ownerKey
   const subscribe = useCallback((notify: () => void) => {
@@ -105,7 +122,8 @@ export function useConversationRightPanel(ownerKey: string | null, hostThreadId:
     }
   }, [ownerKey])
   const snapshot = useCallback(() => read(ownerKey), [ownerKey])
-  const state = useSyncExternalStore(subscribe, snapshot, () => EMPTY_PANEL)
+  const stored = useSyncExternalStore(subscribe, snapshot, () => EMPTY_PANEL)
+  const state = visiblePanel(stored, relatedThreads)
   const update = useCallback((change: (state: ConversationRightPanelState) => ConversationRightPanelState) => {
     if (ownerKey !== null && latestOwner.current === ownerKey) write(ownerKey, change)
   }, [ownerKey])
@@ -119,14 +137,16 @@ export function useConversationRightPanel(ownerKey: string | null, hostThreadId:
   }
   const close = (surfaceId: string): void => update(current => closeConversationSurface(current, surfaceId))
   const hide = (): void => update(current => current.isOpen ? { ...current, isOpen: false } : current)
-  const show = (): void => update(current => current.surfaces.length
+  const show = (): void => update(current => visiblePanel(current, relatedThreads).surfaces.length
     ? { ...current, isOpen: true }
     : openConversationSurface(current, { id: 'project', kind: 'project' }))
   const move = (surfaceId: string, toIndex: number): void => update(current => {
+    const target = visiblePanel(current, relatedThreads).surfaces[toIndex]
     const fromIndex = current.surfaces.findIndex(surface => surface.id === surfaceId)
-    if (fromIndex < 0 || fromIndex === toIndex || toIndex < 0 || toIndex >= current.surfaces.length) return current
+    if (fromIndex < 0 || !target || target.id === surfaceId) return current
+    const targetIndex = current.surfaces.findIndex(surface => surface.id === target.id)
     const surfaces = [...current.surfaces]
-    surfaces.splice(toIndex, 0, ...surfaces.splice(fromIndex, 1))
+    surfaces.splice(targetIndex, 0, ...surfaces.splice(fromIndex, 1))
     return { ...current, surfaces }
   })
   const active = state.isOpen ? state.surfaces.find(surface => surface.id === state.activeSurfaceId) : undefined

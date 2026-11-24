@@ -7,6 +7,7 @@ Work, Code and authorized ordinary tasks use `ConversationWorkbench`. The host s
 - Render the locally accepted user bubble before awaiting the command. Reconcile it by message ID. A definite refusal restores the original draft or makes it recoverable alongside newly typed text. If admission or delivery is uncertain, query the original command ID.
 - The transcript and its sibling controls each have a distinct React key. Mount one visible transcript per workbench. Verify by switching among populated threads and checking both the selected title and the visible transcript.
 - The renderer and IPC use `CONVERSATION_READ_PAGE_LIMIT`. A reset within the same storage and thread must preserve valid paged history and the visible anchor. A scope or storage change invalidates the old projection.
+- The side panel persists order, selected surface and visibility by authorized scope, canonical project path, parent thread and v2 storage ID. Equivalent Windows path spelling and the initial local workspace identity use the same key. Restore child and BTW tabs only from the current authorized parent's relationship projection. A missing selection falls back to an authorized surface. Restoration reads conversation v2 and leaves engine lifecycle unchanged.
 - Attachments for a user input request use the request ID, generation and question draft. The answer UI exposes file selection only when the native request authorizes text attachments.
 
 ## Named roles and execution engines

@@ -33,10 +33,14 @@ export class ThreadRelations {
   read(threadId: string): ConversationThreadRelations {
     const child = this.database.prepare(`SELECT relation.payload_json FROM conversation_v2_thread_relations relation
       JOIN conversation_v2_projection_threads parent ON parent.thread_id = relation.parent_thread_id
+      JOIN conversation_v2_projection_threads child ON child.thread_id = relation.child_thread_id
+        AND child.owner_id = parent.owner_id AND child.space_id = parent.space_id AND child.project_id = parent.project_id
       WHERE relation.child_thread_id = ? AND parent.deleted_at IS NULL`).get(threadId) as RelationRow | undefined
     const children = this.database.prepare(`SELECT relation.payload_json FROM conversation_v2_thread_relations relation
-      LEFT JOIN conversation_v2_projection_threads child ON child.thread_id = relation.child_thread_id
-      WHERE relation.parent_thread_id = ? AND (relation.child_thread_id IS NULL OR child.deleted_at IS NULL)
+      JOIN conversation_v2_projection_threads parent ON parent.thread_id = relation.parent_thread_id
+      LEFT JOIN conversation_v2_projection_threads child ON child.thread_id = relation.child_thread_id AND child.deleted_at IS NULL
+        AND child.owner_id = parent.owner_id AND child.space_id = parent.space_id AND child.project_id = parent.project_id
+      WHERE relation.parent_thread_id = ? AND (relation.child_thread_id IS NULL OR child.thread_id IS NOT NULL)
       ORDER BY relation.created_at DESC, relation.relation_id DESC LIMIT ?`).all(threadId, maxChildren) as RelationRow[]
     return {
       parent: child ? this.decode(child) : null,
