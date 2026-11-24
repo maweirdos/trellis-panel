@@ -27,6 +27,7 @@ export interface CruxWorkspaceHost {
   transaction<T>(action: () => T): T
   invalidateProgress(projectId: string, before: CruxSnapshot, after: CruxSnapshot): void
   validateExecutionChanges(principal: StorePrincipal | null, projectId: string, before: CruxSnapshot, after: CruxSnapshot, explicitTaskId?: string): void
+  bindTestDelivery(principal: StorePrincipal, projectId: string, task: CruxTask, transition: CruxTransitionTaskInput): CruxTransitionTaskInput
   validateTaskTransitionInputs(principal: StorePrincipal, projectId: string, beforeTask: CruxTask, afterTask: CruxTask, transition: CruxTransitionTaskInput): void
   committedTaskTransition(principal: StorePrincipal, projectId: string, commandId: string, transition: CruxTransitionTaskInput, beforeTask: CruxTask, afterTask: CruxTask, workspaceRevision: number): void
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
@@ -440,6 +441,27 @@ export class TeamCruxWorkspace {
     return { instanceId: this.host.identity().instanceId, projectId, spaceId, taskId: task.id, taskCreatedAt: task.createdAt }
   }
 
+  createJiraIntakeTask(principal: StorePrincipal, input: {
+    projectId: string; commandId: string; expectedEpoch: string; spaceId: string; title: string;
+    description: string | null; assigneeId?: string
+  }): TeamTaskRef {
+    const { projectId, commandId, expectedEpoch, spaceId, title, description, assigneeId } = input
+    this.authorize(principal, projectId, 'createTask')
+    const workspace = this.load(projectId)
+    const space = workspace.snapshot.spaces.find(entry => entry.id === spaceId)
+    if (!space || space.archived || !space.memberIds.includes(principal.person.userId)) {
+      throw new TeamServiceError('JIRA_TASK_FORBIDDEN', 'Jira intake requires membership in the active target space', 403)
+    }
+    const assigneeIds = assigneeId && space.memberIds.includes(assigneeId) ? [assigneeId] : []
+    const result = this.applyBusinessCommand(principal, projectId, {
+      commandId, expectedEpoch, expectedRevision: workspace.revision, operation: 'createTask',
+      input: { spaceId, title, ...(description ? { description } : {}), assigneeIds, triagePending: !assigneeIds.length },
+    })
+    const task = result.snapshot.tasks.find(entry => entry.id === result.taskId && entry.spaceId === spaceId)
+    if (!task) throw new TeamServiceError('CORRUPT_STORE', 'Jira intake task identity was not returned by the task domain', 503)
+    return { instanceId: result.instanceId, projectId, spaceId, taskId: task.id, taskCreatedAt: task.createdAt }
+  }
+
   bootstrapDefaultSpace(principal: StorePrincipal, projectId: string, commandId: string): string {
     const result = this.applyBusinessCommand(principal, projectId, {
       commandId, expectedEpoch: this.host.identity().epoch, expectedRevision: 0,
@@ -475,8 +497,12 @@ export class TeamCruxWorkspace {
         else if (original?.workflow) throw new TeamServiceError('LIGHTWEIGHT_GOVERNANCE_CONFLICT', '此任务使用阶段评审', 409)
       }
     }
+    const transition = input.operation === 'transitionTask' ? cruxMutationInputSchemas.transitionTask.parse(input.input) : undefined
+    const beforeTask = transition && source.tasks.find(task => task.id === transition.taskId)
+    const commandInput = beforeTask && transition ? this.host.bindTestDelivery(principal, projectId, beforeTask, transition)
+      : input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input
     let executed: ReturnType<typeof executeCruxDomain>
-    try { executed = executeCruxDomain(source, input.operation, input.operation === 'setSpaceMembers' ? this.spaceMembersInput(source, input.input) : input.input, principal.person.userId) }
+    try { executed = executeCruxDomain(source, input.operation, commandInput, principal.person.userId) }
     catch (error) {
       if (error instanceof z.ZodError || error instanceof TeamServiceError) throw error
       if (error instanceof CruxSpaceAccessError) throw new TeamServiceError('SPACE_ACCESS_DENIED', error.message, 403)
@@ -488,9 +514,8 @@ export class TeamCruxWorkspace {
       const parsed = cruxMutationInputSchemas.updateTask.parse(input.input)
       if (parsed.patch.outputReview?.action === 'submit') this.host.validateOutputReviewReference(principal, projectId, parsed.id, structuredClone(parsed.patch.outputReview.output))
     }
-    if (input.operation === 'transitionTask') {
-      const transition = cruxMutationInputSchemas.transitionTask.parse(input.input)
-      const beforeTask = source.tasks.find(task => task.id === transition.taskId), afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
+    if (transition) {
+      const afterTask = executed.snapshot.tasks.find(task => task.id === transition.taskId)
       if (!beforeTask || !afterTask) throw new TeamServiceError('TASK_INPUT_SCOPE_CONFLICT', 'Original transition task is unavailable', 409)
       this.host.validateTaskTransitionInputs(principal, projectId, beforeTask, afterTask, transition)
       committedTransition = { transition, before: beforeTask, after: afterTask }

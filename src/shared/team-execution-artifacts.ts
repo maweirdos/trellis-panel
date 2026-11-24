@@ -13,6 +13,11 @@ export const executionCreationRefSchema = z.object({ kind: z.literal('confirmed-
   revisionId: teamIdSchema, bodyDigest: teamDigestSchema, format: z.literal('html') }).strict()
 export const executionOutputRefSchema = z.discriminatedUnion('kind', [executionDocumentRefSchema, executionArtifactRefSchema, executionCreationRefSchema])
 export const executionVersionRefSchema = z.object({ versionId: teamIdSchema, digest: teamDigestSchema }).strict()
+export const executionTestDeliverySchema = z.object({
+  executionId: teamIdSchema,
+  manifest: executionVersionRefSchema,
+  checkpoint: executionVersionRefSchema,
+}).strict()
 const binding = { taskIdentity: z.string().min(1).max(4096), executionId: teamIdSchema, generation: serial, nodeId: workflowIdSchema, attempt: serial }
 export const executionArtifactVersionSchema = z.object({ ...binding, artifactId: teamIdSchema, versionId: teamIdSchema,
   previousVersionId: teamIdSchema.nullable(), kind: executionArtifactKindSchema, title: z.string().min(1).max(300),
@@ -52,3 +57,4 @@ export type ExecutionArtifactVersion = z.infer<typeof executionArtifactVersionSc
 export type ExecutionDeliveryManifest = z.infer<typeof executionDeliveryManifestSchema>
 export type ExecutionHandoffCheckpoint = z.infer<typeof executionHandoffCheckpointSchema>
 export type ExecutionCodeSource = z.infer<typeof executionCodeSourceSchema>
+export type ExecutionTestDelivery = z.infer<typeof executionTestDeliverySchema>

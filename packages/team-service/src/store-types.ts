@@ -26,7 +26,7 @@ export type StoreOperation = 'health' | 'createLogin' | 'consumeLogin' | 'comple
   | 'taskInputRead' | 'taskInputCandidates' | 'taskInputRevision' | 'taskInputReadDocument' | 'taskInputCommand' | 'taskInputReceipt'
   | 'codeResourceList' | 'codeResourceCommand' | 'taskCodeResourceRead'
   | 'jiraBusinessRouteCommand' | 'jiraBusinessDispatchPending' | 'jiraBusinessDispatchRead' | 'jiraBusinessDispatchReceipt'
-  | 'jiraBusinessMappingRead' | 'jiraBusinessMappingCommand' | 'jiraBusinessEffectRead' | 'jiraBusinessEventCommand'
+  | 'jiraBusinessMappingRead' | 'jiraBusinessIntakeCommand' | 'jiraBusinessMappingCommand' | 'jiraBusinessEffectRead' | 'jiraBusinessEventCommand'
   | 'contentConfigRead' | 'contentConfigure' | 'contentCapabilities' | 'contentPrepare' | 'contentProbe'
   | 'contentJob' | 'contentReceipt' | 'contentCancel' | 'contentBudget' | 'contentAccounting' | 'contentReconcile'
   | 'contentStart' | 'contentSettle' | 'contentRecover'

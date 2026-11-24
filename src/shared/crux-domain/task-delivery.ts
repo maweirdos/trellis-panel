@@ -161,7 +161,9 @@ function validateRun(delivery: TaskDelivery, input: TaskTestRunInput): void {
 function saveRun(task: CruxTask, input: TaskTestRunInput, actorId: string, at: string, deps?: TaskDeliveryDependencies): TaskTestRun {
   const state = stateOf(task)
   if (!['testing', 'acceptance'].includes(workflowOf(task).stage)) fail('只能在测试或待验收中记录本轮测试结果')
-  if (actorId !== state.roles.testOwnerId) requireHandler(task, actorId)
+  if (state.roles.testOwnerId) {
+    if (actorId !== state.roles.testOwnerId) fail('只有当前指定测试负责人可以记录本轮测试结果', 'DELIVERY_FORBIDDEN')
+  } else requireHandler(task, actorId)
   const delivery = currentDelivery(task, input.deliveryId)
   validateRun(delivery, input)
   let readinessReceiptId: string | undefined

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { taskSourceFiles } from './task-source-files'
 import { teamRoleSchema } from './team-platform'
 import { teamTaskProgressResourceIdSchema } from './team-task-progress'
+import { executionTestDeliverySchema } from './team-execution-artifacts'
 import { adoptTaskDeliveryProtocolSchema, taskDeliveryEventLinksSchema, taskDeliveryInputSchema, taskDeliveryStateSchema, taskTestRunInputSchema } from './task-delivery'
 
 export const cruxInitialTaskTypeSchema = z.enum(['需求', 'Bug', '任务', '内容'])
@@ -14,7 +15,10 @@ const ids = z.array(id)
 const record = z.object({ id }).passthrough()
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
 export const cruxTaskWorkKindSchema = z.enum(['code', 'general'])
-export const cruxConversationLinkSchema = z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(300) }).strict()
+const cruxWorkConversationLinkId = z.string().startsWith('thr_').refine(value => z.uuid().safeParse(value.slice(4)).success)
+export const cruxConversationLinkSchema = z.object({
+  id: z.union([z.uuid(), cruxWorkConversationLinkId]), title: z.string().trim().min(1).max(300),
+}).strict()
 export const cruxFeishuSourceSchema = z.object({
   chatId: z.string().regex(/^oc_[A-Za-z0-9_-]{1,120}$/),
   messageId: z.string().regex(/^om_[A-Za-z0-9_-]{1,120}$/),
@@ -85,7 +89,8 @@ export const cruxTaskStageSchema = z.enum(['accepted', 'needs_info', 'design_rea
 export const cruxTaskActionSchema = z.enum(['accept', 'arrange', 'request_info', 'supplement', 'decline', 'start_design', 'submit_design', 'approve_design', 'return_design', 'begin_development', 'approve_plan', 'submit_test', 'return_development', 'pass_test', 'accept_delivery', 'return_delivery', 'submit_delivery', 'reassign'])
 export const cruxTaskWorkflowArtifactSchema = z.object({
   id, kind: z.enum(['requirements', 'design', 'plan', 'implementation', 'test', 'acceptance', 'delivery']),
-  body: z.string().trim().min(1), actorId: id, at: z.string(), checkedCriteria: z.array(z.string()).optional(), deliveryLinks: taskDeliveryEventLinksSchema.optional()
+  body: z.string().trim().min(1), actorId: id, at: z.string(), checkedCriteria: z.array(z.string()).optional(), deliveryLinks: taskDeliveryEventLinksSchema.optional(),
+  executionDelivery: executionTestDeliverySchema.optional()
 }).passthrough()
 export const cruxTaskWorkflowEventSchema = z.object({
   id, action: cruxTaskActionSchema, fromStage: cruxTaskStageSchema, toStage: cruxTaskStageSchema,
@@ -93,7 +98,8 @@ export const cruxTaskWorkflowEventSchema = z.object({
     title: z.string(), description: z.string(), acceptanceCriteria: z.array(z.string()),
     sources: z.array(z.object({ id: z.string().uuid(), files: taskSourceFiles }).strict())
   }).strict().optional(),
-  actorId: id, assigneeId: id.optional(), body: z.string().optional(), at: z.string(), checkedCriteria: z.array(z.string()).optional(), deliveryLinks: taskDeliveryEventLinksSchema.optional()
+  actorId: id, assigneeId: id.optional(), body: z.string().optional(), at: z.string(), checkedCriteria: z.array(z.string()).optional(), deliveryLinks: taskDeliveryEventLinksSchema.optional(),
+  executionDelivery: executionTestDeliverySchema.optional()
 }).passthrough()
 export const cruxTaskWorkflowSchema = z.object({
   stage: cruxTaskStageSchema, handlerId: id.optional(),
@@ -107,6 +113,7 @@ export const cruxTransitionTaskInputSchema = z.object({
   acceptanceCriteria: z.array(z.string().trim().min(1).max(10000)).max(100).optional(), expectedStage: cruxTaskStageSchema.optional(), expectedUpdatedAt: z.string().optional(),
   nextStage: z.enum(['design_ready', 'dev_ready']).optional(), checkedCriteria: z.array(z.string().trim().min(1).max(10000)).max(100).optional(),
   adoptDeliveryProtocol: adoptTaskDeliveryProtocolSchema.optional(),
+  executionDelivery: executionTestDeliverySchema.optional(),
   expectedDeliveryRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   expectedInputs: z.object({
     instanceId: z.string().uuid(), epoch: z.string().uuid(), projectId: z.string().uuid(),
@@ -116,6 +123,7 @@ export const cruxTransitionTaskInputSchema = z.object({
   }).strict().optional(),
   delivery: taskDeliveryInputSchema.optional(), deliveryId: id.optional(), testRun: taskTestRunInputSchema.optional(), testRunId: id.optional()
 }).strict().superRefine((input, context) => {
+  if (input.executionDelivery && !['submit_test', 'pass_test', 'return_development', 'accept_delivery', 'return_delivery'].includes(input.action)) context.addIssue({ code: 'custom', message: '执行交付版本只用于提测、测试和验收操作' })
   if (input.expectedInputs && !['approve_plan', 'submit_design', 'approve_design', 'submit_test', 'submit_delivery', 'pass_test', 'accept_delivery'].includes(input.action)) context.addIssue({ code: 'custom', message: '固定输入核对仅用于方案确认、设计交接、交付、测试和验收操作' })
   if (input.delivery && input.deliveryId) context.addIssue({ code: 'custom', message: 'Choose a saved delivery or a new delivery, not both' })
   if (input.testRun && input.testRunId) context.addIssue({ code: 'custom', message: 'Choose a saved test run or a new test run, not both' })

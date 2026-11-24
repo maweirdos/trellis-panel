@@ -27,6 +27,7 @@ import { teamTaskRefSchema, teamTaskIdentity, teamExecutionCommandSchema, type T
 import type { TeamContentRequest } from '../../../shared/team-content-transport'
 import { teamTaskDevelopmentContextSchema } from '../../../shared/team-task-development'
 import { jiraBusinessRouteCommandSchema, jiraBusinessRouteSchema, jiraBusinessDispatchSchema, jiraBusinessDispatchReadSchema, jiraBusinessDispatchReceiptSchema, type JiraBusinessRoute, type JiraBusinessDispatch, jiraBusinessEffectSchema, jiraBusinessEventCommandSchema, jiraBusinessMappingCommandSchema, jiraBusinessMappingQuerySchema, jiraBusinessTaskMappingSchema, type JiraBusinessEffect, type JiraBusinessTaskMapping } from '../../../shared/jira-business-hooks'
+import { jiraBusinessIntakeCommandSchema, jiraBusinessIntakeReplySchema } from '../../../shared/jira-business-hooks'
 
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.enum(['task-progress', 'business-hook']), token: z.string().min(1).max(16384) }).strict()
 const businessCredentialSchema = credentialSchema.extend({ instanceId: z.string().uuid(), epoch: z.string().uuid() }).strict()
@@ -455,6 +456,31 @@ export class NativeTeamBusinessSender {
     if (value && (value.projectId !== credential.value.projectId || value.task.projectId !== query.projectId || value.task.instanceId !== credential.value.instanceId
       || value.issue.instanceId !== query.instanceId || value.issue.issueId !== query.issueId)) throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 平台任务映射不属于原问题、项目或服务世代')
     return value
+  }
+  async intakeBusinessTask(input: z.input<typeof jiraBusinessIntakeCommandSchema>): Promise<JiraBusinessTaskMapping> {
+    const { credential } = await this.authorized()
+    const current = await this.remoteSnapshot(credential)
+    const parsed = jiraBusinessIntakeCommandSchema.parse(input)
+    const operation = 'jiraBusinessIntakeCommand'
+    const { requestDigest, pending } = pendingBusinessCommand(this.dataDir, this.connectionId, parsed.commandId, operation, parsed)
+    const command = { ...parsed, expectedEpoch: pending?.expectedEpoch ?? parsed.expectedEpoch }
+    this.assertProject(command.projectId, credential)
+    if (command.expectedEpoch !== current.epoch) throw new DesktopTeamError('WORKSPACE_EPOCH_CHANGED', 'Jira 来源登记属于旧服务世代', true)
+    if (!pending) retainBusinessCommand(this.dataDir, this.connectionId, {
+      version: 1, commandId: command.commandId, operation, requestDigest, expectedEpoch: command.expectedEpoch, expectedRevision: 0,
+    })
+    const value = await this.http.request(credential.value.origin, `/api/projects/${command.projectId}/crux/jira/intake/commands`,
+      jiraBusinessIntakeReplySchema, credential.value.token, command)
+    this.current(credential.fingerprint, true)
+    const mapping = value.result
+    if (value.commandId !== command.commandId || mapping.projectId !== command.projectId || mapping.task.projectId !== command.projectId
+      || mapping.task.instanceId !== credential.value.instanceId || mapping.task.spaceId !== command.spaceId
+      || mapping.issue.instanceId !== command.issue.instanceId || mapping.issue.issueId !== command.issue.issueId
+      || mapping.issue.remoteProjectId !== command.issue.remoteProjectId) {
+      throw new DesktopTeamError('RECEIPT_MISMATCH', 'Jira 来源登记回执不属于原命令、问题或任务身份', true)
+    }
+    clearBusinessCommand(this.dataDir, this.connectionId, command.commandId)
+    return mapping
   }
   async linkBusinessTask(input: z.input<typeof jiraBusinessMappingCommandSchema>): Promise<JiraBusinessTaskMapping> {
     const { credential } = await this.authorized()

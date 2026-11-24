@@ -3,15 +3,18 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { z } from 'zod'
 import { canonicalWorkflowJson } from '../../../src/shared/workflow'
+import { cruxRemoteSnapshotSchema } from '../../../src/shared/crux-remote'
 import {
   jiraBusinessEffectQuerySchema,
   jiraBusinessEffectSchema,
   jiraBusinessEventCommandSchema,
+  jiraBusinessIntakeCommandSchema,
   jiraBusinessMappingCommandSchema,
   jiraBusinessMappingQuerySchema,
   jiraBusinessTaskMappingSchema,
   type JiraBusinessEffect,
   type JiraBusinessEventCommand,
+  type JiraBusinessIssue,
   type JiraBusinessMappingCommand,
   type JiraBusinessTaskMapping
 } from '../../../src/shared/jira-business-hooks'
@@ -21,16 +24,6 @@ import { TeamServiceError } from './errors'
 import type { StoreActor, StorePrincipal } from './store-types'
 
 type Row = Record<string, SQLOutputValue>
-type Mutation<T> = (
-  actor: StoreActor,
-  commandId: string,
-  kind: string,
-  input: unknown,
-  authorize: (principal: StorePrincipal) => void,
-  apply: (principal: StorePrincipal) => T,
-  authorizeReplay?: (principal: StorePrincipal, result: T) => void
-) => TeamCommandReply<T>
-
 export interface JiraBusinessHooksHost {
   identity(): { instanceId: string; epoch: string }
   get(sql: string, ...params: SQLInputValue[]): Row | undefined
@@ -39,6 +32,7 @@ export interface JiraBusinessHooksHost {
   authenticate(actor: StoreActor): StorePrincipal
   project(principal: StorePrincipal, projectId: string): void
   task(principal: StorePrincipal, task: TeamTaskRef): void
+  createIntakeTask(principal: StorePrincipal, input: z.infer<typeof jiraBusinessIntakeCommandSchema>): TeamTaskRef
   mutation: <T>(
     actor: StoreActor,
     commandId: string,
@@ -82,7 +76,7 @@ export class TeamJiraBusinessHooks {
     this.host.task(principal, task)
   }
 
-  private mappingRows(projectId: string, instanceId: string, issueId: string): Row[] {
+  private mappingRows(instanceId: string, issueId: string): Row[] {
     return this.host.all('SELECT recordJson FROM jira_business_task_mappings WHERE instanceId=? AND issueId=? ORDER BY rowid', instanceId, issueId)
   }
 
@@ -95,7 +89,7 @@ export class TeamJiraBusinessHooks {
   }
 
   private uniqueMapping(projectId: string, instanceId: string, issueId: string): JiraBusinessTaskMapping | null {
-    const rows = this.mappingRows(projectId, instanceId, issueId)
+    const rows = this.mappingRows(instanceId, issueId)
     if (rows.length > 1) throw new TeamServiceError('JIRA_TASK_MAPPING_AMBIGUOUS', 'More than one platform task is mapped to this Jira issue', 409)
     const mapping = rows.length === 1 ? this.mapping(rows[0]) : null
     if (mapping && mapping.projectId !== projectId) throw new TeamServiceError('JIRA_TASK_MAPPING_AMBIGUOUS', 'This Jira issue already has a canonical task in another platform project', 409)
@@ -110,6 +104,62 @@ export class TeamJiraBusinessHooks {
     const mapping = this.uniqueMapping(input.projectId, input.instanceId, input.issueId)
     if (mapping) this.assertTask(principal, mapping.task, input.projectId)
     return mapping
+  }
+
+  private insertMapping(projectId: string, issue: JiraBusinessIssue, task: TeamTaskRef): JiraBusinessTaskMapping {
+    const now = Date.now()
+    const mapping = jiraBusinessTaskMappingSchema.parse({
+      mappingId: randomUUID(), projectId, issue, task, revision: 1, createdAt: now, updatedAt: now,
+    })
+    this.host.run('INSERT INTO jira_business_task_mappings(projectId,mappingId,instanceId,issueId,recordJson,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+      mapping.projectId, mapping.mappingId, mapping.issue.instanceId, mapping.issue.issueId, JSON.stringify(mapping), mapping.createdAt, mapping.updatedAt)
+    this.host.event('jira.business-task-linked', 'project', projectId, projectId, {
+      mappingId: mapping.mappingId, instanceId: issue.instanceId, issueId: issue.issueId, taskId: task.taskId, spaceId: task.spaceId,
+    })
+    return mapping
+  }
+
+  intake(actor: StoreActor, raw: unknown): TeamCommandReply<JiraBusinessTaskMapping> {
+    const input = jiraBusinessIntakeCommandSchema.parse(raw)
+    return this.host.mutation(
+      actor, input.commandId, 'jiraBusinessIntakeCommand', input,
+      principal => {
+        this.assertEpoch(input.expectedEpoch)
+        this.host.project(principal, input.projectId)
+        if (principal.actor.kind !== 'device' || principal.projectId !== input.projectId) {
+          throw new TeamServiceError('JIRA_TASK_FORBIDDEN', 'Jira intake requires the original project device', 403)
+        }
+      },
+      principal => {
+        const existing = this.uniqueMapping(input.projectId, input.issue.instanceId, input.issue.issueId)
+        if (existing) {
+          this.assertTask(principal, existing.task, input.projectId)
+          if (existing.task.spaceId !== input.spaceId || existing.issue.remoteProjectId !== input.issue.remoteProjectId) {
+            throw new TeamServiceError('JIRA_TASK_SCOPE_CONFLICT', 'Jira intake targets a different source project or task space', 409)
+          }
+          return existing
+        }
+        const prior = input.priorCreateCommandId && this.host.get(
+          "SELECT resultJson FROM commands WHERE userId=? AND commandId=? AND kind='cruxCommand'",
+          principal.person.userId, input.priorCreateCommandId,
+        )
+        let task: TeamTaskRef
+        if (prior) {
+          const stored = cruxRemoteSnapshotSchema.parse(json(prior, 'resultJson'))
+          const original = stored.snapshot.tasks.find(item => item.id === stored.taskId && item.spaceId === input.spaceId)
+          if (stored.projectId !== input.projectId || stored.instanceId !== this.host.identity().instanceId || stored.epoch !== input.expectedEpoch
+            || !original || original.creatorId !== principal.person.userId || original.title !== input.title
+            || (original.description ?? null) !== (input.description || null)) {
+            throw new TeamServiceError('JIRA_TASK_SCOPE_CONFLICT', 'Retained Jira create receipt differs from the original intake', 409)
+          }
+          task = { instanceId: stored.instanceId, projectId: stored.projectId, spaceId: original.spaceId,
+            taskId: original.id, taskCreatedAt: original.createdAt }
+        } else task = this.host.createIntakeTask(principal, input)
+        this.assertTask(principal, task, input.projectId)
+        return this.insertMapping(input.projectId, input.issue, task)
+      },
+      (principal, mapping) => this.assertTask(principal, mapping.task, input.projectId),
+    )
   }
 
   command(actor: StoreActor, raw: unknown): TeamCommandReply<JiraBusinessTaskMapping> {
@@ -128,21 +178,7 @@ export class TeamJiraBusinessHooks {
           return existing
         }
         if (input.expectedRevision !== 0) throw new TeamServiceError('JIRA_TASK_MAPPING_CONFLICT', 'A new Jira task mapping must start at revision zero', 409)
-        const mapping = jiraBusinessTaskMappingSchema.parse({
-          mappingId: randomUUID(),
-          projectId: input.projectId,
-          issue: input.issue,
-          task: input.task,
-          revision: 1,
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        })
-        this.host.run('INSERT INTO jira_business_task_mappings(projectId,mappingId,instanceId,issueId,recordJson,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
-          mapping.projectId, mapping.mappingId, mapping.issue.instanceId, mapping.issue.issueId, JSON.stringify(mapping), mapping.createdAt, mapping.updatedAt)
-        this.host.event('jira.business-task-linked', 'project', input.projectId, input.projectId, {
-          mappingId: mapping.mappingId, instanceId: mapping.issue.instanceId, issueId: mapping.issue.issueId, taskId: mapping.task.taskId, spaceId: mapping.task.spaceId
-        })
-        return mapping
+        return this.insertMapping(input.projectId, input.issue, input.task)
       },
       (principal, result) => { this.assertEpoch(input.expectedEpoch); this.host.project(principal, result.projectId); this.assertTask(principal, result.task, result.projectId) }
     ) as TeamCommandReply<JiraBusinessTaskMapping>

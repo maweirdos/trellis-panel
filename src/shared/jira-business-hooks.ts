@@ -39,6 +39,25 @@ export const jiraBusinessMappingCommandSchema = z.object({
 }).strict()
 export type JiraBusinessMappingCommand = z.infer<typeof jiraBusinessMappingCommandSchema>
 
+export const jiraBusinessIntakeCommandSchema = z.strictObject({
+  contractVersion: z.literal(1),
+  commandId: teamCommandIdSchema,
+  projectId: teamIdSchema,
+  expectedEpoch: teamIdSchema,
+  priorCreateCommandId: teamCommandIdSchema.optional(),
+  issue: jiraBusinessIssueSchema,
+  spaceId: cruxSnapshotSchema.shape.spaces.element.shape.id,
+  title: z.string().trim().min(1).max(300),
+  description: z.string().max(120_000).nullable(),
+  assigneeId: cruxSnapshotSchema.shape.members.element.shape.id.optional(),
+})
+
+export const jiraBusinessIntakeReplySchema = z.strictObject({
+  status: z.enum(['committed', 'duplicate']),
+  commandId: teamCommandIdSchema,
+  result: jiraBusinessTaskMappingSchema,
+})
+
 export const jiraBusinessEventKindSchema = z.enum(['intake', 'status-sync'])
 export type JiraBusinessEventKind = z.infer<typeof jiraBusinessEventKindSchema>
 

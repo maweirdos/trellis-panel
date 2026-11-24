@@ -5,6 +5,7 @@ import {
   jiraBusinessRouteCommandSchema,
   jiraBusinessDispatchReceiptSchema,
   jiraBusinessEventCommandSchema,
+  jiraBusinessIntakeCommandSchema,
   jiraBusinessMappingCommandSchema,
   jiraBusinessMappingQuerySchema
 } from '../../../src/shared/jira-business-hooks'
@@ -32,6 +33,12 @@ export async function registerJiraBusinessHookRoutes(api: FastifyInstance, store
     const body = jiraBusinessMappingCommandSchema.parse(request.body)
     assertProject(projectId, body.projectId)
     return { ok: true, value: await store.call('jiraBusinessMappingCommand', { actor: auth.principal(request).actor, body }) }
+  })
+  api.post('/api/projects/:projectId/crux/jira/intake/commands', async request => {
+    const projectId = project(request)
+    const body = jiraBusinessIntakeCommandSchema.parse(request.body)
+    assertProject(projectId, body.projectId)
+    return { ok: true, value: await store.call('jiraBusinessIntakeCommand', { actor: auth.principal(request).actor, body }) }
   })
 
   const dispatchPath = '/api/projects/:projectId/crux/jira/business-dispatches'

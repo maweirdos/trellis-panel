@@ -119,26 +119,13 @@ export function createCurrentJiraBusinessHook(dataDir: string, options: { fetche
       const space = snapshot.snapshot.spaces.find(item => item.id === input.spaceId && item.memberIds.includes(snapshot.actor.id) && !item.archived)
       if (!space) throw new JiraWorkspaceError('E_DENIED', 'Jira 目标 Space 不属于当前桌面账号或已停用。')
 
-      // Mapping is authoritative. A retry after a lost create acknowledgement must not infer
-      // from a task search or create a second task when the canonical link already exists.
-      const existing = await native.businessMapping({ projectId: snapshot.projectId, instanceId: input.issue.instanceId, issueId: input.issue.issueId })
-      if (existing) {
-        if (existing.issue.remoteProjectId !== input.issue.remoteProjectId || existing.issue.issueKey !== input.issue.issueKey) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue already maps to a different canonical project identity.')
-        if (existing.task.spaceId !== input.spaceId) throw new JiraWorkspaceError('E_CONFLICT', 'Jira issue is canonically mapped to a different platform Space.')
-        const mappedTask = snapshot.snapshot.tasks.find(item => item.id === existing.task.taskId && item.spaceId === existing.task.spaceId && item.createdAt === existing.task.taskCreatedAt)
-        if (!mappedTask) throw new JiraWorkspaceError('E_CONFLICT', 'Existing Jira mapping points to a missing platform task.')
-        await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:intake`), effectId: rootEffectId, eventKind: 'intake', projectId: existing.projectId, issue: input.issue, task: existing.task, expectedMappingRevision: existing.revision, expectedEpoch: snapshot.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
-        native.confirmBusinessCommands([stableUuid(`${rootEffectId}:platform-create`), stableUuid(`${rootEffectId}:business-mapping`)])
-        return existing.task
-      }
-
-      const assigned = input.assigneeId && space.memberIds.includes(input.assigneeId) ? [input.assigneeId] : []
-      const result = await native.command('createTask', { spaceId: input.spaceId, title: input.title, ...(input.description ? { description: input.description } : {}), assigneeIds: assigned, triagePending: !assigned.length }, stableUuid(`${rootEffectId}:platform-create`), { retainUntilEffect: true })
-      const task = result.result.snapshot.tasks.find(item => item.id === result.result.taskId)
-      if (!task || task.spaceId !== input.spaceId) throw new JiraWorkspaceError('E_UNKNOWN', '平台任务创建回执没有返回可核对的任务身份。')
-      const ref = taskRef(result.result, task)
-      const linked = await native.linkBusinessTask({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-mapping`), projectId: ref.projectId, issue: input.issue, task: ref, expectedRevision: 0, expectedEpoch: result.result.epoch })
-      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:intake`), effectId: rootEffectId, eventKind: 'intake', projectId: linked.projectId, issue: input.issue, task: linked.task, expectedMappingRevision: linked.revision, expectedEpoch: result.result.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
+      const linked = await native.intakeBusinessTask({
+        contractVersion: 1, commandId: stableUuid(`${rootEffectId}:platform-intake`), projectId: snapshot.projectId,
+        priorCreateCommandId: stableUuid(`${rootEffectId}:platform-create`),
+        expectedEpoch: snapshot.epoch, issue: input.issue, spaceId: input.spaceId, title: input.title,
+        description: input.description, assigneeId: input.assigneeId,
+      })
+      await native.recordBusinessEffect({ contractVersion: 1, commandId: stableUuid(`${rootEffectId}:business-effect:intake`), effectId: rootEffectId, eventKind: 'intake', projectId: linked.projectId, issue: input.issue, task: linked.task, expectedMappingRevision: linked.revision, expectedEpoch: snapshot.epoch, providerJobId: input.providerJobId, providerCommandId: input.providerCommandId, payloadDigest: input.payloadDigest })
       native.confirmBusinessCommands([stableUuid(`${rootEffectId}:platform-create`), stableUuid(`${rootEffectId}:business-mapping`)])
       return linked.task
     },

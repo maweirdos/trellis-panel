@@ -219,6 +219,7 @@ export class TeamStoreCore {
     mutation: (...args) => this.mutation(...args), transaction: (fn) => this.transaction(fn),
     invalidateProgress: (...args) => { this.taskProgress.reconcileWorkspace(...args); this.executions.reconcileWorkspace(...args) },
     validateExecutionChanges: (...args) => this.executions.validateWorkspaceChanges(...args),
+    bindTestDelivery: (...args) => this.executions.bindTestDelivery(...args),
     committedTaskTransition: (...args) => this.jiraBusinessHooks.routing.committed(...args),
     validateTaskTransitionInputs: (...args) => { this.taskInputs.validateTaskTransitionInputs(...args); this.executions.validateTransition(args[0], args[1], args[2], args[4], args[3]) },
     validateOutputReviewReference: (principal, projectId, taskId, output) => this.validateOutputReviewReference(principal, projectId, taskId, output)
@@ -235,6 +236,7 @@ export class TeamStoreCore {
     identity: () => ({ instanceId: this.meta('instanceId'), epoch: this.meta('epoch') }),
     get: (...args) => this.get(...args), all: (...args) => this.all(...args), run: (...args) => this.run(...args),
     authenticate: actor => this.authenticate(actor), project: (p, projectId) => { this.project(p, projectId) },
+    createIntakeTask: (principal, input) => this.crux.createJiraIntakeTask(principal, input),
     task: (p, task) => {
       this.project(p, task.projectId)
       const row = this.get('SELECT snapshotJson FROM crux_workspaces WHERE projectId=?', task.projectId)
@@ -809,6 +811,7 @@ export class TeamStoreCore {
     if (operation === 'jiraBusinessDispatchRead') return this.jiraBusinessHooks.routing.read(actor, raw)
     if (operation === 'jiraBusinessDispatchReceipt') return this.jiraBusinessHooks.routing.receipt(actor, raw.body)
     if (operation === 'jiraBusinessMappingRead') return this.jiraBusinessHooks.readMapping(actor, raw)
+    if (operation === 'jiraBusinessIntakeCommand') return this.jiraBusinessHooks.intake(actor, raw.body)
     if (operation === 'jiraBusinessMappingCommand') return this.jiraBusinessHooks.command(actor, raw.body)
     if (operation === 'jiraBusinessEffectRead') return this.jiraBusinessHooks.readEffect(actor, raw)
     if (operation === 'jiraBusinessEventCommand') return this.jiraBusinessHooks.event(actor, raw.body)

@@ -13,7 +13,8 @@ import type { StoreActor, StorePrincipal } from './store-types'
 import { TeamServiceError } from './errors'
 import { taskProgressFence } from './task-progress'
 import { TeamExecutionArtifacts } from './task-execution-artifacts'
-import type { executionCreationRefSchema } from '../../../src/shared/team-execution-artifacts'
+import type { executionCreationRefSchema, ExecutionTestDelivery } from '../../../src/shared/team-execution-artifacts'
+import { currentTaskTestSubmission } from '../../../src/shared/crux-domain/workflow'
 import { executionInputSchema } from '../../../src/shared/team-execution-input'
 
 type Host = Pick<CruxWorkspaceHost, 'identity' | 'get' | 'all' | 'run' | 'authenticate' | 'project' | 'mutation'> & {
@@ -345,6 +346,61 @@ export class TeamTaskExecutions {
   }
   private checkPrincipal(principal: StorePrincipal, command: TeamExecutionCommand): void {
     if (command.expectedActorId !== principal.person.userId || command.expectedDeviceId !== principal.deviceId) fail('EXECUTION_FORBIDDEN', 'Command belongs to another original account or device', 403)
+  }
+  bindTestDelivery(principal: StorePrincipal, projectId: string, task: CruxTask, transition: CruxTransitionTaskInput): CruxTransitionTaskInput {
+    const submission = currentTaskTestSubmission(task)
+    let fixed: ExecutionTestDelivery | undefined
+    if (transition.action === 'submit_test') {
+      const last = this.host.get("SELECT executionId FROM team_task_executions WHERE projectId=? AND taskId=? AND json_extract(recordJson,'$.task.spaceId')=? AND json_extract(recordJson,'$.task.taskCreatedAt')=? ORDER BY rowid DESC LIMIT 1", projectId, task.id, task.spaceId, task.createdAt)
+      if (last) {
+        const { record } = this.row(String(last.executionId))
+        if (record.ownership === 'product-managed' && record.finalization?.outcome === 'completed'
+          && record.finalization.manifest && record.finalization.checkpoint) {
+          this.principalContext(principal, record.task, true)
+          const previous = task.workflow?.history.slice().reverse().find(event => event.action === 'submit_test' && event.executionDelivery)?.executionDelivery
+          if (previous?.executionId === record.executionId) fail('EXECUTION_DELIVERY_CONFLICT', 'Retest requires a newly finalized delivery')
+          if (principal.person.userId !== record.actorId || !transition.assigneeId || transition.assigneeId === record.actorId) {
+            fail('EXECUTION_FORBIDDEN', 'The original producer must hand off to an independent tester', 403)
+          }
+          this.artifacts.validateFinalization(principal, record)
+          const checkpoint = record.checkpoints?.find(item => item.versionId === record.finalization?.checkpoint?.versionId)
+          if (!checkpoint || checkpoint.source.kind === 'none' || !checkpoint.observation) {
+            fail('EXECUTION_DELIVERY_CONFLICT', 'Testing requires an observed code source in the exact handoff checkpoint')
+          }
+          fixed = { executionId: record.executionId, manifest: record.finalization.manifest, checkpoint: record.finalization.checkpoint }
+        }
+      }
+    } else if (['pass_test', 'return_development', 'accept_delivery', 'return_delivery'].includes(transition.action)) {
+      fixed = submission?.executionDelivery
+      if (fixed) {
+        const { record } = this.row(fixed.executionId)
+        this.principalContext(principal, record.task)
+        if (record.task.projectId !== projectId || record.task.taskId !== task.id || record.task.spaceId !== task.spaceId
+          || record.task.taskCreatedAt !== task.createdAt || record.finalization?.outcome !== 'completed'
+          || taskInputCanonical(record.finalization.manifest ?? null) !== taskInputCanonical(fixed.manifest)
+          || taskInputCanonical(record.finalization.checkpoint ?? null) !== taskInputCanonical(fixed.checkpoint)) {
+          fail('EXECUTION_DELIVERY_CONFLICT', 'Original testing delivery is unavailable or changed')
+        }
+        this.artifacts.validateFinalization(principal, record)
+        if (transition.action === 'pass_test' || transition.action === 'return_development') {
+          if (submission?.assigneeId !== principal.person.userId) fail('EXECUTION_FORBIDDEN', 'Only the original testing recipient can record this result', 403)
+          if (!transition.body?.trim()) fail('EXECUTION_DELIVERY_CONFLICT', 'Record the actual test result for this delivery')
+        }
+        if (transition.action === 'accept_delivery') {
+          const pass = task.workflow?.history.slice().reverse().find(event => event.action === 'pass_test')
+          if (pass?.actorId !== submission?.assigneeId || taskInputCanonical(pass?.executionDelivery ?? null) !== taskInputCanonical(fixed)) {
+            fail('EXECUTION_DELIVERY_CONFLICT', 'Acceptance requires an independent pass of this exact delivery')
+          }
+        }
+      }
+    }
+    if (transition.executionDelivery && taskInputCanonical(transition.executionDelivery) !== taskInputCanonical(fixed)) {
+      fail('EXECUTION_DELIVERY_CONFLICT', 'The selected testing delivery is no longer current')
+    }
+    if (fixed && transition.action !== 'submit_test' && !transition.executionDelivery) {
+      fail('EXECUTION_DELIVERY_CONFLICT', 'Reload the task and confirm its exact testing delivery')
+    }
+    return fixed ? { ...transition, executionDelivery: fixed } : transition
   }
   /** All ordinary business transition paths call this hook in their existing transaction. */
   validateTransition(principal: StorePrincipal, projectId: string, task: CruxTask, transition: CruxTransitionTaskInput, successor?: CruxTask): void {

@@ -12,6 +12,12 @@ import type { TaskDeliveryDependencies } from '../task-delivery'
 import { applyTaskDeliveryTransition } from './task-delivery'
 export { CruxError } from './core'
 
+export function currentTaskTestSubmission(task: CruxTask) {
+  const last = task.workflow?.history.slice().reverse().find(event =>
+    ['submit_test', 'return_development', 'return_delivery'].includes(event.action))
+  return last?.action === 'submit_test' ? last : undefined
+}
+
 export interface CruxTaskStageMetadata {
   stage: CruxTaskStage
   label: string
@@ -177,9 +183,10 @@ export function transitionTask(raw: CruxTransitionTaskInput, actorId: string, de
       setTaskIterations(draft, task, [...task.iterationIds, input.iterationId])
     }
     const artifactBody = input.body
+    const fixedExecutionDelivery = input.executionDelivery ? { executionDelivery: input.executionDelivery } : {}
     if (artifactBody) {
       const kind = artifactKinds[input.action]
-      if (kind) workflow.artifacts.push({ id: nextId('wa'), kind, body: artifactBody, actorId, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}) })
+      if (kind) workflow.artifacts.push({ id: nextId('wa'), kind, body: artifactBody, actorId, at, ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}), ...fixedExecutionDelivery })
     }
     let postInput: ReturnType<typeof fixedPostInput>
     const prior = fixedPostInput(task)
@@ -192,7 +199,7 @@ export function transitionTask(raw: CruxTransitionTaskInput, actorId: string, de
       }
       if (!prior || taskInputCanonical(prior) !== taskInputCanonical(current)) postInput = current
     }
-    workflow.history.push({ id: nextId('wh'), action: input.action, fromStage, toStage, actorId, assigneeId: handlerId, body: input.body, at, ...(postInput ? { postInput } : {}), ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}) })
+    workflow.history.push({ id: nextId('wh'), action: input.action, fromStage, toStage, actorId, assigneeId: handlerId, body: input.body, at, ...(postInput ? { postInput } : {}), ...(input.checkedCriteria ? { checkedCriteria: [...input.checkedCriteria] } : {}), ...(deliveryLinks ? { deliveryLinks } : {}), ...fixedExecutionDelivery })
     workflow.stage = toStage
     workflow.handlerId = handlerId
     task.workflow = workflow
