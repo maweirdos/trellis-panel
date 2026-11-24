@@ -20,8 +20,8 @@ import { resolveNodeRuntime } from '../../../acp/managed-node'
 import { buildCodexTurnStartParams, codexTimestamp, mapCodexTurnStatus, observeCodexTurns } from './CodexAdapterV2'
 import { ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError } from '../registry'
 import type { ConversationDriverEventListener, ConversationDriverModel, ConversationDriverOpenInput, ConversationDriverSession, ConversationDriverTurnEvent } from '../registry'
-import type { ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationSteerTurnInput } from '../registry'
-import type { ConversationDriverDescriptor } from '../../../../../shared/conversation/driverCatalog'
+import type { ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationStartTurnContext, ConversationSteerTurnInput } from '../registry'
+import type { ConversationDriverDescriptor, ConversationDriverOption, ConversationDriverSkill } from '../../../../../shared/conversation/driverCatalog'
 import { DaemonError } from '../../../../daemon/errors'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type MutableDriverActions } from '../core/catalog'
 
@@ -29,6 +29,12 @@ const CODEX_CLIENT_NAME = 'crux-codex-app-server'
 const TURN_COMPLETION_TIMEOUT = '30 minutes'
 const REQUEST_TIMEOUT = '30 seconds'
 const JSON_RPC_PRE_DISPATCH_REJECTIONS = new Set([-32600, -32601, -32602])
+const REASONING_EFFORT = 'reasoningEffort'
+const taskDisabledFeatures = ['apps', 'browser_use', 'browser_use_external', 'in_app_browser', 'computer_use', 'hooks',
+  'plugins', 'remote_plugin', 'multi_agent', 'multi_agent_v2', 'shell_tool', 'skill_mcp_dependency_install']
+const reasoningEffortLabels: Readonly<Record<string, string>> = {
+  none: '关', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最高',
+}
 
 const asError = (error: unknown): Error => error instanceof Error ? error : new Error(String(error))
 const pipeError = (method: 'read' | 'write', cause: unknown): PlatformError =>
@@ -86,6 +92,8 @@ export class CodexDriver implements ConversationDriverSession {
     private readonly scope: Scope.Closeable,
     private readonly stoppedSignal: Deferred.Deferred<never, Error>,
     private readonly configurationKey: string,
+    private readonly cwd?: string,
+    private readonly ordinaryTask = false,
   ) {}
 
   static readonly open = (input: ConversationDriverOpenInput): Effect.Effect<CodexDriver, Error> =>
@@ -103,7 +111,7 @@ export class CodexDriver implements ConversationDriverSession {
       })
       const scope = yield* Scope.make()
       const child = owned.child
-      const driver = new CodexDriver(owned, scope, stoppedSignal, codexConfigurationKey(environment))
+      const driver = new CodexDriver(owned, scope, stoppedSignal, codexConfigurationKey(environment), input.cwd, input.ordinaryTask)
       let stderr = ''
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString('utf8')).slice(-16_384) })
       child.on('error', error => driver.stopTransport(error))
@@ -173,20 +181,71 @@ export class CodexDriver implements ConversationDriverSession {
 
   /** The live child process, when one has been spawned. */
   process(): ChildProcessWithoutNullStreams { return this.owned.child }
-  readonly listModels = (): Effect.Effect<readonly ConversationDriverModel[], Error> => {
+  private nativeModels() {
     const client = this.requireClient()
     return this.guard(client.request('model/list', {})).pipe(
       Effect.timeout(REQUEST_TIMEOUT),
-      Effect.map(response => response.data.filter(model => !model.hidden).map(model => ({ id: model.model, displayName: model.displayName ?? model.model, isDefault: model.isDefault === true }))),
+      Effect.map(response => response.data.filter(model => !model.hidden)),
       Effect.mapError(asError),
     )
   }
 
+  private readonly modelEfforts = new Map<string, ConversationDriverOption>()
+
+  private modelCatalog() {
+    return this.nativeModels().pipe(Effect.map(nativeModels => {
+      this.modelEfforts.clear()
+      const models: ConversationDriverModel[] = nativeModels.map(model => {
+        const choices = model.supportedReasoningEfforts.map(({ reasoningEffort }) => ({
+          value: reasoningEffort, label: reasoningEffortLabels[reasoningEffort] ?? reasoningEffort,
+        }))
+        if (choices.length) {
+          this.modelEfforts.set(model.model, {
+            id: REASONING_EFFORT, label: '推理强度', category: 'reasoning', modelId: model.model, turnSelectable: true,
+            current: choices.some(choice => choice.value === model.defaultReasoningEffort) ? model.defaultReasoningEffort : undefined,
+            choices,
+          })
+        }
+        return { id: model.model, displayName: model.displayName ?? model.model, isDefault: model.isDefault === true }
+      })
+      return { models, options: [...this.modelEfforts.values()] }
+    }))
+  }
+
+  readonly listModels = (): Effect.Effect<readonly ConversationDriverModel[], Error> =>
+    this.modelCatalog().pipe(Effect.map(catalog => catalog.models))
+
+  private nativeSkills(): Effect.Effect<readonly ConversationDriverSkill[] | undefined> {
+    const cwd = this.cwd
+    if (!cwd || this.ordinaryTask) return Effect.succeed(undefined)
+    return this.guard(this.requireClient().request('skills/list', { cwds: [cwd] })).pipe(
+      Effect.timeout('2 seconds'),
+      Effect.map(({ data }) => {
+        const seen = new Set<string>()
+        const matching = data.find(entry => process.platform === 'win32'
+          ? entry.cwd.toLowerCase() === cwd.toLowerCase() : entry.cwd === cwd)
+        return matching?.skills.flatMap(skill => {
+          if (!skill.enabled || !/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,127}$/u.test(skill.name) ||
+            !/[a-zA-Z]/u.test(skill.name) || seen.has(skill.name)) return []
+          seen.add(skill.name)
+          return [{
+            name: skill.name,
+            displayName: skill.interface?.displayName?.trim().slice(0, 160) || undefined,
+            description: (skill.shortDescription ?? skill.interface?.shortDescription ?? skill.description)?.trim().slice(0, 240) || undefined,
+          }]
+        }).slice(0, 256)
+      }),
+      Effect.catch(() => Effect.succeed(undefined)),
+    )
+  }
+
   readonly describe = (): Effect.Effect<ConversationDriverDescriptor, Error> =>
-    this.listModels().pipe(Effect.map(models => ({
-      source: 'native-catalog', observedAt: new Date().toISOString(), configurationKey: this.configurationKey, models, options: [],
+    Effect.all({ catalog: this.modelCatalog(), skills: this.nativeSkills() }, { concurrency: 'unbounded' }).pipe(Effect.map(({ catalog, skills }) => ({
+      source: 'native-catalog', observedAt: new Date().toISOString(), configurationKey: this.configurationKey, ...catalog,
+      ...(skills?.length ? { skills } : {}),
       actions: driverActionEvidence({
         chat: { state: 'verified', source: 'native-catalog', detail: '原生 app-server 已返回模型目录。' },
+        steer: { state: 'verified', source: 'host-policy', detail: 'turn/steer 绑定当前原生回合，回执确认目标回合。' },
         planning: hostUnsupported('团队规划的批准工具和项目资料边界尚未接入该入口。'),
         execution: hostUnsupported('当前 Codex 线程固定为只读模式。'),
         toolApproval: hostUnsupported('当前 Codex 线程拒绝临时审批。'),
@@ -211,22 +270,61 @@ export class CodexDriver implements ConversationDriverSession {
     return response.thread.id
   }
 
-  readonly startThread = (model: string, cwd: string): Effect.Effect<string, Error> => {
-    const client = this.requireClient()
-    return this.guard(client.request('thread/start', { model, cwd, approvalPolicy: 'never', sandbox: 'read-only' })).pipe(
+  private taskThreadConfig(cwd: string): Effect.Effect<Record<string, boolean | string> | undefined, Error> {
+    if (!this.ordinaryTask) return Effect.succeed(undefined)
+    return this.guard(this.requireClient().request('config/read', { cwd })).pipe(
       Effect.timeout(REQUEST_TIMEOUT),
-      Effect.flatMap(response => Effect.try({
-        try: () => this.verifyThread(response, model, cwd),
+      Effect.flatMap(({ config }) => Effect.try({
+        try: () => {
+          const raw = config.mcp_servers
+          if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) {
+            throw new DaemonError('E_CONFLICT', '无法核实 Codex 配置中的 MCP 工具。')
+          }
+          const servers = Object.keys(raw ?? {})
+          if (servers.some(name => !/^[\w-]+$/.test(name))) throw new DaemonError('E_CONFLICT', 'Codex MCP 工具无法安全禁用。')
+          return Object.fromEntries([
+            ...taskDisabledFeatures.map(name => [`features.${name}`, false] as const),
+            ...servers.map(name => [`mcp_servers.${name}.enabled`, false] as const),
+            ['features.skip_host_skill_discovery', true] as const,
+            ['web_search', 'disabled'] as const,
+          ])
+        },
         catch: asError,
       })),
       Effect.mapError(asError),
     )
   }
 
+  private verifyTaskTools(threadId: string): Effect.Effect<string, Error> {
+    if (!this.ordinaryTask) return Effect.succeed(threadId)
+    return this.guard(this.requireClient().request('mcpServerStatus/list', { threadId, detail: 'toolsAndAuthOnly', limit: 128 })).pipe(
+      Effect.timeout(REQUEST_TIMEOUT),
+      Effect.flatMap(result => result.nextCursor || result.data.some(server => server.runtimeStatus !== 'disabled' || Object.keys(server.tools).length)
+        ? Effect.fail(new DaemonError('E_DENIED', 'Codex 未确认任务会话禁用 MCP 工具。'))
+        : Effect.succeed(threadId)),
+      Effect.mapError(asError),
+    )
+  }
+
+  readonly startThread = (model: string, cwd: string): Effect.Effect<string, Error> => {
+    const client = this.requireClient()
+    return this.taskThreadConfig(cwd).pipe(
+      Effect.flatMap(config => this.guard(client.request('thread/start', { model, cwd, approvalPolicy: 'never', sandbox: 'read-only', ...(config && { config }) }))),
+      Effect.timeout(REQUEST_TIMEOUT),
+      Effect.flatMap(response => Effect.try({
+        try: () => this.verifyThread(response, model, cwd),
+        catch: asError,
+      })),
+      Effect.flatMap(threadId => this.verifyTaskTools(threadId)),
+      Effect.mapError(asError),
+    )
+  }
+
   readonly resumeThread = ({ nativeThreadId, model, cwd }: ConversationResumeThreadInput): Effect.Effect<string, Error> =>
-    this.guard(this.requireClient().request('thread/resume', {
-      threadId: nativeThreadId, model, cwd, approvalPolicy: 'never', sandbox: 'read-only', excludeTurns: true,
-    })).pipe(
+    this.taskThreadConfig(cwd).pipe(
+      Effect.flatMap(config => this.guard(this.requireClient().request('thread/resume', {
+        threadId: nativeThreadId, model, cwd, approvalPolicy: 'never', sandbox: 'read-only', excludeTurns: true, ...(config && { config }),
+      }))),
       Effect.timeout(REQUEST_TIMEOUT),
       Effect.flatMap(response => Effect.try({
         try: () => {
@@ -236,8 +334,20 @@ export class CodexDriver implements ConversationDriverSession {
         },
         catch: asError,
       })),
+      Effect.flatMap(threadId => this.verifyTaskTools(threadId)),
       Effect.mapError(asError),
     )
+
+  readonly detachThread: NonNullable<ConversationDriverSession['detachThread']> = ({ nativeThreadId, assertCurrent }) =>
+    Effect.suspend(() => {
+      try {
+        assertCurrent()
+        if (this.activeTurns.has(nativeThreadId)) throw new DaemonError('E_BUSY', 'Codex 原线程仍持有活动回合。')
+        return this.guard(this.requireClient().request('thread/unsubscribe', { threadId: nativeThreadId }))
+      } catch (error) {
+        return Effect.fail(asError(error))
+      }
+    }).pipe(Effect.timeout(REQUEST_TIMEOUT), Effect.map(({ status }) => status), Effect.mapError(asError))
 
   private activeControl({ nativeThreadId, turnId }: ConversationInterruptTurnInput): Effect.Effect<void, DaemonError> {
     return Effect.suspend(() => turnId && this.activeTurns.get(nativeThreadId)?.turnId === turnId
@@ -262,10 +372,32 @@ export class CodexDriver implements ConversationDriverSession {
    * only when Codex reports turn/completed for this exact turn. A late completion belonging
    * to another turn never settles this one.
    */
-  readonly startTurn = (threadId: string, cwd: string, text: string, model: string, listener: ConversationDriverEventListener): Effect.Effect<string, Error> => {
+  readonly startTurn = (
+    threadId: string, cwd: string, text: string, model: string, listener: ConversationDriverEventListener,
+    context?: ConversationStartTurnContext,
+  ): Effect.Effect<string, Error> => {
     const client = this.requireClient()
     const driver = this
     return Effect.gen(function* () {
+      yield* driver.verifyTaskTools(threadId).pipe(Effect.mapError(cause => new ConversationTurnRejectedError(cause.message, { cause })))
+      let effort: string | undefined
+      if (context?.modelOptions?.length) {
+        const selected = context.modelOptions[0]
+        if (context.modelOptions.length !== 1 || selected.id !== REASONING_EFFORT || typeof selected.value !== 'string') {
+          return yield* Effect.fail(new ConversationTurnRejectedError('当前 Codex 回合仅接受目录提供的推理强度。'))
+        }
+        if (!driver.modelEfforts.has(model)) {
+          yield* driver.modelCatalog().pipe(Effect.mapError(error => new ConversationTurnRejectedError(error.message, { cause: error })))
+        }
+        if (!driver.modelEfforts.get(model)?.choices.some(choice => choice.value === selected.value)) {
+          return yield* Effect.fail(new ConversationTurnRejectedError('此 Codex 模型不支持所选推理强度。'))
+        }
+        effort = selected.value
+      }
+      if (context?.assertAuthorized) {
+        yield* Effect.tryPromise({ try: context.assertAuthorized, catch: cause => new ConversationTurnRejectedError(asError(cause).message, { cause }) })
+      }
+      yield* Effect.try({ try: () => context?.assertCurrent(), catch: cause => new ConversationTurnRejectedError(asError(cause).message, { cause }) })
       if (driver.stopped || driver.activeTurns.has(threadId)) return yield* Effect.fail(new ConversationTurnRejectedError('Codex thread is unavailable for a new turn.'))
       const completion = yield* Deferred.make<void, Error>()
       let turnId: string | undefined
@@ -298,7 +430,11 @@ export class CodexDriver implements ConversationDriverSession {
       const active: { notify: ConversationDriverEventListener; turnId?: string } = { notify: receive }
       driver.activeTurns.set(threadId, active)
       return yield* Effect.gen(function* () {
-        const started = yield* driver.guard(client.request('turn/start', buildCodexTurnStartParams({ nativeThreadId: threadId, cwd, model, text }))).pipe(
+        const params = yield* Effect.try({
+          try: () => buildCodexTurnStartParams({ nativeThreadId: threadId, cwd, model, text, effort, attachments: context?.attachments }),
+          catch: error => new ConversationTurnRejectedError(asError(error).message, { cause: error }),
+        })
+        const started = yield* driver.guard(client.request('turn/start', params)).pipe(
           Effect.timeout(REQUEST_TIMEOUT),
           Effect.mapError(error => error instanceof CodexAppServerRequestError
             && early.length === 0

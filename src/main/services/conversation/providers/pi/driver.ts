@@ -24,6 +24,7 @@ import { checkedDirectory, directoryIdentity, ownedDirectory, pathKey } from '..
 import { getSettings } from '../../../store'
 import { resolveWorkcopy, workcopyUseDirectory, workcopyUseRegistry } from '../../../workcopy-use'
 import { createAcpJobOwner } from '../../../workcopy-use/acp-jobs'
+import { nativeImageAttachment, nativeTextAttachment, PI_ATTACHMENTS } from '../core/attachment-input'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverDescriptor, type ConversationDriverEventListener, type ConversationDriverOpenInput, type ConversationStartTurnContext,
@@ -131,6 +132,10 @@ class PiConversationDriver implements ConversationDriverSession {
     this.slots.delete(slot)
   }
 
+  canConfirmWindowsJobClose(nativeThreadId: string): boolean {
+    return process.platform === 'win32' && this.sessions.has(nativeThreadId)
+  }
+
   close(): Effect.Effect<void, Error> {
     return effect(async () => {
       this.closing = true
@@ -162,6 +167,7 @@ class PiConversationDriver implements ConversationDriverSession {
           options: [],
           actions: { chat: unknown('已配置模型，实际连接和回复在本轮核验'), planning: unsupported('工程规划的受限工具与任务授权尚未接入'),
             execution: unsupported('托管任务授权尚未接入'), cancel: verified('SDK abort 精确作用于原操作'), resume: verified('按原目录和 SDK 会话文件恢复'),
+            steer: verified('SDK steer 绑定原回合，用户消息事件证明插话已进入 SDK'),
             goal: unsupported('SDK 未提供本驱动可用的目标 API'), goalPause: unsupported('SDK 未提供本驱动可用的目标 API'),
             compact: verified('SDK Session.compact'), nativeSubthreads: unsupported('SDK 未提供本驱动可用的原生子线程'),
             modelSwitch: unsupported('显式切换需要新授权'), readOnly: unsupported('此驱动未开放只读规划'),
@@ -352,7 +358,7 @@ class PiConversationDriver implements ConversationDriverSession {
   }
 
   private async run(nativeThreadId: string, cwd: string, text: string, model: string, onEvent: ConversationDriverEventListener,
-    kind: 'prompt' | 'compact', options?: { requestId?: string; signal?: AbortSignal; assertCurrent?: () => void }): Promise<string> {
+    kind: 'prompt' | 'compact', options?: Partial<ConversationStartTurnContext> & { signal?: AbortSignal }): Promise<string> {
     const turnId = piRequestIdSchema.parse(options?.requestId ?? randomUUID())
     this.assertRoot(cwd)
     const slot = this.sessions.get(nativeThreadId)
@@ -378,8 +384,15 @@ class PiConversationDriver implements ConversationDriverSession {
       options?.signal?.throwIfAborted()
       assertCurrent()
       const generation = slot.owner.generation
+      const contents = options?.attachments ?? []
+      const attachments = contents.filter(content => content.attachment.type === 'image').map(content => {
+        const image = nativeImageAttachment(content)
+        return { type: 'image' as const, mediaType: image.mimeType, data: image.data }
+      })
+      const promptText = [text, ...contents.filter(content => content.attachment.type !== 'image').map(nativeTextAttachment)].join('\n\n')
       const input: Parameters<PiConversationRuntime['startTurn']>[0] = {
-        handle, requestId: turnId, text, assertActive: assertCurrent,
+        handle, requestId: turnId, text: promptText, assertActive: assertCurrent,
+        ...(attachments.length ? { attachments } : {}),
         onPermissionRequest: async (request, context) => ({ outcome: { outcome: 'selected',
           optionId: await this.requestPermission(nativeThreadId, turnId, request, context.signal, onEvent) } }),
       }
@@ -428,6 +441,7 @@ export function createPiDriverRegistration(): ConversationDriverRegistration {
   return {
     instanceId: ProviderInstanceId.make('pi'),
     driverKind: ProviderDriverKind.make('pi'),
+    promptAttachments: PI_ATTACHMENTS,
     configurationKey: () => { try { return piConfiguredModels().revision } catch { return 'pi-unconfigured' } },
     open: input => effect(async () => {
       input.assertCanSpawn()

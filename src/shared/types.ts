@@ -1181,6 +1181,7 @@ export interface SyncExtensionResult {
 
 /** APIs exposed to the renderer via contextBridge. */
 export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceApi, ApplicationTaskRuntimeApi, DocumentWindowApi, TaskConversationsApi {
+  speech?: import('./speech').SpeechApi
   teamContent: import('./team-content-api').TeamContentApi
   cruxResources?: import('./crux-code-resources').CruxCodeResourceApi
   cruxMaterials?: import('./crux-task-materials').CruxTaskMaterialsApi
@@ -1414,18 +1415,25 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   jiraComment: (cfg: JiraConfig, key: string, body: string) => Promise<{ ok: boolean; error?: string }>
 
   /* --- 新版对话内核（T3 移植） --- */
-  conversationModels: (cwd: string) => Promise<{ ok: true; models: Array<{ id: string; displayName: string; isDefault: boolean }> } | IpcFail>
-  conversationCreate: (input: { cwd: string; title?: string; text: string; model: string; instanceId: string; commandId: string; messageId?: string }) => Promise<({ ok: true } & import('./conversation/desktop').ConversationCommandState) | IpcFail>
-  conversationList: (root: string) => Promise<{ ok: true; threads: unknown[] } | IpcFail>
-  conversationRead: (threadId: string, root: string) => Promise<({ ok: true } & import('./conversation/command-runtime').ConversationThreadSnapshot) | IpcFail>
-  conversationEvents: (input: { cwd: string; threadId: string; afterSequence: number; limit?: number }) => Promise<{ ok: true; page: import('./conversation/desktop').ConversationEventPage } | IpcFail>
-  conversationCommand: (commandId: string, root: string) => Promise<{ ok: true; receipt: import('./conversation/desktop').ConversationCommandState | null } | IpcFail>
-  conversationApply: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationApply'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState } | IpcFail>
-  conversationThreadCommand: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationThreadCommand'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState | null } | IpcFail>
-  conversationEventDelta: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationEventDelta'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadEventPage } | IpcFail>
-  conversationHistory: (input: { cwd: string } & import('./daemon-runtime').RuntimeBody<'runtime.conversationHistory'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadHistoryPage } | IpcFail>
-  conversationDrivers: (cwd: string) => Promise<{ ok: true; drivers: ReadonlyArray<{ instanceId: string; driverKind: string }> } | IpcFail>
-  conversationDescribeDriver: (input: { cwd: string; instanceId: string }) => Promise<{ ok: true; descriptor: import('./conversation/driverCatalog').ConversationDriverDescriptor } | IpcFail>
+  conversationWorkRoot: () => Promise<{ ok: true; root: string } | IpcFail>
+  conversationTaskScope: (task: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; scope: import('./conversation/task-scope').ConversationTaskScope } | IpcFail>
+  conversationModels: (cwd: string, task?: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; models: Array<{ id: string; displayName: string; isDefault: boolean }> } | IpcFail>
+  conversationCreate: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationCreate'>) => Promise<({ ok: true } & import('./conversation/desktop').ConversationCommandState) | IpcFail>
+  conversationList: (root: string, filter?: import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationList'>) => Promise<{ ok: true; threads: readonly import('./conversation/contracts').OrchestrationV2AppThread[] } | IpcFail>
+  conversationRead: (threadId: string, root: string, task?: import('./conversation/task-scope').ConversationTaskLocator) => Promise<({ ok: true } & import('./conversation/command-runtime').ConversationThreadSnapshot) | IpcFail>
+  conversationEvents: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationEvents'>) => Promise<{ ok: true; page: import('./conversation/desktop').ConversationEventPage } | IpcFail>
+  conversationCommand: (commandId: string, root: string, task?: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; receipt: import('./conversation/desktop').ConversationCommandState | null } | IpcFail>
+  conversationApply: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationApply'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState } | IpcFail>
+  conversationThreadCommand: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationThreadCommand'>) => Promise<{ ok: true; receipt: import('./conversation/command-runtime').ConversationThreadCommandState | null } | IpcFail>
+  conversationEventDelta: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationEventDelta'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadEventPage } | IpcFail>
+  conversationHistory: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationHistory'>) => Promise<{ ok: true; page: import('./conversation/command-runtime').ConversationThreadHistoryPage } | IpcFail>
+  conversationDrivers: (cwd: string, task?: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; drivers: ReadonlyArray<{ instanceId: string; driverKind: string }> } | IpcFail>
+  conversationDescribeDriver: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationDescribeDriver'>) => Promise<{ ok: true; descriptor: import('./conversation/driverCatalog').ConversationDriverDescriptor } | IpcFail>
+  conversationAttachmentStage: (input: import('./conversation/attachments').ConversationAttachmentStageInput & { task?: import('./conversation/task-scope').ConversationTaskLocator }) => Promise<{ ok: true; attachment: import('./conversation/attachments').StagedConversationAttachment } | IpcFail>
+  conversationAttachmentPick: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentList'>) => Promise<{ ok: true; attachments: readonly import('./conversation/attachments').StagedConversationAttachment[] } | IpcFail>
+  conversationAttachmentList: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentList'>) => Promise<{ ok: true; attachments: readonly import('./conversation/attachments').StagedConversationAttachment[] } | IpcFail>
+  conversationAttachmentRelease: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentRelease'>) => Promise<{ ok: true; released: boolean } | IpcFail>
+  conversationAttachmentRead: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationAttachmentRead'>) => Promise<{ ok: true; content: import('./conversation/attachments').ConversationAttachmentContent } | IpcFail>
   /* --- ACP Agent 控制台 --- */
   acpAgents: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
   acpSessions: () => Promise<{ ok: boolean; error?: string; sessions?: AcpSessionRecord[] }>

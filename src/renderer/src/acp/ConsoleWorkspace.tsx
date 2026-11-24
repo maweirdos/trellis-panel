@@ -80,7 +80,7 @@ const supportsPagedHistory = (): boolean => typeof api?.acpHistoryList === 'func
 
 export function AcpConsolePage(props: { compact?: boolean } = {}): JSX.Element {
   const target = useMy((state) => state.taskConversationTarget)
-  return target ? <TaskConversationWorkspace key={`${target.sourceKey}:${target.taskId}:${target.session.sessionId}`} target={target} /> : <ProjectConsoleWorkspace {...props} />
+  return target ? <TaskConversationWorkspace key={target.kind === 'ordinary' ? target.scope.scopeKey : `${target.sourceKey}:${target.taskId}:${target.session.sessionId}`} target={target} /> : <ProjectConsoleWorkspace {...props} />
 }
 
 function ProjectConsoleWorkspace({ compact = false }: { compact?: boolean } = {}): JSX.Element {

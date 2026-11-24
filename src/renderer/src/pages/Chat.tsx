@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState, type JSX } from 'react'
+import { lazy, Suspense, useEffect, useState, type JSX } from 'react'
 import { FolderOpen } from 'lucide-react'
-import { PrivateWorkspace } from '../conversations/PrivateWorkspace'
+import { api, hasIpc } from '../api'
 import { StartupContentCommit } from '../daemon/StartupContext'
 import { PageLoading } from '../my/layout/PageLoading'
 import { projectRootKey } from '../my/navigation'
@@ -9,7 +9,32 @@ import { FeedbackNotice } from '../my/FeedbackNotice'
 import { Button, EmptyState } from '../my/ui'
 import { useApp } from '../store'
 
-const CodeConversation = lazy(() => import('../conversation-workbench/ConversationWorkbench').then((module) => ({ default: module.ConversationWorkbench })))
+const NativeConversation = lazy(() => import('../conversation-workbench/ConversationWorkbench').then((module) => ({ default: module.ConversationWorkbench })))
+
+function WorkConversation({ active }: { active: boolean }): JSX.Element {
+  const [root, setRoot] = useState<string>()
+  const [issue, setIssue] = useState('')
+  const [retry, setRetry] = useState(0)
+
+  useEffect(() => {
+    if (!active || !hasIpc) return
+    let current = true
+    void api.conversationWorkRoot().then(result => {
+      if (!current) return
+      if (result.ok) {
+        setRoot(result.root)
+        setIssue('')
+      } else setIssue(result.error)
+    }).catch(() => { if (current) setIssue('无法打开 Work 会话目录。') })
+    return () => { current = false }
+  }, [active, retry])
+
+  if (root) return <NativeConversation key={projectRootKey(root)} root={root} source="work" />
+  if (!hasIpc) return <EmptyState title="请在 Crux 桌面端打开对话" />
+  if (issue) return <FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
+    actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} />
+  return <PageLoading />
+}
 
 function CodeProjectPrompt(): JSX.Element {
   const canOpen = useMy((state) => state.canOpenLocalProject)
@@ -41,12 +66,11 @@ function CodeProjectPrompt(): JSX.Element {
 
 export function ChatPage({ active }: { active: boolean }): JSX.Element {
   const development = useMy((state) => state.shellView === 'development')
-  const privateCodeChat = useApp((state) => state.privateCodeChat)
   const root = useApp((state) => state.snapshot?.meta.root)
   let content: JSX.Element
-  if (!development || privateCodeChat) content = <PrivateWorkspace />
+  if (!development) content = <WorkConversation active={active} />
   else if (!root) content = <CodeProjectPrompt />
-  else content = <CodeConversation key={projectRootKey(root)} root={root} source="code" />
+  else content = <NativeConversation key={projectRootKey(root)} root={root} source="code" />
   return <Suspense fallback={active ? <PageLoading /> : null}>
     {content}
     <StartupContentCommit active={active} />

@@ -1,5 +1,14 @@
 # Conversation, document and appearance contracts
 
+## Conversation v2 workbench
+
+Work, Code and authorized ordinary tasks use `ConversationWorkbench`. The host supplies the conversation scope. The composer stays mounted when the first message is admitted or when the user selects another thread. Drafts, controls and reading positions use the host scope and thread identity.
+
+- Render the locally accepted user bubble before awaiting the command. Reconcile it by message ID. A definite refusal restores the original draft or makes it recoverable alongside newly typed text. If admission or delivery is uncertain, query the original command ID.
+- The transcript and its sibling controls each have a distinct React key. Mount one visible transcript per workbench. Verify by switching among populated threads and checking both the selected title and the visible transcript.
+- The renderer and IPC use `CONVERSATION_READ_PAGE_LIMIT`. A reset within the same storage and thread must preserve valid paged history and the visible anchor. A scope or storage change invalidates the old projection.
+- Attachments for a user input request use the request ID, generation and question draft. The answer UI exposes file selection only when the native request authorizes text attachments.
+
 ## Named roles and execution engines
 
 Personal conversations use the `chat` route and a real configured assistant by default. The editable draft requires no team membership, logical project, profile chooser, Git repository or Trellis initialization. Native execution starts only on Send. Missing configuration preserves the draft and offers the actual model/runtime settings.

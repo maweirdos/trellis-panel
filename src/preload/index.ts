@@ -41,6 +41,7 @@ import type { CruxApi } from '../shared/crux'
 import type { CruxWorkApi } from '../shared/crux-work'
 import type { ConversationApi } from '../shared/private-conversations'
 import type { DesignWorkspaceApi } from '../shared/design-workspace'
+import { speech } from './speech'
 
 /** 订阅推送信封（subscriptionId 关联；backend/ipc/observability.ts 广播口径） */
 type ObservationSubscriptionPush = { subscriptionId: string; event: ObservationSubscriptionEvent }
@@ -133,6 +134,7 @@ async function invokeCrux<K extends CruxInvokeMethod>(method: K, input?: unknown
 }
 
 const api = {
+  speech,
   designWorkspace: {
     list: () => ipcRenderer.invoke(ipcInvoke.designWorkspace.list),
     get: input => ipcRenderer.invoke(ipcInvoke.designWorkspace.get, input),
@@ -581,18 +583,29 @@ const api = {
   onCliOutput: (cb: (e: RunEvent) => void) => subscribe(ipcEvent.cliOutput, cb),
   onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe(ipcEvent.cliDone, cb),
 
-  conversationModels: (cwd: string) => ipcRenderer.invoke(ipcInvoke.conversation.models, cwd),
+  conversationWorkRoot: () => ipcRenderer.invoke(ipcInvoke.conversation.workRoot),
+  conversationTaskScope: (task: Parameters<TrellisApi['conversationTaskScope']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.taskScope, task),
+  conversationModels: (cwd: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.models, cwd, ...(task === undefined ? [] : [task])),
   conversationCreate: (input: Parameters<TrellisApi['conversationCreate']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.create, input),
-  conversationList: (root: string) => ipcRenderer.invoke(ipcInvoke.conversation.list, root),
-  conversationRead: (threadId: string, root: string) => ipcRenderer.invoke(ipcInvoke.conversation.read, threadId, root),
+  conversationList: (root: string, filter?: Parameters<TrellisApi['conversationList']>[1]) => ipcRenderer.invoke(ipcInvoke.conversation.list, root, filter),
+  conversationRead: (threadId: string, root: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.read, threadId, root, ...(task === undefined ? [] : [task])),
   conversationEvents: (input: Parameters<TrellisApi['conversationEvents']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.events, input),
-  conversationCommand: (commandId: string, root: string) => ipcRenderer.invoke(ipcInvoke.conversation.command, commandId, root),
+  conversationCommand: (commandId: string, root: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.command, commandId, root, ...(task === undefined ? [] : [task])),
   conversationApply: (input: Parameters<TrellisApi['conversationApply']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.apply, input),
   conversationThreadCommand: (input: Parameters<TrellisApi['conversationThreadCommand']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.threadCommand, input),
   conversationEventDelta: (input: Parameters<TrellisApi['conversationEventDelta']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.eventDelta, input),
   conversationHistory: (input: Parameters<TrellisApi['conversationHistory']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.history, input),
-  conversationDrivers: (cwd: string) => ipcRenderer.invoke(ipcInvoke.conversation.drivers, cwd),
+  conversationDrivers: (cwd: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.drivers, cwd, ...(task === undefined ? [] : [task])),
   conversationDescribeDriver: (input: Parameters<TrellisApi['conversationDescribeDriver']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.describeDriver, input),
+  conversationAttachmentStage: (input: Parameters<TrellisApi['conversationAttachmentStage']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.attachmentStage, input),
+  conversationAttachmentPick: (input: Parameters<TrellisApi['conversationAttachmentPick']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.attachmentPick, input),
+  conversationAttachmentList: (input: Parameters<TrellisApi['conversationAttachmentList']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.attachmentList, input),
+  conversationAttachmentRelease: (input: Parameters<TrellisApi['conversationAttachmentRelease']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.attachmentRelease, input),
+  conversationAttachmentRead: (input: Parameters<TrellisApi['conversationAttachmentRead']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.attachmentRead, input),
   acpAgents: () => ipcRenderer.invoke(ipcInvoke.acp.agents),
   acpSessions: () => ipcRenderer.invoke(ipcInvoke.acp.sessions),
   acpHistoryList: (input?: Parameters<TrellisApi['acpHistoryList']>[0]) => ipcRenderer.invoke(ipcInvoke.acp.historyList, input),

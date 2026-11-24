@@ -7,7 +7,7 @@ Crux 原生会话命令、队列、快照和引擎调用由 daemon 持有。主�
 ## 调用契约
 
 - `conversationApply({ cwd, command })` 提交 `ConversationThreadCommand`。桌面传稳定的 `command.commandId` UUID，daemon 校验它和外层传输的 `commandId` 一致。查此次命令用 `conversationThreadCommand({ cwd, threadId, commandId })`。
-- `conversationRead(threadId, cwd)` 返回线程、近期运行和消息、待处理请求、队列暂停状态和游标。`conversationEventDelta({ cwd, threadId, cursor, limit })` 返回 `events` 或 `reset`。历史补页用 `conversationHistory({ cwd, threadId, cursor, limit })`。
+- `conversationRead(threadId, cwd)` 返回线程、近期运行、消息、工作项、待处理请求、队列暂停状态和游标。`conversationEventDelta({ cwd, threadId, cursor, limit })` 返回 `events` 或 `reset`。历史补页用 `conversationHistory({ cwd, threadId, cursor, limit })`。两个分页入口使用 `CONVERSATION_READ_PAGE_LIMIT`。
 - `conversationDrivers(cwd)` 读取登记。`conversationDescribeDriver({ cwd, instanceId })` 显式查询该实例的原生目录。描述包含实际模型、配置指纹、能力依据与观测时间。
 - 驱动控制使用具名参数。`interruptTurn`、`steerTurn` 绑定 `nativeThreadId` 和 `turnId`。`respondToRuntimeRequest` 还绑定 daemon 查得的 `nativeRequestId`。`startTurn` 的宿主上下文带原 `requestId` 和 `assertCurrent`。
 
@@ -18,6 +18,9 @@ Crux 原生会话命令、队列、快照和引擎调用由 daemon 持有。主�
 - 停止先暂停此线程队列。引擎确认提交停止之后，仍等对应回合的终态。用户可显式继续队列、启动某个排队项或提交新的普通消息来恢复派发。后台工作和其他线程独立结算。
 - 运行请求按线程、回合、代次和请求种类约束。仅当前请求能收到有效审批决定或结构化回答。宿主生成的控制 ID 只用于原驱动连接，原生回合 ID 来自引擎证据。
 - 驱动复用检查实例、配置指纹、实际路径和工程范围。配置变化时，原运行和原 Job 保持归属直到可确认收尾。Pi 的 worker 受理、SDK 输入、模型输出和终态使用独立证据，worker 请求键沿用原命令。
+- Work 的会话根来自桌面 profile，Code 使用当前登记工程的物理根。普通团队任务通过 `conversationTaskScope` 获取授权范围。Renderer 只提交任务定位符和该次范围标识。主进程绑定原窗口文档，daemon 通过实际团队账号重查成员、处理人、任务创建身份及固定材料，派发时检查原物理目录。
+- 附件先进入原草稿，不成为引擎输入。daemon 在受理命令的同一 SQLite 事务认领附件，按当前驱动的能力和大小上限提供内容。提问附件另绑原请求和代次，只允许提供文件的结构化问题认领。
+- 删除后的命令仍可按原 ID 查询。线程存在未确认发送、活动回合或待派发项时，先通过原回合的控制入口处理。原生订阅清理须确认原线程、驱动和当前归属；回执未确认时保留原删除命令和挂起清理状态。
 
 ## 错误与恢复
 

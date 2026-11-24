@@ -55,6 +55,7 @@ import { registerTeamDesktopIpc } from './team-desktop'
 import { registerAcpIpc } from './acp'
 import { registerPrivateConversationsIpc } from './private-conversations'
 import { registerConversationIpc } from './conversation'
+import { registerSpeechIpc } from './speech'
 import { ConversationError } from '../services/private-conversations/service'
 import { getAcpHistorySession } from '../services/daemon-client/acp'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -120,6 +121,7 @@ export function registerIpc(deps: WindowDeps): void {
   registerTeamDesktopIpc(deps.getMain)
   registerAcpIpc()
   registerConversationIpc(deps.getMain)
+  registerSpeechIpc(deps.getMain)
   const privateConversations = registerPrivateConversationsIpc(deps)
   registerPiWebPreviewIpc({
     getProject: sessionId => sessionId?.startsWith('acp-private-')

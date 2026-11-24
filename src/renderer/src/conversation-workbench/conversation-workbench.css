@@ -2,16 +2,6 @@
   background: var(--my-bg-canvas);
 }
 
-.conversation-messages {
-  display: flex;
-  flex-direction: column;
-  gap: var(--my-space-16);
-}
-
-.conversation-messages > .my-feedback {
-  margin: 0;
-}
-
 .conversation-message {
   min-width: 0;
 }
@@ -54,5 +44,343 @@
 
   .conversation-workbench .acp-navigation:not(.is-open) {
     display: none;
+  }
+}
+
+/* Timeline reading position: the scroller keeps native scroll anchoring, so a streamed
+   paragraph grows below the reader's line instead of pushing it away. */
+.acp-transcript.conversation-timeline {
+  scroll-behavior: auto;
+  overscroll-behavior-y: contain;
+  overflow-anchor: auto;
+}
+
+.conversation-timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-16);
+}
+
+.conversation-timeline-content > .my-feedback {
+  margin: 0;
+}
+
+.conversation-controls {
+  min-width: 0;
+}
+
+.conversation-controls:empty {
+  display: none;
+}
+
+.conversation-timeline-history {
+  display: flex;
+  justify-content: center;
+  padding-block-end: var(--my-space-4);
+}
+
+.conversation-message {
+  position: relative;
+  min-width: 0;
+}
+
+.conversation-message-actions {
+  position: absolute;
+  inset-block-start: calc(var(--my-space-4) * -1);
+  inset-inline-end: var(--my-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-2);
+  opacity: 0;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.conversation-message:hover .conversation-message-actions,
+.conversation-message:focus-within .conversation-message-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .conversation-message-actions {
+    opacity: 1;
+  }
+}
+
+.conversation-message-user .conversation-message-actions {
+  inset-inline-end: var(--my-space-4);
+}
+
+.conversation-message-body .md > :last-child {
+  margin-bottom: 0;
+}
+
+.conversation-message-body .md > :first-child {
+  margin-top: 0;
+}
+
+.conversation-streaming {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: var(--my-space-4);
+  color: var(--my-txt-tertiary);
+  vertical-align: baseline;
+}
+
+.conversation-work-row {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  min-width: 0;
+  padding: var(--my-space-4) 0;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-activity);
+  line-height: var(--my-line-document);
+}
+
+.conversation-work-mark {
+  flex: 0 0 var(--my-space-5);
+  width: var(--my-space-5);
+  height: var(--my-space-5);
+  border-radius: var(--my-radius-round);
+  background: var(--my-txt-tertiary);
+}
+
+.conversation-work-row[data-state='done'] .conversation-work-mark {
+  background: var(--my-txt-secondary);
+}
+
+.conversation-work-row[data-state='failed'] .conversation-work-mark,
+.conversation-work-row[data-state='failed'] .conversation-work-text {
+  background: transparent;
+  color: var(--my-txt-danger-primary);
+}
+
+.conversation-work-row[data-state='failed'] .conversation-work-mark {
+  background: var(--my-txt-danger-primary);
+}
+
+.conversation-work-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-work-row > svg {
+  flex-shrink: 0;
+  color: var(--my-txt-tertiary);
+}
+
+.conversation-notice {
+  color: var(--my-txt-danger-primary);
+  font-size: var(--my-text-activity);
+  line-height: var(--my-line-document);
+  overflow-wrap: anywhere;
+}
+
+/* Queued messages keep the user bubble's silhouette, dashed because they are not sent yet. */
+.conversation-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+}
+
+.conversation-queue-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--my-space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-queue-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--my-space-2);
+  max-width: 85%;
+}
+
+.conversation-queue-bubble {
+  padding: var(--my-space-8) var(--my-space-14);
+  border: 1px dashed var(--my-border-strong-1);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-secondary);
+}
+
+.conversation-queue-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-queue-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-2);
+  opacity: 0;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.conversation-queue-item:hover .conversation-queue-actions,
+.conversation-queue-item:focus-within .conversation-queue-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .conversation-queue-actions {
+    opacity: 1;
+  }
+}
+
+.conversation-queue-more {
+  align-self: flex-end;
+  padding: var(--my-space-2) var(--my-space-6);
+  border-radius: var(--my-control-radius);
+}
+
+.conversation-queue-more:hover {
+  color: var(--my-txt-primary);
+  background: var(--my-bg-layer-transparent-hover);
+}
+
+.conversation-queue-more:focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-1);
+}
+
+.conversation-queue-paused {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+}
+
+.conversation-queue-failure,
+.conversation-request-failure {
+  color: var(--my-txt-danger-primary);
+  font-size: var(--my-text-activity);
+  line-height: var(--my-line-document);
+  overflow-wrap: anywhere;
+}
+
+/* Approvals and questions sit above the composer: they gate the next step of the turn. */
+.conversation-request {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+  padding: var(--my-space-12) var(--my-space-14);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+}
+
+.conversation-request > h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-6);
+}
+
+.conversation-request > h2 > svg {
+  flex-shrink: 0;
+  color: var(--my-txt-warning-primary);
+}
+
+.conversation-request-count {
+  margin-inline-start: calc(var(--my-space-6) + var(--my-space-14));
+}
+
+.conversation-request-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+}
+
+.conversation-request-title {
+  color: var(--my-txt-primary);
+  overflow-wrap: anywhere;
+}
+
+.conversation-request-detail {
+  max-height: var(--my-space-160);
+  margin: 0;
+  padding: var(--my-space-8) var(--my-space-10);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-1);
+  color: var(--my-txt-secondary);
+  font-family: var(--my-font-mono);
+  font-size: var(--my-text-activity);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-space-6);
+}
+
+.conversation-request-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.conversation-request-question > legend {
+  display: flex;
+  align-items: baseline;
+  gap: var(--my-space-8);
+  padding: 0;
+}
+
+.conversation-request-progress {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-request-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--my-space-6);
+}
+
+.conversation-request-choice {
+  padding: var(--my-space-5) var(--my-space-10);
+  border: 1px solid var(--my-border-input);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-input);
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-sm);
+}
+
+.conversation-request-choice:hover:not(:disabled) {
+  border-color: var(--my-border-strong-1);
+}
+
+.conversation-request-choice[aria-pressed='true'] {
+  border-color: var(--my-txt-primary);
+  background: var(--my-bg-navigation-selected);
+}
+
+.conversation-request-choice:focus-visible {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-1);
+}
+
+.conversation-request-answer {
+  width: 100%;
+  min-height: calc(var(--my-line-document) * 3 * var(--my-text-sm));
+  resize: vertical;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-queue-actions,
+  .conversation-message-actions {
+    opacity: 1;
+    transition: none;
   }
 }

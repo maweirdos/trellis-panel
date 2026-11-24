@@ -17,13 +17,22 @@ import { runRefSchema } from './workflow'
 import { nativeWorkflowCutoverRequestSchema } from './native-workflow-cutover'
 import { nativeTaskPreparationRequestSchema } from './native-task-preparation'
 import { nativeTaskExecutionRequestSchema, nativeTaskStartSchema } from './native-task-execution'
-import { conversationThreadCommandSchema } from './conversation/command-runtime'
+import { conversationModelOptionsSchema, conversationThreadCommandSchema } from './conversation/command-runtime'
+import { CONVERSATION_READ_PAGE_LIMIT } from './conversation/desktop'
+import { conversationTaskLocatorSchema } from './conversation/task-scope'
+import { nativeConversationTaskSchema } from './conversation/task-native'
+import {
+  ConversationAttachmentDraftTargetSchema, ConversationAttachmentIdSchema, ConversationAttachmentReadSchema,
+  ConversationAttachmentWireStageSchema, conversationAttachmentReferenceFields,
+} from './conversation/attachments'
 
 export const RUNTIME_BULK = { chunkBytes: 96 * 1024, valueBytes: 128 * 1024 * 1024, spoolBytes: 512 * 1024 * 1024, transfers: 16, ttlMs: 10 * 60_000 } as const
 const id = z.string().min(1).max(200).regex(/^[\w.-]+$/)
 const empty = z.object({}).strict()
 const conversationSequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-const conversationPageLimit = z.number().int().min(1).max(100).optional()
+const conversationPageLimit = z.number().int().min(1).max(CONVERSATION_READ_PAGE_LIMIT).optional()
+const taskConversation = z.object({ task: nativeConversationTaskSchema.optional() }).strict()
+export const desktopConversationTaskFields = { task: conversationTaskLocatorSchema.optional() }
 export const runtimeBlobSchema = z.object({ id: z.string().uuid(), bytes: z.number().int().min(0).max(RUNTIME_BULK.valueBytes), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 export type RuntimeBlob = z.infer<typeof runtimeBlobSchema>
 /** Inline values stay below the control limit; a blob preserves original, untruncated JSON bytes. */
@@ -36,6 +45,7 @@ const session = z.object({ sessionId: id }).strict()
 /** Payloads are parsed after bounded wire/blob resolution, immediately before invoking the real facade. */
 export const CONVERSATION_RUNTIME_METHODS: ReadonlySet<string> = new Set([
   'runtime.conversationModels',
+  'runtime.conversationTaskScope',
   'runtime.conversationCreate',
   'runtime.conversationList',
   'runtime.conversationRead',
@@ -47,6 +57,10 @@ export const CONVERSATION_RUNTIME_METHODS: ReadonlySet<string> = new Set([
   'runtime.conversationHistory',
   'runtime.conversationDrivers',
   'runtime.conversationDescribeDriver',
+  'runtime.conversationAttachmentStage',
+  'runtime.conversationAttachmentList',
+  'runtime.conversationAttachmentRelease',
+  'runtime.conversationAttachmentRead',
 ])
 
 export const runtimeBodies = {
@@ -64,34 +78,41 @@ export const runtimeBodies = {
   'runtime.workcopyUse': workcopyUseRequestSchema,
   'runtime.workcopyCleanup': workcopyCleanupRequestSchema,
   'runtime.cruxProgress': taskProgressNativeSchema,
-  'runtime.conversationModels': z.object({ instanceId: z.string().min(1).max(64).default('codex') }).strict(),
-  'runtime.conversationDrivers': empty,
-  'runtime.conversationDescribeDriver': z.object({ instanceId: z.string().min(1).max(64).regex(/^[\w.-]+$/) }).strict(),
-  'runtime.conversationCreate': z.object({
-    title: z.string().max(500).optional(), text: z.string().min(1).max(120000).refine(text => text.trim().length > 0),
+  'runtime.conversationTaskScope': nativeConversationTaskSchema,
+  'runtime.conversationModels': taskConversation.extend({ instanceId: z.string().min(1).max(64).default('codex') }),
+  'runtime.conversationDrivers': taskConversation,
+  'runtime.conversationDescribeDriver': taskConversation.extend({ instanceId: z.string().min(1).max(64).regex(/^[\w.-]+$/) }),
+  'runtime.conversationCreate': taskConversation.extend({
+    title: z.string().max(500).optional(), text: z.string().max(120000),
     model: z.string().min(1).max(8192), instanceId: z.string().min(1).max(64),
     commandId: z.string().uuid(), messageId: z.string().uuid().optional(),
-  }).strict(),
-  'runtime.conversationList': z.object({}).strict(),
-  'runtime.conversationRead': z.object({ threadId: z.string().min(1).max(200) }).strict(),
-  'runtime.conversationCommand': z.object({ commandId: z.string().uuid() }).strict(),
-  'runtime.conversationEvents': z.object({
+    options: conversationModelOptionsSchema.optional(),
+    ...conversationAttachmentReferenceFields,
+  }),
+  'runtime.conversationList': taskConversation.extend({ archived: z.boolean().optional(), query: z.string().trim().max(160).optional() }),
+  'runtime.conversationRead': taskConversation.extend({ threadId: z.string().min(1).max(200) }),
+  'runtime.conversationCommand': taskConversation.extend({ commandId: z.string().uuid() }),
+  'runtime.conversationEvents': taskConversation.extend({
     threadId: z.string().min(1).max(200),
     afterSequence: conversationSequence,
     limit: conversationPageLimit,
-  }).strict(),
-  'runtime.conversationApply': z.object({ command: conversationThreadCommandSchema }).strict(),
-  'runtime.conversationThreadCommand': z.object({ threadId: id, commandId: z.string().uuid() }).strict(),
-  'runtime.conversationEventDelta': z.object({
+  }),
+  'runtime.conversationApply': taskConversation.extend({ command: conversationThreadCommandSchema }),
+  'runtime.conversationThreadCommand': taskConversation.extend({ threadId: id, commandId: z.string().uuid() }),
+  'runtime.conversationEventDelta': taskConversation.extend({
     threadId: id,
     cursor: z.object({ storageId: id, threadId: id, sequence: conversationSequence }).strict(),
     limit: conversationPageLimit,
-  }).strict(),
-  'runtime.conversationHistory': z.object({
+  }),
+  'runtime.conversationHistory': taskConversation.extend({
     threadId: id,
     cursor: z.object({ storageId: id, threadId: id, beforeRunOrdinal: conversationSequence }).strict(),
     limit: conversationPageLimit,
-  }).strict(),
+  }),
+  'runtime.conversationAttachmentStage': ConversationAttachmentWireStageSchema.extend(taskConversation.shape),
+  'runtime.conversationAttachmentList': ConversationAttachmentDraftTargetSchema.extend(taskConversation.shape),
+  'runtime.conversationAttachmentRelease': ConversationAttachmentDraftTargetSchema.extend({ ...taskConversation.shape, attachmentId: ConversationAttachmentIdSchema }),
+  'runtime.conversationAttachmentRead': ConversationAttachmentReadSchema.extend(taskConversation.shape),
   'runtime.knowledge': knowledgeRuntimeBody,
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
   'runtime.agents': z.object({ refresh: z.boolean().optional() }).strict(),
@@ -170,6 +191,9 @@ export const runtimeResults = {
 export type RuntimeMethod = keyof typeof runtimeRequests
 export type RuntimeBodyMethod = keyof typeof runtimeBodies
 export type RuntimeBody<M extends RuntimeBodyMethod> = z.input<(typeof runtimeBodies)[M]>
+export type ConversationDesktopBody<M extends RuntimeBodyMethod> = Omit<RuntimeBody<M>, 'task'> & {
+  task?: z.input<typeof conversationTaskLocatorSchema>
+}
 export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeRequests)[M]>
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
@@ -180,6 +204,7 @@ export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
   'runtime.workcopyUse',
   'runtime.workcopyCleanup',
   'runtime.knowledge',
+  'runtime.conversationAttachmentStage', 'runtime.conversationAttachmentRelease',
   'runtime.conversationCreate', 'runtime.conversationApply', 'runtime.new', 'runtime.handoffCreate', 'runtime.handoffCancel', 'runtime.prompt', 'runtime.cancel', 'runtime.end', 'runtime.resume', 'runtime.configure', 'runtime.recover', 'runtime.bind', 'runtime.permission',
   'runtime.profileSave', 'runtime.profileDelete', 'runtime.historyUpdate', 'runtime.historyRetry', 'runtime.historyDelete', 'runtime.historyRegenerateTitle', 'runtime.setup', 'runtime.probe',
   'runtime.workflow.preview', 'runtime.workflow.start', 'runtime.workflow.stop', 'runtime.workflow.previewRevision', 'runtime.workflow.acceptRevision', 'runtime.workflow.cancelRevision'

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowUp, Bot, CircleStop, Loader2, RefreshCw, Send } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { CruxProgressApi } from '@shared/crux-task-progress'
@@ -8,6 +8,7 @@ import { api } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { Button } from '../my/ui'
+import { PageLoading } from '../my/layout/PageLoading'
 import { projectRootKey } from '../my/navigation'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { ConversationTranscript } from '../acp/ConversationTranscript'
@@ -17,15 +18,23 @@ import { useCrux } from './store'
 import { useTaskDraft, useTaskDraftField } from './pages/task-detail/task-drafts'
 import '../acp/workspace.css'
 
-/** The ordinary Agent route can also own one task-bound session without a code root. */
+const ConversationWorkbench = lazy(() => import('../conversation-workbench/ConversationWorkbench')
+  .then(module => ({ default: module.ConversationWorkbench })))
+
 export function TaskConversationWorkspace({ target }: { target: TaskConversationTarget }): JSX.Element {
   const snapshot = useCrux((state) => state.snapshot)
   const task = snapshot?.tasks.find((item) => item.id === target.taskId && item.createdAt === target.taskCreatedAt)
   if (!snapshot || !task || !ownsTaskConversation(target)) return <div className="flex h-full flex-col items-center justify-center gap-3 text-my-sm text-my-secondary"><p>原任务会话当前不可用。</p><Button variant="outline" onClick={() => { useMy.getState().setTaskConversationTarget(null); useApp.getState().setPage('crux') }}>返回团队</Button></div>
+  if (target.kind === 'ordinary') {
+    const { scope } = target
+    const key = JSON.stringify([scope.actorId, scope.spaceId, scope.locator, scope.binding.assigneeGeneration, scope.materialRevision, scope.cwd])
+    return <Suspense fallback={<PageLoading />}><ConversationWorkbench key={key} root={scope.cwd} source="task"
+      taskScope={scope} onBackToTask={() => returnToConversationTask(target)} /></Suspense>
+  }
   return <BoundConversation target={target} snapshot={snapshot} task={task} />
 }
 
-function BoundConversation({ target, snapshot, task }: { target: TaskConversationTarget; snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
+function BoundConversation({ target, snapshot, task }: { target: Extract<TaskConversationTarget, { kind: 'legacy' }>; snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
   const context = useCrux((state) => state.workspaceContext)
   const active = useInteractionActive(), canInteract = useInteractionGuard(), signal = useInteractionSignal()
   const client: CruxProgressApi | undefined = api && Object.hasOwn(api, 'cruxProgress') ? api.cruxProgress : undefined

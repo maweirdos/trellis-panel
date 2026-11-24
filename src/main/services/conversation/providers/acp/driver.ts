@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import { extname } from 'node:path'
 import * as Effect from 'effect/Effect'
-import { CreateElicitationRequest, ElicitationPropertySchema, type SessionConfigOption } from '@agentclientprotocol/sdk/experimental/v2'
+import { CreateElicitationRequest, ElicitationPropertySchema, type ContentBlock, type SessionConfigOption } from '@agentclientprotocol/sdk/experimental/v2'
+import type { ChatAttachment } from '../../../../../shared/conversation/chatAttachment'
 import { ProviderDriverKind, ProviderInstanceId } from '../../../../../shared/conversation/providerInstance'
 import type { ConversationDriverDescriptor, ConversationDriverOption } from '../../../../../shared/conversation/driverCatalog'
 import type { ProviderApprovalDecision } from '../../../../../shared/conversation/providerPolicy'
@@ -13,12 +14,13 @@ import type { AcpClientNotification, AcpClientRequest, AcpVersionedInitialize } 
 import { acpContentBlockDisplayText, sessionUpdateIsReplay } from '../../../acp/t3-core/runtime-model'
 import { type CodexOwnedProcess, spawnCodexOwnedProcess } from '../codex/process-owner'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type MutableDriverActions } from '../core/catalog'
+import { ACP_ATTACHMENTS, assertPromptAttachments, nativeImageAttachment, nativeTextAttachment, TEXT_ATTACHMENTS } from '../core/attachment-input'
 import type { ConversationDriverRuntimeRequest, ConversationRuntimeResponse, ConversationRespondToRuntimeRequestInput } from '../registry'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverEventListener, type ConversationDriverOpenInput,
   type ConversationDriverRegistration, type ConversationDriverSession, type ConversationDriverTurnEvent,
-  type ConversationInterruptTurnInput, type ConversationResumeThreadInput,
+  type ConversationInterruptTurnInput, type ConversationResumeThreadInput, type ConversationStartTurnContext,
 } from '../registry'
 
 const toEffect = <Value>(run: () => Promise<Value>): Effect.Effect<Value, Error> =>
@@ -46,7 +48,12 @@ function toNativeResponse(
   options: readonly { readonly decision: ProviderApprovalDecision; readonly label: string; readonly optionId: string }[],
 ): unknown {
   if (method === ACP_V2_METHODS.clientCreateElicitation) {
-    return response.kind === 'user-input' ? { action: 'accept', content: response.answers } : { action: 'cancel' }
+    if (response.kind !== 'user-input') return { action: 'cancel' }
+    if (!response.attachments) return { action: 'accept', content: response.answers }
+    const { questionId, contents } = response.attachments
+    const answer = response.answers[questionId]
+    if (typeof answer !== 'string') return { action: 'cancel' }
+    return { action: 'accept', content: { ...response.answers, [questionId]: [answer, ...contents.map(nativeTextAttachment)].join('\n\n') } }
   }
   if (method === ACP_V2_METHODS.clientRequestPermission) {
     if (response.kind !== 'approval' || response.decision === 'cancel') return { outcome: { outcome: 'cancelled' } }
@@ -202,7 +209,11 @@ class RegisteredAcpDriver implements ConversationDriverSession {
     return resumed
   })
 
-  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener) => toEffect(async () => {
+  readonly validatePromptAttachments = (attachments: readonly ChatAttachment[]): void => {
+    assertPromptAttachments(attachments, this.handshake?.capabilities.session?.prompt?.image ? ACP_ATTACHMENTS : TEXT_ATTACHMENTS)
+  }
+
+  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener, context?: ConversationStartTurnContext) => toEffect(async () => {
     this.directory(cwd)
     const client = this.connection()
     if (this.turns.has(id)) throw new ConversationTurnRejectedError('ACP v2 原会话已有运行。')
@@ -211,6 +222,15 @@ class RegisteredAcpDriver implements ConversationDriverSession {
       runtimeRequests: new Map(),
     }
     const identity = { turnId: turn.turnId, turnIdSource: 'host' as const }
+    const prompt: ContentBlock[] = [{ type: 'text', text }]
+    try {
+      this.validatePromptAttachments((context?.attachments ?? []).map(content => content.attachment))
+      for (const content of context?.attachments ?? []) {
+        prompt.push(content.attachment.type === 'image'
+          ? { type: 'image', ...nativeImageAttachment(content) }
+          : { type: 'text', text: nativeTextAttachment(content) })
+      }
+    } catch (cause) { throw new ConversationTurnRejectedError(cause instanceof Error ? cause.message : String(cause), { cause }) }
     this.turns.set(id, turn)
     try {
       const session = this.sessions.get(id)
@@ -228,7 +248,7 @@ class RegisteredAcpDriver implements ConversationDriverSession {
     const deadline = setTimeout(() => { this.stopped = true; void this.close().pipe(Effect.runPromise).catch(() => undefined) }, 30 * 60_000)
     this.input.assertCanSpawn()
     try {
-      const result = await client.prompt({ sessionId: id, prompt: [{ type: 'text', text }] }, {
+      const result = await client.prompt({ sessionId: id, prompt }, {
         onDispatch: () => { dispatched = true },
         onInsertion: () => {
           if (this.turns.get(id) !== turn || turn.cancelRequested) return
@@ -295,7 +315,11 @@ class RegisteredAcpDriver implements ConversationDriverSession {
         if (!ElicitationPropertySchema.isString(property)) return cancelled
         const choices = property.oneOf?.map(option => ({ value: option.const, label: option.title }))
           ?? property.enum?.map(value => ({ value, label: value }))
-        questions.push({ id, prompt: property.description ?? property.title ?? id, ...(choices ? { choices } : {}) })
+        const acceptsTextAttachments = !choices && property.minLength == null && property.maxLength == null && property.pattern == null && property.format == null
+        questions.push({
+          id, prompt: property.description ?? property.title ?? id, ...(choices ? { choices } : {}),
+          ...(acceptsTextAttachments ? { acceptsTextAttachments: true as const } : {}),
+        })
       }
       if (!questions.length) return cancelled
       payload = { kind: 'user-input', title: request.params.message, questions }
@@ -352,6 +376,9 @@ class RegisteredAcpDriver implements ConversationDriverSession {
     pending.resolve(response)
   })
 
+  readonly canConfirmWindowsJobClose = (nativeThreadId: string): boolean =>
+    process.platform === 'win32' && this.sessions.has(nativeThreadId)
+
   readonly close = () => toEffect(async () => {
     this.stopped = true
     try { await this.client?.close() }
@@ -369,6 +396,7 @@ export function listRegisteredAcpDrivers(userData: string): readonly Conversatio
     return {
       instanceId: ProviderInstanceId.make(provider.id),
       driverKind: ProviderDriverKind.make('acp'),
+      promptAttachments: ACP_ATTACHMENTS,
       configurationKey,
       open: input => toEffect(async () => {
         const record = resolve()

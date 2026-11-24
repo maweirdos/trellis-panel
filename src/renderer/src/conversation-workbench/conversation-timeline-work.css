@@ -1,0 +1,63 @@
+.conversation-timeline-plan {
+  min-width: 0;
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+}
+
+.conversation-timeline-plan > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  min-height: var(--my-control-height);
+  padding-inline: var(--my-space-12);
+  border-radius: var(--my-radius-base);
+  list-style: none;
+  cursor: pointer;
+}
+
+.conversation-timeline-plan > summary:hover {
+  background: var(--my-bg-layer-transparent-hover);
+}
+
+.conversation-timeline-plan-arrow {
+  margin-inline-start: auto;
+}
+
+.conversation-timeline-plan[open] .conversation-timeline-plan-arrow {
+  transform: rotate(90deg);
+}
+
+.conversation-timeline-plan-content {
+  display: grid;
+  gap: var(--my-space-8);
+  padding: var(--my-space-8) var(--my-space-12) var(--my-space-12);
+  overflow-wrap: anywhere;
+}
+
+.conversation-timeline-plan-steps {
+  display: grid;
+  gap: var(--my-space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-sm);
+  line-height: var(--my-line-ui);
+}
+
+.conversation-timeline-plan-steps > li {
+  display: flex;
+  gap: var(--my-space-8);
+  align-items: start;
+}
+
+.conversation-timeline-plan-steps > li > svg {
+  flex-shrink: 0;
+  margin-block-start: var(--my-space-2);
+}
+
+.conversation-work-row[data-state='failed'] > svg {
+  color: var(--my-txt-danger-primary);
+}

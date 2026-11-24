@@ -1,207 +1,318 @@
-import { useCallback, useEffect, useLayoutEffect, type SetStateAction } from 'react'
-import { create } from 'zustand'
-import type { ConversationCommandReceipt } from '../../../shared/conversation/desktop'
+import { useCallback, useEffect, useLayoutEffect, useRef, type SetStateAction } from 'react'
+import type { ConversationThreadCommandState } from '../../../shared/conversation/command-runtime'
+import type { ConversationCommandState } from '../../../shared/conversation/desktop'
+import type { ProviderOptionSelections } from '../../../shared/conversation/model'
+import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { api } from '../api'
-import { projectRootKey } from '../my/navigation'
+import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
+import { useInteractionGuard } from '../utils/interaction-scope'
 import type { OptimisticUserMessage } from './optimisticUserMessages'
+import { useComposerAttachments } from './useComposerAttachments'
+import {
+  CONVERSATION_TEXT_LIMIT, composerDraftKey, emptyDraftContent, hasComposerDraftContent,
+  readComposerDraft, updateComposerDraft, useComposerDraft, type ComposerDraftContent, type ComposerReference,
+} from './useComposerDraft'
 
 export interface ComposerModel {
+  readonly instanceId: string
   readonly id: string
   readonly displayName: string
+  readonly options?: ProviderOptionSelections
 }
 
-type ConversationCreateInput = Parameters<typeof api.conversationCreate>[0]
-type ModelSelection = Pick<ConversationCreateInput, 'instanceId' | 'model'>
-
-interface StartThreadTurnInput {
-  readonly commandId: string
-  readonly message: { readonly messageId: string; readonly role: 'user'; readonly text: string }
-  readonly modelSelection?: ModelSelection
-  readonly titleSeed?: string
-  readonly bootstrap: {
-    readonly createThread: { readonly cwd: string; readonly title: string; readonly modelSelection: ModelSelection }
-  }
-  readonly createdAt: string
-}
-
-function startThreadTurn({ input }: { input: StartThreadTurnInput }): ReturnType<typeof api.conversationCreate> {
-  const commandId = input.commandId
-  const thread = input.bootstrap.createThread
-  const launch = {
-    commandId,
-    title: input.titleSeed ?? thread.title,
-    modelSelection: input.modelSelection ?? thread.modelSelection,
-    cwd: thread.cwd,
-    initialMessage: {
-      messageId: input.message.messageId,
-      text: input.message.text,
-    },
-  }
-
-  return api.conversationCreate({
-    cwd: launch.cwd,
-    commandId: launch.commandId,
-    title: launch.title,
-    ...launch.modelSelection,
-    ...launch.initialMessage,
-  })
+export type ComposerReceipt = (ConversationCommandState | ConversationThreadCommandState) & {
+  readonly runId: string
+  readonly messageId: string
 }
 
 interface Submission {
   readonly commandId: string
   readonly root: string
+  readonly threadId: string | null
+  readonly task?: ConversationTaskLocator
   readonly model: ComposerModel
   readonly message: OptimisticUserMessage
+  readonly sourceText: string
+  readonly source?: ComposerDraftContent
+  readonly draftId?: string
+  readonly wireText?: string
 }
 
-type SendState =
+export type ComposerSendState =
   | { phase: 'idle' }
   | { phase: 'submitting'; submission: Submission }
-  | { phase: 'accepted'; submission: Submission; receipt: ConversationCommandReceipt }
-  | { phase: 'rejected'; submission: Submission; reason: string }
-  | { phase: 'unknown'; submission: Submission; originalReason: string; reason: string; checking: boolean; queried: boolean }
+  | { phase: 'accepted'; submission: Submission; receipt: ComposerReceipt }
+  | { phase: 'rejected'; submission: Submission; reason: string; restored: boolean }
+  | { phase: 'unknown'; submission: Submission; reason: string; checking: boolean }
 
-interface ComposerDraft {
-  text: string
-  state: SendState
+export interface ComposerDraft extends ComposerDraftContent {
+  readonly draftId: string | null
+  readonly model: ComposerModel | null
+  readonly stash: ComposerDraftContent | null
+  readonly state: ComposerSendState
 }
 
-const EMPTY_DRAFT: ComposerDraft = { text: '', state: { phase: 'idle' } }
-const useComposerDrafts = create<{ drafts: ReadonlyMap<string, ComposerDraft> }>(() => ({ drafts: new Map() }))
-
-function readDraft(key: string): ComposerDraft {
-  return useComposerDrafts.getState().drafts.get(key) ?? EMPTY_DRAFT
+export interface ComposerSendInput {
+  readonly root: string
+  readonly threadId: string | null
+  readonly scopeKey?: string
+  readonly task?: ConversationTaskLocator
+  readonly interactive: boolean
+  readonly running: boolean
+  readonly canSteer: boolean
+  readonly onAccepted: (receipt: ComposerReceipt, message: OptimisticUserMessage) => void
 }
 
-function updateDraft(key: string, update: (current: ComposerDraft) => ComposerDraft): void {
-  useComposerDrafts.setState((store) => {
-    const current = store.drafts.get(key) ?? EMPTY_DRAFT
-    const draft = update(current)
-    if (draft === current) return store
-    const drafts = new Map(store.drafts)
-    if (!draft.text && draft.state.phase === 'idle') drafts.delete(key)
-    else drafts.set(key, draft)
-    return { drafts }
-  })
-}
-
-function wasNotAdmitted(failure: IpcFail): boolean {
+function wasNotAdmitted(failure: IpcFail, commandId: string): boolean {
+  if ('commandId' in failure && failure.commandId !== undefined && failure.commandId !== commandId) return false
   if ('outcome' in failure && failure.outcome !== undefined) return failure.outcome === 'not-admitted'
   return failure.code === IpcErrorCode.NoProject || failure.code === IpcErrorCode.InvalidArg
+}
+
+function matchesReceipt(
+  receipt: ConversationCommandState | ConversationThreadCommandState | null,
+  submission: Submission,
+): receipt is ComposerReceipt {
+  return Boolean(receipt?.runId && receipt.threadId && receipt.commandId === submission.commandId &&
+    receipt.messageId === submission.message.id && (!submission.threadId || receipt.threadId === submission.threadId))
+}
+
+async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 'steer') {
+  const { commandId, model, message, root, threadId, task } = submission
+  const attachmentIds = submittedContent(submission).attachments.map(attachment => attachment.id)
+  const references = attachmentIds.length && submission.draftId ? { draftId: submission.draftId, attachmentIds } : {}
+  const options = model.options?.length ? [...model.options] : undefined
+  const text = submission.wireText ?? message.text
+  if (!threadId) {
+    const titleSeed = submission.sourceText.trim() || submittedContent(submission).attachments[0]?.name || message.text
+    const title = Array.from(titleSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
+    return api.conversationCreate({ cwd: root, commandId, messageId: message.id, text,
+      title, instanceId: model.instanceId, model: model.id, ...(options ? { options } : {}),
+      ...(task ? { task } : {}), ...references })
+  }
+  const result = await api.conversationApply({ cwd: root, ...(task ? { task } : {}), command: {
+    type: 'message.dispatch', threadId, commandId, messageId: message.id, text,
+    instanceId: model.instanceId, model: model.id, deliveryIntent, ...(options ? { options } : {}), ...references,
+  } })
+  return result.ok ? { ok: true as const, ...result.receipt } : result
 }
 
 export function conversationError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-export function useComposerSend(
-  root: string,
-  interactive: boolean,
-  onAccepted: (receipt: ConversationCommandReceipt, message: OptimisticUserMessage) => void,
-) {
-  const key = projectRootKey(root) ?? root
-  const { text: draft, state } = useComposerDrafts((store) => store.drafts.get(key) ?? EMPTY_DRAFT)
+function withSubmission(key: string, current: ComposerSendState, update: (draft: ComposerDraft) => ComposerDraft): void {
+  updateComposerDraft(key, (draft) => draft.state === current ? update(draft) : draft)
+}
+
+function draftContent(draft: ComposerDraftContent): ComposerDraftContent {
+  return { text: draft.text, attachments: draft.attachments, references: draft.references }
+}
+
+function submittedContent(submission: Submission): ComposerDraftContent {
+  return submission.source ?? { ...emptyDraftContent, text: submission.sourceText }
+}
+
+function outgoingText(content: ComposerDraftContent): string {
+  return [
+    ...content.references.map(reference => `${reference.label}\n${reference.text.split(/\r?\n/u).map(line => `> ${line}`).join('\n')}`),
+    content.text.trim(),
+  ].filter(Boolean).join('\n\n')
+}
+
+export function useComposerSend({
+  root, threadId, scopeKey, task, interactive, running, canSteer, onAccepted,
+}: ComposerSendInput) {
+  const key = composerDraftKey(root, threadId, scopeKey)
+  const currentKey = useRef(key)
+  currentKey.current = key
+  const canInteract = useInteractionGuard()
+  const activeDraft = useComposerDraft(key)
+  const attachmentIntake = useComposerAttachments(root, threadId, key, interactive, task)
+  const { text: draft, state, model, stash, attachments, references } = activeDraft
+  const hasContent = hasComposerDraftContent(activeDraft)
+  const outgoingLength = references.length ? outgoingText(activeDraft).length : draft.length
 
   useLayoutEffect(() => {
-    if (!interactive || state.phase !== 'accepted' || readDraft(key).state !== state) return
-    updateDraft(key, (current) => ({ ...current, state: { phase: 'idle' } }))
+    if (!interactive || !canInteract() || state.phase !== 'accepted' || readComposerDraft(key).state !== state) return
     const { receipt, submission } = state
-    onAccepted(receipt, { ...submission.message, id: receipt.messageId, createdAt: receipt.acceptedAt })
-  }, [interactive, key, onAccepted, state])
+    const remaining = readComposerDraft(key)
+    if (!threadId) {
+      const promotedKey = composerDraftKey(root, receipt.threadId, scopeKey)
+      if (!remaining.attachments.length && hasComposerDraftContent(remaining) && !hasComposerDraftContent(readComposerDraft(promotedKey))) {
+        updateComposerDraft(promotedKey, (current) => ({ ...current, ...draftContent(remaining) }))
+        withSubmission(key, state, (current) => ({ ...current, ...emptyDraftContent, state: { phase: 'idle' } }))
+      }
+    }
+    withSubmission(key, state, (current) => ({ ...current, state: { phase: 'idle' } }))
+    onAccepted(receipt, submission.message)
+  }, [canInteract, interactive, key, onAccepted, root, scopeKey, state, threadId])
 
   const checkReceipt = useCallback(async (): Promise<void> => {
-    const pending = readDraft(key).state
-    if (!interactive || pending.phase !== 'unknown' || pending.checking) return
-    const { submission, originalReason } = pending
-    const setState = (next: SendState): void => updateDraft(key, (current) => ({ ...current, state: next }))
-    setState({ ...pending, queried: true, checking: true })
-
+    const pending = readComposerDraft(key).state
+    if (!interactive || !canInteract() || currentKey.current !== key || pending.phase !== 'unknown' || pending.checking) return
+    const { submission } = pending
+    const checking = { ...pending, checking: true }
+    withSubmission(key, pending, (current) => ({ ...current, state: checking }))
     let reason: string
     try {
-      const result = await api.conversationCommand(submission.commandId, submission.root)
-      if (result.ok && result.receipt?.commandId === submission.commandId) {
-        setState({ phase: 'accepted', submission, receipt: result.receipt })
-        return
+      const result = submission.threadId
+        ? await api.conversationThreadCommand({ cwd: submission.root, threadId: submission.threadId, commandId: submission.commandId,
+          ...(submission.task ? { task: submission.task } : {}) })
+        : await api.conversationCommand(submission.commandId, submission.root, submission.task)
+      if (result.ok && matchesReceipt(result.receipt, submission)) {
+        const { receipt } = result
+        if (receipt.dispatch !== 'pending-reconciliation') {
+          withSubmission(key, checking, (current) => ({ ...current, state: { phase: 'accepted', submission, receipt } }))
+          return
+        }
+        reason = receipt.detail ?? 'Crux 已记录这条消息，送达仍待核对。'
+      } else {
+        reason = result.ok ? '暂未查到匹配的受理回执。' : result.error
       }
-      reason = result.ok ? `${originalReason} · 暂未查到受理回执` : result.error
     } catch (error) {
       reason = conversationError(error)
     }
-    setState({ ...pending, reason, checking: false, queried: true })
-  }, [interactive, key])
+    withSubmission(key, checking, (current) => ({
+      ...current, state: { ...checking, reason: normalizeFeedbackDiagnostic(reason), checking: false },
+    }))
+  }, [canInteract, interactive, key])
 
   useEffect(() => {
-    if (state.phase === 'unknown' && !state.queried) void checkReceipt()
-  }, [checkReceipt, state])
+    void checkReceipt()
+  }, [checkReceipt])
 
-  async function send(model: ComposerModel): Promise<void> {
-    const current = readDraft(key)
-    if (!interactive || !current.text.trim() || (current.state.phase !== 'idle' && current.state.phase !== 'rejected')) return
-    const sendSnapshot = current.text
-    const messageIdForSend = crypto.randomUUID()
-    const messageCreatedAt = new Date().toISOString()
-    const outgoingMessageText = sendSnapshot.trim()
-    const title = outgoingMessageText.slice(0, 80).trimEnd()
-    const modelSelection = { instanceId: 'codex', model: model.id }
-    const bootstrap = { createThread: { cwd: root, title, modelSelection } }
-    const input: StartThreadTurnInput = {
+  async function send(selection: ComposerModel, options?: { deliveryIntent?: 'auto' | 'steer' }): Promise<void> {
+    const current = readComposerDraft(key)
+    const text = outgoingText(current)
+    const hasAttachments = current.attachments.length > 0
+    const deliveryIntent = options?.deliveryIntent ?? 'auto'
+    if (!interactive || !canInteract() || currentKey.current !== key || attachmentIntake.isPending() ||
+      (!text && !hasAttachments) || Math.max(text.length, current.text.length) > CONVERSATION_TEXT_LIMIT ||
+      (hasAttachments && (!current.draftId || current.attachments.some(item => item.expiresAt <= Date.now()))) ||
+      (current.state.phase !== 'idle' && !(current.state.phase === 'rejected' && current.state.restored)) ||
+      (deliveryIntent === 'steer' && (!threadId || !running || !canSteer || hasAttachments || selection.options?.length))) return
+    const attachmentOnlyPrompt = '[User attached one or more files without additional text. Respond using the conversation context and the attached files.]'
+    const submission: Submission = {
       commandId: crypto.randomUUID(),
-      message: {
-        messageId: messageIdForSend,
-        role: 'user',
-        text: outgoingMessageText,
-      },
-      modelSelection,
-      titleSeed: title,
-      bootstrap,
-      createdAt: messageCreatedAt,
+      root, threadId, ...(task ? { task: { ...task } } : {}),
+      model: selection, sourceText: current.text, source: draftContent(current),
+      draftId: current.draftId ?? undefined,
+      wireText: text || attachmentOnlyPrompt,
+      message: { id: crypto.randomUUID(), role: 'user', text: text || current.attachments.map(item => item.name).join('、'), createdAt: new Date().toISOString() },
     }
-    const optimisticMessage: OptimisticUserMessage = {
-      id: input.message.messageId,
-      role: input.message.role,
-      text: input.message.text,
-      createdAt: input.createdAt,
-    }
-    const submission = {
-      commandId: input.commandId,
-      root: input.bootstrap.createThread.cwd,
-      model,
-      message: optimisticMessage,
-    }
-
-    updateDraft(key, () => ({ text: '', state: { phase: 'submitting', submission } }))
-    const setState = (next: SendState): void => updateDraft(key, (latest) => ({ ...latest, state: next }))
+    const submitting = { phase: 'submitting', submission } as const
+    const started = updateComposerDraft(key, (latest) => latest === current
+      ? { ...latest, ...emptyDraftContent, state: submitting }
+      : latest)
+    if (started.state !== submitting) return
     let reason: string
     try {
-      const startPromise = startThreadTurn({ input })
-      const result = await startPromise
-      if (result.ok && result.commandId === submission.commandId) {
-        setState({ phase: 'accepted', submission, receipt: result })
+      const result = await startThreadTurn(submission, deliveryIntent)
+      if (result.ok && matchesReceipt(result, submission)) {
+        if (result.dispatch !== 'pending-reconciliation') {
+          withSubmission(key, submitting, (latest) => ({ ...latest, state: { phase: 'accepted', submission, receipt: result } }))
+          return
+        }
+        reason = result.detail ?? 'Crux 已记录这条消息，送达仍待核对。'
+      } else if (!result.ok && wasNotAdmitted(result, submission.commandId)) {
+        withSubmission(key, submitting, (latest) => {
+          const restored = !hasComposerDraftContent(latest)
+          return { ...latest, ...(restored ? submittedContent(submission) : {}),
+            state: { phase: 'rejected', submission, reason: normalizeFeedbackDiagnostic(result.error), restored } }
+        })
         return
+      } else {
+        reason = result.ok ? '收到的回执与原发送不匹配。' : result.error
       }
-      if (!result.ok && wasNotAdmitted(result)) {
-        updateDraft(key, (latest) => ({
-          text: latest.text || sendSnapshot,
-          state: { phase: 'rejected', submission, reason: result.error },
-        }))
-        return
-      }
-      reason = result.ok ? '无法确认发送回执' : result.error
     } catch (error) {
       reason = conversationError(error)
     }
-    reason ||= '无法确认发送回执'
-    setState({ phase: 'unknown', submission, originalReason: reason, reason, checking: false, queried: false })
+    withSubmission(key, submitting, (latest) => ({
+      ...latest, state: { phase: 'unknown', submission,
+        reason: normalizeFeedbackDiagnostic(reason || '无法确认发送回执。'), checking: false },
+    }))
+    void checkReceipt()
   }
 
   return {
-    draft,
-    setDraft: (action: SetStateAction<string>) => {
-      updateDraft(key, (current) => ({ ...current, text: typeof action === 'function' ? action(current.text) : action }))
+    draft, state, model, stash, attachments, references, hasContent, outgoingLength, draftKey: key, attachmentIntake,
+    hasSendableContent: Boolean(draft.trim() || attachments.length || references.length),
+    readDraft: () => readComposerDraft(key).text,
+    async quoteThread(sourceId: string, expectedDraft: string, replacement: string): Promise<boolean> {
+      if (!interactive || !canInteract() || currentKey.current !== key || sourceId === threadId) return false
+      const result = await api.conversationRead(sourceId, root, task)
+      if (!interactive || !canInteract() || currentKey.current !== key) return false
+      if (!result.ok) throw new Error(result.error)
+      if (result.thread.id !== sourceId) throw new Error('无法核对所选会话。')
+      const excerpt = result.messages.filter(message => (message.role === 'user' || message.role === 'assistant') && message.text.trim())
+        .slice(-4).map(message => `${message.role === 'user' ? '用户' : '助手'}：${Array.from(message.text.trim()).slice(0, 800).join('')}`)
+        .join('\n\n')
+      if (!excerpt) throw new Error('这条会话目前没有可引用的消息。')
+      const reference = { id: `thread:${sourceId}`, label: result.thread.title, text: excerpt }
+      let applied = false
+      updateComposerDraft(key, current => {
+        if (current.text !== expectedDraft) return current
+        applied = true
+        return { ...current, text: replacement, references: current.references.some(item => item.id === reference.id)
+          ? current.references : [...current.references, reference] }
+      })
+      return applied
     },
-    state,
+    setDraft(action: SetStateAction<string>): void {
+      if (!interactive || !canInteract() || currentKey.current !== key) return
+      updateComposerDraft(key, (current) => {
+        const text = typeof action === 'function' ? action(current.text) : action
+        return text === current.text ? current : { ...current, text }
+      })
+    },
+    setModel(next: ComposerModel | null): void {
+      updateComposerDraft(key, (current) => ({ ...current, model: next }))
+    },
+    addReference(reference: ComposerReference): void {
+      if (!interactive || !canInteract() || !reference.text.trim()) return
+      updateComposerDraft(key, (current) => current.references.some(item => item.id === reference.id)
+        ? current
+        : { ...current, references: [...current.references, reference] })
+    },
+    removeReference(referenceId: string): void {
+      updateComposerDraft(key, (current) => ({
+        ...current, references: current.references.filter(item => item.id !== referenceId),
+      }))
+    },
+    stashDraft(): void {
+      updateComposerDraft(key, (current) => hasComposerDraftContent(current) && !current.stash
+        ? { ...current, ...emptyDraftContent, stash: draftContent(current) }
+        : current)
+    },
+    restoreStash(): void {
+      updateComposerDraft(key, (current) => !hasComposerDraftContent(current) && current.stash
+        ? { ...current, ...current.stash, stash: null }
+        : current)
+    },
+    restore(stashCurrent = false): void {
+      updateComposerDraft(key, (current) => {
+        if (current.state.phase !== 'rejected' || current.state.restored || attachmentIntake.isPending()) return current
+        const occupied = hasComposerDraftContent(current)
+        if (occupied && (!stashCurrent || current.stash)) return current
+        return {
+          ...current, ...submittedContent(current.state.submission),
+          stash: occupied ? draftContent(current) : current.stash,
+          state: { ...current.state, restored: true },
+        }
+      })
+    },
+    async copyRejectedDraft(): Promise<void> {
+      const rejected = readComposerDraft(key).state
+      if (!interactive || !canInteract() || rejected.phase !== 'rejected') return
+      const source = submittedContent(rejected.submission)
+      await navigator.clipboard.writeText(outgoingText(source))
+      if (!source.attachments.length && !source.references.length) {
+        withSubmission(key, rejected, (current) => ({ ...current, state: { ...rejected, restored: true } }))
+      }
+    },
     send,
-    checkReceipt: () => void checkReceipt(),
+    checkReceipt,
   }
 }

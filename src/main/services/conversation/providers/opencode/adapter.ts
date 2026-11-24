@@ -6,10 +6,11 @@ import type { ConversationDriverDescriptor } from '../../../../../shared/convers
 import { DaemonError } from '../../../../daemon/errors'
 import type { CodexOwnedProcess } from '../codex/process-owner'
 import { driverActionEvidence, hostUnsupported } from '../core/catalog'
+import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-input'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverOpenInput, type ConversationDriverSession, type ConversationDriverEventListener,
-  type ConversationResumeThreadInput, type ConversationInterruptTurnInput, type ConversationSteerTurnInput,
+  type ConversationResumeThreadInput, type ConversationInterruptTurnInput, type ConversationSteerTurnInput, type ConversationStartTurnContext,
 } from '../registry'
 import { subscribeOpenCode, type OpenCodeNativeEvent } from './OpenCode2Client'
 import { openCodeConfigurationKey, openCodeServer } from './OpenCode2Server'
@@ -147,19 +148,40 @@ export class OpenCodeDriver implements ConversationDriverSession {
     return id
   })
 
-  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener) => run(async () => {
+  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener, context?: ConversationStartTurnContext) => run(async () => {
     this.assertCurrent(cwd)
     if (this.sessions.get(id) !== model || this.turns.has(id) || this.controls.has(id) || this.unsettled.has(id)) {
       throw new ConversationTurnRejectedError('OpenCode 原会话未确认模型或仍有未结算回合。')
     }
     const client = this.requireClient()
     const sessionID = this.sdk.Session.ID.make(id)
+    if (this.input.ordinaryTask) {
+      try {
+        const original = await Effect.runPromise(client.session.get({ sessionID }))
+        if (original.id !== id) throw new Error('OpenCode 返回了不同的原生会话。')
+        this.verifyThread(original, model, cwd)
+      } catch (cause) {
+        throw new ConversationTurnRejectedError('OpenCode 未确认原任务会话仍禁止工具操作。', { cause })
+      }
+    }
     const occupied = await Effect.runPromise(client.session.active().pipe(Effect.timeout('5 seconds'))).catch(cause => {
       throw new ConversationTurnRejectedError('OpenCode 活动检查未确认，未提交本次消息。', { cause })
     })
     if (Object.hasOwn(occupied, id) || this.turns.has(id) || this.controls.has(id) || this.unsettled.has(id)) {
       throw new ConversationTurnRejectedError('OpenCode 原会话仍有活动回合。')
     }
+    const parts = [text]
+    const files = []
+    try {
+      await context?.assertAuthorized?.()
+      context?.assertCurrent()
+      for (const content of context?.attachments ?? []) {
+        if (content.attachment.type === 'image') {
+          const image = nativeImageAttachment(content)
+          files.push({ uri: `data:${image.mimeType};base64,${image.data}`, name: content.attachment.name })
+        } else parts.push(nativeTextAttachment(content))
+      }
+    } catch (cause) { throw new ConversationTurnRejectedError(asError(cause).message, { cause }) }
     const requestId = this.sdk.SessionMessage.ID.create()
     let finish: ActiveTurn['finish'] = () => undefined
     const completion = new Promise<void>((resolve, reject) => { finish = error => error === undefined ? resolve() : reject(error) })
@@ -168,7 +190,9 @@ export class OpenCodeDriver implements ConversationDriverSession {
     this.turns.set(id, turn)
     const timeout = setTimeout(() => finish(new ConversationTurnOutcomeUnknownError('')), 30 * 60_000)
     try {
-      const submitted = await Effect.runPromise(Effect.result(client.session.prompt({ sessionID, id: requestId, text })))
+      const submitted = await Effect.runPromise(Effect.result(client.session.prompt({
+        sessionID, id: requestId, text: parts.join('\n\n'), ...(files.length ? { files } : {}),
+      })))
       if (submitted._tag === 'Failure') {
         if (!turn.delivered && !turn.started && clearPromptRejections.has(submitted.failure._tag)) {
           throw new ConversationTurnRejectedError('OpenCode 原生服务明确拒绝了本轮输入。', { cause: submitted.failure })
@@ -261,6 +285,8 @@ export class OpenCodeDriver implements ConversationDriverSession {
     this.stopped = true
     for (const turn of this.turns.values()) turn.finish(new ConversationTurnOutcomeUnknownError('', { cause }))
   }
+
+  readonly canConfirmWindowsJobClose = (): boolean => process.platform === 'win32' && this.owned !== undefined
 
   readonly close = () => run(async () => {
     this.transportEnded(new Error('OpenCode 会话已关闭。'))

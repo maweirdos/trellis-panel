@@ -48,6 +48,7 @@ const GLOBAL_METHODS = new Set<string>([
   'runtime.privateConfigure',
   'runtime.privateRecoverModel',
   'runtime.cruxProgress',
+  'runtime.conversationTaskScope',
   'runtime.agents',
   'runtime.setup',
   'runtime.probe',

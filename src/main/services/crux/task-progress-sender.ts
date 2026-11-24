@@ -25,6 +25,7 @@ import { TaskMaterialsTransport, taskMaterialTransportPinSchema } from '../team-
 import type { TeamTaskMaterialCommand } from '../../../shared/team-task-materials'
 import { teamTaskRefSchema, teamTaskIdentity, teamExecutionCommandSchema, type TeamTaskRef } from '../../../shared/team-task-execution'
 import type { TeamContentRequest } from '../../../shared/team-content-transport'
+import { teamTaskDevelopmentContextSchema } from '../../../shared/team-task-development'
 import { jiraBusinessRouteCommandSchema, jiraBusinessRouteSchema, jiraBusinessDispatchSchema, jiraBusinessDispatchReadSchema, jiraBusinessDispatchReceiptSchema, type JiraBusinessRoute, type JiraBusinessDispatch, jiraBusinessEffectSchema, jiraBusinessEventCommandSchema, jiraBusinessMappingCommandSchema, jiraBusinessMappingQuerySchema, jiraBusinessTaskMappingSchema, type JiraBusinessEffect, type JiraBusinessTaskMapping } from '../../../shared/jira-business-hooks'
 
 const credentialSchema = taskProgressPinSchema.pick({ connectionId: true, origin: true, pairingId: true, ownerId: true, deviceId: true, projectId: true }).extend({ version: z.literal(1), purpose: z.enum(['task-progress', 'business-hook']), token: z.string().min(1).max(16384) }).strict()
@@ -133,6 +134,20 @@ export class NativeTaskProgressSender {
     return credential
   }
   private route(): string { return `/api/projects/${this.pin.projectId}/crux/tasks/${encodeURIComponent(this.pin.taskId)}/progress` }
+  async taskConversationContext() {
+    const credential = await this.authorized()
+    const result = await this.http.request(this.pin.origin,
+      `/api/projects/${this.pin.projectId}/crux/tasks/${encodeURIComponent(this.pin.taskId)}/development-context`,
+      teamTaskDevelopmentContextSchema, credential.value.token)
+    this.current(credential.fingerprint)
+    const { snapshot, inputs } = result
+    if (snapshot.instanceId !== this.pin.instanceId || snapshot.epoch !== this.pin.epoch || snapshot.projectId !== this.pin.projectId ||
+      snapshot.actor.id !== this.pin.ownerId || inputs.taskId !== this.pin.taskId || inputs.spaceId !== this.pin.spaceId ||
+      remoteScopeKey(credential.value) !== this.pin.workspaceKey) {
+      throw new DesktopTeamError('BINDING_CHANGED', '任务对话来源与原团队凭据不一致。')
+    }
+    return { context: result, assertCredential: () => this.current(credential.fingerprint) }
+  }
   async status() {
     const c = await this.authorized()
     const result = await this.http.request(this.pin.origin, this.route(), teamTaskProgressDtoSchema, c.value.token)

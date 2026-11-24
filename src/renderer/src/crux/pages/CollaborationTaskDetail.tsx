@@ -4,6 +4,7 @@ import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { currentPostInput, fixedPostInput } from '@shared/crux'
 import type { ConversationTaskDesign } from '@shared/conversation-task'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
+import { isOrdinaryConversationTask } from '@shared/conversation/task-scope'
 import { canStartAssignedTaskPlan, getCruxTaskStageMetadata } from '@shared/crux-domain/workflow'
 import { taskInputCanonical } from '@shared/team-canonical'
 import type { TaskInputRead } from '@shared/team-task-inputs'
@@ -33,6 +34,7 @@ import { TaskCodeResources } from '../code-resources/TaskCodeResources'
 import { TaskInputPanel } from '../governance/TaskInputPanel'
 import { TaskHandoffProvenance } from './task-detail/TaskHandoffProvenance'
 import { ensureTaskConversationFromPost, openTaskConversationFromPost, type TaskConversationIntent } from '../../conversations/task-navigation'
+import { openOrdinaryTaskConversation } from '../task-conversation'
 
 export function TaskDetailDrawer(): JSX.Element | null {
   const snapshot = useCrux((state) => state.snapshot)
@@ -128,6 +130,8 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const section = availableTabs.includes(selectedSection) ? selectedSection : 'activity'
   const status = snapshot.taskStatuses.find(item => item.id === task.statusId)
   const closed = status?.category === 'done' || status?.category === 'cancelled'
+  const ordinaryTaskChat = context.state === 'connected' && isOrdinaryConversationTask(task) && !links.length
+  const mayOpenOrdinaryChat = ordinaryTaskChat && Boolean(actorId && task.assigneeIds[0] === actorId && !task.triagePending && !disabled)
   const assignedTeamAgent = context.state === 'connected' && task.executor?.kind === 'agent'
   const existingCode = localChats.find(chat => chat.kind === 'code' && chat.nativeRef && chat.archivedAt === undefined && links.some(link => link.id === chat.id))
   const codeLabel = existingCode ? '继续工程对话' : '让 Agent 在工程中开发'
@@ -147,7 +151,9 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const close = (): void => { if (!embedded && source.owns()) useCrux.getState().openTask(null); if (embedded) onClose() }
   const askTaskAgent = async (conversationId?: string, kind: 'work' | 'code' = 'work', design?: ConversationTaskDesign, request?: TaskConversationIntent['request']): Promise<void> => {
     if (openingConversation.current || !actorId || (request && disabled)) return
-    if (!conversationId && onContinue && kind === 'work' && !request) { onContinue(); return }
+    const openOrdinary = !conversationId && kind === 'work' && ordinaryTaskChat
+    if (openOrdinary && !mayOpenOrdinaryChat) return
+    if (!openOrdinary && !conversationId && onContinue && kind === 'work' && !request) { onContinue(); return }
     const existingLink = conversationId ? links.find(link => link.id === conversationId) : links[0]
     if (!existingLink && (conversationId || disabled)) return
     const ticket = source.ticket()
@@ -155,7 +161,8 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
     setConversationPending(true); setConversationError('')
     const current = () => source.owns(ticket)
     try {
-      if (kind === 'code' || !existingLink) await ensureTaskConversationFromPost(task, kind, current, design, request)
+      if (openOrdinary) await openOrdinaryTaskConversation(context.key, task, current)
+      else if (kind === 'code' || !existingLink) await ensureTaskConversationFromPost(task, kind, current, design, request)
       else await openTaskConversationFromPost(task, existingLink.id, current, { request })
     }
     catch (cause) { if (source.owns(ticket)) setConversationError(cause instanceof Error ? cause.message : String(cause)) }
@@ -204,7 +211,11 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                 onDevelop={mayDevelop && !conversationPending ? design => void askTaskAgent(undefined, 'code', design, 'develop') : undefined}
               />
               <div className="flex flex-wrap items-center gap-2">
-                {desktop && (!closed || links.length > 0) && <Button size="sm" variant="outline" disabled={conversationPending || !actorId || (!links.length && disabled)} onClick={() => void askTaskAgent(undefined, 'work', undefined, links.length || closed || assignedTeamAgent ? undefined : 'analyze')}><MessageSquare size={14} />{conversationPending ? '正在打开…' : links.length ? '继续对话' : assignedTeamAgent ? '任务对话' : '让 Agent 分析'}</Button>}
+                {desktop && (!closed || mayOpenOrdinaryChat || links.length > 0) && <Button size="sm" variant="outline"
+                  disabled={conversationPending || (ordinaryTaskChat ? !mayOpenOrdinaryChat : !actorId || (!links.length && disabled))}
+                  onClick={() => void askTaskAgent(undefined, 'work', undefined, links.length || closed || assignedTeamAgent || ordinaryTaskChat ? undefined : 'analyze')}>
+                  <MessageSquare size={14} aria-hidden="true" />{conversationPending ? '正在打开…' : links.length ? '继续对话' : ordinaryTaskChat || assignedTeamAgent ? '任务对话' : '让 Agent 分析'}
+                </Button>}
                 {!hasDesign && mayDevelop && (!existingCode || existingCode.id !== links[0]?.id) && <Button size="sm" variant="ghost" disabled={conversationPending} onClick={() => void askTaskAgent(undefined, 'code', undefined, 'develop')}><Code2 size={14} />{codeLabel}</Button>}
                 {canPlanInProject && <Button size="sm" variant="outline" disabled={disabled} onClick={async () => {
                   const result = await mutate('打开工程规划', () => api.crux.transitionTask({

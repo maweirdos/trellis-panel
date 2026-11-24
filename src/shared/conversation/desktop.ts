@@ -1,4 +1,5 @@
 import type { OrchestrationV2DomainEventJson } from './orchestrationV2'
+import type { ConversationTaskBinding } from './task-scope'
 
 export interface ConversationCommandReceipt {
   readonly threadId: string
@@ -21,8 +22,10 @@ export interface ConversationProjectScope {
 
 export type ConversationBinding =
   | { readonly kind: 'personal' }
+  | ConversationTaskBinding
   | {
     readonly kind: 'task'
+    readonly mode?: 'execution'
     readonly taskId: string
     readonly executionId: string
     readonly nodeId: string
@@ -66,3 +69,4 @@ export interface ConversationEventPage {
   readonly nextSequence: number
   readonly hasMore: boolean
 }
+export const CONVERSATION_READ_PAGE_LIMIT = 100

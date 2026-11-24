@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search, FolderOpen } from 'lucide-react'
+import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
@@ -10,13 +10,12 @@ import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { clsx } from 'clsx'
-import { getPageNavigation, hasContextNavigation, pageRequiresProject, projectRootKey, projectNameFromPath } from '../my/navigation'
+import { getPageNavigation, hasContextNavigation, pageRequiresProject } from '../my/navigation'
 import { TeamContextSwitcher } from '../crux/TeamContextSwitcher'
 import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
 import { DevelopmentScopeTag } from '../crux/development/DevelopmentContextBar'
 import { Tooltip } from '../my/ui'
 import { InteractionScope } from '../utils/interaction-scope'
-import { baseScopeKey, scopeKey, useConversations } from '../conversations/workspace'
 
 function WinButton({ onClick, children, label, danger }: {
   onClick: () => void; children: ReactNode; label: string; danger?: boolean
@@ -37,19 +36,11 @@ export function TitleBar(): JSX.Element {
   const openTaskDir = useApp((s) => s.openTaskDir)
   const teamContext = page === 'crux' && !openTaskDir
   const development = useMy((s) => s.shellView === 'development')
-  const privateCodeChat = useApp((s) => s.privateCodeChat)
-  const codeChat = development && page === 'chat' && !privateCodeChat
+  const codeChat = development && page === 'chat'
   const codeNeedsProject = codeChat && !snapshot?.meta.root
   const personalTaskSource = useApp((s) => s.personalTaskSource)
   const domain = getPageNavigation(page).domain
-  const privateCodeRoot = useConversations(state => {
-    if (page !== 'chat' || !development || !privateCodeChat) return null
-    const projectId = state.projectScopes[baseScopeKey('code')] ?? undefined
-    const current = state.entries[state.selected[scopeKey('code', projectId)]]
-    return current && !current.locked && current.kind === 'code' ? current.conversation?.workspace.root ?? current.directory?.path ?? null : null
-  })
-  const privateProjectTools = Boolean(privateCodeRoot && projectRootKey(privateCodeRoot) === projectRootKey(snapshot?.meta.root))
-  const codeTools = development && (codeChat || privateProjectTools || Boolean(openTaskDir) || (
+  const codeTools = development && (codeChat || Boolean(openTaskDir) || (
     domain !== 'team' && domain !== 'settings' && domain !== 'automations' && domain !== 'integrations' && page !== 'chat' && page !== 'creations' &&
     (page !== 'tasks' || personalTaskSource !== 'team')
   ))
@@ -93,9 +84,8 @@ export function TitleBar(): JSX.Element {
       </div>
       {development && <InteractionScope active={codeTools}><div className="my-shell-code-tools no-drag" hidden={!codeTools} aria-hidden={!codeTools || undefined} ref={(element) => { element?.toggleAttribute('inert', !codeTools) }} role="toolbar" aria-label="Code 工程工具">
         <div className="my-shell-project-controls">
-          {page === 'chat' && privateCodeRoot ? <div className="relative my-shell-project-identity min-w-0">
-            <Tooltip side="bottom" label={privateCodeRoot} wrap><span tabIndex={0} className="inline-flex min-w-0 max-w-full items-center gap-2 px-2 text-my-sm text-my-secondary" aria-label={`当前会话工程：${projectNameFromPath(privateCodeRoot)}`}><FolderOpen size={14} className="shrink-0" /><span className="my-project-switcher-name min-w-0 truncate">{projectNameFromPath(privateCodeRoot)}</span></span></Tooltip>
-          </div> : <><ProjectSwitcher keepPage={codeChat} /><div className="my-shell-development-scope"><DevelopmentScopeTag /></div></>}
+          <ProjectSwitcher keepPage={codeChat} />
+          <div className="my-shell-development-scope"><DevelopmentScopeTag /></div>
           {!codeNeedsProject && <GitBranchControl />}
           {openError && <Tooltip side="bottom" label={openError} wrap><span role="status" tabIndex={0} className="my-header-project-error text-my-xs text-my-danger-text">工程打开失败</span></Tooltip>}
         </div>

@@ -4,7 +4,7 @@ import type { ConversationDriverAction, ConversationDriverDescriptor, Conversati
 const fingerprintKey = randomBytes(32)
 export type MutableDriverActions = Partial<Record<ConversationDriverAction, ConversationDriverEvidence>>
 const actions: readonly ConversationDriverAction[] = [
-  'chat', 'planning', 'execution', 'cancel', 'resume', 'goal', 'goalPause',
+  'chat', 'planning', 'execution', 'cancel', 'steer', 'resume', 'goal', 'goalPause',
   'compact', 'nativeSubthreads', 'modelSwitch', 'readOnly', 'toolApproval',
 ]
 

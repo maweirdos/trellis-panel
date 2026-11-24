@@ -19,10 +19,14 @@ import { ConversationEventSink } from './EventSink'
 import { ThreadCommands } from './ThreadCommands'
 import type { ConversationAuthority } from '../../../../shared/conversation/desktop'
 import type { ConversationRunLifecycle } from '../../../../shared/conversation/command-runtime'
+import type { ConversationAttachmentReferences } from '../../../../shared/conversation/attachments'
+import type { ConversationAttachmentStore } from '../attachments'
+import { prepareConversationAttachmentClaim } from '../attachments/claims'
+import { assertPromptAttachments, type ConversationPromptAttachmentSupport } from '../providers/core/attachment-input'
 
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`
 
-export interface NewThreadRequest {
+export interface NewThreadRequest extends ConversationAttachmentReferences {
   readonly projectId: string
   readonly ownerId: string
   readonly spaceId: string
@@ -61,9 +65,11 @@ export class ThreadMessageIntake {
     private readonly database: DatabaseSync,
     private readonly eventSink: ConversationEventSink,
     private readonly commands = new ThreadCommands(database, eventSink),
+    private readonly attachmentStore?: ConversationAttachmentStore,
   ) {}
 
-  launchThread(input: NewThreadRequest & { readonly commandId: string }, authority?: ConversationAuthority, configurationFingerprint?: string): IntakeResult {
+  launchThread(input: NewThreadRequest & { readonly commandId: string }, authority?: ConversationAuthority, configurationFingerprint?: string,
+    promptAttachments?: ConversationPromptAttachmentSupport): IntakeResult {
     const digest = commandPayloadDigest({ ...input, commandId: undefined })
     const existing = this.eventSink.readReceipt(input.commandId)
     if (existing) {
@@ -79,6 +85,8 @@ export class ThreadMessageIntake {
     const timestamp = DateTime.nowUnsafe()
     const iso = DateTime.formatIso(timestamp)
     const threadId = newId('thr')
+    const attachmentClaim = prepareConversationAttachmentClaim(this.attachmentStore, authority, input, threadId, true)
+    assertPromptAttachments(attachmentClaim?.attachments, promptAttachments)
     const runId = newId('run')
     const messageId = input.messageId ?? newId('msg')
     const runtimeMode = input.runtimeMode ?? 'approval-required'
@@ -100,14 +108,14 @@ export class ThreadMessageIntake {
     })
     const message = decodeMessageEvent({
       createdBy: 'user', creationSource: 'web', id: messageId, threadId, runId, nodeId: null,
-      role: 'user', text: input.text, attachments: [], streaming: false, createdAt: timestamp, updatedAt: timestamp,
+      role: 'user', text: input.text, attachments: attachmentClaim?.attachments ?? [], streaming: false, createdAt: timestamp, updatedAt: timestamp,
     })
     const events: OrchestrationV2DomainEvent[] = [
       { id: randomUUID() as never, threadId: threadId as never, occurredAt: timestamp, type: 'thread.created', payload: thread },
       { id: randomUUID() as never, threadId: threadId as never, runId: runId as never, occurredAt: timestamp, type: 'run.created', payload: run },
       { id: randomUUID() as never, threadId: threadId as never, runId: runId as never, occurredAt: timestamp, type: 'message.updated', payload: message },
     ]
-    const resultSequence = this.commitCommand(input.commandId, digest, thread, run, message, events, iso, input, authority, configurationFingerprint)
+    const resultSequence = this.commitCommand(input.commandId, digest, thread, run, message, events, iso, input, authority, configurationFingerprint, attachmentClaim?.commit)
     return { receipt: { threadId, runId, commandId: input.commandId, messageId, acceptedAt: iso, resultSequence }, committed: true }
   }
 
@@ -122,6 +130,7 @@ export class ThreadMessageIntake {
     scope: NewThreadRequest,
     authority?: ConversationAuthority,
     configurationFingerprint?: string,
+    claimAttachments?: () => void,
   ): number {
     const threadId = thread.id
     const runId = run.id
@@ -136,6 +145,7 @@ export class ThreadMessageIntake {
       `).run(threadId, scope.projectId, scope.ownerId, scope.spaceId, thread.title, scope.modelSelection.instanceId,
         thread.runtimeMode, thread.interactionMode, acceptedAt, acceptedAt, threadJson(thread))
       if (authority) this.commands.ensureControl(threadId, authority)
+      claimAttachments?.()
       this.database.prepare(`
         INSERT INTO conversation_v2_projection_runs (
           run_id, thread_id, ordinal, provider, provider_instance_id, provider_thread_id, status, requested_at, completed_at, payload_json
@@ -170,10 +180,17 @@ export class ThreadMessageIntake {
   }
 
   /** A thread list is scoped to its owner, space and project; titles can quote user input. */
-  listThreads(ownerId: string, spaceId: string, projectId: string): OrchestrationV2AppThread[] {
-    const rows = this.database.prepare(
-      'SELECT payload_json FROM conversation_v2_projection_threads WHERE owner_id = ? AND space_id = ? AND project_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',
-    ).all(ownerId, spaceId, projectId) as Array<{ payload_json: string }>
+  listThreads(ownerId: string, spaceId: string, projectId: string, filter?: { archived?: boolean; query?: string }): OrchestrationV2AppThread[] {
+    const query = filter?.query ?? ''
+    const rows = this.database.prepare(`SELECT thread.payload_json FROM conversation_v2_projection_threads thread
+      WHERE thread.owner_id = ? AND thread.space_id = ? AND thread.project_id = ? AND thread.deleted_at IS NULL
+      AND (thread.archived_at IS NOT NULL) = ?
+      AND (? = '' OR instr(lower(thread.title), lower(?)) > 0 OR EXISTS (
+        SELECT 1 FROM conversation_v2_projection_messages message WHERE message.thread_id = thread.thread_id
+        AND instr(lower(json_extract(message.payload_json, '$.text')), lower(?)) > 0
+      ))
+      ORDER BY json_extract(thread.payload_json, '$.pinnedAt') DESC NULLS LAST, thread.updated_at DESC LIMIT 100`)
+      .all(ownerId, spaceId, projectId, Number(filter?.archived ?? false), query, query, query) as Array<{ payload_json: string }>
     return rows.map(row => decodeThread(JSON.parse(row.payload_json)))
   }
 

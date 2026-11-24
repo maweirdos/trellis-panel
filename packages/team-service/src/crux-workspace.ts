@@ -72,6 +72,23 @@ const repositoryReference = (value: string): void => {
   }
 }
 
+function retainAssigneeGenerations(before: CruxSnapshot, after: CruxSnapshot): void {
+  const originals = new Map(before.tasks.map(task => [task.id, task]))
+  for (const task of after.tasks) {
+    const original = originals.get(task.id)
+    if (!original || original.spaceId !== task.spaceId || original.createdAt !== task.createdAt) {
+      task.assigneeGeneration = 1
+      continue
+    }
+    const generation = original.assigneeGeneration ?? 1
+    const sameAssignment = original.workflow?.handlerId === task.workflow?.handlerId
+      && original.assigneeIds.length === task.assigneeIds.length
+      && original.assigneeIds.every((id, index) => id === task.assigneeIds[index])
+    if (!sameAssignment && generation >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Task assignment generation exhausted', 503)
+    task.assigneeGeneration = sameAssignment ? generation : generation + 1
+  }
+}
+
 export class TeamCruxWorkspace {
   constructor(private readonly host: CruxWorkspaceHost) {}
 
@@ -98,6 +115,7 @@ export class TeamCruxWorkspace {
         }
         const ticked = withCruxDomainSnapshot(workspace.snapshot, () => tickScheduledAutomations()).snapshot
         if (JSON.stringify(ticked) === before) return
+        retainAssigneeGenerations(workspace.snapshot, ticked)
         if (Buffer.byteLength(JSON.stringify(ticked)) > MAX_SNAPSHOT_BYTES - 4096) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Scheduled workspace update exceeds its response bound', 413)
         if (workspace.revision >= Number.MAX_SAFE_INTEGER) throw new TeamServiceError('CAPACITY_EXCEEDED', 'Workspace revision bound exceeded', 503)
         this.host.validateExecutionChanges(null, projectId, workspace.snapshot, ticked)
@@ -155,6 +173,7 @@ export class TeamCruxWorkspace {
     const active = new Set(snapshot.members.map((member) => member.id))
     // Local roster entries can never add a remote member or keep a revoked space grant.
     for (const space of snapshot.spaces) space.memberIds = space.memberIds.filter((id) => active.has(id))
+    for (const task of snapshot.tasks) task.assigneeGeneration ??= 1
     return { revision: row ? integer(row, 'revision') : 0, snapshot }
   }
 
@@ -481,6 +500,7 @@ export class TeamCruxWorkspace {
         this.host.run('INSERT INTO crux_inbox_preferences(projectId,userId,inboxId,read,cleared,snoozedUntil) VALUES(?,?,?,?,?,?) ON CONFLICT(projectId,userId,inboxId) DO UPDATE SET read=excluded.read,cleared=excluded.cleared,snoozedUntil=excluded.snoozedUntil', projectId, principal.person.userId, item.id, item.read ? 1 : 0, item.cleared ? 1 : 0, item.snoozedUntil ?? null)
       }
     } else {
+      retainAssigneeGenerations(workspace.snapshot, executed.snapshot)
       this.host.validateExecutionChanges(principal, projectId, workspace.snapshot, executed.snapshot,
         input.operation === 'transitionTask' ? cruxMutationInputSchemas.transitionTask.parse(input.input).taskId : undefined)
       this.host.invalidateProgress(projectId, workspace.snapshot, executed.snapshot)

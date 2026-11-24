@@ -20,6 +20,10 @@ import { FEISHU_IPC } from './feishu-integration'
 
 /** 主进程提供的 invoke 通道（渲染层请求 → 响应） */
 export const ipcInvoke = {
+  speech: {
+    status: 'speech:status', begin: 'speech:begin', transcribe: 'speech:transcribe',
+    cancel: 'speech:cancel', importModel: 'speech:importModel', downloadModel: 'speech:downloadModel'
+  },
   designWorkspace: {
     list: 'designWorkspace:list', get: 'designWorkspace:get', listConversation: 'designWorkspace:listConversation', sync: 'designWorkspace:sync', createConversation: 'designWorkspace:createConversation',
     save: 'designWorkspace:save', send: 'designWorkspace:send', adopt: 'designWorkspace:adopt', discard: 'designWorkspace:discard', export: 'designWorkspace:export'
@@ -498,6 +502,8 @@ export const ipcInvoke = {
     openLocalDocument: 'shell:openLocalDocument'
   },
   conversation: {
+    workRoot: 'conversation:work-root',
+    taskScope: 'conversation:task-scope',
     models: 'conversation:models',
     create: 'conversation:create',
     list: 'conversation:list',
@@ -510,6 +516,11 @@ export const ipcInvoke = {
     history: 'conversation:history',
     drivers: 'conversation:drivers',
     describeDriver: 'conversation:describe-driver',
+    attachmentStage: 'conversation:attachment-stage',
+    attachmentPick: 'conversation:attachment-pick',
+    attachmentList: 'conversation:attachment-list',
+    attachmentRelease: 'conversation:attachment-release',
+    attachmentRead: 'conversation:attachment-read',
   },
   acp: {
     agents: 'acp:agents',

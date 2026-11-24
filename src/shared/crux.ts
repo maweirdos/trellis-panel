@@ -156,6 +156,7 @@ export interface CruxTask {
   priority: CruxPriority
   /** 人员处理人集合：multiAssignee 关闭时最多 1 人 */
   assigneeIds: CruxID[]
+  assigneeGeneration?: number
   /** 执行槽：Agent 或小队（单选） */
   executor?: CruxExecutorRef
   creatorId: CruxID

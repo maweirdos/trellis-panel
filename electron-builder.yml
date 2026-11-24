@@ -7,6 +7,11 @@ files:
   - out/**
   - "!out/worker-only/**"
   - "!out/pi-engine/**"
+  - "!out/speech/**"
+  - "!node_modules/transcribe-cpp/**"
+  - "!node_modules/@transcribe-cpp/**"
+  - "!node_modules/koffi/**"
+  - "!node_modules/@koromix/koffi-*/**"
   - package.json
   - resources/brand/**
   - "!resources/brand/crux-concept/**"
@@ -34,6 +39,14 @@ extraResources:
       - sdk-manifest.json
   - from: out/pi-engine/node_modules
     to: pi-engine/node_modules
+    filter:
+      - "**/*"
+  - from: out/speech
+    to: speech
+    filter:
+      - worker.mjs
+  - from: out/speech/node_modules
+    to: speech/node_modules
     filter:
       - "**/*"
   - from: node_modules/.cache/trellis-node/dist/node-v24.12.0-win-x64

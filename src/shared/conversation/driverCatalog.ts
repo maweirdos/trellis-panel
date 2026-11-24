@@ -9,13 +9,21 @@ export interface ConversationDriverModel {
 export interface ConversationDriverOption {
   readonly id: string
   readonly label: string
+  readonly modelId?: string
+  readonly turnSelectable?: true
   readonly category?: string
   readonly current?: string | boolean
   readonly choices: readonly { readonly value: string; readonly label: string; readonly group?: string }[]
 }
 
+export interface ConversationDriverSkill {
+  readonly name: string
+  readonly displayName?: string
+  readonly description?: string
+}
+
 export type ConversationDriverAction =
-  | 'chat' | 'planning' | 'execution' | 'cancel' | 'resume' | 'goal' | 'goalPause' | 'compact' | 'nativeSubthreads' | 'modelSwitch' | 'readOnly' | 'toolApproval'
+  | 'chat' | 'planning' | 'execution' | 'cancel' | 'steer' | 'resume' | 'goal' | 'goalPause' | 'compact' | 'nativeSubthreads' | 'modelSwitch' | 'readOnly' | 'toolApproval'
 
 export interface ConversationDriverEvidence {
   readonly state: 'verified' | 'unsupported' | 'unknown'
@@ -30,6 +38,7 @@ export interface ConversationDriverDescriptor {
   readonly source: 'native-catalog' | 'native-session'
   readonly models: readonly ConversationDriverModel[]
   readonly options: readonly ConversationDriverOption[]
+  readonly skills?: readonly ConversationDriverSkill[]
   readonly selectedModel?: string
   readonly actions: Readonly<Record<ConversationDriverAction, ConversationDriverEvidence>>
 }

@@ -3,25 +3,36 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { openConversationDatabase } from '../../services/conversation/persistence/database'
+import { ConversationAttachmentStore } from '../../services/conversation/attachments'
+import { conversationAttachmentDraftScope, prepareConversationAttachmentClaim } from '../../services/conversation/attachments/claims'
 import { ThreadMessageIntake } from '../../services/conversation/orchestration/ThreadMessageIntake'
 import { ConversationEventSink } from '../../services/conversation/orchestration/EventSink'
 import { ThreadCommands, lifecycleEvent, type ThreadEffectRow } from '../../services/conversation/orchestration/ThreadCommands'
+import { completeThreadDeletion, recordThreadDeletionDetach } from '../../services/conversation/orchestration/ThreadDeletion'
 import { ConversationDeadlineError, ConversationEffectWorker, awaitDeadline, runBounded } from '../../services/conversation/orchestration/EffectWorker'
 import { decideThreadResume, THREAD_RESUME_MAX_REPLAY_EVENTS } from '../../services/conversation/orchestration/ThreadStream'
+import { ANSWER_ATTACHMENT_MAX_BYTES, assertPromptAttachments, nativeTextAttachment, TEXT_ATTACHMENTS } from '../../services/conversation/providers/core/attachment-input'
 import {
   conversationDriverRegistry, ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverDescriptor, type ConversationDriverModel, type ConversationDriverRegistration, type ConversationDriverRegistry,
-  type ConversationDriverSession, type ConversationDriverTurnEvent, type ConversationRuntimeResponse,
+  type ConversationDriverSession, type ConversationDriverTurnEvent, type ConversationDriverWorkItem, type ConversationRuntimeResponse,
 } from '../../services/conversation/providers/registry'
 import { DaemonError } from '../errors'
 import { pathKey } from '../../services/task-conversations/lib/paths'
 import type { ConversationAuthority, ConversationCommandState, ConversationEventPage, ConversationHostEvent, ConversationRunEvidence } from '../../../shared/conversation/desktop'
+import type {
+  ConversationAttachmentBytesInput, ConversationAttachmentContent, ConversationAttachmentDraftTarget,
+  ConversationAttachmentLocator, ConversationAttachmentReferences,
+} from '../../../shared/conversation/attachments'
+import { conversationAttachmentLimitError } from '../../../shared/conversation/attachments'
+import type { ChatAttachment } from '../../../shared/conversation/chatAttachment'
+import type { ProviderOptionSelections } from '../../../shared/conversation/model'
 import { ModelSelection, OrchestrationV2DomainEventJson, ProviderDriverKind, type OrchestrationV2DomainEvent } from '../../../shared/conversation/contracts'
 import {
   conversationThreadCommandSchema, type ConversationRuntimeRequest, type ConversationRuntimeRequestResponse,
   type ConversationThreadCommand, type ConversationThreadCommandState, type ConversationThreadEventCursor, type ConversationThreadEventPage,
   type ConversationThreadHistoryCursor, type ConversationThreadHistoryPage, type ConversationThreadSnapshot,
-  type ConversationNativeTerminalEvidence,
+  type ConversationNativeTerminalEvidence, type ConversationProjectedWorkItem,
 } from '../../../shared/conversation/command-runtime'
 
 export interface ConversationRuntimePorts {
@@ -32,8 +43,13 @@ export interface ConversationRuntimePorts {
 }
 
 interface MessageRow { message_id: string; streaming: number; payload_json: string }
-type CommandAuthority = ConversationAuthority & { assertCurrent(): void | Promise<void>; assertSpawnCurrent?(): void }
-interface DriverIdentity { readonly projectId: string; readonly fingerprint: string }
+type CommandAuthority = ConversationAuthority & {
+  readonly taskContext?: string
+  assertCurrent(): void | Promise<void>
+  assertReadable?(): Promise<void>
+  assertSpawnCurrent?(): void
+}
+interface DriverIdentity { readonly projectId: string; readonly fingerprint: string; readonly ordinaryTask: boolean }
 interface ActiveTurn {
   readonly row: ThreadEffectRow
   readonly runId: string
@@ -57,6 +73,8 @@ interface ActiveTurn {
 const failureMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
 const decodeEvent = Schema.decodeUnknownSync(OrchestrationV2DomainEventJson)
 const decodeModelSelection = Schema.decodeUnknownSync(ModelSelection)
+const MAX_WORK_ITEMS_PER_RUN = 48
+const MAX_WORK_ITEM_BYTES_PER_RUN = 24 * 1024
 
 /**
  * The new conversation kernel. It owns its storage and never reads legacy ACP history.
@@ -67,6 +85,7 @@ export class ConversationRuntime {
   private readonly database
   private readonly driverRegistry: ConversationDriverRegistry
   private readonly eventSink: ConversationEventSink
+  private readonly attachments: ConversationAttachmentStore
   private readonly intake: ThreadMessageIntake
   private readonly commands: ThreadCommands
   private readonly worker: ConversationEffectWorker
@@ -85,6 +104,7 @@ export class ConversationRuntime {
   private readonly preparingDrivers = new Map<ConversationDriverSession, number>()
   private readonly uncertainDrivers = new WeakSet<ConversationDriverSession>()
   private readonly closingDrivers = new WeakMap<ConversationDriverSession, Promise<void>>()
+  private readonly verifiedDeletionCloses = new WeakMap<ConversationDriverSession, string>()
   private readonly nativeRequests = new Map<string, { turn: ActiveTurn; nativeRequestId: string }>()
   private readonly unsettledTerminals = new Map<string, { turn: ActiveTurn; detail: string; terminal: ConversationNativeTerminalEvidence }>()
   private readonly shutdownController = new AbortController()
@@ -94,15 +114,16 @@ export class ConversationRuntime {
     this.database = openConversationDatabase(ports.directory)
     this.driverRegistry = ports.driverRegistry ?? conversationDriverRegistry
     this.eventSink = new ConversationEventSink(this.database)
-    this.commands = new ThreadCommands(this.database, this.eventSink)
-    this.intake = new ThreadMessageIntake(this.database, this.eventSink, this.commands)
+    this.attachments = new ConversationAttachmentStore(this.database)
+    this.commands = new ThreadCommands(this.database, this.eventSink, this.attachments)
+    this.intake = new ThreadMessageIntake(this.database, this.eventSink, this.commands, this.attachments)
     this.worker = new ConversationEffectWorker(this.database, this.eventSink)
     this.storageId = (this.database.prepare("SELECT value FROM conversation_meta WHERE key = 'storage_id'").get() as { value: string }).value
     this.deadlines = { open: 30_000, thread: 30_000, turn: 31 * 60_000, control: 15_000, close: 8_000, ...ports.deadlines }
     this.worker.recover()
   }
 
-  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void): Promise<ConversationDriverSession> {
+  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false) {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed while the kernel shuts down.')
     const key = JSON.stringify([registration.instanceId, pathKey(cwd)])
@@ -115,25 +136,31 @@ export class ConversationRuntime {
     }
     assertCurrent()
     assertConfiguration()
+    const owned = this.processes.get(key)
+    if (owned && (this.closingDrivers.has(owned.driver) || this.verifiedDeletionCloses.has(owned.driver))) {
+      throw new DaemonError('E_BUSY', '原引擎的关闭尚未确认完成。')
+    }
+    const reserve = (driver: ConversationDriverSession) => ({ driver, unpin: this.pinPreparation(driver) })
     const ready = this.ready.get(key)
-    if (ready?.projectId === projectId && ready.fingerprint === fingerprint && ready.driver.isAvailable() && !this.uncertainDrivers.has(ready.driver)) return ready.driver
+    if (ready?.projectId === projectId && ready.fingerprint === fingerprint && ready.ordinaryTask === ordinaryTask &&
+      ready.driver.isAvailable() && !this.uncertainDrivers.has(ready.driver)) return reserve(ready.driver)
     const existing = this.driverOpenings.get(key)
     if (existing) {
-      if (existing.projectId !== projectId || existing.fingerprint !== fingerprint) {
+      if (existing.projectId !== projectId || existing.fingerprint !== fingerprint || existing.ordinaryTask !== ordinaryTask) {
         throw new DaemonError('E_BUSY', '原目录或配置的引擎启动尚未结束。')
       }
       const driver = await existing.opening
       assertCurrent()
       assertConfiguration()
-      return driver
+      return reserve(driver)
     }
-    const identity = { projectId, fingerprint }
+    const identity = { projectId, fingerprint, ordinaryTask }
     const opening = Promise.resolve().then(() => this.runOpenDriver(key, cwd, identity, registration, assertConfiguration, assertCurrent))
     this.driverOpenings.set(key, { root: cwd, ...identity, opening })
     const driver = await opening
     assertCurrent()
     assertConfiguration()
-    return driver
+    return reserve(driver)
   }
 
   private configurationFingerprint(registration: ConversationDriverRegistration): string {
@@ -161,6 +188,7 @@ export class ConversationRuntime {
         instanceId: registration.instanceId,
         directory: this.ports.directory,
         cwd,
+        ...(identity.ordinaryTask && { ordinaryTask: true as const }),
         assertCanSpawn: () => {
           this.ports.assertOwner()
           if (this.closing || openPhase === 'abandoned') throw new DaemonError('E_UNAVAILABLE', 'Conversation admission closed while the engine was starting.')
@@ -198,10 +226,23 @@ export class ConversationRuntime {
     }
   }
 
-  private closeOwned(key: string, owned: { root: string; driver: ConversationDriverSession }): Promise<void> {
+  private closeOwned(key: string, owned: { root: string; driver: ConversationDriverSession }, deletion?: {
+    readonly commandId: string
+    verify(): void
+    record(): void
+  }): Promise<void> {
     let closing = this.closingDrivers.get(owned.driver)
     if (!closing) {
-      closing = Promise.resolve().then(() => Effect.runPromise(owned.driver.close())).then(() => {
+      closing = Promise.resolve().then(async () => {
+        deletion?.verify()
+        if (!deletion || this.verifiedDeletionCloses.get(owned.driver) !== deletion.commandId) {
+          await Effect.runPromise(owned.driver.close())
+        }
+        if (deletion) {
+          this.verifiedDeletionCloses.set(owned.driver, deletion.commandId)
+          deletion.record()
+          this.verifiedDeletionCloses.delete(owned.driver)
+        }
         if (this.processes.get(key) === owned) {
           this.processes.delete(key)
           this.ready.delete(key)
@@ -215,13 +256,22 @@ export class ConversationRuntime {
     return awaitDeadline(closing, this.deadlines.close, '关闭原引擎进程')
   }
 
-  async listModels(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void): Promise<readonly ConversationDriverModel[]> {
+  private isOrdinaryTask(authority: Pick<ConversationAuthority, 'binding'>): boolean {
+    return authority.binding.kind === 'task' && authority.binding.mode === 'conversation'
+  }
+
+  private requireDriver(instanceId: string, ordinaryTask: boolean): ConversationDriverRegistration {
     const registration = this.driverRegistry.require(instanceId)
+    if (ordinaryTask && !registration.ordinaryTaskAccess) throw new DaemonError('E_UNAVAILABLE', '此引擎未确认普通任务所需的只读或工具限制。')
+    return registration
+  }
+
+  async listModels(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void, ordinaryTask = false): Promise<readonly ConversationDriverModel[]> {
+    const registration = this.requireDriver(instanceId, ordinaryTask)
     const fingerprint = this.configurationFingerprint(registration)
-    const driver = await this.ensureDriver(cwd, projectId, registration, assertCurrent)
-    assertCurrent()
-    const unpin = this.pinPreparation(driver)
+    const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertCurrent, ordinaryTask)
     try {
+      assertCurrent()
       const models = await this.driverFence.run(assertCurrent, () => runBounded(driver.listModels(), this.deadlines.thread, '读取模型'))
       assertCurrent()
       this.assertDriverFingerprint(instanceId, fingerprint)
@@ -231,16 +281,15 @@ export class ConversationRuntime {
     }
   }
 
-  async describeDriver(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void): Promise<ConversationDriverDescriptor> {
+  async describeDriver(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void, ordinaryTask = false): Promise<ConversationDriverDescriptor> {
     assertCurrent()
-    const registration = this.driverRegistry.require(instanceId)
+    const registration = this.requireDriver(instanceId, ordinaryTask)
     const fingerprint = this.configurationFingerprint(registration)
-    const driver = await this.ensureDriver(cwd, projectId, registration, assertCurrent)
-    assertCurrent()
-    if (!driver.describe) throw new DaemonError('E_UNAVAILABLE', '当前对话驱动没有已验证的能力目录。')
-    const describe = driver.describe.bind(driver)
-    const unpin = this.pinPreparation(driver)
+    const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertCurrent, ordinaryTask)
     try {
+      assertCurrent()
+      if (!driver.describe) throw new DaemonError('E_UNAVAILABLE', '当前对话驱动没有已验证的能力目录。')
+      const describe = driver.describe.bind(driver)
       const result = await this.driverFence.run(assertCurrent, () => runBounded(describe(), this.deadlines.thread, '读取引擎能力'))
       assertCurrent()
       this.assertDriverFingerprint(instanceId, fingerprint)
@@ -250,53 +299,142 @@ export class ConversationRuntime {
     }
   }
 
-  createThread(input: ConversationAuthority & {
+  private async attachmentDraftAuthority(target: ConversationAttachmentDraftTarget, authority: CommandAuthority) {
+    if ((target.requestId === undefined) !== (target.generation === undefined) || (target.requestId && !target.threadId)) {
+      throw new DaemonError('E_INVALID_ARG', '提问附件需要原会话、请求和代次。')
+    }
+    if (target.threadId) await this.assertCurrent(target.threadId, authority)
+    else {
+      await awaitDeadline(Promise.resolve(authority.assertCurrent()), this.deadlines.control, '复核附件草稿授权')
+      this.ports.assertOwner()
+      if (this.closing) throw new DaemonError('E_UNAVAILABLE', '会话内核正在关闭。')
+    }
+    if (target.requestId && target.threadId) {
+      const request = this.commands.request(target.threadId, target.requestId)
+      if (request?.kind !== 'user-input' || request.generation !== target.generation) {
+        throw new DaemonError('E_CONFLICT', '原提问附件草稿已失效。')
+      }
+    }
+    return conversationAttachmentDraftScope(authority, target)
+  }
+
+  async stageAttachment(target: ConversationAttachmentDraftTarget, input: ConversationAttachmentBytesInput, authority: CommandAuthority) {
+    const scope = await this.attachmentDraftAuthority(target, authority)
+    if (target.requestId && target.threadId) {
+      const request = this.commands.request(target.threadId, target.requestId)
+      const bound = this.nativeRequests.get(target.requestId)
+      if (!request || request.status !== 'pending' || !bound || this.activeTurns.get(target.threadId) !== bound.turn || bound.turn.terminal) {
+        throw new DaemonError('E_CONFLICT', '原提问已失效。')
+      }
+      if (request.payload.kind !== 'user-input' || !request.payload.questions.some(question => question.acceptsTextAttachments)) {
+        throw new DaemonError('E_UNAVAILABLE', '原生提问没有支持附件的文本字段。')
+      }
+    }
+    return this.attachments.stageBytes(scope, input, target.requestId ? { totalBytes: ANSWER_ATTACHMENT_MAX_BYTES } : undefined)
+  }
+
+  async listAttachments(target: ConversationAttachmentDraftTarget, authority: CommandAuthority) {
+    const scope = await this.attachmentDraftAuthority(target, authority)
+    return this.attachments.listDraft(scope)
+  }
+
+  async releaseAttachment(target: ConversationAttachmentDraftTarget & { readonly attachmentId: string }, authority: CommandAuthority) {
+    const scope = await this.attachmentDraftAuthority(target, authority)
+    return this.attachments.releaseDraft(scope, target.attachmentId)
+  }
+
+  async readAttachment(input: ConversationAttachmentLocator, authority: CommandAuthority): Promise<ConversationAttachmentContent | null> {
+    this.assertThreadScope(input.threadId, authority)
+    await awaitDeadline(Promise.resolve(authority.assertReadable?.() ?? authority.assertCurrent()), this.deadlines.control, '复核附件读取授权')
+    this.assertThreadScope(input.threadId, authority)
+    return this.attachments.readClaimed({ ownerId: authority.ownerId, spaceId: authority.spaceId, root: authority.cwd }, input)
+  }
+
+  readAttachmentContents(threadId: string, attachments: readonly ChatAttachment[] | undefined, authority: ConversationAuthority): readonly ConversationAttachmentContent[] {
+    if (!attachments?.length) return []
+    this.assertThreadScope(threadId, authority)
+    const limitError = conversationAttachmentLimitError(attachments)
+    if (limitError) throw new DaemonError('E_INVALID_ARG', limitError)
+    const scope = { ownerId: authority.ownerId, spaceId: authority.spaceId, root: authority.cwd }
+    return attachments.map(attachment => {
+      const content = this.attachments.readClaimed(scope, { threadId, attachmentId: attachment.id })
+      if (!content) throw new DaemonError('E_CONFLICT', '找不到原会话附件。')
+      return content
+    })
+  }
+
+  createThread(input: ConversationAuthority & ConversationAttachmentReferences & {
     readonly title?: string
     readonly text: string
     readonly model: string
     readonly instanceId: string
     readonly commandId: string
     readonly messageId?: string
+    readonly options?: ProviderOptionSelections
     readonly assertCurrent: () => void
+    readonly assertAuthorityCurrent?: () => void | Promise<void>
+    readonly assertSpawnCurrent?: () => void
+    readonly taskContext?: string
   }): ConversationCommandState {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed.')
     input.assertCurrent()
-    if (input.binding.kind !== 'personal') throw new DaemonError('E_DENIED', '任务会话须通过受控任务入口。')
+    if (input.binding.kind === 'task' &&
+      (input.binding.mode !== 'conversation' || !input.assertAuthorityCurrent || !input.assertSpawnCurrent)) {
+      throw new DaemonError('E_DENIED', '任务会话须通过受控任务入口。')
+    }
+    if (!input.text.trim() && !input.attachmentIds?.length) throw new DaemonError('E_INVALID_ARG', '请输入文字或添加附件。')
     const existing = this.eventSink.readReceipt(input.commandId)
     const original = existing?.commandType === 'thread.create' &&
       this.commands.hasThread(existing.threadId, input) ? this.database.prepare(`SELECT provider
         FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal = 1`).get(existing.threadId) as { provider: string } | undefined : undefined
     if (existing && !original) throw new DaemonError('E_CONFLICT', '此命令编号已用于另一个请求。')
-    const registration = original ? undefined : this.driverRegistry.require(input.instanceId)
+    const registration = original ? undefined : this.requireDriver(input.instanceId, this.isOrdinaryTask(input))
+    if (registration && input.options?.length && !registration.turnModelOptions) {
+      throw new DaemonError('E_UNAVAILABLE', '此引擎暂不接受回合模型参数。')
+    }
     const driverKind = registration?.driverKind ?? Schema.decodeUnknownSync(ProviderDriverKind)(original?.provider)
     const accepted = this.intake.launchThread({
       projectId: input.projectId, ownerId: input.ownerId, spaceId: input.spaceId, title: input.title ?? '',
-      text: input.text, driverKind, modelSelection: decodeModelSelection({ instanceId: input.instanceId, model: input.model }),
+      text: input.text, driverKind, modelSelection: decodeModelSelection({ instanceId: input.instanceId, model: input.model, options: input.options }),
       commandId: input.commandId, messageId: input.messageId,
-    }, input, registration ? this.configurationFingerprint(registration) : undefined)
+      ...(input.attachmentIds !== undefined ? { attachmentIds: input.attachmentIds, draftId: input.draftId } : {}),
+    }, input, registration ? this.configurationFingerprint(registration) : undefined, registration?.promptAttachments)
     if ('conflict' in accepted) throw new DaemonError('E_CONFLICT', accepted.conflict)
     if (!accepted.committed) return this.commandState(accepted.receipt)
-    this.authorizations.set(input.commandId, input)
-    this.scheduleNext(accepted.receipt.threadId, input)
+    const authority = { ...input, assertCurrent: input.assertAuthorityCurrent ?? input.assertCurrent }
+    this.authorizations.set(input.commandId, authority)
+    this.scheduleNext(accepted.receipt.threadId, authority)
     return { ...accepted.receipt, dispatch: 'accepted' }
   }
 
   async command(input: ConversationThreadCommand, authority: CommandAuthority): Promise<ConversationThreadCommandState> {
     const command = conversationThreadCommandSchema.parse(input)
-    await this.assertCurrent(command.threadId, authority)
+    await this.assertCurrent(command.threadId, authority, command.type === 'thread.delete')
+    if (command.type === 'thread.delete') return this.deleteThread(command, authority)
     const prior = this.commands.replay(command, authority)
     if (prior) return this.withUnsettledTerminal(prior)
+    if (!command.type.startsWith('thread.') && this.commands.isArchived(command.threadId)) {
+      throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+    }
     const active = this.activeTurns.get(command.threadId)
     switch (command.type) {
+      case 'thread.rename':
+      case 'thread.pin':
+      case 'thread.archive':
+        return this.commands.changeThread(command, authority)
       case 'message.dispatch': {
-        const registration = this.driverRegistry.require(command.instanceId)
+        const registration = this.requireDriver(command.instanceId, this.isOrdinaryTask(authority))
+        if (command.options?.length && (!registration.turnModelOptions || command.deliveryIntent === 'steer')) {
+          throw new DaemonError('E_UNAVAILABLE', '此操作无法更改回合模型参数。')
+        }
         const selection = {
           driverKind: registration.driverKind,
-          modelSelection: decodeModelSelection({ instanceId: registration.instanceId, model: command.model }),
+          modelSelection: decodeModelSelection({ instanceId: registration.instanceId, model: command.model, options: command.options }),
           configurationFingerprint: this.configurationFingerprint(registration),
         }
         if (command.deliveryIntent === 'steer') {
+          if (command.attachmentIds?.length) throw new DaemonError('E_UNAVAILABLE', '当前插话入口只支持文字，请把附件加入队列。')
           const turn = this.requireControlTurn(active, 'steerTurn')
           if (turn.configurationFingerprint !== selection.configurationFingerprint) {
             throw new DaemonError('E_CONFLICT', '原回合使用的引擎配置已变化。')
@@ -307,7 +445,7 @@ export class ConversationRuntime {
           this.scheduleControl(command, authority, turn, state.runId)
           return state
         }
-        const receipt = this.commands.appendMessage(command, authority, selection)
+        const receipt = this.commands.appendMessage(command, authority, selection, undefined, registration.promptAttachments)
         this.authorizations.set(command.commandId, authority)
         this.scheduleNext(command.threadId, authority)
         return receipt
@@ -318,7 +456,9 @@ export class ConversationRuntime {
       case 'queued-run.reorder':
       case 'queued-run.cancel': {
         const cancelled = command.type === 'queued-run.cancel' ? this.commands.effectForRun(command.threadId, command.runId) : undefined
-        const receipt = this.commands.queue(command, authority)
+        const edited = command.type === 'queued-run.edit' && command.attachmentIds?.length
+          ? this.commands.requireQueued(command.threadId, command.runId) : undefined
+        const receipt = this.commands.queue(command, authority, edited ? this.driverRegistry.require(edited.provider_instance_id).promptAttachments : undefined)
         if (cancelled) this.authorizations.delete(cancelled.command_id)
         if (command.type === 'queue.resume' || command.type === 'queued-run.start') this.scheduleNext(command.threadId, authority)
         return receipt
@@ -328,6 +468,9 @@ export class ConversationRuntime {
       case 'queued-message.promote-to-steer': {
         const turn = this.requireControlTurn(active, 'steerTurn', command.targetRunId)
         const run = this.commands.requireQueued(command.threadId, command.queuedRunId)
+        if (this.commands.readUserMessage(run.run_id).attachments?.length) {
+          throw new DaemonError('E_UNAVAILABLE', '带附件的队列消息需要独立回合。')
+        }
         const source = this.commands.effectForRun(command.threadId, run.run_id)
         if (!source) throw new DaemonError('E_CONFLICT', '队列项身份已失效。')
         const receipt = this.commands.commit(command, authority, {
@@ -353,12 +496,23 @@ export class ConversationRuntime {
           throw new DaemonError('E_CONFLICT', '原审批或提问已失效。')
         }
         const turn = this.requireControlTurn(active, 'respondToRuntimeRequest', request.runId)
-        this.requestResponse(request, command)
-        const responding = { ...request, status: 'responding' as const }
+        if (this.isOrdinaryTask(authority) && request.kind === 'approval' && command.decision !== 'decline' && command.decision !== 'cancel') {
+          throw new DaemonError('E_DENIED', '普通任务的对话不能批准工具操作。')
+        }
+        const response = this.requestResponse(request, command)
+        const questionId = command.attachmentIds?.length && response.kind === 'user-input'
+          ? this.answerAttachmentQuestion(request, response.answers, command.attachmentQuestionId) : undefined
+        const attachmentClaim = prepareConversationAttachmentClaim(this.attachments, authority, command, command.threadId)
+        assertPromptAttachments(attachmentClaim?.attachments, TEXT_ATTACHMENTS, ANSWER_ATTACHMENT_MAX_BYTES)
+        const responding = {
+          ...request, status: 'responding' as const,
+          responseAttachments: attachmentClaim?.attachments, responseAttachmentQuestionId: questionId,
+        }
         const receipt = this.commands.commit(command, authority, {
           target: { run_id: turn.runId, request_id: request.requestId },
           hostEvents: [lifecycleEvent(command.threadId, { kind: 'request', request: responding }, turn.runId)],
           apply: () => {
+            attachmentClaim?.commit()
             this.commands.writeRequest(command.threadId, responding, turn.hasNativeTurnId ? turn.controlTurnId : null)
             this.commands.insertEffect(command, 'runtime-request.respond', {
               runId: turn.runId, requestId: request.requestId, targetAttemptId: turn.attemptId,
@@ -369,6 +523,117 @@ export class ConversationRuntime {
         return receipt
       }
     }
+  }
+
+  private async deleteThread(
+    command: Extract<ConversationThreadCommand, { type: 'thread.delete' }>, authority: CommandAuthority,
+  ): Promise<ConversationThreadCommandState> {
+    const { threadId, commandId } = command
+    const original = this.commands.replay(command, authority)
+    if (original?.dispatch === 'completed') return original
+    const hasLiveTurn = this.activeTurns.has(threadId)
+    if (original && hasLiveTurn) return original
+    const accepted = original ?? this.commands.changeThread(command, authority, {
+      hasLiveTurn, hasLoadedThread: this.loadedThreads.has(threadId),
+    })
+    let cleanup = this.dispatches.get(commandId)
+    if (!cleanup) {
+      const work = this.cleanDeletedThread(threadId, commandId, authority)
+        .catch(() => {})
+        .finally(() => this.dispatches.delete(commandId))
+      cleanup = { root: authority.cwd, work }
+      this.dispatches.set(commandId, cleanup)
+    }
+    await cleanup.work
+    return this.commands.read(commandId, authority) ?? accepted
+  }
+
+  private async cleanDeletedThread(threadId: string, commandId: string, authority: CommandAuthority): Promise<void> {
+    const loaded = this.loadedThreads.get(threadId)
+    if (!loaded) {
+      completeThreadDeletion(this.database, this.attachments, threadId, commandId)
+      return
+    }
+    const detach = loaded.driver.detachThread
+    const binding = this.database.prepare(`SELECT instance_id, native_thread_id, configuration_fingerprint
+      FROM conversation_v2_native_bindings WHERE thread_id = ?`).get(threadId) as {
+      instance_id: string; native_thread_id: string; configuration_fingerprint: string | null
+    } | undefined
+    if (!binding?.configuration_fingerprint || binding.native_thread_id !== loaded.nativeThreadId) return
+    const { instance_id: instanceId, configuration_fingerprint: fingerprint } = binding
+    const key = JSON.stringify([instanceId, pathKey(authority.cwd)])
+    const owned = this.processes.get(key)
+    if (!owned || owned.driver !== loaded.driver || pathKey(owned.root) !== pathKey(authority.cwd)) return
+    const verify = (): void => {
+      this.assertThreadScope(threadId, authority, true)
+      const ready = this.ready.get(key)
+      if (this.loadedThreads.get(threadId) !== loaded || this.activeTurns.has(threadId)
+        || this.processes.get(key) !== owned || ready?.driver !== loaded.driver
+        || ready.projectId !== authority.projectId || ready.fingerprint !== fingerprint
+        || ready.ordinaryTask !== this.isOrdinaryTask(authority)
+        || [...this.loadedThreads].some(([id, peer]) => id !== threadId
+          && peer.driver === loaded.driver && peer.nativeThreadId === loaded.nativeThreadId)) {
+        throw new DaemonError('E_CONFLICT', '会话原生订阅的归属无法核实。')
+      }
+      this.assertDriverFingerprint(instanceId, fingerprint)
+      if (authority.assertSpawnCurrent) authority.assertSpawnCurrent()
+      else {
+        const current = authority.assertCurrent()
+        if (current) {
+          void current.catch(() => {})
+          throw new DaemonError('E_DENIED', '会话原生解绑缺少同步授权校验。')
+        }
+      }
+    }
+    if (!detach) {
+      await this.assertCurrent(threadId, authority, true)
+      await this.retireDeletedDriver(key, owned, threadId, commandId, loaded.nativeThreadId, verify)
+      await this.assertCurrent(threadId, authority, true)
+      completeThreadDeletion(this.database, this.attachments, threadId, commandId)
+      return
+    }
+    const unpin = this.pinPreparation(loaded.driver)
+    try {
+      await this.assertCurrent(threadId, authority, true)
+      const confirmation = await runBounded(detach.call(loaded.driver, { nativeThreadId: loaded.nativeThreadId, assertCurrent: verify }),
+        this.deadlines.control, '解除原会话订阅', this.shutdownController.signal)
+      await this.assertCurrent(threadId, authority, true)
+      verify()
+      if (recordThreadDeletionDetach(this.database, threadId, commandId, confirmation)) {
+        this.loadedThreads.delete(threadId)
+        completeThreadDeletion(this.database, this.attachments, threadId, commandId)
+      }
+    } finally {
+      unpin()
+    }
+  }
+
+  private async retireDeletedDriver(
+    key: string, owned: { root: string; driver: ConversationDriverSession },
+    threadId: string, commandId: string, nativeThreadId: string, verify: () => void,
+  ): Promise<void> {
+    const { driver, root } = owned
+    if (process.platform !== 'win32' || this.closingDrivers.has(driver)) return
+    const confirmed = this.verifiedDeletionCloses.get(driver)
+    if (confirmed !== commandId && !driver.canConfirmWindowsJobClose?.(nativeThreadId)) return
+    await this.closeOwned(key, owned, {
+      commandId,
+      verify: () => {
+        verify()
+        if (this.driverOpenings.has(key) || this.preparingDrivers.has(driver)
+          || [...this.loadedThreads].some(([id, peer]) => id !== threadId && peer.driver === driver)
+          || [...this.activeTurns.values()].some(turn => turn.driver === driver)
+          || [...this.dispatches].some(([id, dispatch]) => id !== commandId && pathKey(dispatch.root) === pathKey(root))) {
+          throw new DaemonError('E_BUSY', '原引擎仍有其他已加载会话或预占操作。')
+        }
+      },
+      record: () => {
+        this.ports.assertOwner()
+        if (!recordThreadDeletionDetach(this.database, threadId, commandId, 'windowsJobClosed')) {
+          throw new DaemonError('E_UNKNOWN', '原引擎的关闭证据尚未写入删除回执。', 'unknown')
+        }
+      },
+    })
   }
 
   private requireControlTurn(
@@ -444,6 +709,14 @@ export class ConversationRuntime {
     throw new DaemonError('E_INVALID_ARG', '回答不符合原审批或提问的选项。')
   }
 
+  private answerAttachmentQuestion(request: ConversationRuntimeRequest, answers: Readonly<Record<string, unknown>>, requested?: string): string {
+    const supported = request.payload.kind === 'user-input'
+      ? request.payload.questions.filter(question => question.acceptsTextAttachments && typeof answers[question.id] === 'string') : []
+    const question = requested ? supported.find(candidate => candidate.id === requested) : supported.length === 1 ? supported[0] : undefined
+    if (!question) throw new DaemonError('E_UNAVAILABLE', '请为附件选择原生提问中支持附件的文本回答。')
+    return question.id
+  }
+
   private scheduleControl(command: ConversationThreadCommand, authority: CommandAuthority, target: ActiveTurn, steerRunId?: string): void {
     const turn = this.activeTurns.get(command.threadId)
     if (!turn || turn.attemptId !== target.attemptId) return
@@ -483,7 +756,13 @@ export class ConversationRuntime {
         if (!request || request.status !== 'responding' || !bound || bound.turn !== turn || request.generation !== command.generation) {
           throw new DaemonError('E_CONFLICT', '原审批或提问已不再可操作。')
         }
-        const response = this.requestResponse(request, command)
+        let response = this.requestResponse(request, command)
+        if (request.responseAttachments?.length && response.kind === 'user-input') {
+          const questionId = this.answerAttachmentQuestion(request, response.answers, request.responseAttachmentQuestionId)
+          const contents = this.readAttachmentContents(threadId, request.responseAttachments, authority)
+          for (const content of contents) nativeTextAttachment(content)
+          response = { ...response, attachments: { questionId, contents } }
+        }
         const respond = turn.driver.respondToRuntimeRequest.bind(turn.driver)
         invoke = () => respond({ ...input, nativeRequestId: bound.nativeRequestId, response })
       }
@@ -575,16 +854,16 @@ export class ConversationRuntime {
     this.dispatches.set(commandId, { root: authority.cwd, work })
   }
 
-  private async assertCurrent(threadId: string, authority: CommandAuthority): Promise<void> {
-    this.assertThreadScope(threadId, authority)
+  private async assertCurrent(threadId: string, authority: CommandAuthority, includeDeleted = false): Promise<void> {
+    this.assertThreadScope(threadId, authority, includeDeleted)
     await awaitDeadline(Promise.resolve(authority.assertCurrent()), this.deadlines.control, '复核工程授权')
-    this.assertThreadScope(threadId, authority)
+    this.assertThreadScope(threadId, authority, includeDeleted)
   }
 
-  private assertThreadScope(threadId: string, authority: ConversationAuthority): void {
+  private assertThreadScope(threadId: string, authority: ConversationAuthority, includeDeleted = false): void {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', '会话内核正在关闭。')
-    if (!this.commands.hasThread(threadId, authority)) throw new DaemonError('E_DENIED', '此会话不在当前授权范围。')
+    if (!this.commands.hasThread(threadId, authority, includeDeleted)) throw new DaemonError('E_DENIED', '此会话不在当前授权范围。')
   }
 
   private assertSpawnAuthority(threadId: string, authority: CommandAuthority): void {
@@ -666,8 +945,16 @@ export class ConversationRuntime {
       this.worker.assertAttempt(row, attemptId)
       const run = this.commands.run(threadId, runId)
       if (!run) throw new Error('The accepted run is missing.')
-      const selection = (JSON.parse(run.payload_json) as { modelSelection: { instanceId: string; model: string } }).modelSelection
-      const registration = this.driverRegistry.require(selection.instanceId)
+      const selection = decodeModelSelection(JSON.parse(run.payload_json).modelSelection)
+      const ordinaryTask = this.isOrdinaryTask(authority)
+      const registration = this.requireDriver(selection.instanceId, ordinaryTask)
+      const message = this.commands.readUserMessage(runId)
+      assertPromptAttachments(message.attachments, registration.promptAttachments)
+      const attachments = this.readAttachmentContents(threadId, message.attachments, authority)
+      for (const content of attachments) if (content.attachment.type === 'file') nativeTextAttachment(content)
+      if (selection.options?.length && !registration.turnModelOptions) {
+        throw new ConversationTurnRejectedError('原引擎已无法应用排队回合的模型参数。')
+      }
       const expectedFingerprint = this.configurationFingerprint(registration)
       const admittedFingerprint = this.worker.configurationFingerprint(row)
       if (admittedFingerprint && admittedFingerprint !== expectedFingerprint) {
@@ -679,15 +966,20 @@ export class ConversationRuntime {
         this.assertDriverFingerprint(selection.instanceId, expectedFingerprint)
         this.worker.assertAttempt(row, attemptId)
       }
-      const driver = await this.ensureDriver(cwd, projectId, registration, fence)
-      unpin = this.pinPreparation(driver)
+      const reservation = await this.ensureDriver(cwd, projectId, registration, fence, ordinaryTask)
+      const { driver } = reservation
+      unpin = reservation.unpin
       await this.assertCurrent(threadId, authority)
       fence()
+      if (message.attachments?.length) driver.validatePromptAttachments?.(message.attachments)
       const nativeThreadId = await this.driverFence.run(fence, () =>
         this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver))
       await this.assertCurrent(threadId, authority)
       fence()
-      const prompt = this.commands.readUserMessage(runId).text
+      const { text } = message
+      const prompt = run.ordinal === 1 && ordinaryTask && authority.taskContext
+        ? `以下是原团队任务的固定材料摘要。\n\n${authority.taskContext}\n\n用户消息\n${text}`
+        : text
       const startedAt = new Date().toISOString()
       const payload = { ...JSON.parse(run.payload_json), status: 'running', providerThreadId: nativeThreadId, startedAt }
       this.worker.markDispatched(row, attemptId, nativeThreadId, () => {
@@ -707,7 +999,9 @@ export class ConversationRuntime {
       unpin = undefined
       const acceptedTurnId = await this.driverFence.run(fence, () => runBounded(
         driver.startTurn(nativeThreadId, cwd, prompt, selection.model, event => this.observeTurn(active, event), {
-          requestId: row.command_id, assertCurrent: fence,
+          requestId: row.command_id, modelOptions: selection.options, assertCurrent: fence,
+          ...(ordinaryTask && { assertAuthorized: () => this.assertCurrent(threadId, authority) }),
+          ...(attachments.length ? { attachments } : {}),
         }),
         this.deadlines.turn, '等待原回合结束', this.shutdownController.signal,
       ))
@@ -744,12 +1038,19 @@ export class ConversationRuntime {
     if (this.closing || !event.turnId || event.turnId.length > 512 || this.activeTurns.get(row.thread_id) !== turn || !this.worker.canObserve(row, turn.attemptId)) return
     this.ports.assertOwner()
     if (turn.controlTurnId && turn.controlTurnId !== event.turnId) return
+    const state = this.worker.attempt(row.effect_id)
+    if (!state) return
+    if (event.type === 'work-item') {
+      if (event.turnIdSource !== 'host' && !state.foreground_ended &&
+        state.provider_thread_id === turn.nativeThreadId && state.native_turn_id === event.turnId) {
+        this.applyWorkItem(turn, event.turnId, event.item)
+      }
+      return
+    }
     turn.controlTurnId = event.turnId
     turn.signalControlTurn?.(event.turnId)
     turn.hasNativeTurnId ??= event.turnIdSource !== 'host'
     const nativeTurnId = turn.hasNativeTurnId ? event.turnId : undefined
-    const state = this.worker.attempt(row.effect_id)
-    if (!state) return
     if (event.type === 'turn-receipt' || event.type === 'turn-accepted') {
       const accepted = event.type === 'turn-accepted'
       this.recordTurnEvidence(row.thread_id, runId, {
@@ -802,6 +1103,68 @@ export class ConversationRuntime {
       turn.terminalObservedAt ??= new Date().toISOString()
       if (state.phase === 'unknown' || state.foreground_ended) this.finishForeground(turn)
     }
+  }
+
+  private applyWorkItem(turn: ActiveTurn, nativeTurnId: string, item: ConversationDriverWorkItem): void {
+    const { row: { thread_id: threadId }, runId, attemptId } = turn
+    const nativeItemId = item.kind === 'plan-steps' ? null : item.nativeItemId
+    if (nativeItemId !== null && (!nativeItemId || nativeItemId.length > 512 ||
+      nativeItemId !== nativeItemId.trim() || /[\u0000-\u001f\u007f]/.test(nativeItemId))) return
+    const binding = createHash('sha256').update(JSON.stringify([attemptId, nativeTurnId])).digest('hex')
+    const identity = createHash('sha256').update(JSON.stringify([threadId, runId, binding, item.kind, nativeItemId])).digest('hex')
+    const id = `work_${identity}`
+    const existing = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_turn_items
+      WHERE turn_item_id = ? AND thread_id = ? AND run_id = ?`)
+      .get(id, threadId, runId) as { payload_json: string } | undefined
+    const previous: ConversationProjectedWorkItem | undefined = existing && JSON.parse(existing.payload_json)
+    const occurredAt = new Date().toISOString()
+    const clip = (text: string, limit: number): string =>
+      text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, limit).trimEnd()
+    const preceding = previous?.ordinal ?? (this.database.prepare(`SELECT COALESCE(MAX(ordinal) + 1, 0) AS ordinal
+      FROM conversation_v2_projection_turn_items WHERE thread_id = ?`).get(threadId) as { ordinal: number }).ordinal
+    const status = item.kind === 'tool' ? item.status : 'completed'
+    if (previous?.type === 'dynamic_tool' && previous.status !== 'running' && previous.status !== status) return
+    const base = {
+      id, runId, threadId, nodeId: null, providerThreadId: null, providerTurnId: null, parentItemId: null,
+      nativeItemRef: {
+        driver: 'codex', nativeId: nativeItemId,
+        strength: nativeItemId === null ? 'weak' as const : 'strong' as const,
+        fingerprint: binding,
+      },
+      ordinal: preceding, status, startedAt: previous?.startedAt ?? occurredAt,
+      completedAt: status === 'running' ? null : previous?.completedAt ?? occurredAt,
+      updatedAt: occurredAt,
+    }
+    let payload: ConversationProjectedWorkItem
+    if (item.kind === 'tool') {
+      const label = clip(item.label, 80)
+      if (!label) return
+      payload = { ...base, type: 'dynamic_tool', title: label, toolName: label, input: null }
+    } else if (item.kind === 'proposed-plan') {
+      const markdown = clip(item.markdown, 8_000)
+      if (!markdown) return
+      payload = { ...base, type: 'proposed_plan', title: '计划建议', planId: id, markdown, streaming: false }
+    } else {
+      const explanation = item.explanation && clip(item.explanation, 1_000)
+      payload = { ...base, type: 'todo_list', title: '计划', planId: id, ...(explanation && { explanation }),
+        steps: item.steps.slice(0, 24).map((step, index) => ({
+          id: `step-${index + 1}`, text: clip(step.text, 240) || `步骤 ${index + 1}`, status: step.status,
+        })) }
+    }
+    if (previous && JSON.stringify({ ...payload, updatedAt: previous.updatedAt }) === existing?.payload_json) return
+    const stored = JSON.stringify(payload)
+    const budget = this.database.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(length(CAST(payload_json AS BLOB))), 0) AS bytes
+      FROM conversation_v2_projection_turn_items WHERE run_id = ? AND turn_item_id <> ?`)
+      .get(runId, id) as { count: number; bytes: number }
+    if (budget.count >= MAX_WORK_ITEMS_PER_RUN || budget.bytes + Buffer.byteLength(stored) > MAX_WORK_ITEM_BYTES_PER_RUN) return
+    const event = decodeEvent({ id: randomUUID(), threadId, runId, occurredAt, type: 'turn-item.updated', payload })
+    this.eventSink.commit({ events: [event] }, () => {
+      this.database.prepare(`INSERT INTO conversation_v2_projection_turn_items
+        (turn_item_id, thread_id, run_id, provider_turn_id, ordinal, type, status, updated_at, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(turn_item_id) DO UPDATE SET
+          provider_turn_id = excluded.provider_turn_id, status = excluded.status, updated_at = excluded.updated_at, payload_json = excluded.payload_json`)
+        .run(id, threadId, runId, payload.providerTurnId, payload.ordinal, payload.type, status, occurredAt, stored)
+    })
   }
 
   private finishForeground(turn: ActiveTurn): void {
@@ -1013,9 +1376,9 @@ export class ConversationRuntime {
 
 
 
-  listThreads(ownerId: string, spaceId: string, projectId: string): unknown {
+  listThreads(ownerId: string, spaceId: string, projectId: string, filter?: { archived?: boolean; query?: string }) {
     this.ports.assertOwner()
-    return this.intake.listThreads(ownerId, spaceId, projectId)
+    return this.intake.listThreads(ownerId, spaceId, projectId, filter)
   }
 
   readThread(threadId: string, ownerId: string, spaceId: string, projectId: string): ConversationThreadSnapshot | null {
@@ -1090,8 +1453,13 @@ export class ConversationRuntime {
 
   private historyPage(threadId: string, result: ReturnType<ThreadMessageIntake['readHistory']>): ConversationThreadHistoryPage {
     const earliest = result.runs[0]?.ordinal
+    const runIds = result.runs.map(run => run.id)
+    const rows = runIds.length ? this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_turn_items
+      WHERE thread_id = ? AND run_id IN (${runIds.map(() => '?').join(',')}) AND type IN ('dynamic_tool', 'proposed_plan', 'todo_list')
+      ORDER BY ordinal, turn_item_id`).all(threadId, ...runIds) : []
     return {
       runs: result.runs, messages: result.messages,
+      turnItems: rows.map(row => JSON.parse(String(row.payload_json)) as ConversationProjectedWorkItem),
       historyCursor: result.hasOlder && earliest !== undefined ? { storageId: this.storageId, threadId, beforeRunOrdinal: earliest } : null,
     }
   }

@@ -11,10 +11,11 @@ import type { ConversationDriverDescriptor } from '../../../../../shared/convers
 import { DaemonError } from '../../../../daemon/errors'
 import { spawnCodexOwnedProcess, type CodexOwnedProcess } from '../codex/process-owner'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported } from '../core/catalog'
+import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-input'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverSession, type ConversationDriverOpenInput, type ConversationResumeThreadInput,
-  type ConversationInterruptTurnInput, type ConversationDriverEventListener,
+  type ConversationInterruptTurnInput, type ConversationDriverEventListener, type ConversationStartTurnContext,
 } from '../registry'
 
 const asError = (error: unknown): Error => error instanceof Error ? error : new Error(String(error))
@@ -240,6 +241,10 @@ class ClaudeThread {
     try { this.query.close() }
     finally { await this.transport()?.close() }
   }
+
+  hasOwnedTransport(): boolean {
+    return this.transport() !== undefined
+  }
 }
 
 export class ClaudeDriver implements ConversationDriverSession {
@@ -390,17 +395,27 @@ export class ClaudeDriver implements ConversationDriverSession {
   readonly resumeThread = ({ nativeThreadId, cwd, model }: ConversationResumeThreadInput) =>
     run(() => this.ensure(nativeThreadId, model, cwd, true))
 
-  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener) => run(async () => {
+  readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener, context?: ConversationStartTurnContext) => run(async () => {
     this.assertCurrent(cwd)
     const thread = this.threads.get(id)
     if (!thread || thread.ended || thread.active || thread.control) throw new ConversationTurnRejectedError('Claude 原会话没有可用回合。')
     if (thread.model !== model) throw new ConversationTurnRejectedError('Claude 当前原生会话未绑定所选模型。')
+    let content: SDKUserMessage['message']['content'] = text
+    if (context?.attachments?.length) {
+      try {
+        content = [{ type: 'text', text }, ...context.attachments.map(attachment => {
+          if (attachment.attachment.type !== 'image') return { type: 'text' as const, text: nativeTextAttachment(attachment) }
+          const { mimeType, data } = nativeImageAttachment(attachment)
+          return { type: 'image' as const, source: { type: 'base64' as const, media_type: mimeType, data } }
+        })]
+      } catch (cause) { throw new ConversationTurnRejectedError(asError(cause).message, { cause }) }
+    }
     const uuid = randomUUID()
     let active: Turn | undefined
     const settled = new Promise<void>((resolve, reject) => {
       active = { id: uuid, publish, accepted: false, interruptionRequested: false, interruptionObserved: false, item: undefined, done: error => error ? reject(error) : resolve() }
       thread.active = active
-      thread.input.send({ type: 'user', uuid, session_id: id, message: { role: 'user', content: text }, parent_tool_use_id: null, origin: { kind: 'human' } })
+      thread.input.send({ type: 'user', uuid, session_id: id, message: { role: 'user', content }, parent_tool_use_id: null, origin: { kind: 'human' } })
     })
     try { await deadline(settled, 30 * 60_000, 'Claude 未报告本回合的最终结果。') }
     catch (cause) {
@@ -424,6 +439,11 @@ export class ClaudeDriver implements ConversationDriverSession {
     catch (error) { await this.remove(thread).catch(() => undefined); throw error }
     finally { if (thread.control === control) thread.control = undefined }
   })
+
+  readonly canConfirmWindowsJobClose = (nativeThreadId: string): boolean => {
+    const thread = this.threads.get(nativeThreadId)
+    return process.platform === 'win32' && thread !== undefined && this.allThreads.has(thread) && thread.hasOwnedTransport()
+  }
 
   readonly close = () => run(async () => {
     this.stopped = true

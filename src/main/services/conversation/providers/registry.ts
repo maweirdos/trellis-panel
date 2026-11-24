@@ -1,9 +1,14 @@
 import * as Effect from 'effect/Effect'
 import { ProviderDriverKind, ProviderInstanceId } from '../../../../shared/conversation/providerInstance'
 import type { ProviderApprovalDecision, ProviderUserInputAnswers } from '../../../../shared/conversation/providerPolicy'
+import type { ProviderOptionSelections } from '../../../../shared/conversation/model'
+import type { ConversationAttachmentContent } from '../../../../shared/conversation/attachments'
+import type { ChatAttachment } from '../../../../shared/conversation/chatAttachment'
+import type { ConversationRuntimeQuestion } from '../../../../shared/conversation/command-runtime'
 import { DaemonError } from '../../../daemon/errors'
 import type { ConversationDriverDescriptor, ConversationDriverModel } from '../../../../shared/conversation/driverCatalog'
 import type { ProviderAdapterV2, ProviderAdapterV2Event } from './core/ProviderAdapter'
+import { RASTER_ATTACHMENTS, type ConversationPromptAttachmentSupport } from './core/attachment-input'
 import { codexConfigurationKey } from './codex/driver'
 import { claudeConfigurationKey } from './claude/ClaudeAdapterV2'
 import { openCodeConfigurationKey } from './opencode/OpenCode2Server'
@@ -31,7 +36,9 @@ export interface ConversationSteerTurnInput extends ConversationInterruptTurnInp
 
 export type ConversationRuntimeResponse =
   | { readonly kind: 'approval'; readonly decision: ProviderApprovalDecision; readonly feedback?: string }
-  | { readonly kind: 'user-input'; readonly answers: ProviderUserInputAnswers }
+  | { readonly kind: 'user-input'; readonly answers: ProviderUserInputAnswers; readonly attachments?: {
+      readonly questionId: string; readonly contents: readonly ConversationAttachmentContent[]
+    } }
 
 export interface ConversationRespondToRuntimeRequestInput extends ConversationInterruptTurnInput {
   readonly nativeRequestId: string
@@ -40,7 +47,25 @@ export interface ConversationRespondToRuntimeRequestInput extends ConversationIn
 
 export type ConversationDriverRuntimeRequest =
   | { readonly kind: 'approval'; readonly title: string; readonly details?: string; readonly options: readonly { readonly decision: ProviderApprovalDecision; readonly label: string; readonly optionId?: string }[] }
-  | { readonly kind: 'user-input'; readonly title: string; readonly questions: readonly { readonly id: string; readonly prompt: string; readonly choices?: readonly { readonly value: string; readonly label: string }[] }[] }
+  | { readonly kind: 'user-input'; readonly title: string; readonly questions: readonly ConversationRuntimeQuestion[] }
+
+export type ConversationDriverWorkItem =
+  | {
+      readonly kind: 'tool'
+      readonly nativeItemId: string
+      readonly label: string
+      readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
+    }
+  | {
+      readonly kind: 'proposed-plan'
+      readonly nativeItemId: string
+      readonly markdown: string
+    }
+  | {
+      readonly kind: 'plan-steps'
+      readonly steps: ReadonlyArray<{ readonly text: string; readonly status: 'pending' | 'running' | 'completed' }>
+      readonly explanation?: string
+    }
 
 /** The callback is scoped to its native thread. Its first nonempty text event is the first response evidence. */
 export type ConversationDriverTurnEvent = { readonly turnId: string; readonly turnIdSource?: 'native' | 'host' } & (
@@ -50,22 +75,31 @@ export type ConversationDriverTurnEvent = { readonly turnId: string; readonly tu
   | { readonly type: 'turn-completed'; readonly status: ProviderTurnStatus; readonly error?: string }
   | { readonly type: 'runtime-request'; readonly nativeRequestId: string; readonly request: ConversationDriverRuntimeRequest }
   | { readonly type: 'background-work'; readonly pending: boolean; readonly nativeWorkId?: string }
+  | { readonly type: 'work-item'; readonly item: ConversationDriverWorkItem }
 )
 
 export type ConversationDriverEventListener = (event: ConversationDriverTurnEvent) => void
 
 export interface ConversationStartTurnContext {
   readonly requestId: string
+  readonly modelOptions?: ProviderOptionSelections
+  readonly attachments?: readonly ConversationAttachmentContent[]
+  assertAuthorized?(): Promise<void>
   assertCurrent(): void
 }
+
+export type ConversationThreadDetachConfirmation = 'unsubscribed' | 'notSubscribed' | 'notLoaded'
 
 export interface ConversationDriverSession {
   isAvailable(): boolean
   close(): Effect.Effect<void, Error>
   listModels(): Effect.Effect<readonly ConversationDriverModel[], Error>
   describe?(): Effect.Effect<ConversationDriverDescriptor, Error>
+  validatePromptAttachments?(attachments: readonly ChatAttachment[]): void
   startThread(model: string, cwd: string): Effect.Effect<string, Error>
   resumeThread?(input: ConversationResumeThreadInput): Effect.Effect<string, Error>
+  detachThread?(input: { readonly nativeThreadId: string; assertCurrent(): void }): Effect.Effect<ConversationThreadDetachConfirmation, Error>
+  canConfirmWindowsJobClose?(nativeThreadId: string): boolean
   interruptTurn?(input: ConversationInterruptTurnInput): Effect.Effect<void, Error>
   steerTurn?(input: ConversationSteerTurnInput): Effect.Effect<void, Error>
   respondToRuntimeRequest?(input: ConversationRespondToRuntimeRequestInput): Effect.Effect<void, Error>
@@ -77,6 +111,7 @@ export interface ConversationDriverOpenInput {
   readonly directory: string
   readonly cwd: string
   readonly env?: NodeJS.ProcessEnv
+  readonly ordinaryTask?: true
   assertCanSpawn(): void
   onSpawn(session: ConversationDriverSession): void
 }
@@ -85,6 +120,9 @@ export interface ConversationDriverRegistration {
   readonly instanceId: AdapterIdentity['instanceId']
   readonly driverKind: AdapterIdentity['driver']
   readonly configurationKey?: (env?: NodeJS.ProcessEnv) => string
+  readonly turnModelOptions?: true
+  readonly ordinaryTaskAccess?: 'native-read-only' | 'tools-disabled'
+  readonly promptAttachments?: ConversationPromptAttachmentSupport
   readonly open: (input: ConversationDriverOpenInput) => Effect.Effect<ConversationDriverSession, Error>
 }
 
@@ -112,6 +150,9 @@ const codex: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('codex'),
   driverKind: ProviderDriverKind.make('codex'),
   configurationKey: codexConfigurationKey,
+  turnModelOptions: true,
+  ordinaryTaskAccess: 'native-read-only',
+  promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
     try: () => import('./codex/driver'),
     catch: cause => Object.assign(new DaemonError('E_UNAVAILABLE', '无法载入 Codex 对话驱动。'), { cause }),
@@ -122,6 +163,7 @@ const claude: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('claude'),
   driverKind: ProviderDriverKind.make('claudeCode'),
   configurationKey: claudeConfigurationKey,
+  promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
     try: () => import('./claude/ClaudeAdapterV2'),
     catch: cause => Object.assign(new DaemonError('E_UNAVAILABLE', '无法载入 Claude SDK 对话驱动。'), { cause }),
@@ -132,6 +174,8 @@ const opencode: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('opencode'),
   driverKind: ProviderDriverKind.make('opencode'),
   configurationKey: openCodeConfigurationKey,
+  ordinaryTaskAccess: 'tools-disabled',
+  promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
     try: () => import('./opencode/adapter'),
     catch: cause => Object.assign(new DaemonError('E_UNAVAILABLE', '无法载入 OpenCode v2 对话驱动。'), { cause }),
