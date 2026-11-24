@@ -584,6 +584,8 @@ const api = {
   onCliDone: (cb: (e: RunDoneEvent) => void) => subscribe(ipcEvent.cliDone, cb),
 
   conversationWorkRoot: () => ipcRenderer.invoke(ipcInvoke.conversation.workRoot),
+  conversationProjectWorkbench: (input: Parameters<TrellisApi['conversationProjectWorkbench']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.projectWorkbench, input),
   conversationTaskScope: (task: Parameters<TrellisApi['conversationTaskScope']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.taskScope, task),
   conversationModels: (cwd: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.models, cwd, ...(task === undefined ? [] : [task])),

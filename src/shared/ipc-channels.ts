@@ -521,6 +521,7 @@ export const ipcInvoke = {
     attachmentList: 'conversation:attachment-list',
     attachmentRelease: 'conversation:attachment-release',
     attachmentRead: 'conversation:attachment-read',
+    projectWorkbench: 'conversation:projectWorkbench',
   },
   acp: {
     agents: 'acp:agents',

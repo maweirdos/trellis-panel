@@ -906,7 +906,8 @@ export class ApplicationRuntime {
       this.emit(entry, 'state')
     })()
   }
-  async stop(root: string, id: string, expectedRunId?: string, expectedServiceUseIds?: string[], nativeCleanupConfirmed = false): Promise<ApplicationResult> {
+  async stop(root: string, id: string, expectedRunId?: string, expectedServiceUseIds?: string[], nativeCleanupConfirmed = false,
+    isCurrent?: AppOperationOptions['isCurrent']): Promise<ApplicationResult> {
     let attempted: RuntimeEntry | undefined
     try {
       const project = await this.project(root)
@@ -918,6 +919,7 @@ export class ApplicationRuntime {
         this.checkRun(entry, expectedRunId)
         if (entry.run?.id !== admittedRunId) throw new AppRuntimeError('排队期间运行实例已变化，请重新核对', IpcErrorCode.Conflict, 'STALE_RUN')
         this.assertTaskImpact(entry, expectedServiceUseIds)
+        if (isCurrent?.() === false) throw new AppRuntimeError('原停止上下文已变化，请回到当前工程重新核对', IpcErrorCode.Conflict)
         await this.stopEntry(entry, project, nativeCleanupConfirmed)
         return { ok: true as const, root: entry.root, app: this.summary(entry) }
       })

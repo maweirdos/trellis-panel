@@ -20,6 +20,7 @@ import { readHostConversationAttachmentFile } from '../services/conversation/att
 import { captureDesktopConversationTask } from '../services/conversation/task-scope'
 import { checkedDirectory, directoryIdentity, ownedDirectory, pathKey } from '../services/private-conversations/files'
 import { captureAppWindowDocument } from '../services/window-navigation'
+import { registerProjectWorkbenchIpc } from './project-workbench'
 import { handle } from './registry'
 
 const rootSchema = workspaceGrantSchema.shape.root.regex(/^[^\u0000-\u001f\u007f]+$/u)
@@ -141,6 +142,7 @@ async function inScope<T extends { ok: boolean }>(scope: ConversationScope, requ
 }
 
 export function registerConversationIpc(getMain: () => BrowserWindow | null): void {
+  registerProjectWorkbenchIpc(getMain, (event, cwd, task) => captureScope(getMain(), event, getMain, cwd, task))
   handle(ipcInvoke.conversation.workRoot, (event, ...args: unknown[]) => {
     const window = getMain()
     if (!window || !captureAppWindowDocument(window, event)) return ipcFail(IpcErrorCode.Denied, '请从应用主页面访问会话。')
