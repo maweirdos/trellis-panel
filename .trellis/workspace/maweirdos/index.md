@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 48
+- **Total Sessions**: 49
 - **Last Active**: 2026-11-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1576 | Active |
+| `journal-1.md` | ~1600 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 49 | 2026-11-24 | T3 会话内核 B/C/D | `c281122`, `52ad4fc`, `080e802` | `codex/team-task-execution` |
 | 48 | 2026-11-24 | A · Code 原生 Codex 首条会话 | `5327d6cc68eb6c41dbfbe5a576c47269c06327b4` | `codex/team-task-execution` |
 | 47 | 2026-11-23 | ACP v2 运行时迁移收尾 | `79fdc9a`, `586bfd8` | `codex/team-task-execution` |
 | 46 | 2026-11-22 | ACP daemon modular split | `b72af9b` | `codex/team-task-execution` |

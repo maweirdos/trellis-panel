@@ -1574,3 +1574,27 @@ T3 ACP v2 客户端接管活路径，规范覆盖发送回执、配置选项、�
 ### Next Steps
 
 - B 命令与队列、C 原生驱动、D 内置 Pi 按依赖并行推进。
+
+
+## Session 49: T3 会话内核 B/C/D
+<!-- trellis-session: v=2 fp=0fcfdfbf84b0061d -->
+
+**Date**: 2026-11-24
+**Task**: T3 会话内核 B/C/D
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+接通原生驱动目录、ACP v2、Pi SDK、持久队列与恢复。Codex 桌面真实回复和原线程重启续聊、Claude 原生回复与恢复、受控 ACP v2 和包内 Pi 已验证。OpenCode 免费路由额度拒绝；真实 Pi、真实模型扩展及隔离安装留待联合验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c281122` | feat(conversation): 接入原生引擎目录和严格 ACP v2 |
+| `52ad4fc` | feat(conversation): 托管 Pi SDK 并保留输入回执 |
+| `080e802` | feat(conversation): 接通持久队列、中断恢复与桌面命令 |
+
+### Status
+
+[OK] **Completed**
