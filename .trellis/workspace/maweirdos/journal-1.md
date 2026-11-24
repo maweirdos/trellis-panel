@@ -1598,3 +1598,31 @@ T3 ACP v2 客户端接管活路径，规范覆盖发送回执、配置选项、�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 50: 统一 Work、Code 和任务对话工作台
+<!-- trellis-session: v=2 fp=c8b3c0109757c8c7 -->
+
+**Date**: 2026-11-24
+**Task**: 统一 Work、Code 和任务对话工作台
+**Branch**: `codex/team-task-execution`
+
+### Summary
+
+Work、Code 和普通团队任务共用新版对话。历史分页与阅读位置、完成后只读重开、真实桌面删除均通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7513f8` | feat(conversation): 统一 Work Code 和任务对话工作台 |
+
+### Testing
+
+- [OK] 真实 Codex Work / Code / 普通任务、孤立任务换代和桌面六档外观
+- [OK] 生产检查全绿，打包版 headless 启停通过，普通话在打包本机 CPU 转写
+- [OK] S1 热发送真实样本和隔离安装仍在整体验收，Windows Job 原凭据 EPERM 的失败现场保留
+
+### Status
+
+[OK] **Completed**
