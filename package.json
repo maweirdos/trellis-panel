@@ -40,7 +40,8 @@
     "autoprefixer": "^10.4.20",
     "electron": "^44.4.3",
     "electron-builder": "26.0.11",
-    "electron-vite": "^5.0.0",
+    "electron-vite": "6.0.0",
+    "esbuild": "0.28.2",
     "postcss": "^8.4.49",
     "resedit": "1.7.2",
     "tailwindcss": "^3.4.17",
@@ -49,12 +50,17 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.321",
     "@earendil-works/pi-coding-agent": "1.4.0",
+    "@floating-ui/dom": "1.8.0",
     "@gitbeaker/requester-utils": "43.8.0",
     "@gitbeaker/rest": "43.8.0",
     "@larksuiteoapi/node-sdk": "1.76.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@octokit/rest": "22.0.1",
+    "@opencode/client": "2.0.28",
+    "@opencode/protocol": "2.0.28",
+    "@opencode/schema": "2.0.28",
     "@tiptap/core": "3.32.2",
     "@tiptap/extension-list": "3.32.2",
     "@tiptap/extension-table": "3.32.2",
@@ -93,5 +99,10 @@
     "undici": "^8.11.0",
     "zod": "^4.6.5",
     "zustand": "^4.5.5"
+  },
+  "overrides": {
+    "@opencode/client@2.0.28": { "effect": "$effect" },
+    "@opencode/protocol@2.0.28": { "effect": "$effect" },
+    "@opencode/schema@2.0.28": { "effect": "$effect" }
   }
 }

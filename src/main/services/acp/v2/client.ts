@@ -178,14 +178,34 @@ export class AcpV2Client {
       })
       return Effect.void
     }))
-    await Effect.runPromise(acp.handleRequestPermission(request =>
+    await Effect.runPromise(acp.handleRequestPermission((request, context) =>
       Effect.tryPromise({
         try: async () => {
           const response = await handlers.onRequest?.({
             method: ACP_V2_METHODS.clientRequestPermission,
+            requestId: context.requestId,
             params: request as unknown as Extract<AcpClientRequest, { method: 'session/request_permission' }>['params'],
           })
           return (response ?? { outcome: { outcome: 'cancelled' } }) as never
+        },
+        catch: error =>
+          new T3AcpRequestError({
+            code: -32603,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            operation: 'handle-request',
+            cause: error,
+          }),
+      }),
+    ))
+    await Effect.runPromise(acp.handleElicitation((request, context) =>
+      Effect.tryPromise({
+        try: async () => {
+          const response = await handlers.onRequest?.({
+            method: ACP_V2_METHODS.clientCreateElicitation,
+            requestId: context.requestId,
+            params: request as unknown as Extract<AcpClientRequest, { method: 'elicitation/create' }>['params'],
+          })
+          return (response ?? { action: 'cancel' }) as never
         },
         catch: error =>
           new T3AcpRequestError({

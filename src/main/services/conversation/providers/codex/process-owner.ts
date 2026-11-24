@@ -10,6 +10,7 @@ import type { AcpProcessLaunch } from '../../../acp/v2'
 import { createAcpJobOwner, isAcpJobOwnerCleaned, recoverAcpJobOwner } from '../../../workcopy-use/acp-jobs'
 
 type CodexProcessOptions = {
+  readonly ownerKind?: 'acp-v2' | 'claude' | 'opencode'
   readonly instanceId: string
   readonly directory: string
   readonly cwd: string
@@ -113,14 +114,15 @@ function readGeneration(pointer: string): string {
 async function spawnWindowsProcess(options: CodexProcessOptions): Promise<CodexOwnedProcess> {
   const directory = realpathSync.native(options.directory)
   const cwd = realpathSync.native(options.cwd)
-  const id = `codex-${createHash('sha256').update(JSON.stringify([options.instanceId, cwd.toLowerCase()])).digest('hex')}`
-  const pointer = join(directory, 'conversation-codex-process-owners', `${id}.json`)
+  const kind = options.ownerKind ?? 'codex'
+  const id = `${kind}-${createHash('sha256').update(JSON.stringify([options.instanceId, cwd.toLowerCase()])).digest('hex')}`
+  const pointer = join(directory, `conversation-${kind}-process-owners`, `${id}.json`)
   const key = pointer.toLowerCase()
   if (windowsOpenings.has(key)) throw new DaemonError('E_CONFLICT', 'Codex app-server 正在为此工作目录启动。')
   windowsOpenings.add(key)
   try {
     await failedStartupCleanups.get(key)?.()
-    const owner: WorkcopyOwner = { kind: 'agent', id, generation: randomUUID(), label: 'Codex app-server' }
+    const owner: WorkcopyOwner = { kind: 'agent', id, generation: randomUUID(), label: kind === 'codex' ? 'Codex app-server' : kind }
     if (existsSync(pointer)) {
       await recoverPrevious(directory, { ...owner, generation: readGeneration(pointer) })
     }

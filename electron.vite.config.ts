@@ -98,12 +98,8 @@ export default defineConfig(({ command }) => ({
       bundleMainWorker('bundle-whiteboard-v2-worker', 'src/main/services/creations/whiteboard-v2-worker.ts', 'whiteboard-v2-worker.js')
     ],
     build: {
-      // electron-vite 5 / vite 8 默认输出 ESM(.mjs)；本项目为 CJS（package.json 无 type:module），
-      // 强制回 CJS 以匹配 out/main/index.js 入口（Electron 44 + CJS 主进程）
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/bootstrap.ts') },
-        // externalizeDepsPlugin v5 仅外置 dependencies；electron 位于 devDependencies，
-        // 不显式 external 会把 npm 包 index.js 打进产物（运行时误触二进制下载逻辑）
         // These sibling bundles are emitted by bundleMainRole in closeBundle.
         // Resolve them from the emitted bootstrap at runtime, not from src/main.
         external: ['electron', './gui.js', './gui-scope.js', './daemon-host.js', './daemon-control.js', './daemon-maintenance.js'],

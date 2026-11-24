@@ -1,6 +1,7 @@
 import type {
   AgentCapabilities,
   CompleteElicitationNotification,
+  CreateElicitationRequest,
   MessageMcpNotification,
   MessageMcpRequest,
   RequestPermissionRequest,
@@ -29,6 +30,7 @@ export const ACP_V2_METHODS = {
   mcpMessage: AGENT_METHODS.mcp_message,
   clientSessionUpdate: CLIENT_METHODS.session_update,
   clientRequestPermission: CLIENT_METHODS.session_request_permission,
+  clientCreateElicitation: CLIENT_METHODS.elicitation_create,
   clientElicitationComplete: CLIENT_METHODS.elicitation_complete,
   protocolCancelRequest: '$/cancel_request',
 } as const
@@ -42,7 +44,8 @@ export type AcpVersionedInitialize = {
 }
 
 export type AcpClientRequest =
-  | { readonly method: typeof ACP_V2_METHODS.clientRequestPermission; readonly params: RequestPermissionRequest }
+  | { readonly method: typeof ACP_V2_METHODS.clientRequestPermission; readonly requestId: string | number | null; readonly params: RequestPermissionRequest }
+  | { readonly method: typeof ACP_V2_METHODS.clientCreateElicitation; readonly requestId: string | number | null; readonly params: CreateElicitationRequest }
   | { readonly method: typeof ACP_V2_METHODS.mcpMessage; readonly params: MessageMcpRequest }
 
 export type AcpClientNotification =

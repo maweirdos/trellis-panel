@@ -54,6 +54,7 @@ asarUnpack:
   - "out/main/*-worker.js"
   - "out/main/daemon-cli.js"
   - "out/main/daemon-host.js"
+  - "node_modules/@anthropic-ai/claude-agent-sdk-win32-*/claude.exe"
 win:
   icon: resources/brand/icon.ico
   target:
