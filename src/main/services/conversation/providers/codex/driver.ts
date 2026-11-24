@@ -124,6 +124,7 @@ export class CodexDriver implements ConversationDriverSession {
           ...launch, instanceId: input.ownerScope === undefined ? input.instanceId : JSON.stringify([input.instanceId, input.ownerScope]),
           directory: input.directory, cwd: input.cwd, assertCanSpawn: input.assertCanSpawn,
           env: { ...environment, CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME },
+          worktreeWriter: input.worktreeWriter,
         }),
         catch: asError,
       })
@@ -290,10 +291,15 @@ export class CodexDriver implements ConversationDriverSession {
       return process.platform === 'win32' ? physical.toLowerCase() === cwd.toLowerCase() : physical === cwd
     }
     const sandbox = response.sandbox
+    const delegatedWriter = this.managedExecution && this.ownerScope?.startsWith('delegated:')
     const scopeConfirmed = this.managedExecution
       ? sandbox.type === 'workspaceWrite' && sandbox.networkAccess !== true && sandbox.excludeSlashTmp === true
         && sandbox.excludeTmpdirEnvVar === true && (sandbox.writableRoots ?? []).every(within)
+        && (!delegatedWriter || sandbox.networkAccess === false)
       : sandbox.type === 'readOnly' && sandbox.networkAccess !== true
+    if (delegatedWriter && sandbox.type === 'readOnly') {
+      throw new DaemonError('E_UNAVAILABLE', 'Codex 返回的是只读沙箱。独立工作树已准备，子回合尚未发送。')
+    }
     if (!within(response.cwd) || !scopeConfirmed || response.approvalPolicy !== 'never' || (expectedId !== undefined && response.thread.id !== expectedId)) {
       throw new Error('Codex 未确认原生会话、物理工程目录或允许的沙箱范围。')
     }

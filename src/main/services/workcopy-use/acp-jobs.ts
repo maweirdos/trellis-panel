@@ -1,6 +1,6 @@
 import { spawn, execFile, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { processOwnerSchema, type ProcessOwner } from '../../../shared/daemon'
@@ -22,6 +22,7 @@ const launchSchema = z.object({ version: z.literal(1), launchId: uuid, nonce: uu
   purpose: z.enum(['agent', 'command-probe']), commandHash: z.string().length(64), state: z.enum(['prepared', 'running', 'cleaned']) }).strict()
 const proofSchema = z.object({ version: z.literal(1), nonce: uuid, launchId: uuid, rootPid: z.number().int().positive(), rootStartedAt: ticks,
   helperPid: z.number().int().positive(), helperStartedAt: ticks }).strict()
+const launchRegistrationSchema = launchSchema.pick({ launchId: true, nonce: true, commandHash: true })
 type OwnerState = z.infer<typeof ownerSchema>
 type LaunchState = z.infer<typeof launchSchema>
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -35,11 +36,26 @@ const nativeHost = (): Promise<ProcessOwner> => hostIdentity ??= processIdentity
 }).catch(error => { hostIdentity = undefined; throw error })
 function ownerDirectory(directory: string, owner: WorkcopyOwner): string { return join(directory, 'acp-jobs', workcopyOwnerKey(owner)) }
 function readOwner(directory: string, owner: WorkcopyOwner): OwnerState | undefined {
-  const file = join(ownerDirectory(directory, owner), 'owner.json')
+  const base = ownerDirectory(directory, owner)
+  const file = join(base, 'owner.json')
   if (!existsSync(file)) return undefined
   const value = ownerSchema.parse(JSON.parse(readBounded(file, 64 * 1024)))
   if (!same(value.owner, owner)) throw new DaemonError('E_DENIED', '原进程 Job 所有者与运行代次不一致。')
-  return value
+  const markers = readdirSync(base).filter(name => /^registered-[a-f0-9-]{36}\.json$/u.test(name))
+  if (!markers.length) return value
+  if (markers.length > 256) throw new DaemonError('E_CONFLICT', '原进程启动登记超出限制。')
+  const registered = markers.map(name => {
+    const file = join(base, name)
+    const stat = lstatSync(file)
+    if (!stat.isFile() || stat.nlink !== 1) throw new DaemonError('E_DENIED', '原启动登记必须是独立普通文件。')
+    const marker = launchRegistrationSchema.parse(JSON.parse(readBounded(file, 4096)))
+    const record = readLaunch(base, marker.launchId)
+    if (name !== `registered-${record.launchId}.json` || marker.nonce !== record.nonce || marker.commandHash !== record.commandHash) {
+      throw new DaemonError('E_DENIED', '原启动登记与 Job 凭据不匹配。')
+    }
+    return marker.launchId
+  })
+  return ownerSchema.parse({ ...value, launches: [...new Set([...value.launches, ...registered])] })
 }
 function readLaunch(base: string, launchId: string): LaunchState {
   uuid.parse(launchId)
@@ -70,12 +86,26 @@ function recordLaunchState(base: string, record: LaunchState, state: 'running' |
   const serialized = JSON.stringify({ ...record, state })
   try { writeAtomic(join(directory, 'owner.json'), serialized, jobRecordWriteOptions); return }
   catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY')) throw error
+    if (!isWindowsRenameBlocked(error)) throw error
   }
   try { writeExclusiveAtomic(join(directory, `${state}.json`), serialized) }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
   if (!readLaunchState(directory, record, state)) throw new DaemonError('E_UNKNOWN', '原进程状态尚未落盘。', 'unknown')
+}
+function isWindowsRenameBlocked(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code
+  return process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY')
+}
+
+function registerLaunch(base: string, owner: OwnerState, record: LaunchState): void {
+  try {
+    writeAtomic(join(base, 'owner.json'), JSON.stringify({ ...owner, launches: [...owner.launches, record.launchId] }), jobRecordWriteOptions)
+  } catch (error) {
+    if (!isWindowsRenameBlocked(error)) throw error
+    const { launchId, nonce, commandHash } = record
+    writeExclusiveAtomic(join(base, `registered-${launchId}.json`), JSON.stringify({ launchId, nonce, commandHash }))
+  }
+  owner.launches.push(record.launchId)
 }
 function checkedSpec(base: string, state: OwnerState, record: LaunchState): string {
   const directory = join(base, record.launchId), file = join(directory, 'launch.json')
@@ -148,8 +178,7 @@ export async function createAcpJobOwner(directory: string, root: string, owner: 
         commandHash: digest([spec.executable, spec.args, spec.root, spec.windowsVerbatimArguments]), state: 'prepared' }
       writeExclusiveAtomic(join(target, 'launch.json'), JSON.stringify(spec))
       writeExclusiveAtomic(join(target, 'owner.json'), JSON.stringify(launchSchema.parse(record)))
-      writeAtomic(join(base, 'owner.json'), JSON.stringify({ ...original, launches: [...original.launches, launch.launchId] }), jobRecordWriteOptions)
-      original.launches.push(launch.launchId)
+      registerLaunch(base, original, record)
       const child = spawn(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher, '-Mode', 'transport', '-SpecPath', join(target, 'launch.json')], {
         cwd: options.cwd, env: options.env, windowsHide: true, stdio: options.stdio
       })

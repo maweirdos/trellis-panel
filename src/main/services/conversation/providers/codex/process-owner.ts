@@ -3,11 +3,17 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
-import type { WorkcopyOwner } from '../../../../../shared/workcopy-use'
+import type { WorkcopyObservation, WorkcopyOwner } from '../../../../../shared/workcopy-use'
 import { DaemonError } from '../../../../daemon/errors'
 import { readBounded, writeAtomic } from '../../../../daemon/files'
 import type { AcpProcessLaunch } from '../../../acp/v2'
 import { createAcpJobOwner, isAcpJobOwnerCleaned, recoverAcpJobOwner } from '../../../workcopy-use/acp-jobs'
+import type { WorkcopyUseRegistry } from '../../../workcopy-use/registry'
+
+export interface CodexWorktreeWriter {
+  readonly registry: WorkcopyUseRegistry
+  readonly expected: WorkcopyObservation
+}
 
 type CodexProcessOptions = {
   readonly ownerKind?: 'acp-v2' | 'claude' | 'opencode'
@@ -17,6 +23,7 @@ type CodexProcessOptions = {
   readonly command: string
   readonly args: readonly string[]
   readonly env: NodeJS.ProcessEnv
+  readonly worktreeWriter?: CodexWorktreeWriter
   readonly assertCanSpawn: () => void
 }
 
@@ -117,6 +124,10 @@ function windowsOwnerScope(directory: string, cwd: string, instanceId: string, k
   return { id, pointer, key: pointer.toLowerCase() }
 }
 
+function releaseWorktreeWriter(registry: WorkcopyUseRegistry, owner: WorkcopyOwner, token: string): void {
+  if (!registry.release({ owner, token, outcome: 'cleanup-confirmed' }).released) throw cleanupUnknown()
+}
+
 export async function reconcileCodexProcessClosed(input: {
   readonly directory: string
   readonly cwd: string
@@ -153,13 +164,29 @@ async function spawnWindowsProcess(options: CodexProcessOptions): Promise<CodexO
     await failedStartupCleanups.get(key)?.()
     const owner: WorkcopyOwner = { kind: 'agent', id, generation: randomUUID(), label: kind === 'codex' ? 'Codex app-server' : kind }
     if (existsSync(pointer)) {
-      await recoverPrevious(directory, { ...owner, generation: readGeneration(pointer) })
+      const previous = { ...owner, generation: readGeneration(pointer) }
+      await recoverPrevious(directory, previous)
+      const registry = options.worktreeWriter?.registry
+      if (registry) {
+        for (const original of registry.agentLeases(cwd, previous.id)) {
+          if (original.owner.generation === previous.generation) releaseWorktreeWriter(registry, previous, original.token)
+        }
+      }
     }
     options.assertCanSpawn()
     const jobs = await createAcpJobOwner(directory, cwd, owner)
+    const writer = options.worktreeWriter
+    let writerToken: string | undefined
     const cleanup = async (): Promise<void> => {
       try { await jobs.cleanupAll() }
-      catch (error) { throw cleanupUnknown(error) }
+      catch (error) {
+        if (writer && writerToken) {
+          try { writer.registry.release({ owner, token: writerToken, outcome: 'unknown' }) }
+          catch {}
+        }
+        throw cleanupUnknown(error)
+      }
+      if (writer && writerToken) releaseWorktreeWriter(writer.registry, owner, writerToken)
       failedStartupCleanups.delete(key)
     }
     try {
@@ -168,6 +195,11 @@ async function spawnWindowsProcess(options: CodexProcessOptions): Promise<CodexO
         throw new DaemonError('E_CONFLICT', 'Codex app-server 启动前工作目录已变化。')
       }
       writeAtomic(pointer, JSON.stringify(owner.generation), { retryWindowsRename: true })
+      if (writer) {
+        writerToken = randomUUID()
+        writer.registry.acquire(cwd, { owner, token: writerToken, expected: writer.expected, kind: 'writer' })
+        options.assertCanSpawn()
+      }
       const launch: AcpProcessLaunch = {
         launchId: randomUUID(),
         purpose: 'agent',
@@ -193,6 +225,7 @@ export async function spawnCodexOwnedProcess(options: CodexProcessOptions): Prom
     throw new DaemonError('E_INVALID_ARG', 'Codex app-server 需要绝对可执行文件路径与工作目录。')
   }
   if (process.platform === 'win32') return spawnWindowsProcess(options)
+  if (options.worktreeWriter) throw new DaemonError('E_UNAVAILABLE', '当前平台没有独立工作树的受管写入进程。')
   const child = spawn(options.command, [...options.args], {
     cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
   })

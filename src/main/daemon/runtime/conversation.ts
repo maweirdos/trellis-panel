@@ -31,6 +31,10 @@ import {
   type ConversationDriverSession, type ConversationDriverTurnEvent, type ConversationDriverWorkItem, type ConversationRuntimeResponse,
 } from '../../services/conversation/providers/registry'
 import { DaemonError } from '../errors'
+import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
+import type { CodexWorktreeWriter } from '../../services/conversation/providers/codex/process-owner'
+import { resolveWorkcopy } from '../../services/workcopy-use/identity'
+import { prepareDelegatedWorktree, recoverDelegatedWorktreePreparation, verifyDelegatedWorktree } from '../../services/conversation/orchestration/DelegatedWorktree'
 import { pathKey } from '../../services/task-conversations/lib/paths'
 import type { ConversationAuthority, ConversationCommandState, ConversationEventPage, ConversationHostEvent, ConversationRunEvidence } from '../../../shared/conversation/desktop'
 import type {
@@ -53,6 +57,7 @@ import {
 export interface ConversationRuntimePorts {
   directory: string
   driverRegistry?: ConversationDriverRegistry
+  workcopies?: WorkcopyUseRegistry
   deadlines?: Partial<{ open: number; thread: number; turn: number; control: number; close: number }>
   assertOwner(): void
 }
@@ -70,6 +75,13 @@ interface DriverIdentity {
   readonly ordinaryTask: boolean
   readonly ownerScope?: string
   readonly managedExecution?: true
+  readonly worktreeWriter?: CodexWorktreeWriter & { readonly projectRoot: string }
+}
+
+interface OwnedDriverSlot {
+  readonly root: string
+  readonly projectRoot?: string
+  readonly driver: ConversationDriverSession
 }
 
 const driverSlotKey = (instanceId: string, cwd: string, ownerScope?: string): string =>
@@ -89,6 +101,7 @@ interface ActiveTurn {
   readonly nativeThreadId: string
   readonly authority: CommandAuthority
   readonly configurationFingerprint: string
+  readonly writerSlot?: string
   readonly completion?: DelegatedCompletionIntent
   completionAccepted?: boolean
   controlTurnId?: string
@@ -128,7 +141,7 @@ export class ConversationRuntime {
   private readonly storageId: string
   private readonly deadlines
   /** Spawned processes by project root; a thread never runs inside another project's process. */
-  private readonly processes = new Map<string, { root: string; driver: ConversationDriverSession }>()
+  private readonly processes = new Map<string, OwnedDriverSlot>()
   /** Drivers whose handshake completed, by project root. */
   private readonly ready = new Map<string, DriverIdentity & { driver: ConversationDriverSession }>()
   private readonly driverOpenings = new Map<string, DriverIdentity & { root: string; opening: Promise<ConversationDriverSession> }>()
@@ -142,6 +155,7 @@ export class ConversationRuntime {
   private readonly closingDrivers = new WeakMap<ConversationDriverSession, Promise<void>>()
   private readonly verifiedDeletionCloses = new WeakMap<ConversationDriverSession, string>()
   private readonly nativeRequests = new Map<string, { turn: ActiveTurn; nativeRequestId: string }>()
+  private readonly worktreePreparations = new Map<string, { runId: string; controller: AbortController }>()
   private readonly idleCompactions = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly delegationCalls = new Map<string, { input: string; result: Promise<ConversationDelegationReply> }>()
   private readonly delegationContinuationParents = new Map<string, ActiveTurn>()
@@ -165,9 +179,27 @@ export class ConversationRuntime {
     this.deadlines = { open: 30_000, thread: 30_000, turn: 31 * 60_000, control: 15_000, close: 8_000, ...ports.deadlines }
     this.worker.recover()
     this.relations.reconcileAfterRecovery(this.eventSink)
+    this.recoverWorktreePreparations()
   }
 
-  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false, ownerScope?: string, managedExecution?: true) {
+  private recoverWorktreePreparations(): void {
+    const registry = this.ports.workcopies
+    if (!registry) return
+    for (const { operationId, parent } of this.delegatedWork.unboundWorktrees()) {
+      const key = `worktree-recovery:${operationId}`
+      const work = Promise.resolve().then(async () => {
+        this.ports.assertOwner()
+        const result = await recoverDelegatedWorktreePreparation({ directory: this.ports.directory, registry, operationId, pinnedParent: parent })
+        if (result && !result.cleanupConfirmed) throw new Error('Worktree cleanup is unconfirmed.')
+      }).catch(() => {
+        process.emitWarning('原委派工作树准备清理待核对，保留原凭据。', { code: 'CRUX_DELEGATED_WORKTREE_RECOVERY' })
+      }).finally(() => this.dispatches.delete(key))
+      this.dispatches.set(key, { root: parent.canonicalRoot, work })
+    }
+  }
+
+  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false,
+    ownerScope?: string, managedExecution?: true, worktreeWriter?: DriverIdentity['worktreeWriter']) {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed while the kernel shuts down.')
     const key = driverSlotKey(registration.instanceId, cwd, ownerScope)
@@ -185,12 +217,15 @@ export class ConversationRuntime {
       throw new DaemonError('E_BUSY', '原引擎的关闭尚未确认完成。')
     }
     const reserve = (driver: ConversationDriverSession) => ({ driver, unpin: this.pinPreparation(driver) })
+    const matches = (identity: DriverIdentity): boolean =>
+      identity.projectId === projectId && identity.fingerprint === fingerprint && identity.ordinaryTask === ordinaryTask &&
+      identity.managedExecution === managedExecution && identity.worktreeWriter?.expected.id === worktreeWriter?.expected.id
     const ready = this.ready.get(key)
-    if (ready?.projectId === projectId && ready.fingerprint === fingerprint && ready.ordinaryTask === ordinaryTask &&
+    if (ready && matches(ready) &&
       ready.driver.isAvailable() && !this.uncertainDrivers.has(ready.driver)) return reserve(ready.driver)
     const existing = this.driverOpenings.get(key)
     if (existing) {
-      if (existing.projectId !== projectId || existing.fingerprint !== fingerprint || existing.ordinaryTask !== ordinaryTask) {
+      if (!matches(existing)) {
         throw new DaemonError('E_BUSY', '原目录或配置的引擎启动尚未结束。')
       }
       const driver = await existing.opening
@@ -198,7 +233,7 @@ export class ConversationRuntime {
       assertConfiguration()
       return reserve(driver)
     }
-    const identity = { projectId, fingerprint, ordinaryTask, ownerScope, managedExecution }
+    const identity = { projectId, fingerprint, ordinaryTask, ownerScope, managedExecution, worktreeWriter }
     const opening = Promise.resolve().then(() => this.runOpenDriver(key, cwd, identity, registration, assertConfiguration, assertCurrent))
     this.driverOpenings.set(key, { root: cwd, ...identity, opening })
     const driver = await opening
@@ -215,7 +250,7 @@ export class ConversationRuntime {
     key: string, cwd: string, identity: DriverIdentity, registration: ConversationDriverRegistration,
     assertConfiguration: () => void, assertCurrent: () => void,
   ): Promise<ConversationDriverSession> {
-    let ownedByOpening: { root: string; driver: ConversationDriverSession } | undefined
+    let ownedByOpening: OwnedDriverSlot | undefined
     let openPhase: 'opening' | 'ready' | 'abandoned' = 'opening'
     try {
       const owned = this.processes.get(key)
@@ -232,6 +267,7 @@ export class ConversationRuntime {
         instanceId: registration.instanceId,
         ownerScope: identity.ownerScope,
         managedExecution: identity.managedExecution,
+        worktreeWriter: identity.worktreeWriter,
         directory: this.ports.directory,
         cwd,
         ...(identity.ordinaryTask && { ordinaryTask: true as const }),
@@ -249,7 +285,7 @@ export class ConversationRuntime {
           }
         },
         onSpawn: spawned => {
-          const slot = { root: cwd, driver: spawned }
+          const slot = { root: cwd, driver: spawned, projectRoot: identity.worktreeWriter?.projectRoot }
           ownedByOpening = slot
           if (this.processes.has(key)) throw new DaemonError('E_BUSY', '引擎目录仍由原进程持有。')
           this.processes.set(key, slot)
@@ -776,9 +812,12 @@ export class ConversationRuntime {
     const { instance_id: instanceId, configuration_fingerprint: fingerprint } = binding
     const restrictedRelation = this.relations.restrictedParent(threadId)
     const scope = restrictedRelation && `${restrictedRelation.kind === 'delegated' ? 'delegated' : 'read-only'}:${restrictedRelation.id}`
-    const key = driverSlotKey(instanceId, authority.cwd, scope)
+    const worktree = restrictedRelation?.access === 'worktree-write' ? this.delegatedWork.worktree(restrictedRelation.id) : undefined
+    if (restrictedRelation?.access === 'worktree-write' && !worktree?.child) return
+    const cwd = worktree?.child?.identity.canonicalRoot ?? authority.cwd
+    const key = driverSlotKey(instanceId, cwd, scope)
     const owned = this.processes.get(key)
-    if (!owned || owned.driver !== loaded.driver || pathKey(owned.root) !== pathKey(authority.cwd)) return
+    if (!owned || owned.driver !== loaded.driver || pathKey(owned.root) !== pathKey(cwd)) return
     const verify = (): void => {
       this.assertThreadScope(threadId, authority, true)
       const ready = this.ready.get(key)
@@ -800,7 +839,7 @@ export class ConversationRuntime {
         }
       }
     }
-    if (!detach) {
+    if (!detach || worktree) {
       await this.assertCurrent(threadId, authority, true)
       await this.retireDeletedDriver(key, owned, threadId, commandId, loaded.nativeThreadId, verify)
       await this.assertCurrent(threadId, authority, true)
@@ -830,7 +869,7 @@ export class ConversationRuntime {
     const { driver, root } = owned
     if (process.platform !== 'win32' || this.closingDrivers.has(driver)) return
     const confirmed = this.verifiedDeletionCloses.get(driver)
-    if (confirmed !== commandId && !driver.canConfirmWindowsJobClose?.(nativeThreadId)) return
+    if (confirmed !== commandId && !this.ready.get(key)?.worktreeWriter && !driver.canConfirmWindowsJobClose?.(nativeThreadId)) return
     await this.closeOwned(key, owned, {
       commandId,
       verify: () => {
@@ -918,6 +957,8 @@ export class ConversationRuntime {
       },
     })
     if (exactTurn) this.clearRequestBindings(exactTurn)
+    const preparation = this.worktreePreparations.get(threadId)
+    if (preparation?.runId === runId) preparation.controller.abort()
     if (wasPending) this.authorizations.delete(source.command_id)
     if (canSubmit) this.scheduleControl(command, authority, exactTurn)
     if (wasPending && childChange && child) this.offerDelegatedCompletionDelivery(child.parentThreadId, child.parentRunId)
@@ -1206,13 +1247,16 @@ export class ConversationRuntime {
     if (!row || row.status !== 'pending' || this.closing || this.commands.nextCommand(row.thread_id, command => this.authorizations.has(command)) !== commandId) return
     const runId = this.worker.runId(row)
     if (!runId) throw new Error('The accepted operation has no run.')
-    const { cwd, projectId } = authority
+    const { cwd: projectRoot, projectId } = authority
+    let cwd = projectRoot
     const threadId = row.thread_id
     const completion = completionIntent(row)
     const attemptId = this.worker.claim(row)
     if (!attemptId) return
     let turn: ActiveTurn | undefined
     let unpin: (() => void) | undefined
+    let writerSlot: string | undefined
+    let preparingWorktree = false
     try {
       await this.assertCurrent(threadId, authority)
       this.worker.assertAttempt(row, attemptId)
@@ -1226,18 +1270,22 @@ export class ConversationRuntime {
       const planning = authority.binding.kind === 'planning' ? authority.binding : undefined
       const related = this.relations.restrictedParent(threadId)
       const restricted = ordinaryTask || Boolean(planning || related)
-      const managedExecution = authority.binding.kind === 'task' && authority.binding.mode === 'execution' ? true : undefined
+      const worktree = related?.access === 'worktree-write' ? this.delegatedWork.worktree(related.id) : undefined
+      const managedExecution = worktree || authority.binding.kind === 'task' && authority.binding.mode === 'execution' ? true : undefined
       const registration = this.requireDriver(selection.instanceId, restricted)
       if (planning && !registration.planningAccess) throw new DaemonError('E_UNAVAILABLE', '此引擎没有原工程只读规划能力。')
       if (managedExecution && !registration.executionAccess) throw new DaemonError('E_UNAVAILABLE', '此引擎没有正式任务托管执行能力。')
+      if (related?.access === 'worktree-write' && (!worktree || !registration.delegatedWorktreeAccess || !this.ports.workcopies)) {
+        throw new DaemonError('E_UNAVAILABLE', '无法核实原委派工作树与引擎的写入能力。')
+      }
       const compaction = compactionFromPayload(run.payload_json)
       const message = compaction ? { text: '', attachments: undefined } : this.commands.readUserMessage(runId)
       assertPromptAttachments(message.attachments, registration.promptAttachments)
       const attachments = this.readAttachmentContents(threadId, message.attachments, authority)
       const knowledge = attachments.flatMap(({ attachment }) => {
-        const source = this.attachments.claimedKnowledge({ ownerId: authority.ownerId, spaceId: authority.spaceId, root: cwd },
+        const source = this.attachments.claimedKnowledge({ ownerId: authority.ownerId, spaceId: authority.spaceId, root: projectRoot },
           { threadId, attachmentId: attachment.id })
-        return source ? [prepareConversationKnowledge(cwd, authority.knowledgePageId, source)] : []
+        return source ? [prepareConversationKnowledge(projectRoot, authority.knowledgePageId, source)] : []
       })
       const assertKnowledgeCurrent = (): void => {
         try { for (const source of knowledge) source.assertCurrent() }
@@ -1258,7 +1306,7 @@ export class ConversationRuntime {
       const histories = [...(intent.portableHistory ?? []), ...(fork ? [fork] : [])]
       for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
       if (!intent.handoff) this.assertNativeBindingConfiguration(threadId, expectedFingerprint)
-      const fence = (): void => {
+      const prepareFence = (): void => {
         this.assertSpawnAuthority(threadId, authority)
         this.assertDriverFingerprint(selection.instanceId, expectedFingerprint)
         this.worker.assertAttempt(row, attemptId)
@@ -1266,7 +1314,41 @@ export class ConversationRuntime {
       }
       const ownerScope = nativeTaskOwnerScope(authority) ?? (related
         ? `${related.kind === 'delegated' ? 'delegated' : 'read-only'}:${related.id}` : undefined)
-      const reservation = await this.ensureDriver(cwd, projectId, registration, fence, restricted, ownerScope, managedExecution)
+      let worktreeWriter: DriverIdentity['worktreeWriter']
+      const registry = this.ports.workcopies
+      if (worktree && related && registry) {
+        if (!worktree.child) {
+          await this.dispatches.get(`worktree-recovery:${related.id}`)?.work
+          prepareFence()
+          preparingWorktree = true
+          const controller = new AbortController()
+          this.worktreePreparations.set(threadId, { runId, controller })
+          const prepared = await prepareDelegatedWorktree({
+            directory: this.ports.directory, registry, operationId: related.id, pinnedParent: worktree.parent, parentRoot: projectRoot,
+            signal: AbortSignal.any([controller.signal, this.shutdownController.signal]), assertCurrent: prepareFence,
+          }).finally(() => this.worktreePreparations.delete(threadId))
+          await this.assertCurrent(threadId, authority)
+          prepareFence()
+          const current = this.relations.delegatedParent(threadId)
+          if (!current || current.id !== related.id) throw new DaemonError('E_CONFLICT', '子会话的原委派绑定已变化。')
+          try {
+            this.delegatedWork.bindWorktree(current, prepared)
+          } catch (cause) {
+            throw Object.assign(new DaemonError('E_UNKNOWN', '工作树已准备，但原会话的绑定写入待核对。', 'unknown'), { cause })
+          }
+          worktree.child = prepared
+          preparingWorktree = false
+        }
+        const observed = verifyDelegatedWorktree(worktree.child)
+        cwd = observed.canonicalRoot
+        worktreeWriter = { registry, projectRoot, expected: { id: observed.id, revision: observed.revision } }
+        writerSlot = driverSlotKey(registration.instanceId, cwd, ownerScope)
+      }
+      const fence = (): void => {
+        prepareFence()
+        if (worktree?.child) verifyDelegatedWorktree(worktree.child)
+      }
+      const reservation = await this.ensureDriver(cwd, projectId, registration, fence, restricted, ownerScope, managedExecution, worktreeWriter)
       const { driver } = reservation
       unpin = reservation.unpin
       await this.assertCurrent(threadId, authority)
@@ -1329,7 +1411,7 @@ export class ConversationRuntime {
       [...(relation?.hostEvents ?? []), ...(handoff ? [lifecycleEvent(threadId, { kind: 'handoff', handoff }, runId, startedAt)] : [])])
       this.loadedThreads.set(threadId, { driver, nativeThreadId })
       const active: ActiveTurn = { row, runId, ordinal: run.ordinal, attemptId, driver, nativeThreadId, authority,
-        configurationFingerprint: expectedFingerprint, completion }
+        configurationFingerprint: expectedFingerprint, completion, writerSlot }
       active.waitForControlTurn = new Promise(resolve => { active.signalControlTurn = resolve })
       turn = active
       this.activeTurns.set(threadId, active)
@@ -1365,6 +1447,8 @@ export class ConversationRuntime {
       if (attempt?.phase === 'unknown' && this.closing) return
       if (turn?.terminal && turn.terminal.status !== 'running') {
         this.finishForeground(turn)
+      } else if ((preparingWorktree || writerSlot) && attempt?.phase === 'preparing' && error instanceof DaemonError && error.outcome === 'unknown') {
+        this.settleUnknown(row, runId, '', new Date().toISOString(), error.message)
       } else if (attempt?.phase === 'dispatching' && (!(error instanceof ConversationTurnRejectedError) || turn?.controlTurnId)) {
         const nativeTurnId = attempt.native_turn_id ?? (error instanceof ConversationTurnOutcomeUnknownError && turn?.hasNativeTurnId !== false ? error.turnId : '')
         this.settleUnknown(row, runId, nativeTurnId, new Date().toISOString(), '引擎派发或本地结算结果待核对。')
@@ -1379,6 +1463,7 @@ export class ConversationRuntime {
       if (this.activeTurns.get(threadId) === turn && this.worker.attempt(row.effect_id)?.phase === 'settled') {
         this.activeTurns.delete(threadId)
       }
+      if (!turn?.background?.size && !turn?.backgroundOverflow) await this.retireWorktreeWriter(writerSlot, turn)
     }
   }
 
@@ -1415,10 +1500,21 @@ export class ConversationRuntime {
       if (call.tool === 'delegate_task' && 'task' in input && !original) {
         const registration = this.requireDriver(selection.instanceId, true)
         if (registration.ordinaryTaskAccess !== 'native-read-only') throw new DaemonError('E_UNAVAILABLE', '原引擎没有可验证的只读子任务配置。')
+        let worktreeParent
+        if (input.isolation === 'worktree') {
+          if (process.platform !== 'win32' || !this.ports.workcopies || !registration.delegatedWorktreeAccess) {
+            throw new DaemonError('E_UNAVAILABLE', '当前引擎没有受管的独立工作树写入能力。')
+          }
+          worktreeParent = resolveWorkcopy(authority.cwd)
+          if (!worktreeParent.repoRoot || !worktreeParent.head || pathKey(worktreeParent.repoRoot) !== pathKey(authority.cwd)) {
+            throw new DaemonError('E_UNAVAILABLE', '独立工作树需要原工程的 Git 根目录和已提交的 HEAD。')
+          }
+          verify()
+        }
         const delegated = this.delegatedWork.request(operationId, {
           threadId, runId, attemptId, nativeThreadId, nativeTurnId: call.nativeTurnId, selection,
           driverKind: registration.driverKind, fingerprint: turn.configurationFingerprint,
-        }, authority, input, intent)
+        }, authority, input, intent, worktreeParent)
         if (delegated.relation.childThreadId) {
           this.authorizations.set(operationId, authority)
           this.scheduleNext(delegated.relation.childThreadId, authority)
@@ -1949,7 +2045,20 @@ export class ConversationRuntime {
     if (turn.backgroundTimeout) clearTimeout(turn.backgroundTimeout)
     this.settleOutcome(row, row.thread_id, runId, status, terminal.error, outboxStatus, new Date().toISOString(), turn)
     if (this.activeTurns.get(row.thread_id) === turn) this.activeTurns.delete(row.thread_id)
+    void this.retireWorktreeWriter(turn.writerSlot, turn)
     if (!this.dispatches.has(row.command_id)) this.scheduleNext(row.thread_id, turn.authority)
+  }
+
+  private async retireWorktreeWriter(slot?: string, turn?: ActiveTurn): Promise<void> {
+    if (!slot) return
+    const owned = this.processes.get(slot)
+    if (!owned || (turn && owned.driver !== turn.driver)) return
+    try {
+      await this.closeOwned(slot, owned)
+      if (turn && this.activeTurns.get(turn.row.thread_id) === turn) this.activeTurns.delete(turn.row.thread_id)
+    } catch {
+      process.emitWarning('独立工作树的原进程尚未确认清理，保留写入登记。', { code: 'CRUX_DELEGATED_WORKTREE_CLEANUP' })
+    }
   }
 
   private expiringRequests(turn: ActiveTurn): ConversationRuntimeRequest[] {
@@ -2291,8 +2400,10 @@ export class ConversationRuntime {
 
   ownsWorkspace(within: (path: string) => boolean): boolean {
     return [...this.dispatches.values()].some(dispatch => within(dispatch.root))
-      || [...this.driverOpenings.values()].some(entry => within(entry.root))
-      || [...this.processes.values()].some(owned => within(owned.root))
+      || [...this.driverOpenings.values()].some(entry => within(entry.root) ||
+        (entry.worktreeWriter !== undefined && within(entry.worktreeWriter.projectRoot)))
+      || [...this.processes.values()].some(owned => within(owned.root) ||
+        (owned.projectRoot !== undefined && within(owned.projectRoot)))
   }
 
   /**

@@ -65,7 +65,11 @@ export async function projectWorkbench(input: ProjectWorkbenchInput, ports: Work
     return snapshot
   }
   const initial = await read()
-  const cwd = await boundWorkbenchRoot(ports.root, initial.thread.worktreePath, projectCurrent)
+  const delegated = initial.relations?.parent?.kind === 'delegated' ? initial.relations.parent : undefined
+  if (delegated?.access === 'worktree-write' && (!delegated.worktreeId || !initial.thread.worktreePath)) {
+    throw new DaemonError('E_UNAVAILABLE', '原子会话的独立工作树尚未准备好。')
+  }
+  const cwd = await boundWorkbenchRoot(ports.root, initial.thread.worktreePath, projectCurrent, delegated?.worktreeId)
   const cwdIdentity = directoryIdentity(cwd)
   const current = (): void => {
     projectCurrent()
@@ -76,7 +80,8 @@ export async function projectWorkbench(input: ProjectWorkbenchInput, ports: Work
     const now = await read()
     if (initial.thread.projectId !== now.thread.projectId || initial.thread.worktreePath !== now.thread.worktreePath ||
         initial.thread.archivedAt?.toString() !== now.thread.archivedAt?.toString() ||
-        pathKey(await boundWorkbenchRoot(ports.root, now.thread.worktreePath, current)) !== pathKey(cwd)) {
+        now.relations?.parent?.worktreeId !== initial.relations?.parent?.worktreeId ||
+        pathKey(await boundWorkbenchRoot(ports.root, now.thread.worktreePath, current, delegated?.worktreeId)) !== pathKey(cwd)) {
       throw new DaemonError('E_CONFLICT', '原会话的工程或工作树绑定已变化。')
     }
     current()
@@ -93,10 +98,10 @@ export async function projectWorkbench(input: ProjectWorkbenchInput, ports: Work
   }
   const write = async (): Promise<void> => {
     const thread = await revalidate()
-    if (ports.task || !ports.canWrite()) throw new DaemonError('E_DENIED', readOnly)
+    if (delegated || ports.task || !ports.canWrite()) throw new DaemonError('E_DENIED', readOnly)
     if (thread.thread.archivedAt) throw new DaemonError('E_DENIED', '请先恢复已归档会话。')
   }
-  const writeCurrent = (): boolean => !ports.task && ports.canWrite() && guard()
+  const writeCurrent = (): boolean => !delegated && !ports.task && ports.canWrite() && guard()
   const status = () => workbenchGitStatus(cwd, current)
   const action = input.action
   const kind = action.kind

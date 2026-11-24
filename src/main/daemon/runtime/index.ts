@@ -155,6 +155,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     directory: ports.directory,
     assertOwner: () => ports.assertOwner(),
     driverRegistry: conversationDrivers,
+    workcopies,
   })
   const managedConversation = managedTaskConversationPort({
     kernel: conversation, drivers: conversationDrivers, adapterVersion: BUILTINS.codex.version,

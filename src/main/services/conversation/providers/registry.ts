@@ -135,6 +135,7 @@ export interface ConversationDriverOpenInput {
   readonly ownerScope?: string
   readonly fingerprintKey?: Buffer
   readonly managedExecution?: true
+  readonly worktreeWriter?: import('./codex/process-owner').CodexWorktreeWriter
   readonly directory: string
   readonly cwd: string
   readonly env?: NodeJS.ProcessEnv
@@ -151,6 +152,7 @@ export interface ConversationDriverRegistration {
   readonly ordinaryTaskAccess?: 'native-read-only' | 'tools-disabled'
   readonly planningAccess?: 'native-read-only'
   readonly executionAccess?: 'native-workspace-write'
+  readonly delegatedWorktreeAccess?: 'native-workspace-write'
   readonly reconcileOwnerClosure?: (input: {
     readonly directory: string; readonly cwd: string; readonly instanceId: string; readonly ownerScope: string
     assertCurrent(): void
@@ -187,6 +189,7 @@ const codex: ConversationDriverRegistration = {
   ordinaryTaskAccess: 'native-read-only',
   planningAccess: 'native-read-only',
   executionAccess: 'native-workspace-write',
+  delegatedWorktreeAccess: 'native-workspace-write',
   reconcileOwnerClosure: reconcileCodexProcessClosed,
   promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({

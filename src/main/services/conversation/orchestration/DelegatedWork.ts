@@ -5,16 +5,19 @@ import { z } from 'zod'
 import { OrchestrationV2DomainEventJson, type ModelSelection, type ProviderDriverKind } from '../../../../shared/conversation/contracts'
 import type { ConversationAuthority } from '../../../../shared/conversation/desktop'
 import type { ConversationDelegationReply, ConversationThreadRelation } from '../../../../shared/conversation/thread-relations'
+import { workcopyIdentitySchema, type WorkcopyIdentity } from '../../../../shared/workcopy-use'
 import { DaemonError } from '../../../daemon/errors'
 import { commandPayloadDigest } from '../persistence/event-store'
 import type { ConversationEventSink } from './EventSink'
 import { lifecycleEvent, type ThreadCommands } from './ThreadCommands'
+import { delegatedWorktreeBindingSchema, type DelegatedWorktreeBinding } from './DelegatedWorktree'
 
 const id = z.string().min(1).max(200)
 const decodeEvent = Schema.decodeUnknownSync(OrchestrationV2DomainEventJson)
 export const delegateTaskArguments = z.strictObject({
   task: z.string().trim().min(1).max(16_000),
   title: z.string().trim().min(1).max(200).optional(),
+  isolation: z.enum(['shared', 'worktree']).optional(),
   mode: z.enum(['async', 'wait']).optional(),
   timeoutMs: z.number().optional(),
 })
@@ -49,7 +52,61 @@ export class DelegatedWork {
     CREATE TABLE IF NOT EXISTS conversation_v2_delegation_authority (
       task_id TEXT PRIMARY KEY REFERENCES conversation_v2_thread_relations(relation_id),
       parent_attempt_id TEXT NOT NULL REFERENCES conversation_v2_dispatch_attempts(attempt_id)
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS conversation_v2_delegated_worktrees (
+      task_id TEXT PRIMARY KEY REFERENCES conversation_v2_thread_relations(relation_id),
+      parent_identity_json TEXT NOT NULL,
+      child_identity_json TEXT
     ) STRICT;`)
+  }
+
+  worktree(taskId: string): { parent: WorkcopyIdentity; child?: DelegatedWorktreeBinding } | undefined {
+    const row = this.database.prepare(`SELECT parent_identity_json, child_identity_json
+      FROM conversation_v2_delegated_worktrees WHERE task_id = ?`).get(taskId) as {
+        parent_identity_json: string; child_identity_json: string | null
+      } | undefined
+    if (!row) return undefined
+    return {
+      parent: workcopyIdentitySchema.parse(JSON.parse(row.parent_identity_json)),
+      child: row.child_identity_json ? delegatedWorktreeBindingSchema.parse(JSON.parse(row.child_identity_json)) : undefined,
+    }
+  }
+
+  unboundWorktrees(): { operationId: string; parent: WorkcopyIdentity }[] {
+    const rows = this.database.prepare(`SELECT worktree.task_id, worktree.parent_identity_json
+      FROM conversation_v2_delegated_worktrees worktree JOIN conversation_v2_effect_outbox effect
+      ON effect.command_id = worktree.task_id AND effect.effect_type = 'provider-turn.start'
+      WHERE worktree.child_identity_json IS NULL AND effect.attempt_count > 0`).all() as {
+        task_id: string; parent_identity_json: string
+      }[]
+    return rows.map(row => ({ operationId: row.task_id, parent: workcopyIdentitySchema.parse(JSON.parse(row.parent_identity_json)) }))
+  }
+
+  bindWorktree(relation: ConversationThreadRelation, binding: DelegatedWorktreeBinding): void {
+    const { id: taskId, childThreadId: threadId } = relation
+    if (!threadId || binding.operationId !== taskId) throw new DaemonError('E_CONFLICT', '工作树不属于原委派。')
+    const child = binding.identity
+    const row = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_threads
+      WHERE thread_id = ? AND deleted_at IS NULL`).get(threadId) as { payload_json: string } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原子会话已不可用。')
+    const occurredAt = new Date().toISOString()
+    const payload = { ...JSON.parse(row.payload_json), worktreePath: child.canonicalRoot, branch: child.branch, updatedAt: occurredAt }
+    const event = decodeEvent({ id: randomUUID(), type: 'thread.metadata-updated', threadId, occurredAt, payload })
+    const updated = { ...relation, worktreeId: child.id, updatedAt: occurredAt }
+    this.sink.commit({ events: [event], hostEvents: [
+      lifecycleEvent(relation.parentThreadId, { kind: 'relation', relation: updated }, relation.parentRunId, occurredAt),
+      lifecycleEvent(threadId, { kind: 'relation', relation: updated }, relation.childRunId, occurredAt),
+    ] }, () => {
+      const bound = this.database.prepare(`UPDATE conversation_v2_delegated_worktrees SET child_identity_json = ?
+        WHERE task_id = ? AND child_identity_json IS NULL AND EXISTS (
+          SELECT 1 FROM conversation_v2_thread_relations WHERE relation_id = ? AND child_thread_id = ?
+        )`).run(JSON.stringify(binding), taskId, taskId, threadId)
+      if (bound.changes !== 1) throw new DaemonError('E_CONFLICT', '原子会话的工作树已经绑定。')
+      this.database.prepare(`UPDATE conversation_v2_projection_threads SET payload_json = ?, updated_at = ?
+        WHERE thread_id = ?`).run(JSON.stringify(payload), occurredAt, threadId)
+      this.database.prepare('UPDATE conversation_v2_thread_relations SET payload_json = ? WHERE relation_id = ?')
+        .run(JSON.stringify(updated), taskId)
+    })
   }
 
   matchesOriginalAttempt(relation: ConversationThreadRelation, attemptId: string): boolean {
@@ -73,7 +130,10 @@ export class DelegatedWork {
   }
 
   request(operationId: string, parent: DelegationParent, authority: ConversationAuthority, input: z.infer<typeof delegateTaskArguments>,
-    intent: unknown) {
+    intent: unknown, worktreeParent?: WorkcopyIdentity) {
+    if ((input.isolation === 'worktree') !== Boolean(worktreeParent)) {
+      throw new DaemonError('E_DENIED', '独立工作树缺少原工程的固定提交。')
+    }
     if (this.database.prepare(`SELECT 1 FROM conversation_v2_thread_relations relation
       LEFT JOIN conversation_v2_projection_threads child ON child.thread_id = relation.child_thread_id
       WHERE relation.parent_thread_id = ? AND (relation.child_thread_id IS NULL OR child.deleted_at IS NULL)
@@ -120,7 +180,7 @@ export class DelegatedWork {
     const relation: ConversationThreadRelation = {
       id: operationId, kind: 'delegated', parentThreadId: parent.threadId, rootThreadId: lineage.rootThreadId,
       parentRunId: parent.runId, parentNodeId, childThreadId, childRunId,
-      title, instanceId, model, status: 'queued', access: 'read-only', createdAt: at, updatedAt: at,
+      title, instanceId, model, status: 'queued', access: worktreeParent ? 'worktree-write' : 'read-only', createdAt: at, updatedAt: at,
       completionWake: input.mode === 'wait' ? 'settled_only' : 'always',
     }
     const reply = { success: true, text: JSON.stringify({ taskId: relation.id, childThreadId, childRunId, status: relation.status }) }
@@ -157,6 +217,8 @@ export class DelegatedWork {
         .run(relation.id, parent.threadId, childThreadId, at, JSON.stringify(relation))
       this.database.prepare(`INSERT INTO conversation_v2_delegation_authority (task_id, parent_attempt_id)
         VALUES (?, ?)`).run(relation.id, parent.attemptId)
+      if (worktreeParent) this.database.prepare(`INSERT INTO conversation_v2_delegated_worktrees (task_id, parent_identity_json)
+        VALUES (?, ?)`).run(relation.id, JSON.stringify(worktreeParent))
       this.writeReply(operationId, intent, reply)
     }, () => {
       this.commands.insertEffect({ threadId: childThreadId, commandId: operationId }, 'provider-turn.start',

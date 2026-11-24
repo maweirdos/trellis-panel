@@ -51,7 +51,8 @@ export interface ConversationThreadRelation {
   readonly title: string
   readonly instanceId: string
   readonly model: string
-  readonly access?: 'read-only'
+  readonly access?: 'read-only' | 'worktree-write'
+  readonly worktreeId?: string
   readonly status: 'idle' | 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled' | 'pending-reconciliation'
   readonly question?: { readonly requestId: string; readonly generation: number; readonly title: string }
   readonly completionWake?: 'always' | 'settled_only'

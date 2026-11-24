@@ -27,14 +27,15 @@ export function overlapsWorkbenchPath(first: string, second: string): boolean {
   return contains(first, second) || contains(second, first)
 }
 
-export async function boundWorkbenchRoot(project: string, worktree: string | null, current: () => void): Promise<string> {
+export async function boundWorkbenchRoot(project: string, worktree: string | null, current: () => void, expectedId?: string): Promise<string> {
   if (!worktree) return project
   const cwd = checkedDirectory(worktree)
   if (pathKey(cwd) === pathKey(project)) throw new DaemonError('E_CONFLICT', '会话工作树与主工程重合。')
   current()
   const original = resolveWorkcopy(project)
   const selected = resolveWorkcopy(cwd)
-  if (!selected.repoRoot || pathKey(selected.repoRoot) !== pathKey(cwd) || !original.commonId || original.commonId !== selected.commonId ||
+  if (expectedId && selected.id !== expectedId || !selected.repoRoot || pathKey(selected.repoRoot) !== pathKey(cwd) ||
+      !original.commonId || original.commonId !== selected.commonId ||
       selected.worktreeGitDir === selected.gitCommonDir ||
       !(await registeredGitWorktrees(cwd)).some(candidate => pathKey(candidate) === pathKey(cwd))) {
     throw new DaemonError('E_DENIED', '无法把会话目录核实为原工程的链接工作树。')

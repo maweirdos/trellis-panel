@@ -13,9 +13,11 @@ const taskId = { type: 'string', minLength: 1, maxLength: 200 } as const
 export const codexDelegationTools: readonly V2ThreadStartParams__DynamicToolSpec[] = [
   {
     type: 'function', name: 'delegate_task',
-    description: 'Start a scoped, read-only child task. Use mode wait only if this turn needs the result. A question or approval ends the wait; timeout leaves the child running.',
+    description: 'Start a scoped child task. Shared is read-only. Choose worktree when the user requests a separate writable checkout. Use mode wait only if this turn needs the result. A question or approval ends the wait; timeout leaves the child running.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['task'], properties: {
       task: { type: 'string', minLength: 1, maxLength: 16_000 }, title: { type: 'string', maxLength: 200 },
+      isolation: { type: 'string', enum: ['shared', 'worktree'], default: 'shared',
+        description: 'Worktree starts from the committed parent revision. Uncommitted changes stay out.' },
       mode: { type: 'string', enum: ['async', 'wait'], default: 'async' },
       timeoutMs: { type: 'number', description: 'Wait mode only. The wait is capped at 45 seconds.' },
     } },
