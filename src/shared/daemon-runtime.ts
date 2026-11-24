@@ -21,6 +21,7 @@ import { conversationModelOptionsSchema, conversationThreadCommandSchema } from 
 import { CONVERSATION_READ_PAGE_LIMIT } from './conversation/desktop'
 import { conversationTaskLocatorSchema } from './conversation/task-scope'
 import { nativeConversationTaskSchema } from './conversation/task-native'
+import { taskPlanningRuntimeBodies } from './conversation/task-planning-runtime'
 import {
   ConversationAttachmentDraftTargetSchema, ConversationAttachmentIdSchema, ConversationAttachmentReadSchema,
   ConversationAttachmentWireStageSchema, conversationAttachmentReferenceFields,
@@ -61,9 +62,14 @@ export const CONVERSATION_RUNTIME_METHODS: ReadonlySet<string> = new Set([
   'runtime.conversationAttachmentList',
   'runtime.conversationAttachmentRelease',
   'runtime.conversationAttachmentRead',
+  'runtime.taskPlanningCatalog',
+  'runtime.taskPlanningLaunch',
+  'runtime.taskPlanningObserve',
+  'runtime.taskPlanningStop',
 ])
 
 export const runtimeBodies = {
+  ...taskPlanningRuntimeBodies,
   'runtime.workflowCutover': nativeWorkflowCutoverRequestSchema,
   'runtime.taskPreparation': nativeTaskPreparationRequestSchema,
   'runtime.taskExecution': nativeTaskExecutionRequestSchema,
@@ -197,6 +203,7 @@ export type ConversationDesktopBody<M extends RuntimeBodyMethod> = Omit<RuntimeB
 export type RuntimeRequest<M extends RuntimeMethod> = z.input<(typeof runtimeRequests)[M]>
 export type RuntimeResult<M extends RuntimeMethod> = z.infer<(typeof runtimeResults)[M]>
 export const RUNTIME_MUTATING_METHODS: readonly RuntimeMethod[] = [
+  'runtime.taskPlanningLaunch', 'runtime.taskPlanningStop',
   'runtime.workflowCutover',
   'runtime.taskPreparation',
   'runtime.taskExecution',

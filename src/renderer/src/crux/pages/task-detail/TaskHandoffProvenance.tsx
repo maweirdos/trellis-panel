@@ -55,7 +55,7 @@ export function TaskHandoffProvenance({ task, source: parentSource, onOpenConver
   }
   return <section className="flex flex-col gap-2" aria-label="交接来源">
     <div className="flex flex-wrap items-center gap-2">
-      {conversationClient() && !onOpenConversation && task.conversations?.filter(link => link.actorId === context.actorId).map(link => <Button key={link.id} size="sm" variant="ghost" disabled={busy} onClick={() => void open('conversation', link.id)}>任务对话 · {link.title}</Button>)}
+      {conversationClient() && !onOpenConversation && task.conversations?.filter(link => link.actorId === context.actorId && !link.id.startsWith('thr_')).map(link => <Button key={link.id} size="sm" variant="ghost" disabled={busy} onClick={() => void open('conversation', link.id)}>任务对话 · {link.title}</Button>)}
       {material ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void open('material')}>交接需求 · {task.handoff?.versionLabel}</Button> :
         task.handoff?.versionLabel && <span className="text-my-sm text-my-secondary">{context.state === 'local' ? '首次正文' : '需求材料待补挂'} · {task.handoff.versionLabel}</span>}
       {task.sharedMaterials?.map(shared => <Button key={`${shared.documentId}:${shared.versionId}`} size="sm" variant="ghost" disabled={busy} onClick={() => void open('material', undefined, shared)}>{shared.title} · {shared.versionLabel}</Button>)}

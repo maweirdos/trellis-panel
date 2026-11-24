@@ -1,6 +1,6 @@
 import { spawn, execFile, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { processOwnerSchema, type ProcessOwner } from '../../../shared/daemon'
@@ -43,9 +43,39 @@ function readOwner(directory: string, owner: WorkcopyOwner): OwnerState | undefi
 }
 function readLaunch(base: string, launchId: string): LaunchState {
   uuid.parse(launchId)
-  const value = launchSchema.parse(JSON.parse(readBounded(join(base, launchId, 'owner.json'), 16 * 1024)))
+  const directory = join(base, launchId)
+  const value = launchSchema.parse(JSON.parse(readBounded(join(directory, 'owner.json'), 16 * 1024)))
   if (value.launchId !== launchId) throw new DaemonError('E_DENIED', '原进程启动见证不匹配。')
-  return value
+  return readLaunchState(directory, value, 'cleaned') ??
+    (value.state === 'cleaned' ? value : readLaunchState(directory, value, 'running') ?? value)
+}
+
+function readLaunchState(directory: string, launch: LaunchState, state: 'running' | 'cleaned'): LaunchState | undefined {
+  const path = join(directory, `${state}.json`)
+  if (!existsSync(path)) return undefined
+  const entry = lstatSync(path)
+  if (!entry.isFile() || entry.isSymbolicLink() || entry.nlink !== 1) {
+    throw new DaemonError('E_DENIED', '原进程状态见证必须是独立普通文件。')
+  }
+  const recorded = launchSchema.parse(JSON.parse(readBounded(path, 16 * 1024)))
+  if (recorded.state !== state || recorded.launchId !== launch.launchId || recorded.nonce !== launch.nonce ||
+    recorded.purpose !== launch.purpose || recorded.commandHash !== launch.commandHash) {
+    throw new DaemonError('E_DENIED', '原进程状态见证与启动凭据不匹配。')
+  }
+  return recorded
+}
+
+function recordLaunchState(base: string, record: LaunchState, state: 'running' | 'cleaned'): void {
+  const directory = join(base, record.launchId)
+  const serialized = JSON.stringify({ ...record, state })
+  try { writeAtomic(join(directory, 'owner.json'), serialized, jobRecordWriteOptions); return }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY')) throw error
+  }
+  try { writeExclusiveAtomic(join(directory, `${state}.json`), serialized) }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
+  if (!readLaunchState(directory, record, state)) throw new DaemonError('E_UNKNOWN', '原进程状态尚未落盘。', 'unknown')
 }
 function checkedSpec(base: string, state: OwnerState, record: LaunchState): string {
   const directory = join(base, record.launchId), file = join(directory, 'launch.json')
@@ -76,7 +106,7 @@ async function cleanLaunch(directory: string, state: OwnerState, launchId: strin
     catch { accept(false) }
   }))
   if (!result) throw new DaemonError('E_UNKNOWN', '原运行 Job 的完整清理尚未确认，原 nonce 和占用已保留，可重试原清理。', 'unknown')
-  writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }), jobRecordWriteOptions)
+  recordLaunchState(base, record, 'cleaned')
 }
 
 export interface AcpJobOwner {
@@ -137,7 +167,7 @@ export async function createAcpJobOwner(directory: string, root: string, owner: 
           if (proof) {
             if (proof.nonce !== record.nonce || proof.launchId !== started.launchId || proof.helperPid !== started.pid) throw new DaemonError('E_DENIED', '原生 kernel 见证不匹配。')
             if (closing || readLaunch(base, started.launchId).state === 'cleaned') throw new DaemonError('E_DENIED', '原生 Job 已关闭，未接纳协议执行。')
-            writeAtomic(join(base, started.launchId, 'owner.json'), JSON.stringify({ ...record, state: 'running' }), jobRecordWriteOptions)
+            recordLaunchState(base, record, 'running')
             return
           }
         }
@@ -175,7 +205,7 @@ export async function recoverAcpJobOwner(directory: string, owner: WorkcopyOwner
   for (const launchId of state.launches) {
     if (state.kernel && kernel && kernelReplaced(state.kernel, kernel)) {
       const base = ownerDirectory(directory, owner), record = readLaunch(base, launchId)
-      writeAtomic(join(base, launchId, 'owner.json'), JSON.stringify({ ...record, state: 'cleaned' }), jobRecordWriteOptions)
+      recordLaunchState(base, record, 'cleaned')
     } else await cleanLaunch(directory, state, launchId)
   }
   return true

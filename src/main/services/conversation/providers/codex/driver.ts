@@ -17,10 +17,12 @@ import * as CodexClient from './app-server/client'
 import { CodexAppServerRequestError } from './app-server/errors'
 import { spawnCodexOwnedProcess, type CodexOwnedProcess } from './process-owner'
 import { resolveNodeRuntime } from '../../../acp/managed-node'
-import { buildCodexTurnStartParams, codexTimestamp, mapCodexTurnStatus, observeCodexTurns } from './CodexAdapterV2'
+import { buildCodexTurnStartParams, codexTimestamp, codexWorkspaceWritePolicy, mapCodexTurnStatus, observeCodexTurns } from './CodexAdapterV2'
+import type { V2ThreadStartResponse__SandboxPolicy } from './app-server/schema'
+import { codexDelegationTools, CodexTurnTools } from './turn-tools'
 import { ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError } from '../registry'
 import type { ConversationDriverEventListener, ConversationDriverModel, ConversationDriverOpenInput, ConversationDriverSession, ConversationDriverTurnEvent } from '../registry'
-import type { ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationStartTurnContext, ConversationSteerTurnInput } from '../registry'
+import type { ConversationCompactThreadInput, ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationStartTurnContext, ConversationSteerTurnInput } from '../registry'
 import type { ConversationDriverDescriptor, ConversationDriverOption, ConversationDriverSkill } from '../../../../../shared/conversation/driverCatalog'
 import { DaemonError } from '../../../../daemon/errors'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type MutableDriverActions } from '../core/catalog'
@@ -28,6 +30,7 @@ import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type Mut
 const CODEX_CLIENT_NAME = 'crux-codex-app-server'
 const TURN_COMPLETION_TIMEOUT = '30 minutes'
 const REQUEST_TIMEOUT = '30 seconds'
+const TURN_EVENT_BUFFER_LIMIT = 256
 const JSON_RPC_PRE_DISPATCH_REJECTIONS = new Set([-32600, -32601, -32602])
 const REASONING_EFFORT = 'reasoningEffort'
 const taskDisabledFeatures = ['apps', 'browser_use', 'browser_use_external', 'in_app_browser', 'computer_use', 'hooks',
@@ -37,10 +40,13 @@ const reasoningEffortLabels: Readonly<Record<string, string>> = {
 }
 
 const asError = (error: unknown): Error => error instanceof Error ? error : new Error(String(error))
+const definitiveStartRejection = (error: unknown): error is CodexAppServerRequestError =>
+  error instanceof CodexAppServerRequestError && (error.operation === 'encode-payload' ||
+    (error.operation === 'receive-response' && JSON_RPC_PRE_DISPATCH_REJECTIONS.has(error.code)))
 const pipeError = (method: 'read' | 'write', cause: unknown): PlatformError =>
   systemError({ _tag: 'Unknown', module: 'CodexAppServer', method, cause })
 
-export function codexConfigurationKey(environment: NodeJS.ProcessEnv = process.env): string {
+export function codexConfigurationKey(environment: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
   const home = environment.CODEX_HOME || join(homedir(), '.codex')
   const artifacts = ['config.toml', 'auth.json'].map(file => {
     try {
@@ -49,7 +55,7 @@ export function codexConfigurationKey(environment: NodeJS.ProcessEnv = process.e
     } catch { return null }
   })
   return driverConfigurationKey([home, artifacts, environment.CODEX_EXECUTABLE, environment.PATH ?? environment.Path,
-    environment.OPENAI_BASE_URL, environment.OPENAI_API_KEY, environment.CODEX_API_KEY])
+    environment.OPENAI_BASE_URL, environment.OPENAI_API_KEY, environment.CODEX_API_KEY], fingerprintKey)
 }
 
 /**
@@ -81,10 +87,19 @@ export const resolveCodexCommand = async (environment: NodeJS.ProcessEnv = proce
 }
 
 /** One app-server process, reused by every thread this host opens. */
+interface ActiveCodexTurn {
+  readonly notify: ConversationDriverEventListener
+  readonly identifyCompaction?: (turnId: string) => void
+  readonly context?: ConversationStartTurnContext
+  turnId?: string
+}
+
 export class CodexDriver implements ConversationDriverSession {
   private client: CodexClient.CodexAppServerClient['Service'] | undefined
   private stopped = false
-  private readonly activeTurns = new Map<string, { notify: ConversationDriverEventListener; turnId?: string }>()
+  private readonly activeTurns = new Map<string, ActiveCodexTurn>()
+  private readonly tools = new CodexTurnTools(threadId => this.activeTurns.get(threadId))
+  private readonly observedTurns = new Map<string, Set<string>>()
   private readonly actions: MutableDriverActions = {}
 
   private constructor(
@@ -94,6 +109,8 @@ export class CodexDriver implements ConversationDriverSession {
     private readonly configurationKey: string,
     private readonly cwd?: string,
     private readonly ordinaryTask = false,
+    private readonly managedExecution = false,
+    private readonly planning = false,
   ) {}
 
   static readonly open = (input: ConversationDriverOpenInput): Effect.Effect<CodexDriver, Error> =>
@@ -104,14 +121,16 @@ export class CodexDriver implements ConversationDriverSession {
       const inputQueue = yield* Queue.unbounded<Uint8Array, PlatformError | Cause.Done>()
       const owned = yield* Effect.tryPromise({
         try: () => spawnCodexOwnedProcess({
-          ...launch, instanceId: input.instanceId, directory: input.directory, cwd: input.cwd, assertCanSpawn: input.assertCanSpawn,
+          ...launch, instanceId: input.ownerScope === undefined ? input.instanceId : JSON.stringify([input.instanceId, input.ownerScope]),
+          directory: input.directory, cwd: input.cwd, assertCanSpawn: input.assertCanSpawn,
           env: { ...environment, CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME },
         }),
         catch: asError,
       })
       const scope = yield* Scope.make()
       const child = owned.child
-      const driver = new CodexDriver(owned, scope, stoppedSignal, codexConfigurationKey(environment), input.cwd, input.ordinaryTask)
+      const driver = new CodexDriver(owned, scope, stoppedSignal, codexConfigurationKey(environment, input.fingerprintKey),
+        input.cwd, input.ordinaryTask, input.managedExecution, input.ownerScope?.startsWith('planning:'))
       let stderr = ''
       child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString('utf8')).slice(-16_384) })
       child.on('error', error => driver.stopTransport(error))
@@ -150,7 +169,10 @@ export class CodexDriver implements ConversationDriverSession {
         Effect.catch(error => Effect.sync(() => driver.stopTransport(asError(error)))),
         Effect.forkIn(scope),
       )
-      yield* observeCodexTurns(client, (threadId, event) => driver.activeTurns.get(threadId)?.notify(event))
+      yield* observeCodexTurns(client, (threadId, event) => driver.activeTurns.get(threadId)?.notify(event),
+        (threadId, turnId) => driver.activeTurns.get(threadId)?.identifyCompaction?.(turnId))
+      yield* client.handleServerRequest('item/tool/call', driver.tools.delegate)
+      yield* client.handleServerRequest('item/tool/requestUserInput', driver.tools.ask)
       yield* driver.guard(client.request('initialize', { clientInfo: { name: CODEX_CLIENT_NAME, title: 'Crux', version: '0.1.0' }, capabilities: { experimentalApi: true } })).pipe(Effect.timeout(REQUEST_TIMEOUT))
       yield* driver.guard(client.notify('initialized', undefined))
       return driver
@@ -247,31 +269,45 @@ export class CodexDriver implements ConversationDriverSession {
         chat: { state: 'verified', source: 'native-catalog', detail: '原生 app-server 已返回模型目录。' },
         steer: { state: 'verified', source: 'host-policy', detail: 'turn/steer 绑定当前原生回合，回执确认目标回合。' },
         planning: hostUnsupported('团队规划的批准工具和项目资料边界尚未接入该入口。'),
-        execution: hostUnsupported('当前 Codex 线程固定为只读模式。'),
+        ...(!this.managedExecution && { execution: hostUnsupported('当前 Codex 线程固定为只读模式。') }),
         toolApproval: hostUnsupported('当前 Codex 线程拒绝临时审批。'),
         ...this.actions,
       }),
     })))
 
   private verifyThread(
-    response: { readonly thread: { readonly id: string }; readonly cwd: string; readonly model: string; readonly sandbox: { readonly type: string }; readonly approvalPolicy: unknown },
+    response: {
+      readonly thread: { readonly id: string }; readonly cwd: string; readonly model: string
+      readonly sandbox: V2ThreadStartResponse__SandboxPolicy; readonly approvalPolicy: unknown
+    },
     model: string,
     cwd: string,
     expectedId?: string,
   ): string {
     if (response.model !== model) throw new Error(`Codex 将 ${model} 解析为 ${response.model}。请选择目录中可用的模型。`)
-    const physicalCwd = realpathSync.native(response.cwd)
-    if ((process.platform === 'win32' ? physicalCwd.toLowerCase() !== cwd.toLowerCase() : physicalCwd !== cwd)
-      || response.sandbox.type !== 'readOnly' || response.approvalPolicy !== 'never'
-      || (expectedId !== undefined && response.thread.id !== expectedId)) {
-      throw new Error('Codex 未确认原生会话身份、工程目录与只读模式。')
+    const within = (path: string): boolean => {
+      const physical = realpathSync.native(path)
+      return process.platform === 'win32' ? physical.toLowerCase() === cwd.toLowerCase() : physical === cwd
     }
-    this.actions.readOnly = { state: 'verified', source: 'native-session', detail: '原生线程确认 readOnly 和 never。' }
+    const sandbox = response.sandbox
+    const scopeConfirmed = this.managedExecution
+      ? sandbox.type === 'workspaceWrite' && sandbox.networkAccess !== true && sandbox.excludeSlashTmp === true
+        && sandbox.excludeTmpdirEnvVar === true && (sandbox.writableRoots ?? []).every(within)
+      : sandbox.type === 'readOnly' && sandbox.networkAccess !== true
+    if (!within(response.cwd) || !scopeConfirmed || response.approvalPolicy !== 'never' || (expectedId !== undefined && response.thread.id !== expectedId)) {
+      throw new Error('Codex 未确认原生会话、物理工程目录或允许的沙箱范围。')
+    }
+    if (this.managedExecution) {
+      this.actions.execution = { state: 'unknown', source: 'native-session', detail: '原生线程确认了工作副本写入范围。实际执行以该任务产生的代码和检查证据为准。' }
+    } else {
+      this.actions.readOnly = { state: 'verified', source: 'native-session', detail: '原生线程确认 readOnly 和 never。' }
+      if (this.ordinaryTask) this.actions.planning = this.actions.readOnly
+    }
     return response.thread.id
   }
 
-  private taskThreadConfig(cwd: string): Effect.Effect<Record<string, boolean | string> | undefined, Error> {
-    if (!this.ordinaryTask) return Effect.succeed(undefined)
+  private taskThreadConfig(cwd: string): Effect.Effect<Record<string, boolean | number | string | string[]> | undefined, Error> {
+    if (!this.ordinaryTask && !this.managedExecution) return Effect.succeed(undefined)
     return this.guard(this.requireClient().request('config/read', { cwd })).pipe(
       Effect.timeout(REQUEST_TIMEOUT),
       Effect.flatMap(({ config }) => Effect.try({
@@ -283,10 +319,21 @@ export class CodexDriver implements ConversationDriverSession {
           const servers = Object.keys(raw ?? {})
           if (servers.some(name => !/^[\w-]+$/.test(name))) throw new DaemonError('E_CONFLICT', 'Codex MCP 工具无法安全禁用。')
           return Object.fromEntries([
-            ...taskDisabledFeatures.map(name => [`features.${name}`, false] as const),
+            ...taskDisabledFeatures.filter(name => !this.managedExecution || name !== 'shell_tool')
+              .map(name => [`features.${name}`, false] as const),
             ...servers.map(name => [`mcp_servers.${name}.enabled`, false] as const),
             ['features.skip_host_skill_discovery', true] as const,
             ['web_search', 'disabled'] as const,
+            ...(this.planning ? [
+              ['project_doc_max_bytes', 0] as const,
+              ['project_doc_fallback_filenames', [] as string[]] as const,
+            ] : []),
+            ...(this.managedExecution ? [
+              ['sandbox_workspace_write.writable_roots', [cwd]] as const,
+              ['sandbox_workspace_write.exclude_tmpdir_env_var', true] as const,
+              ['sandbox_workspace_write.exclude_slash_tmp', true] as const,
+              ['sandbox_workspace_write.network_access', false] as const,
+            ] : []),
           ])
         },
         catch: asError,
@@ -296,7 +343,7 @@ export class CodexDriver implements ConversationDriverSession {
   }
 
   private verifyTaskTools(threadId: string): Effect.Effect<string, Error> {
-    if (!this.ordinaryTask) return Effect.succeed(threadId)
+    if (!this.ordinaryTask && !this.managedExecution) return Effect.succeed(threadId)
     return this.guard(this.requireClient().request('mcpServerStatus/list', { threadId, detail: 'toolsAndAuthOnly', limit: 128 })).pipe(
       Effect.timeout(REQUEST_TIMEOUT),
       Effect.flatMap(result => result.nextCursor || result.data.some(server => server.runtimeStatus !== 'disabled' || Object.keys(server.tools).length)
@@ -309,7 +356,10 @@ export class CodexDriver implements ConversationDriverSession {
   readonly startThread = (model: string, cwd: string): Effect.Effect<string, Error> => {
     const client = this.requireClient()
     return this.taskThreadConfig(cwd).pipe(
-      Effect.flatMap(config => this.guard(client.request('thread/start', { model, cwd, approvalPolicy: 'never', sandbox: 'read-only', ...(config && { config }) }))),
+      Effect.flatMap(config => this.guard(client.request('thread/start', {
+        model, cwd, approvalPolicy: 'never', sandbox: this.managedExecution ? 'workspace-write' : 'read-only', ...(config && { config }),
+        ...(!this.ordinaryTask && !this.managedExecution && { dynamicTools: codexDelegationTools }),
+      }))),
       Effect.timeout(REQUEST_TIMEOUT),
       Effect.flatMap(response => Effect.try({
         try: () => this.verifyThread(response, model, cwd),
@@ -323,7 +373,8 @@ export class CodexDriver implements ConversationDriverSession {
   readonly resumeThread = ({ nativeThreadId, model, cwd }: ConversationResumeThreadInput): Effect.Effect<string, Error> =>
     this.taskThreadConfig(cwd).pipe(
       Effect.flatMap(config => this.guard(this.requireClient().request('thread/resume', {
-        threadId: nativeThreadId, model, cwd, approvalPolicy: 'never', sandbox: 'read-only', excludeTurns: true, ...(config && { config }),
+        threadId: nativeThreadId, model, cwd, approvalPolicy: 'never', sandbox: this.managedExecution ? 'workspace-write' : 'read-only',
+        excludeTurns: true, ...(config && { config }),
       }))),
       Effect.timeout(REQUEST_TIMEOUT),
       Effect.flatMap(response => Effect.try({
@@ -347,7 +398,10 @@ export class CodexDriver implements ConversationDriverSession {
       } catch (error) {
         return Effect.fail(asError(error))
       }
-    }).pipe(Effect.timeout(REQUEST_TIMEOUT), Effect.map(({ status }) => status), Effect.mapError(asError))
+    }).pipe(Effect.timeout(REQUEST_TIMEOUT), Effect.map(({ status }) => {
+      this.observedTurns.delete(nativeThreadId)
+      return status
+    }), Effect.mapError(asError))
 
   private activeControl({ nativeThreadId, turnId }: ConversationInterruptTurnInput): Effect.Effect<void, DaemonError> {
     return Effect.suspend(() => turnId && this.activeTurns.get(nativeThreadId)?.turnId === turnId
@@ -366,6 +420,92 @@ export class CodexDriver implements ConversationDriverSession {
         threadId: input.nativeThreadId, expectedTurnId: input.turnId, input: [{ type: 'text', text: input.text, text_elements: [] }],
       })),
     ), Effect.timeout(REQUEST_TIMEOUT), Effect.asVoid, Effect.mapError(asError))
+
+  readonly respondToRuntimeRequest: NonNullable<ConversationDriverSession['respondToRuntimeRequest']> = input =>
+    this.activeControl(input).pipe(Effect.andThen(this.tools.respond(input)))
+
+  private rememberTurn(threadId: string, turnId: string): void {
+    const known = this.observedTurns.get(threadId) ?? new Set<string>()
+    known.add(turnId)
+    if (known.size > TURN_EVENT_BUFFER_LIMIT) {
+      const oldest = known.values().next().value
+      if (oldest !== undefined) known.delete(oldest)
+    }
+    this.observedTurns.set(threadId, known)
+  }
+
+  readonly compactThread = (input: ConversationCompactThreadInput): Effect.Effect<string, Error> => {
+    const driver = this
+    const { nativeThreadId: threadId, context, onEvent } = input
+    return Effect.gen(function* () {
+      if (input.instructions?.trim()) return yield* Effect.fail(new ConversationTurnRejectedError('Codex 原生压缩不接受额外指令。'))
+      yield* driver.verifyTaskTools(threadId).pipe(Effect.mapError(cause => new ConversationTurnRejectedError(cause.message, { cause })))
+      if (context.assertAuthorized) {
+        yield* Effect.tryPromise({ try: context.assertAuthorized, catch: cause => new ConversationTurnRejectedError(asError(cause).message, { cause }) })
+      }
+      yield* Effect.try({ try: context.assertCurrent, catch: cause => new ConversationTurnRejectedError(asError(cause).message, { cause }) })
+      if (driver.stopped || driver.activeTurns.has(threadId)) return yield* Effect.fail(new ConversationTurnRejectedError('Codex 原线程仍持有活动回合。'))
+
+      const completion = yield* Deferred.make<string, Error>()
+      const priorTurns = driver.observedTurns.get(threadId)
+      const pending: ConversationDriverTurnEvent[] = []
+      let acknowledged = false
+      let candidate: string | undefined
+      let failed = false
+      const fail = (cause: unknown): void => {
+        failed = true
+        Effect.runSync(Deferred.fail(completion, new ConversationTurnOutcomeUnknownError(active.turnId ?? '', { cause })))
+      }
+      const deliver: ConversationDriverEventListener = event => {
+        if (failed || event.turnId !== active.turnId) return
+        try {
+          onEvent(event)
+          if (event.type === 'turn-completed' && event.status !== 'running') {
+            if (event.status === 'completed') {
+              driver.actions.compact = { state: 'verified', source: 'native-session', detail: '原生压缩由同一回合的压缩记录和终态确认。' }
+            }
+            Effect.runSync(Deferred.succeed(completion, event.turnId))
+          }
+        } catch (cause) { fail(cause) }
+      }
+      const bind = (): void => {
+        if (failed || !acknowledged || !candidate || active.turnId) return
+        active.turnId = candidate
+        driver.rememberTurn(threadId, candidate)
+        deliver({ type: 'turn-receipt', turnId: candidate })
+        for (const event of pending.splice(0)) deliver(event)
+      }
+      const active: ActiveCodexTurn = {
+        notify(event) {
+          if (active.turnId) return deliver(event)
+          if (failed || priorTurns?.has(event.turnId)) return
+          if (pending.length >= TURN_EVENT_BUFFER_LIMIT) return fail(new Error('Codex 原生压缩待核对事件超过上限。'))
+          pending.push(event)
+        },
+        identifyCompaction(turnId) {
+          if (active.turnId === turnId || priorTurns?.has(turnId) || failed) return
+          if (candidate && candidate !== turnId) return fail(new Error('同一压缩窗口出现多个原生回合。'))
+          candidate = turnId
+          bind()
+        },
+      }
+      driver.activeTurns.set(threadId, active)
+      return yield* Effect.gen(function* () {
+        yield* driver.guard(driver.requireClient().request('thread/compact/start', { threadId })).pipe(
+          Effect.timeout(REQUEST_TIMEOUT),
+          Effect.mapError(error => pending.length === 0 && !candidate && !failed && definitiveStartRejection(error)
+            ? new ConversationTurnRejectedError(error.message, { cause: error })
+            : new ConversationTurnOutcomeUnknownError('', { cause: error })),
+        )
+        acknowledged = true
+        bind()
+        return yield* driver.guard(Deferred.await(completion)).pipe(
+          Effect.timeout(TURN_COMPLETION_TIMEOUT),
+          Effect.mapError(error => new ConversationTurnOutcomeUnknownError(active.turnId ?? '', { cause: error })),
+        )
+      }).pipe(Effect.ensuring(Effect.sync(() => { driver.activeTurns.delete(threadId) })))
+    }).pipe(Effect.mapError(asError))
+  }
 
   /**
    * Registers listeners before turn/start so the first delta is never lost, then resolves
@@ -406,7 +546,7 @@ export class CodexDriver implements ConversationDriverSession {
       const early: ConversationDriverTurnEvent[] = []
       const receive: ConversationDriverEventListener = event => {
         if (!turnId) {
-          if (early.length < 256) early.push(event)
+          if (early.length < TURN_EVENT_BUFFER_LIMIT) early.push(event)
           else overflow = true
           return
         }
@@ -427,24 +567,22 @@ export class CodexDriver implements ConversationDriverSession {
           Effect.runSync(Deferred.fail(completion, asError(error)))
         }
       }
-      const active: { notify: ConversationDriverEventListener; turnId?: string } = { notify: receive }
+      const active: ActiveCodexTurn = { notify: receive, context }
       driver.activeTurns.set(threadId, active)
       return yield* Effect.gen(function* () {
         const params = yield* Effect.try({
-          try: () => buildCodexTurnStartParams({ nativeThreadId: threadId, cwd, model, text, effort, attachments: context?.attachments }),
+          try: () => buildCodexTurnStartParams({ nativeThreadId: threadId, cwd, model, text, effort, attachments: context?.attachments, managedExecution: driver.managedExecution }),
           catch: error => new ConversationTurnRejectedError(asError(error).message, { cause: error }),
         })
         const started = yield* driver.guard(client.request('turn/start', params)).pipe(
           Effect.timeout(REQUEST_TIMEOUT),
-          Effect.mapError(error => error instanceof CodexAppServerRequestError
-            && early.length === 0
-            && (error.operation === 'encode-payload'
-              || (error.operation === 'receive-response' && JSON_RPC_PRE_DISPATCH_REJECTIONS.has(error.code)))
+          Effect.mapError(error => early.length === 0 && definitiveStartRejection(error)
             ? new ConversationTurnRejectedError(error.message, { cause: error })
             : new ConversationTurnOutcomeUnknownError('', { cause: error })),
         )
         turnId = started.turn.id
         active.turnId = turnId
+        driver.rememberTurn(threadId, turnId)
         receive({ type: 'turn-receipt', turnId })
         if (overflow) return yield* Effect.fail(new ConversationTurnOutcomeUnknownError(turnId))
         for (const event of early) receive(event)
@@ -462,7 +600,10 @@ export class CodexDriver implements ConversationDriverSession {
           Effect.mapError(error => new ConversationTurnOutcomeUnknownError(started.turn.id, { cause: error })),
         )
         return turnId
-      }).pipe(Effect.ensuring(Effect.sync(() => { driver.activeTurns.delete(threadId) })))
+      }).pipe(Effect.ensuring(Effect.sync(() => {
+        driver.tools.settle(threadId, turnId)
+        driver.activeTurns.delete(threadId)
+      })))
     }).pipe(Effect.mapError(asError))
   }
 

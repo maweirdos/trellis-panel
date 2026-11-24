@@ -5,11 +5,13 @@ import type { ProviderOptionSelections } from '../../../../shared/conversation/m
 import type { ConversationAttachmentContent } from '../../../../shared/conversation/attachments'
 import type { ChatAttachment } from '../../../../shared/conversation/chatAttachment'
 import type { ConversationRuntimeQuestion } from '../../../../shared/conversation/command-runtime'
+import type { ConversationDelegationCall, ConversationDelegationReply, ConversationNativeSubagentEvent } from '../../../../shared/conversation/thread-relations'
 import { DaemonError } from '../../../daemon/errors'
 import type { ConversationDriverDescriptor, ConversationDriverModel } from '../../../../shared/conversation/driverCatalog'
 import type { ProviderAdapterV2, ProviderAdapterV2Event } from './core/ProviderAdapter'
 import { RASTER_ATTACHMENTS, type ConversationPromptAttachmentSupport } from './core/attachment-input'
 import { codexConfigurationKey } from './codex/driver'
+import { reconcileCodexProcessClosed } from './codex/process-owner'
 import { claudeConfigurationKey } from './claude/ClaudeAdapterV2'
 import { openCodeConfigurationKey } from './opencode/OpenCode2Server'
 import { listRegisteredAcpDrivers } from './acp/driver'
@@ -76,6 +78,17 @@ export type ConversationDriverTurnEvent = { readonly turnId: string; readonly tu
   | { readonly type: 'runtime-request'; readonly nativeRequestId: string; readonly request: ConversationDriverRuntimeRequest }
   | { readonly type: 'background-work'; readonly pending: boolean; readonly nativeWorkId?: string }
   | { readonly type: 'work-item'; readonly item: ConversationDriverWorkItem }
+  | ConversationNativeSubagentEvent
+  | {
+      readonly type: 'usage'
+      readonly usage: {
+        readonly inputTokens: number
+        readonly outputTokens: number
+        readonly cachedInputTokens?: number
+        readonly reasoningOutputTokens?: number
+        readonly contextWindow?: number
+      }
+    }
 )
 
 export type ConversationDriverEventListener = (event: ConversationDriverTurnEvent) => void
@@ -84,8 +97,18 @@ export interface ConversationStartTurnContext {
   readonly requestId: string
   readonly modelOptions?: ProviderOptionSelections
   readonly attachments?: readonly ConversationAttachmentContent[]
+  readonly delegation?: (call: ConversationDelegationCall) => Promise<ConversationDelegationReply>
   assertAuthorized?(): Promise<void>
   assertCurrent(): void
+}
+
+export interface ConversationCompactThreadInput {
+  readonly nativeThreadId: string
+  readonly cwd: string
+  readonly model: string
+  readonly instructions?: string
+  readonly onEvent: ConversationDriverEventListener
+  readonly context: ConversationStartTurnContext
 }
 
 export type ConversationThreadDetachConfirmation = 'unsubscribed' | 'notSubscribed' | 'notLoaded'
@@ -103,11 +126,15 @@ export interface ConversationDriverSession {
   interruptTurn?(input: ConversationInterruptTurnInput): Effect.Effect<void, Error>
   steerTurn?(input: ConversationSteerTurnInput): Effect.Effect<void, Error>
   respondToRuntimeRequest?(input: ConversationRespondToRuntimeRequestInput): Effect.Effect<void, Error>
+  compactThread?(input: ConversationCompactThreadInput): Effect.Effect<string, Error>
   startTurn(nativeThreadId: string, cwd: string, text: string, model: string, onEvent: ConversationDriverEventListener, context?: ConversationStartTurnContext): Effect.Effect<string, Error>
 }
 
 export interface ConversationDriverOpenInput {
   readonly instanceId: string
+  readonly ownerScope?: string
+  readonly fingerprintKey?: Buffer
+  readonly managedExecution?: true
   readonly directory: string
   readonly cwd: string
   readonly env?: NodeJS.ProcessEnv
@@ -119,9 +146,15 @@ export interface ConversationDriverOpenInput {
 export interface ConversationDriverRegistration {
   readonly instanceId: AdapterIdentity['instanceId']
   readonly driverKind: AdapterIdentity['driver']
-  readonly configurationKey?: (env?: NodeJS.ProcessEnv) => string
+  readonly configurationKey?: (env?: NodeJS.ProcessEnv, fingerprintKey?: Buffer) => string
   readonly turnModelOptions?: true
   readonly ordinaryTaskAccess?: 'native-read-only' | 'tools-disabled'
+  readonly planningAccess?: 'native-read-only'
+  readonly executionAccess?: 'native-workspace-write'
+  readonly reconcileOwnerClosure?: (input: {
+    readonly directory: string; readonly cwd: string; readonly instanceId: string; readonly ownerScope: string
+    assertCurrent(): void
+  }) => Promise<boolean>
   readonly promptAttachments?: ConversationPromptAttachmentSupport
   readonly open: (input: ConversationDriverOpenInput) => Effect.Effect<ConversationDriverSession, Error>
 }
@@ -152,6 +185,9 @@ const codex: ConversationDriverRegistration = {
   configurationKey: codexConfigurationKey,
   turnModelOptions: true,
   ordinaryTaskAccess: 'native-read-only',
+  planningAccess: 'native-read-only',
+  executionAccess: 'native-workspace-write',
+  reconcileOwnerClosure: reconcileCodexProcessClosed,
   promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
     try: () => import('./codex/driver'),
@@ -185,19 +221,29 @@ const opencode: ConversationDriverRegistration = {
 export function createConversationDriverRegistry(
   additionalRegistrations: readonly ConversationDriverRegistration[] = [],
   dynamicRegistrations: () => readonly ConversationDriverRegistration[] = () => [],
+  fingerprintKey?: Buffer,
 ): ConversationDriverRegistry {
+  const bind = (registration: ConversationDriverRegistration): ConversationDriverRegistration => {
+    if (!fingerprintKey) return registration
+    const configuration = registration.configurationKey
+    return {
+      ...registration,
+      ...(configuration && { configurationKey: env => configuration(env, fingerprintKey) }),
+      open: input => registration.open({ ...input, fingerprintKey }),
+    }
+  }
   const registrations = new Map<string, ConversationDriverRegistration>()
   for (const registration of [codex, ...additionalRegistrations]) {
     if (registrations.has(registration.instanceId)) {
       throw new DaemonError('E_CONFLICT', `对话引擎实例 ${registration.instanceId} 重复注册。`)
     }
-    registrations.set(registration.instanceId, registration)
+    registrations.set(registration.instanceId, bind(registration))
   }
   const list = (): ConversationDriverRegistration[] => {
     const result = new Map(registrations)
     for (const registration of dynamicRegistrations()) {
       if (result.has(registration.instanceId)) throw new DaemonError('E_CONFLICT', `对话引擎实例 ${registration.instanceId} 重复注册。`)
-      result.set(registration.instanceId, registration)
+      result.set(registration.instanceId, bind(registration))
     }
     return [...result.values()]
   }
@@ -217,9 +263,10 @@ export function createConversationDriverRegistry(
 export function createNativeConversationDriverRegistry(
   userData?: string,
   additionalRegistrations: readonly ConversationDriverRegistration[] = [],
+  fingerprintKey?: Buffer,
 ): ConversationDriverRegistry {
   return createConversationDriverRegistry([claude, opencode, ...additionalRegistrations],
-    () => userData ? listRegisteredAcpDrivers(userData) : [])
+    () => userData ? listRegisteredAcpDrivers(userData) : [], fingerprintKey)
 }
 
 export const conversationDriverRegistry = createConversationDriverRegistry()

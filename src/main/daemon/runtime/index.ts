@@ -44,11 +44,16 @@ import { RuntimeSessionService } from './session-runtime'
 import { LifecycleService, type RuntimeBlocker, type RuntimeStatus } from './lifecycle'
 import { ConversationRuntime } from './conversation'
 import { createNativeConversationDriverRegistry } from '../../services/conversation/providers/registry'
+import { loadDriverFingerprintKey } from '../../services/conversation/providers/core/catalog'
 import { createPiDriverRegistration } from '../../services/conversation/providers/pi/driver'
 import type { ConversationAuthority } from '../../../shared/conversation/desktop'
-import { directoryIdentity, pathKey } from '../../services/private-conversations/files'
+import { checkedDirectory, directoryIdentity, ownedDirectory, pathKey } from '../../services/private-conversations/files'
 import { nativeConversationTaskSchema } from '../../../shared/conversation/task-native'
 import { conversationTaskDirectoryName, resolveDaemonConversationTask } from '../../services/conversation/task-scope'
+import { resolveTaskPlanningLaunch } from '../../services/task-planning/runtime-authority'
+import { observePlanningConversation, startPlanningConversation } from './planning-conversations'
+import type { TaskPlanningRuntimeCatalog } from '../../../shared/conversation/task-planning-runtime'
+import { managedTaskConversationPort } from './managed-task-conversation'
 
 export type { RuntimeDispatchContext } from './admission'
 
@@ -142,7 +147,21 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     }
   })
   const events = new RuntimeEvents(ports.epoch)
+  let closed = false, released = false, stopping: Promise<void> | undefined
+  const conversationDrivers = createNativeConversationDriverRegistry(
+    ports.userData ?? ports.directory, [createPiDriverRegistration()], loadDriverFingerprintKey(ports.directory),
+  )
+  const conversation = new ConversationRuntime({
+    directory: ports.directory,
+    assertOwner: () => ports.assertOwner(),
+    driverRegistry: conversationDrivers,
+  })
+  const managedConversation = managedTaskConversationPort({
+    kernel: conversation, drivers: conversationDrivers, adapterVersion: BUILTINS.codex.version,
+    assertOwner: () => { ports.assertOwner(); ports.assertAuthority() },
+  })
   const taskExecutions = new NativeTaskExecutions({ directory: ports.directory, workcopies, preparation: taskPreparation,
+    conversation: managedConversation,
     assertOwner() { ports.assertOwner() },
     assertCurrent(grant) {
       if (closed || released) throw new DaemonError('E_UNAVAILABLE', 'Product execution admission is closed')
@@ -150,18 +169,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       ports.assertWorkspaceAdmission?.(grant.root, 'runtime.taskExecution')
     } })
   const disposeEvents = installHostEventSink((channel, value) => events.publish(channel, value))
-  let closed = false, released = false, stopping: Promise<void> | undefined
   taskExecutions.startBackground()
   let operations = 0, sessionAdmissions = 0
   const knowledge = createRuntimeKnowledge(() => !closed && !released)
   const taskProgress = new CruxTaskProgressRuntime(ports.directory, ports.userData ?? ports.directory, ports.assertOwner, () => { ports.assertOwner(); ports.assertAuthority() })
   const conversationProjections = new AcpConversationProjectionService(ports.userData ?? ports.directory)
-  const conversationDrivers = createNativeConversationDriverRegistry(ports.userData ?? ports.directory, [createPiDriverRegistration()])
-  const conversation = new ConversationRuntime({
-    directory: ports.directory,
-    assertOwner: () => ports.assertOwner(),
-    driverRegistry: conversationDrivers,
-  })
   const watchers = new Map<string, FSWatcher>()
   const materialTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const admission = new AdmissionService(ports)
@@ -237,6 +249,24 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     const projectId = createHash('sha256').update(JSON.stringify([pathKey(workspace.root), identity])).digest('hex')
     return { ownerId: native.actor.userId, spaceId: 'personal', projectId, cwd: workspace.root, binding: { kind: 'personal' }, assertCurrent, assertSpawnCurrent: assertCurrent }
   }
+  function planningWorkspace(context: RuntimeDispatchContext, method: RuntimeBodyMethod) {
+    const { workspace, native } = context
+    if (!workspace || !native) throw new DaemonError('E_DENIED', '任务规划需要原生桌面和原工程授权。')
+    const identity = directoryIdentity(workspace.root)
+    const guard = (): void => {
+      ports.assertOwner()
+      ports.assertAuthority()
+      ports.assertWorkspaceGrant?.(workspace)
+      native.assertProduct()
+      if (method !== 'runtime.taskPlanningStop') {
+        if (closed || released) throw new DaemonError('E_UNAVAILABLE', '规划暂时无法受理。')
+        ports.assertWorkspaceAdmission?.(workspace.root, method)
+      }
+      if (directoryIdentity(workspace.root) !== identity) throw new DaemonError('E_CONFLICT', '原规划工程的物理目录已变化。')
+    }
+    guard()
+    return { userId: native.actor.userId, cwd: workspace.root, identity, guard }
+  }
   function observeWorkspace(root: string, generation: number): void {
     if (root === '@profile' || watchers.has(root) || closed) return
     if (watchers.size >= 100) throw new DaemonError('E_BUSY', 'Runtime workspace observer limit reached.')
@@ -267,6 +297,11 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       if (!context.native || !context.workspace) throw new DaemonError('E_DENIED', 'Product execution planning requires the native GUI and original workspace grant')
       context.native.assertProduct()
       const { engine } = runtimeBodies[method].parse(raw)
+      if (engine.conversation) {
+        const plan = await managedConversation.plan(root, engine)
+        plan.assertRouteCurrent()
+        return { digest: plan.digest, adapterVersion: plan.adapterVersion, capabilities: plan.capabilities }
+      }
       const plan = await acp.preparePlatformAcpLaunch(root, engine)
       plan.assertCurrent()
       if (!plan.options.modelId) throw new DaemonError('E_UNAVAILABLE', 'Select an explicit model in the existing engine configuration before preparing')
@@ -361,6 +396,65 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const { scope } = await resolveDaemonConversationTask(ports.userData ?? ports.directory,
         nativeConversationTaskSchema.parse(raw), native.actor.userId, current)
       return { scope }
+    }
+    if (method === 'runtime.taskPlanningCatalog') {
+      const { instanceId, purpose } = runtimeBodies[method].parse(raw)
+      const { cwd, userId, guard } = planningWorkspace(context, method)
+      const profile = ports.userData ?? ports.directory
+      if (pathKey(cwd) !== pathKey(checkedDirectory(join(profile, 'conversation-v2-workspace')))) {
+        throw new DaemonError('E_DENIED', '规划模型查询需要宿主管理的查询授权。')
+      }
+      const drivers = conversationDrivers.list().filter(driver => purpose === 'execution' ? driver.executionAccess : driver.planningAccess)
+        .map(({ instanceId, driverKind }) => ({ instanceId, driverKind }))
+      if (!instanceId) return { drivers, ...(purpose && { purpose }) } satisfies TaskPlanningRuntimeCatalog
+      if (!drivers.some(driver => driver.instanceId === instanceId)) {
+        throw new DaemonError('E_UNAVAILABLE', purpose === 'execution'
+          ? '此引擎没有托管工作副本执行能力。' : '此引擎没有原工程只读规划能力。')
+      }
+      const catalogRoot = ownedDirectory(profile, 'conversation-planning-catalog')
+      const identity = directoryIdentity(catalogRoot)
+      const assertCatalog = (): void => {
+        guard()
+        if (directoryIdentity(catalogRoot) !== identity || readdirSync(catalogRoot).length !== 0) {
+          throw new DaemonError('E_CONFLICT', '规划模型探测需要原来的空目录。')
+        }
+      }
+      const projectId = createHash('sha256').update(JSON.stringify([userId, pathKey(catalogRoot), identity, 'planning-catalog'])).digest('hex')
+      const nativeDescriptor = await conversation.describeDriver(catalogRoot, projectId, instanceId, assertCatalog, true, 'planning-catalog')
+      assertCatalog()
+      const descriptor = purpose === 'execution' ? {
+        ...nativeDescriptor, actions: { ...nativeDescriptor.actions, execution: {
+          state: 'unknown' as const, source: 'host-policy' as const,
+          detail: '模型可从原生目录选择。正式启动后会核对原工作副本和执行能力。',
+        } },
+      } : nativeDescriptor
+      return { drivers, descriptor, ...(purpose && { purpose }) } satisfies TaskPlanningRuntimeCatalog
+    }
+    if (method === 'runtime.taskPlanningLaunch' || method === 'runtime.taskPlanningObserve' || method === 'runtime.taskPlanningStop') {
+      const input = runtimeBodies[method].parse(raw)
+      const mode = method === 'runtime.taskPlanningLaunch' ? 'launch' : method === 'runtime.taskPlanningObserve' ? 'observe' : 'stop'
+      const requestedCommand = method === 'runtime.taskPlanningStop'
+        ? runtimeBodies['runtime.taskPlanningStop'].parse(input).stopCommandId : input.commandId
+      if (mode !== 'observe' && context.commandId !== requestedCommand) throw new DaemonError('E_CONFLICT', '规划操作须沿用原命令编号。')
+      const { cwd, guard, userId } = planningWorkspace(context, method)
+      const launch = await resolveTaskPlanningLaunch(ports.userData ?? ports.directory, input, userId, guard, mode)
+      if (pathKey(cwd) !== pathKey(launch.authority.cwd)) throw new DaemonError('E_DENIED', '规划不属于已授权的原工程。')
+      guard()
+      if (mode === 'observe') return observePlanningConversation(conversation, launch)
+      if (mode === 'stop') {
+        const { ownerId, spaceId, projectId } = launch.authority
+        const receipt = conversation.readCommand(launch.commandId, ownerId, spaceId, projectId)
+        const cleanupConfirmed = await conversation.cleanupTaskConversation(
+          { receipt, commandId: requestedCommand, instanceId: launch.selection.instanceId },
+          { ...launch.authority, assertCurrent: guard, assertSpawnCurrent: guard },
+        )
+        guard()
+        return { threadId: null, runId: null, state: cleanupConfirmed ? 'cancelled' : 'unknown', cleanupConfirmed }
+      }
+      if (!conversationDrivers.require(launch.selection.instanceId).planningAccess) {
+        throw new DaemonError('E_UNAVAILABLE', '此引擎没有原工程只读规划能力。')
+      }
+      return startPlanningConversation(conversation, launch)
     }
     const scopedConversation = (): Promise<ScopedConversationAuthority> => conversationAuthority(context, raw, method)
     if (method === 'runtime.conversationModels') {
@@ -581,6 +675,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
             admission.assertCommand(bodyMethod, context.commandId, input)
             if (mutation) {
               value = method === 'runtime.workcopyUse' || method === 'runtime.conversationCreate' || method === 'runtime.conversationApply' ||
+                method === 'runtime.taskPlanningLaunch' || method === 'runtime.taskPlanningStop' ||
                 method === 'runtime.conversationAttachmentStage' || method === 'runtime.conversationAttachmentRelease' ? await action() : await commands.run(root, context.commandId as string, method, input, action,
                 preparation?.operation === 'prepare' && preparationAuthority
                   ? () => taskPreparation.authorizeRecovery(root, preparation, preparationAuthority) : undefined)

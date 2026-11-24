@@ -32,13 +32,13 @@ function physicalExecutable(file: string): string {
   return realpathSync.native(unpacked)
 }
 
-export function claudeConfigurationKey(env: NodeJS.ProcessEnv = process.env): string {
+export function claudeConfigurationKey(env: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
   const home = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
   const files = ['settings.json', '.credentials.json'].map(file => {
     try { const info = statSync(join(home, file)); return [info.ino, info.size, info.mtimeMs] } catch { return null }
   })
   return driverConfigurationKey([home, files, env.CLAUDE_EXECUTABLE, env.PATH ?? env.Path, env.ANTHROPIC_BASE_URL,
-    env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN, env.ANTHROPIC_AUTH_TOKEN, env.CLAUDE_CODE_USE_BEDROCK, env.CLAUDE_CODE_USE_VERTEX])
+    env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN, env.ANTHROPIC_AUTH_TOKEN, env.CLAUDE_CODE_USE_BEDROCK, env.CLAUDE_CODE_USE_VERTEX], fingerprintKey)
 }
 
 export function resolveClaudeSdkExecutablePath(env: NodeJS.ProcessEnv): string {
@@ -268,7 +268,7 @@ export class ClaudeDriver implements ConversationDriverSession {
     input.assertCanSpawn()
     const env = { ...(input.env ?? process.env) }
     const { query, getSessionInfo } = await import('@anthropic-ai/claude-agent-sdk')
-    const driver = new ClaudeDriver(input, env, resolveClaudeSdkExecutablePath(env), claudeConfigurationKey(env), query, getSessionInfo)
+    const driver = new ClaudeDriver(input, env, resolveClaudeSdkExecutablePath(env), claudeConfigurationKey(env, input.fingerprintKey), query, getSessionInfo)
     input.assertCanSpawn()
     input.onSpawn(driver)
     return driver
@@ -281,7 +281,7 @@ export class ClaudeDriver implements ConversationDriverSession {
     const actual = realpathSync.native(cwd)
     const original = realpathSync.native(this.opts.cwd)
     if (this.stopped || (process.platform === 'win32' ? actual.toLowerCase() !== original.toLowerCase() : actual !== original)
-      || claudeConfigurationKey(this.env) !== this.configurationKey || resolveClaudeSdkExecutablePath(this.env) !== this.executable) {
+      || claudeConfigurationKey(this.env, this.opts.fingerprintKey) !== this.configurationKey || resolveClaudeSdkExecutablePath(this.env) !== this.executable) {
       throw new DaemonError('E_CONFLICT', 'Claude SDK 实例、配置或工程目录已变化。')
     }
   }

@@ -23,7 +23,8 @@ export async function ensureActorTaskConversation(
   ports: TaskConversationPorts,
   destination?: { kind: 'code'; existingId?: string }
 ): Promise<{ conversation: Conversation; task: CruxTask }> {
-  const existing = task.conversations?.find(link => link.actorId === context.actorId && (!destination || link.id === destination.existingId))
+  const existing = task.conversations?.find(link => link.actorId === context.actorId && !link.id.startsWith('thr_')
+    && (!destination || link.id === destination.existingId))
   if (existing) {
     const read = await ports.read(existing.id)
     if (read.conversation.id !== existing.id || destination && read.conversation.kind !== destination.kind) throw Error('任务对话身份或来源已变化。')

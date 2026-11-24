@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, ChevronDown, MoreHorizontal, PanelLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ArrowLeft, ChevronDown, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
 import type { ConversationTaskScope } from '../../../shared/conversation/task-scope'
@@ -7,6 +7,7 @@ import { ConversationListRow } from '../acp/ConversationListRow'
 import { ConversationSidebar } from '../acp/ConversationSidebar'
 import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
 import { api, hasIpc } from '../api'
+import { useCrux } from '../crux/store'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
@@ -15,6 +16,7 @@ import { projectRootKey } from '../my/navigation'
 import { useMy } from '../my/store'
 import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
+import { useEscLayer } from '../utils/use-esc-layer'
 import {
   applyOptimisticUserMessagesAction,
   emptyOptimisticUserMessages,
@@ -22,12 +24,21 @@ import {
   type OptimisticUserMessage,
 } from './optimisticUserMessages'
 import { ConversationComposer } from './ConversationComposer'
+import { ConversationActivityControls } from './ConversationActivityControls'
+import { ConversationProjectSurfaces } from './ConversationProjectSurfaces'
 import { ConversationQueue } from './ConversationQueue'
+import { ConversationRelations } from './ConversationRelations'
+import { ConversationRightPanel, useNarrowConversationPanel } from './ConversationRightPanel'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
+import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline } from './ConversationTimeline'
-import { CONVERSATION_TEXT_LIMIT, composerDraftKey, updateComposerDraft } from './useComposerDraft'
+import { conversationPanelKey, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { SideThreadPane } from './SideThreadPane'
+import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt } from './useComposerSend'
 import { useConversationModelCatalog } from './useConversationModelCatalog'
+import { closeUnusedSideThread, useSideChat } from './useSideChat'
+import { useWorkTaskActions } from './useWorkTaskActions'
 import {
   isActiveRun, queuedRunsWithText, useConversationThread,
   type ConversationApplyResult, type ConversationTimelineRow, type ThreadReadTarget,
@@ -37,6 +48,7 @@ import './conversation-workbench.css'
 
 type ThreadChange = Extract<ConversationThreadCommand, { type: `thread.${string}` }>
 type ThreadChangeIntent = ThreadChange extends infer Change ? Change extends ThreadChange ? Omit<Change, 'commandId'> : never : never
+interface SideCleanupRequest { threadId: string; commandId: string; reason: string }
 
 function savedThread(key: string): string | null {
   try { return localStorage.getItem(`crux.conversation.selected:${key}`) } catch { return null }
@@ -66,6 +78,29 @@ function savePendingThreadChange(key: string, command?: ThreadChange): void {
   } catch {}
 }
 
+function pendingSideCleanup(owner: string | null): SideCleanupRequest | undefined {
+  if (!owner) return
+  try {
+    const saved: SideCleanupRequest | null = JSON.parse(localStorage.getItem(`crux.conversation.side-cleanup:${owner}`) ?? 'null')
+    if (saved && typeof saved.reason === 'string' && conversationThreadCommandSchema.safeParse({
+      threadId: saved.threadId, commandId: saved.commandId, type: 'thread.delete', onlyIfUnused: true,
+    }).success) return saved
+  } catch {}
+}
+
+function rememberSideCleanup(owner: string, request?: SideCleanupRequest): void {
+  try {
+    const key = `crux.conversation.side-cleanup:${owner}`
+    if (request) localStorage.setItem(key, JSON.stringify(request))
+    else localStorage.removeItem(key)
+  } catch {}
+}
+
+function threadUpdatedAt(value: OrchestrationV2AppThread['updatedAt']): number | undefined {
+  const time = typeof value === 'string' ? Date.parse(value) : value?.epochMilliseconds
+  return Number.isFinite(time) ? time : undefined
+}
+
 function ConversationIssue({ title, reason, actions, uncertain = false }: {
   title: string
   reason?: string
@@ -83,11 +118,13 @@ interface ConversationWorkbenchProps {
   source?: 'code' | 'native' | 'work' | 'task'
   taskScope?: ConversationTaskScope
   onBackToTask?: () => void
+  initialThreadId?: string
 }
 
-export function ConversationWorkbench({ root, source = 'native', taskScope, onBackToTask }: ConversationWorkbenchProps): JSX.Element {
+export function ConversationWorkbench({ root, source = 'native', taskScope, onBackToTask, initialThreadId }: ConversationWorkbenchProps): JSX.Element {
   const sidebarWidth = useSidebarWidthStyle()
   const collapsed = useMy((state) => state.sidebarCollapsed)
+  const workspaceContext = useCrux(state => state.workspaceContext)
   const task = taskScope?.locator
   const rootKey = taskScope ? JSON.stringify([
     source, taskScope.actorId, taskScope.spaceId, taskScope.locator, taskScope.binding.assigneeGeneration,
@@ -111,12 +148,15 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const [queueEdit, setQueueEdit] = useState<{ threadId: string; runId: string; text: string }>()
   const changingThread = useRef(false)
   const [target, setTarget] = useState<ThreadReadTarget | null>(() => {
-    const threadId = savedThread(rootKey)
+    const threadId = source === 'work' && initialThreadId ? initialThreadId : savedThread(rootKey)
     return threadId ? { threadId } : null
   })
   const [optimistic, setOptimistic] = useState(() => emptyOptimisticUserMessages(''))
   const targetRef = useRef(target)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const panelTrigger = useRef<HTMLButtonElement>(null)
+  const panelReturnFocus = useRef<HTMLElement | null>(null)
+  const panelId = useId()
   const mounted = useRef(false)
 
   useLayoutEffect(() => {
@@ -127,16 +167,98 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const controller = useConversationThread(root, target, interactive && hasIpc, rootKey, task)
   const { active: read, reload, loadEarlier, loadingEarlier, stop, queue } = controller
   const projection = read?.projection
+  const hostThreadId = target?.threadId
+  const panelScopeKey = taskScope ? rootKey : JSON.stringify([
+    rootKey, workspaceContext.key, workspaceContext.actorId, workspaceContext.instanceId, workspaceContext.epoch,
+  ])
+  const panelKey = hostThreadId ? conversationPanelKey(panelScopeKey, root, hostThreadId) : null
+  const panel = useConversationRightPanel(panelKey, hostThreadId ?? null)
+  const narrowPanel = useNarrowConversationPanel()
+  const projectAvailable = hasIpc && typeof api.conversationProjectWorkbench === 'function'
   const run = target?.runId
     ? projection?.runs.find((item) => item.id === target.runId)
     : projection?.runs.at(-1)
   const selectedThread = projection?.thread ?? threads?.find((item) => item.id === target?.threadId)
+  const archivedThread = Boolean(threads?.find(thread => thread.id === hostThreadId)?.archivedAt)
+  const workTask = useWorkTaskActions({ root, threadId: selectedThread?.id ?? null, enabled: source === 'work' && writable && !archivedThread })
   const activeRun = projection?.runs.slice().reverse().find(item => item.status !== 'queued' && isActiveRun(item))
   const catalog = useConversationModelCatalog(root, writable, rootKey, task)
   const instanceId = selectedThread?.modelSelection.instanceId
   const instance = catalog.instances.find(item => item.instanceId === instanceId)
   const descriptor = instance?.read?.status === 'ready' ? instance.read.descriptor : undefined
   const canSteer = Boolean(activeRun && descriptor?.actions.steer?.state === 'verified')
+  const [sideCleanup, setSideCleanup] = useState<{ owner: string; threadId: string; commandId: string; reason: string }>()
+  const [sideInputFailure, setSideInputFailure] = useState<{ owner: string; reason: string }>()
+  const cleaningSide = useRef(false)
+  const currentPanelOwner = useRef(panelKey)
+  currentPanelOwner.current = panelKey
+  const comparisonModels = catalog.models.filter(model => model.instanceId === 'codex')
+
+  async function loadComparisonModels(): Promise<void> {
+    if (!writable || !canInteract() || !panelKey || comparisonModels.length >= 2) return
+    const codex = catalog.instances.find(item => item.instanceId === 'codex')
+    if (catalog.status === 'ready' && !codex) return
+    if (catalog.status !== 'ready') await catalog.refresh()
+    if (mounted.current && canInteract() && currentPanelOwner.current === panelKey && targetRef.current?.threadId === hostThreadId) {
+      await catalog.ensure('codex', codex?.read?.status === 'failed')
+    }
+  }
+
+  function openRelatedThread(surface: ConversationThreadSurface): void {
+    if (!interactive || !canInteract() || !hostThreadId || targetRef.current?.threadId !== hostThreadId) return
+    if (!panel.active && document.activeElement instanceof HTMLElement) panelReturnFocus.current = document.activeElement
+    panel.open(surface)
+  }
+
+  const sideChat = useSideChat({ controller, root, task, threadId: hostThreadId,
+    enabled: writable && Boolean(projection) && !archivedThread, onOpenRelatedThread: openRelatedThread })
+
+  function hidePanel(restoreFocus = true): void {
+    panel.hide()
+    if (restoreFocus) requestAnimationFrame(() => {
+      if (currentPanelOwner.current !== panelKey || !canInteract()) return
+      const previous = panelReturnFocus.current
+      if (previous?.isConnected && !previous.closest('[inert]')) previous.focus({ preventScroll: true })
+      else panelTrigger.current?.focus({ preventScroll: true })
+    })
+  }
+
+  useEscLayer(interactive && Boolean(projection && panel.active) && !narrowPanel, {
+    kind: 'overlay', id: panelId, onClose: hidePanel, deferWhenInputFocused: true,
+  })
+
+  async function settleSideCleanup(threadId: string, commandId: string, check = false): Promise<void> {
+    if (!panelKey || !writable || !canInteract() || cleaningSide.current) return
+    cleaningSide.current = true
+    const pending = pendingSideCleanup(panelKey) ?? { threadId, commandId, reason: '侧聊清理尚无确定回执。' }
+    rememberSideCleanup(panelKey, pending)
+    try {
+      const result = await closeUnusedSideThread({ root, task, threadId, commandId, check })
+      const unresolved = result.ok
+        ? result.receipt.dispatch !== 'completed' ? pending : undefined
+        : result.uncertain ? { ...pending, reason: result.reason } : undefined
+      rememberSideCleanup(panelKey, unresolved)
+      if (mounted.current && canInteract() && currentPanelOwner.current === panelKey) {
+        setSideCleanup(unresolved && { owner: panelKey, ...unresolved })
+        if (result.ok && !unresolved) reload()
+      }
+    } catch (error) {
+      const unresolved = { ...pending, reason: conversationError(error) }
+      rememberSideCleanup(panelKey, unresolved)
+      if (mounted.current && canInteract() && currentPanelOwner.current === panelKey) {
+        setSideCleanup({ owner: panelKey, ...unresolved })
+      }
+    } finally { cleaningSide.current = false }
+  }
+
+  function closePanelTab(surface: ConversationRightPanelSurface): void {
+    if (surface.kind !== 'thread' || !hostThreadId || !panelKey || sideCleanup?.owner === panelKey || pendingSideCleanup(panelKey)) return
+    const relation = projection?.relations.children.find(item => item.childThreadId === surface.threadId)
+    if (relation?.kind !== 'side-chat') return
+    const draft = readComposerDraft(composerDraftKey(root, surface.threadId, sideThreadDraftScope(panelScopeKey, root, hostThreadId)))
+    if (hasComposerDraftContent(draft) || draft.state.phase !== 'idle' || draft.stash) return
+    void settleSideCleanup(surface.threadId, crypto.randomUUID())
+  }
 
   useEffect(() => {
     if (!interactive || !hasIpc) return
@@ -247,6 +369,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const composer = useComposerSend({
     root, threadId: target?.threadId ?? null, scopeKey: rootKey, interactive: writable, task,
     running: Boolean(activeRun), canSteer, onAccepted,
+    onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
+    onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
   })
   const selectedModel = composer.model ?? (selectedThread ? {
     instanceId: selectedThread.modelSelection.instanceId,
@@ -320,8 +444,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     {cleanupPending && writable && <Button type="button" size="sm" variant="ghost"
       onClick={() => void applyThreadChange(pendingChange)}>继续清理</Button>}
   </>
+  const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
+  const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(panelKey)
 
   return <div className="acp-workspace conversation-workbench" style={sidebarWidth}>
+    {workTask.dialog}
     <Modal open={Boolean(queueEdit)} onClose={() => setQueueEdit(undefined)} ariaLabel="编辑排队消息" width={500}>
       {queueEdit && <form className="space-y-4 p-4" onSubmit={event => {
         event.preventDefault()
@@ -386,12 +513,18 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       {query.trim() && threads?.length === 0 && <p className="my-item-description p-2">没有匹配的会话</p>}
       {(threads ?? []).map(thread => <ConversationListRow key={thread.id} id={thread.id} title={thread.title}
         selected={thread.id === target?.threadId} pinned={Boolean(thread.pinnedAt)}
+        archived={Boolean(thread.archivedAt)} time={threadUpdatedAt(thread.updatedAt)}
+        busy={thread.id === hostThreadId && Boolean(activeRun)}
         onSelect={() => thread.id === targetRef.current?.threadId ? setSidebarOpen(false) : select({ threadId: thread.id })}
         onTogglePin={writable ? () => void changeThread({ type: 'thread.pin', threadId: thread.id, pinned: !thread.pinnedAt }) : undefined}
-        onToggleArchive={writable ? () => void changeThread({ type: 'thread.archive', threadId: thread.id, archived: true }) : undefined}
+        onToggleArchive={writable ? () => void changeThread({ type: 'thread.archive', threadId: thread.id, archived: !thread.archivedAt }) : undefined}
         actions={writable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-recent-action-btn my-icon-control"
           aria-label={`${thread.title}的更多操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} aria-hidden="true" /></button>}>
           {close => <>
+            {workTask.available && thread.id === hostThreadId && !thread.archivedAt && <>
+              <DropdownItem onClick={() => { close(); workTask.open('create') }}>转为团队任务</DropdownItem>
+              <DropdownItem onClick={() => { close(); workTask.open('bind') }}>关联团队任务</DropdownItem>
+            </>}
             <DropdownItem icon={<Pencil size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'rename', title: thread.title }) }}>重命名</DropdownItem>
             <DropdownItem danger icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'delete', title: thread.title }) }}>删除</DropdownItem>
           </>}
@@ -407,9 +540,22 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           aria-label="打开会话导航" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><PanelLeft size={16} aria-hidden="true" /></button>
       </>}
         identity={<strong>{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : '新建对话')}</strong>}
-        actions={selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>} />
+        actions={<>
+          {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
+          {projection && projectAvailable && <button type="button" ref={panelTrigger} className="my-icon-control"
+            title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
+            onClick={() => {
+              if (!canInteract()) return
+              if (panel.active) hidePanel()
+              else { panelReturnFocus.current = panelTrigger.current; panel.show() }
+            }}><PanelRight size={17} aria-hidden="true" /></button>}
+        </>} />
       <div className="acp-content" data-empty={draftIsEmpty || undefined}>
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
+          onOpenRelatedThread={openRelatedThread}
+          onForkFromRun={writable && projection && !archivedThread ? runId => {
+            void sideChat.open({ sourcePoint: { type: 'run', runId } })
+          } : undefined}
           working={submitting || loadingThread || runPending && !read?.error}
           workingLabel={loadingThread ? '正在读取会话…' : submitting && !target ? '正在发送给 Crux…'
             : run?.status === 'queued' || run?.status === 'preparing' ? '已受理，等待模型…'
@@ -438,9 +584,23 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               actions={<Button size="sm" variant="ghost" onClick={reload}>刷新结果</Button>} />}
             {run?.status === 'failed' && !run.outcomeUnknown && <ConversationIssue title={`${runModel} 执行失败`} reason={run.failure}
               actions={previousPrompt && !submitting && !outcomeUnknown && <Button size="sm" variant="ghost" onClick={() => openDraft(previousPrompt.text)}>更换模型</Button>} />}
+            {sideChat.failure && <ConversationIssue title={sideChat.failure.uncertain ? '侧聊结果待核对' : '无法开启侧聊'}
+              reason={sideChat.failure.reason} uncertain={sideChat.failure.uncertain}
+              actions={sideChat.failure.uncertain && <Button size="sm" variant="ghost" disabled={sideChat.pending}
+                onClick={() => void sideChat.check()}>查询回执</Button>} />}
+            {sideInputFailure?.owner === panelKey && <ConversationIssue title="无法从当前草稿开启侧聊" reason={sideInputFailure.reason} />}
+            {currentCleanup && <ConversationIssue title="侧聊清理结果待核对" reason={currentCleanup.reason} uncertain
+              actions={<Button size="sm" variant="ghost"
+                onClick={() => void settleSideCleanup(currentCleanup.threadId, currentCleanup.commandId, true)}>查询回执</Button>} />}
             {!queueEdit && controlNotice}
           </>} />
         {projection && <div className="my-conversation-column conversation-controls">
+          <ConversationActivityControls controller={controller} projection={projection} disabled={!writable}
+            compactAvailable={descriptor?.actions.compact.state === 'verified' ||
+              (instance?.driverKind === 'codex' || !instance && instanceId === 'codex') && descriptor?.actions.compact.state !== 'unsupported'}
+            modelOptions={catalog.models} onHandoffAccepted={() => setListRevision(value => value + 1)}
+            comparisonModels={comparisonModels} onLoadComparisonModels={loadComparisonModels}
+            onCompareModels={sideChat.compare} />
           <ConversationRuntimeRequests controller={controller} requests={projection.runtimeRequests} disabled={!writable}
             cwd={root} threadId={projection.thread.id} task={task} />
           <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!writable}
@@ -458,6 +618,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           onStop={() => { if (activeRun) applyControl(stop(activeRun.id)) }}
           queuePaused={Boolean(projection?.queuePaused)}
           canSteer={canSteer && activeRun?.modelSelection.model === selectedModel?.id}
+          leadingControls={projection && !archivedThread && <button type="button" className="my-icon-control"
+            aria-label="开启侧聊" title="开启侧聊" disabled={!writable || sideChat.pending || sideChat.failure?.uncertain}
+            onClick={() => { setSideInputFailure(undefined); void sideChat.open() }}><MessageSquarePlus size={16} aria-hidden="true" /></button>}
           disabledReason={target && !projection ? '正在读取原会话。' : undefined}
           textareaRef={composerRef} previousPrompt={previousPrompt?.text}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
@@ -465,5 +628,26 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         />}
       </div>
     </section>
+    {interactive && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
+      <ConversationRightPanel key={panelKey} panel={panel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
+        threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
+        {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
+          root={root} scopeKey={panelScopeKey} hostThreadId={hostThreadId}
+          threadId={surface.threadId} task={task} interactive={interactive && hasIpc} writable={writable}
+          onOpenParent={() => hidePanel()}
+          onAddToParentDraft={writable ? reference => {
+            if (currentPanelOwner.current !== panelKey || targetRef.current?.threadId !== hostThreadId || !canInteract()) return
+            composer.addReference({ ...reference, id: JSON.stringify([reference.threadId, reference.messageIds ?? []]) })
+            if (narrowPanel) hidePanel(false)
+            focusComposer()
+          } : undefined}
+          renderComposer={({ threadId, controller: childController }) => <ConversationSideThreadComposer root={root}
+            scopeKey={sideThreadDraftScope(panelScopeKey, root, hostThreadId)} task={task} threadId={threadId}
+            controller={childController} catalog={catalog} writable={writable} />} />
+          : projectAvailable ? <ConversationProjectSurfaces selected={selected}
+            target={{ cwd: root, threadId: hostThreadId, ...(task && { task }) }} surface={surface} open={panel.open}
+            activeRun={Boolean(activeRun)} writable={writable && !archivedThread}>{relatedWork}</ConversationProjectSurfaces>
+            : relatedWork}
+      </ConversationRightPanel>}
   </div>
 }

@@ -27,7 +27,7 @@ import { createAcpJobOwner } from '../../../workcopy-use/acp-jobs'
 import { nativeImageAttachment, nativeTextAttachment, PI_ATTACHMENTS } from '../core/attachment-input'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
-  type ConversationDriverDescriptor, type ConversationDriverEventListener, type ConversationDriverOpenInput, type ConversationStartTurnContext,
+  type ConversationCompactThreadInput, type ConversationDriverDescriptor, type ConversationDriverEventListener, type ConversationDriverOpenInput, type ConversationStartTurnContext,
   type ConversationDriverRegistration, type ConversationDriverRuntimeRequest, type ConversationDriverSession,
   type ConversationInterruptTurnInput, type ConversationRespondToRuntimeRequestInput, type ConversationResumeThreadInput, type ConversationSteerTurnInput,
 } from '../registry'
@@ -348,11 +348,13 @@ class PiConversationDriver implements ConversationDriverSession {
     })
   }
 
-  compactThread({ nativeThreadId, cwd, model, instructions, onEvent, requestId }: {
-    nativeThreadId: string; cwd: string; model: string; instructions?: string; onEvent: ConversationDriverEventListener; requestId?: string
-  }): Effect.Effect<string, Error> {
+  compactThread({ nativeThreadId, cwd, model, instructions, onEvent, context }: ConversationCompactThreadInput): Effect.Effect<string, Error> {
     return Effect.tryPromise({
-      try: signal => this.run(nativeThreadId, cwd, instructions ?? '', model, onEvent, 'compact', { requestId, signal }),
+      try: async signal => {
+        try { await context.assertAuthorized?.() }
+        catch (error) { throw new ConversationTurnRejectedError(asError(error).message, { cause: error }) }
+        return this.run(nativeThreadId, cwd, instructions ?? '', model, onEvent, 'compact', { ...context, signal })
+      },
       catch: asError,
     })
   }
@@ -403,10 +405,10 @@ class PiConversationDriver implements ConversationDriverSession {
           try { assertCurrent(); return slot.active?.id === turnId } catch { return false }
         } }) } catch { /* Optional project knowledge can be unavailable. */ }
       options?.signal?.addEventListener('abort', cancel, { once: true })
-      const receipt = await work.commandAccepted
+      await work.commandAccepted
       onEvent({ type: 'turn-receipt', turnId, turnIdSource: 'host' })
       const inserted = await work.promptStarted.then(() => true, () => false)
-      if (inserted && receipt.kind === 'prompt') onEvent({ type: 'turn-accepted', turnId, turnIdSource: 'host' })
+      if (inserted) onEvent({ type: 'turn-accepted', turnId, turnIdSource: 'host' })
       for await (const event of work.events) {
         if (event.type !== 'text_delta' || event.stream === 'thought' || !event.messageId) continue
         const block = piTextMetaSchema.safeParse(event.meta && 'piText' in event.meta ? event.meta.piText : undefined)

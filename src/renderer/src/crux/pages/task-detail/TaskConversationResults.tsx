@@ -40,7 +40,7 @@ export function TaskConversationResults({ task, actorId, embedded = false, onDev
   const context = useCrux((state) => state.workspaceContext)
   const source = useTaskSource({ spaceId: task.spaceId, taskId: task.id, embedded })
   const { mutate, error: reviewError } = useTaskMutation(source)
-  const conversations = useMemo(() => task.conversations?.filter((link) => link.actorId === actorId) ?? [], [task.conversations, actorId])
+  const conversations = useMemo(() => task.conversations?.filter(link => link.actorId === actorId && !link.id.startsWith('thr_')) ?? [], [task.conversations, actorId])
   const [documents, setDocuments] = useState<DesignConversationSummary[] | null>(null)
   const [readError, setReadError] = useState('')
   useEffect(() => { onDesignAvailable?.(Boolean(documents?.some(document => !document.sourceError && !document.readOnly))) }, [documents, onDesignAvailable])

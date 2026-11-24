@@ -24,11 +24,22 @@ export type ConversationBinding =
   | { readonly kind: 'personal' }
   | ConversationTaskBinding
   | {
+    readonly kind: 'planning'
+    readonly planningId: string
+    readonly taskId: string
+    readonly taskCreatedAt: string
+    readonly assigneeGeneration: number
+    readonly materialRevision: string
+  }
+  | {
     readonly kind: 'task'
     readonly mode?: 'execution'
     readonly taskId: string
+    readonly taskCreatedAt?: string
     readonly executionId: string
     readonly nodeId: string
+    readonly generation?: number
+    readonly attempt?: number
     readonly assigneeGeneration: number
     readonly materialRevision: string
     readonly codeRevision: string | null

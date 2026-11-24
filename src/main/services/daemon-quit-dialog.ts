@@ -34,7 +34,7 @@ export async function showDaemonQuitDialog(error: string | null = null): Promise
   const main = parent?.()
   const theme = getSettings().theme
   const isDark = theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors)
-  const backgroundColor = isDark ? '#191919' : '#f7f7f7'
+  const backgroundColor = isDark ? '#1d1d1d' : '#f7f7f7'
   window = new BrowserWindow({ icon: APPLICATION_ICON, width: 450, height: error ? 284 : 228, resizable: false, minimizable: false, maximizable: false, frame: false, show: false,
     ...(main?.isVisible() ? { parent: main, modal: true } : { alwaysOnTop: true }), backgroundColor, title: '确定退出 Crux？',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, spellcheck: false } })

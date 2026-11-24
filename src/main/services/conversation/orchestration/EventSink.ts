@@ -1,3 +1,4 @@
+import { EventEmitter, once } from 'node:events'
 import type { DatabaseSync } from 'node:sqlite'
 import type { OrchestrationV2DomainEvent, OrchestrationV2StoredEvent } from '../../../../shared/conversation/contracts'
 import type { ConversationEventPage, ConversationHostEvent } from '../../../../shared/conversation/desktop'
@@ -7,6 +8,7 @@ import { ConversationCommandReceiptStore, ConversationEventStore } from '../pers
 export class ConversationEventSink {
   private readonly eventStore: ConversationEventStore
   private readonly commandReceipts: ConversationCommandReceiptStore
+  private readonly lifecycle = new EventEmitter()
 
   constructor(private readonly database: DatabaseSync) {
     this.eventStore = new ConversationEventStore(database)
@@ -37,21 +39,37 @@ export class ConversationEventSink {
     return this.eventStore.replaySize(threadId, afterSequence, limit)
   }
 
+  async waitForLifecycle(threadIds: readonly string[], signal: AbortSignal): Promise<void> {
+    const observation = new AbortController()
+    const lifetime = AbortSignal.any([observation.signal, signal])
+    try {
+      await Promise.race(threadIds.map(threadId => once(this.lifecycle, `thread:${threadId}`, { signal: lifetime })))
+    } finally {
+      observation.abort()
+    }
+  }
+
   commit<Output>(
     input: { readonly commandId?: string; readonly events?: ReadonlyArray<OrchestrationV2DomainEvent>; readonly hostEvents?: ReadonlyArray<ConversationHostEvent | ConversationLifecycleEvent> },
     applyStoredEvents: (storedEvents: ReadonlyArray<OrchestrationV2StoredEvent>) => Output,
   ): Output {
     this.database.exec('BEGIN IMMEDIATE')
+    let result: Output
     try {
       const storedEvents = this.eventStore.append({ commandId: input.commandId, events: input.events ?? [] })
       if (input.hostEvents?.length) this.eventStore.appendHostEvents(input.hostEvents, input.commandId)
-      const result = applyStoredEvents(storedEvents)
+      result = applyStoredEvents(storedEvents)
       this.database.exec('COMMIT')
-      return result
     } catch (error) {
       this.database.exec('ROLLBACK')
       throw error
     }
+    if (input.hostEvents?.length && this.lifecycle.eventNames().length) {
+      for (const threadId of new Set(input.hostEvents.map(event => event.threadId))) {
+        this.lifecycle.emit(`thread:${threadId}`)
+      }
+    }
+    return result
   }
 
   commitCommand(input: {

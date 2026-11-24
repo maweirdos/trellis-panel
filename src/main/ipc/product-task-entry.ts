@@ -8,6 +8,7 @@ import { ipcInvoke } from '../../shared/ipc-channels'
 import { createCruxTaskMaterialsService } from '../services/crux/task-materials'
 import { IpcErrorCode, ipcFail } from '../../shared/ipc-errors'
 import type { ProductTaskApi } from '../../shared/product-task-entry'
+import type { TaskPlanningRuntimeCatalog } from '../../shared/conversation/task-planning-runtime'
 import type { CruxTaskWorkspaceService } from '../services/crux/task-workspace'
 import { ProductTaskEntryService, type ProductTaskSource, type ProductTaskEntryPorts } from '../services/product-task-entry'
 import { cruxWorkspaceGeneration, cruxWorkspaceSnapshot, cruxWorkspaceStatus } from '../services/crux/connection-service'
@@ -16,6 +17,7 @@ import { resolveWorkcopy } from '../services/workcopy-use/identity'
 import { withDesktopTeamService } from '../services/team-desktop'
 import { runtimeCall, readRuntimeCommandReceipt } from '../services/daemon-client/runtime'
 import { hasTaskPlanningOwner, readTaskPlanningDirectoryChoice } from '../services/task-planning/service'
+import { ownedDirectory } from '../services/private-conversations/files'
 import { handle } from './registry'
 import { writeExclusiveAtomic } from '../daemon/files'
 
@@ -138,7 +140,24 @@ export function registerProductTaskEntryIpc(workspace: CruxTaskWorkspaceService,
       const workcopy = resolveWorkcopy(root)
       return { root, directoryIdentity, workcopy: { id: workcopy.id, revision: workcopy.revision } }
     },
-    runtime: (root, engine) => runtimeCall(root, 'runtime.taskExecutionPlan', { engine }),
+    runtime: async (root, engine) => {
+      const current = invocations.getStore()
+      const selection = engine.conversation
+      if (selection) {
+        const catalog = await runtimeCall<TaskPlanningRuntimeCatalog, 'runtime.taskPlanningCatalog'>(
+          ownedDirectory(app.getPath('userData'), 'conversation-v2-workspace'), 'runtime.taskPlanningCatalog',
+          { purpose: 'execution', instanceId: selection.instanceId }, undefined, current)
+        const descriptor = catalog.descriptor
+        if (catalog.purpose !== 'execution' || !descriptor || descriptor.actions.chat.state === 'unsupported'
+          || !catalog.drivers.some(driver => driver.instanceId === selection.instanceId && driver.driverKind === engine.agentId)
+          || !descriptor.models.some(model => model.id === selection.model)
+          || selection.options?.some(option => !descriptor.options.some(declared => declared.id === option.id && declared.turnSelectable
+            && (!declared.modelId || declared.modelId === selection.model) && declared.choices.some(choice => choice.value === option.value)))) {
+          throw Error('所选正式执行实例、模型或参数已不可用，请重新选择。')
+        }
+      }
+      return runtimeCall(root, 'runtime.taskExecutionPlan', { engine }, undefined, current)
+    },
     preparation: (root, request, commandId, current) => runtimeCall(root, 'runtime.taskPreparation', request, commandId, current),
     execution: (root, request, commandId, current) => runtimeCall(root, 'runtime.taskExecution', request, commandId, current),
     receipt: readRuntimeCommandReceipt

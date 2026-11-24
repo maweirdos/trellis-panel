@@ -111,13 +111,42 @@ function readGeneration(pointer: string): string {
   catch (error) { throw cleanupUnknown(error) }
 }
 
+function windowsOwnerScope(directory: string, cwd: string, instanceId: string, kind: string) {
+  const id = `${kind}-${createHash('sha256').update(JSON.stringify([instanceId, cwd.toLowerCase()])).digest('hex')}`
+  const pointer = join(directory, `conversation-${kind}-process-owners`, `${id}.json`)
+  return { id, pointer, key: pointer.toLowerCase() }
+}
+
+export async function reconcileCodexProcessClosed(input: {
+  readonly directory: string
+  readonly cwd: string
+  readonly instanceId: string
+  readonly ownerScope: string
+  assertCurrent(): void
+}): Promise<boolean> {
+  if (process.platform !== 'win32') return false
+  const directory = realpathSync.native(input.directory)
+  const cwd = realpathSync.native(input.cwd)
+  const { id, pointer, key } = windowsOwnerScope(directory, cwd, JSON.stringify([input.instanceId, input.ownerScope]), 'codex')
+  if (windowsOpenings.has(key)) return false
+  windowsOpenings.add(key)
+  try {
+    input.assertCurrent()
+    await failedStartupCleanups.get(key)?.()
+    input.assertCurrent()
+    if (!existsSync(pointer)) return true
+    const owner: WorkcopyOwner = { kind: 'agent', id, generation: readGeneration(pointer), label: 'Codex app-server' }
+    await recoverPrevious(directory, owner)
+    input.assertCurrent()
+    return readGeneration(pointer) === owner.generation && isAcpJobOwnerCleaned(directory, owner)
+  } finally { windowsOpenings.delete(key) }
+}
+
 async function spawnWindowsProcess(options: CodexProcessOptions): Promise<CodexOwnedProcess> {
   const directory = realpathSync.native(options.directory)
   const cwd = realpathSync.native(options.cwd)
   const kind = options.ownerKind ?? 'codex'
-  const id = `${kind}-${createHash('sha256').update(JSON.stringify([options.instanceId, cwd.toLowerCase()])).digest('hex')}`
-  const pointer = join(directory, `conversation-${kind}-process-owners`, `${id}.json`)
-  const key = pointer.toLowerCase()
+  const { id, pointer, key } = windowsOwnerScope(directory, cwd, options.instanceId, kind)
   if (windowsOpenings.has(key)) throw new DaemonError('E_CONFLICT', 'Codex app-server 正在为此工作目录启动。')
   windowsOpenings.add(key)
   try {

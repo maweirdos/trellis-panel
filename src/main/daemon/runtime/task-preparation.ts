@@ -32,6 +32,7 @@ import { readExecutionInputRules, type FixedExecutionRules } from '../../service
 import { ProjectWorkflowInstallation, type ProjectWorkflowHookIdentity, type ProjectWorkflowPreparationScope } from '../../services/project-workflow-installation'
 import { readRegular, fileDigest } from '../../services/workflow-cutover/files'
 import { DesktopTeamError, type NativePreparationPhase } from '../../services/team-platform/types'
+import { teamTaskDevelopmentContextSchema } from '../../../shared/team-task-development'
 
 const hash = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex')
 const equal = (a: unknown, b: unknown): boolean => taskInputCanonical(a) === taskInputCanonical(b)
@@ -578,6 +579,22 @@ export class NativeTaskPreparation {
       guard()
       return result
     }, input.task)
+  }
+  async managedTaskAssignment(binding: NativeTaskBinding, assertOwned: () => void): Promise<number> {
+    const task = binding.request.task
+    const pin = binding.request.pin
+    return this.ports.withTransport(pin, async () => assertOwned(), async request => {
+      const current = await request(`/api/projects/${task.projectId}/crux/tasks/${encodeURIComponent(task.taskId)}/development-context`,
+        teamTaskDevelopmentContextSchema)
+      assertOwned()
+      const { snapshot } = current
+      const original = snapshot.snapshot.tasks.find(item => item.id === task.taskId && item.spaceId === task.spaceId && item.createdAt === task.taskCreatedAt)
+      if (snapshot.instanceId !== task.instanceId || snapshot.epoch !== pin.epoch || snapshot.actor.id !== pin.actorId
+        || !original || (original.workflow?.handlerId ?? original.assigneeIds[0]) !== pin.actorId || !original.assigneeGeneration) {
+        throw new DaemonError('E_DENIED', '无法核对正式任务当前处理人与分配代次。')
+      }
+      return original.assigneeGeneration
+    }, task)
   }
   retained(preparationId: string): NativeTaskBinding { this.ports.assertOwner(); return this.read(preparationId) }
   /** Only retained output publication. No directory grant, live lease, material

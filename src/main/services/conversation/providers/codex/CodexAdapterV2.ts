@@ -2,6 +2,7 @@ import * as DateTime from 'effect/DateTime'
 import * as Effect from 'effect/Effect'
 import type { OrchestrationV2ProviderTurn } from '../../../../../shared/conversation/contracts'
 import type { ConversationAttachmentContent } from '../../../../../shared/conversation/attachments'
+import type { ConversationNativeSubagentEvent } from '../../../../../shared/conversation/thread-relations'
 import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-input'
 import type { ConversationDriverTurnEvent, ConversationDriverWorkItem } from '../registry'
 import type { CodexAppServerClient } from './app-server/client'
@@ -31,7 +32,10 @@ export function mapCodexTurnStatus(
 }
 
 export const buildCodexTurnStartParams = (
-  input: { nativeThreadId: string; cwd: string; model: string; text: string; effort?: string; attachments?: readonly ConversationAttachmentContent[] },
+  input: {
+    nativeThreadId: string; cwd: string; model: string; text: string; effort?: string;
+    attachments?: readonly ConversationAttachmentContent[]; managedExecution?: boolean
+  },
 ): V2TurnStartParams => ({
   threadId: input.nativeThreadId,
   input: [{ type: 'text', text: input.text, text_elements: [] }, ...(input.attachments ?? []).map(content => {
@@ -43,7 +47,15 @@ export const buildCodexTurnStartParams = (
   model: input.model,
   ...(input.effort === undefined ? {} : { effort: input.effort }),
   approvalPolicy: 'never',
-  sandboxPolicy: { type: 'readOnly', networkAccess: false },
+  sandboxPolicy: input.managedExecution ? codexWorkspaceWritePolicy(input.cwd) : { type: 'readOnly', networkAccess: false },
+})
+
+export const codexWorkspaceWritePolicy = (cwd: string) => ({
+  type: 'workspaceWrite' as const,
+  writableRoots: [cwd],
+  excludeSlashTmp: true,
+  excludeTmpdirEnvVar: true,
+  networkAccess: false,
 })
 
 type CodexThreadItem = V2ItemStartedNotification__ThreadItem | V2ItemCompletedNotification__ThreadItem
@@ -101,11 +113,36 @@ function mapCodexPlan(payload: V2TurnPlanUpdatedNotification): ConversationDrive
   }
 }
 
+function codexNativeActivities(item: CodexThreadItem, turnId: string): readonly ConversationNativeSubagentEvent[] {
+  const title = 'Codex 子代理'
+  if (item.type === 'subAgentActivity') return [{
+    type: 'native-subagent', turnId, activityId: item.agentThreadId || item.id, title,
+    status: item.kind === 'completed' ? 'completed' : item.kind === 'interrupted' ? 'cancelled' : 'running',
+  }]
+  if (item.type !== 'collabAgentToolCall') return []
+  const receivers = Array.from(new Set(item.receiverThreadIds)).slice(0, 32)
+  if (!receivers.length) return [{
+    type: 'native-subagent', turnId, activityId: item.id, title,
+    status: item.status === 'inProgress' ? 'running' : item.status === 'interrupted' ? 'cancelled' : item.status,
+  }]
+  return receivers.map(activityId => {
+    const native = Object.hasOwn(item.agentsStates, activityId) ? item.agentsStates[activityId]?.status : undefined
+    const status = native === 'completed' ? 'completed'
+      : native === 'interrupted' || native === 'shutdown' ? 'cancelled'
+        : native === 'notFound' || native === 'errored' || (!native && item.status === 'failed') ? 'failed'
+          : native === 'pendingInit' ? 'waiting' : 'running'
+    return { type: 'native-subagent', turnId, activityId, title, status }
+  })
+}
+
 export const observeCodexTurns = Effect.fn('CodexAdapterV2.observeTurns')(function* (
   client: CodexAppServerClient['Service'],
   emit: (threadId: string, event: ConversationDriverTurnEvent) => void,
+  identifyCompaction: (threadId: string, turnId: string) => void,
 ) {
   const emitWorkItem = (threadId: string, turnId: string, nativeItem: CodexThreadItem, complete: boolean): void => {
+    if (nativeItem.type === 'contextCompaction') identifyCompaction(threadId, turnId)
+    for (const event of codexNativeActivities(nativeItem, turnId)) emit(threadId, event)
     const item = mapCodexWorkItem(nativeItem, complete)
     if (item) emit(threadId, { type: 'work-item', turnId, item })
   }
@@ -125,6 +162,15 @@ export const observeCodexTurns = Effect.fn('CodexAdapterV2.observeTurns')(functi
   yield* client.handleServerNotification('turn/plan/updated', payload => Effect.sync(() =>
     emit(payload.threadId, { type: 'work-item', turnId: payload.turnId, item: mapCodexPlan(payload) }),
   ))
+  yield* client.handleServerNotification('thread/tokenUsage/updated', ({ threadId, turnId, tokenUsage }) => Effect.sync(() => {
+    const { inputTokens, outputTokens, cachedInputTokens, reasoningOutputTokens } = tokenUsage.last
+    const contextWindow = tokenUsage.modelContextWindow
+    if (![inputTokens, outputTokens, cachedInputTokens, reasoningOutputTokens].every(value => Number.isSafeInteger(value) && value >= 0)) return
+    emit(threadId, { type: 'usage', turnId, usage: {
+      inputTokens, outputTokens, cachedInputTokens, reasoningOutputTokens,
+      ...(contextWindow != null && Number.isSafeInteger(contextWindow) && contextWindow > 0 ? { contextWindow } : {}),
+    } })
+  }))
   yield* client.handleServerNotification('item/completed', payload => Effect.sync(() => {
     if (payload.item.type === 'agentMessage') {
       emit(payload.threadId, { type: 'text-final', text: payload.item.text, itemId: payload.item.id, turnId: payload.turnId })

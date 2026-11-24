@@ -1,12 +1,12 @@
 import { z } from 'zod'
 import { acpPermissionReviewSchema } from './acp-permission-review'
 import { cruxWorkQuerySchema } from './crux-work'
-import { nativeTaskOutputSelectionSchema, nativeTaskOutputSyncSchema, nativeTaskSelectedCodeSchema } from './native-task-execution'
+import { nativeTaskEngineSchema, nativeTaskOutputSelectionSchema, nativeTaskOutputSyncSchema, nativeTaskSelectedCodeSchema } from './native-task-execution'
 import { executionArtifactRefSchema, executionArtifactVersionSchema, executionVersionRefSchema, executionArtifactViewSchema } from './team-execution-artifacts'
 import type { IpcFail } from './ipc-errors'
 import { teamExecutionBundleRefSchema } from './team-task-execution'
 
-export const productTaskEngineSchema = z.object({ agentId: z.enum(['pi', 'codex', 'claude']), profileId: z.string().min(1).max(200).regex(/^[\w.-]+$/).optional() }).strict()
+export const productTaskEngineSchema = nativeTaskEngineSchema
 export const productTaskReadSchema = cruxWorkQuerySchema.extend({
   spaceId: z.string().min(1).max(300).optional(), taskCreatedAt: z.string().min(1).max(100).optional(), entryId: z.string().uuid().optional()
 }).strict()

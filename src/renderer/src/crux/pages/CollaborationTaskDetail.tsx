@@ -35,6 +35,7 @@ import { TaskInputPanel } from '../governance/TaskInputPanel'
 import { TaskHandoffProvenance } from './task-detail/TaskHandoffProvenance'
 import { ensureTaskConversationFromPost, openTaskConversationFromPost, type TaskConversationIntent } from '../../conversations/task-navigation'
 import { openOrdinaryTaskConversation } from '../task-conversation'
+import { openTaskWorkThread } from '../../conversation-workbench/task-work-navigation'
 
 export function TaskDetailDrawer(): JSX.Element | null {
   const snapshot = useCrux((state) => state.snapshot)
@@ -120,7 +121,8 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const confirmed = task.clarifications?.filter(note => !note.withdrawn) ?? []
   const basis = fixedPostInput(task)
   const changedBasis = basis && taskInputCanonical(basis) !== taskInputCanonical(currentPostInput(task, snapshot.comments))
-  const links = task.conversations?.filter(link => link.actorId === actorId) ?? []
+  const links = task.conversations?.filter(link => link.actorId === actorId && !link.id.startsWith('thr_')) ?? []
+  const workSources = task.conversations?.filter(link => link.actorId === actorId && link.id.startsWith('thr_')) ?? []
   const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId)
   const simple = flow.lightweight || flow.canRestore
   const desktop = Boolean(conversationClient())
@@ -152,16 +154,18 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const askTaskAgent = async (conversationId?: string, kind: 'work' | 'code' = 'work', design?: ConversationTaskDesign, request?: TaskConversationIntent['request']): Promise<void> => {
     if (openingConversation.current || !actorId || (request && disabled)) return
     const openOrdinary = !conversationId && kind === 'work' && ordinaryTaskChat
+    const workSource = conversationId && workSources.find(link => link.id === conversationId)
     if (openOrdinary && !mayOpenOrdinaryChat) return
     if (!openOrdinary && !conversationId && onContinue && kind === 'work' && !request) { onContinue(); return }
     const existingLink = conversationId ? links.find(link => link.id === conversationId) : links[0]
-    if (!existingLink && (conversationId || disabled)) return
+    if (!existingLink && !workSource && (conversationId || disabled)) return
     const ticket = source.ticket()
     openingConversation.current = true
     setConversationPending(true); setConversationError('')
     const current = () => source.owns(ticket)
     try {
-      if (openOrdinary) await openOrdinaryTaskConversation(context.key, task, current)
+      if (workSource) await openTaskWorkThread(task, workSource.id, current)
+      else if (openOrdinary) await openOrdinaryTaskConversation(context.key, task, current)
       else if (kind === 'code' || !existingLink) await ensureTaskConversationFromPost(task, kind, current, design, request)
       else await openTaskConversationFromPost(task, existingLink.id, current, { request })
     }
@@ -216,6 +220,10 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                   onClick={() => void askTaskAgent(undefined, 'work', undefined, links.length || closed || assignedTeamAgent || ordinaryTaskChat ? undefined : 'analyze')}>
                   <MessageSquare size={14} aria-hidden="true" />{conversationPending ? '正在打开…' : links.length ? '继续对话' : ordinaryTaskChat || assignedTeamAgent ? '任务对话' : '让 Agent 分析'}
                 </Button>}
+                {desktop && workSources.map(link => <Button key={link.id} size="sm" variant="ghost" disabled={conversationPending}
+                  aria-label={`回看原 Work 对话 · ${link.title}`} onClick={() => void askTaskAgent(link.id)}>
+                  <MessageSquare size={14} aria-hidden="true" />回看原 Work 对话
+                </Button>)}
                 {!hasDesign && mayDevelop && (!existingCode || existingCode.id !== links[0]?.id) && <Button size="sm" variant="ghost" disabled={conversationPending} onClick={() => void askTaskAgent(undefined, 'code', undefined, 'develop')}><Code2 size={14} />{codeLabel}</Button>}
                 {canPlanInProject && <Button size="sm" variant="outline" disabled={disabled} onClick={async () => {
                   const result = await mutate('打开工程规划', () => api.crux.transitionTask({

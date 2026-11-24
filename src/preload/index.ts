@@ -330,6 +330,7 @@ const api = {
     removeCrew: (input) => invokeCrux('removeCrew', input)
   } satisfies CruxApi,
   taskPlanning: {
+    catalog: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.catalog, input),
     read: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.read, input),
     prepare: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.prepare, input),
     selectSources: input => ipcRenderer.invoke(ipcInvoke.taskPlanning.selectSources, input),
@@ -586,6 +587,8 @@ const api = {
   conversationWorkRoot: () => ipcRenderer.invoke(ipcInvoke.conversation.workRoot),
   conversationProjectWorkbench: (input: Parameters<TrellisApi['conversationProjectWorkbench']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.projectWorkbench, input),
+  conversationWorkTaskAction: (input: Parameters<TrellisApi['conversationWorkTaskAction']>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.workTaskAction, input),
   conversationTaskScope: (task: Parameters<TrellisApi['conversationTaskScope']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.taskScope, task),
   conversationModels: (cwd: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.models, cwd, ...(task === undefined ? [] : [task])),

@@ -545,6 +545,9 @@ export class ProductTaskEntryService {
       this.assertCurrent(s)
       if (legacy) return this.view(s, undefined, [], 'legacy')
       if (blockers.length) return this.view(s, undefined, blockers)
+      if (!input.engine.conversation) {
+        return this.view(s, undefined, [{ target: 'runtime', message: '请选择具备正式托管能力的原生实例及模型。' }])
+      }
       const definition = definitionOf(s), node = definition.nodes[0], bundle = s.context.inputs.current
       if (!node || node.kind !== 'agent' || !bundle) throw Error('已采用的执行定义不可用。')
       const retainedRoot = predecessor?.root

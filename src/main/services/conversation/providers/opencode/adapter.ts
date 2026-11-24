@@ -57,7 +57,7 @@ export class OpenCodeDriver implements ConversationDriverSession {
 
   static readonly open = (input: ConversationDriverOpenInput): Effect.Effect<OpenCodeDriver, Error> => run(async () => {
     const sdk = await import('@opencode/client/effect')
-    const driver = new OpenCodeDriver(input, sdk, openCodeConfigurationKey(input.env))
+    const driver = new OpenCodeDriver(input, sdk, openCodeConfigurationKey(input.env, input.fingerprintKey))
     input.assertCanSpawn()
     input.onSpawn(driver)
     try {
@@ -76,7 +76,7 @@ export class OpenCodeDriver implements ConversationDriverSession {
 
   private assertCurrent(cwd = this.input.cwd): void {
     this.input.assertCanSpawn()
-    if (this.stopped || !samePath(cwd, this.input.cwd) || openCodeConfigurationKey(this.input.env) !== this.configurationKey) {
+    if (this.stopped || !samePath(cwd, this.input.cwd) || openCodeConfigurationKey(this.input.env, this.input.fingerprintKey) !== this.configurationKey) {
       throw new DaemonError('E_CONFLICT', 'OpenCode 运行实例、配置或工程目录已经变化。')
     }
   }

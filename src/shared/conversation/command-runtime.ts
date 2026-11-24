@@ -4,6 +4,10 @@ import type { OrchestrationV2AppThread, OrchestrationV2ConversationMessage, Orch
 import { conversationAttachmentReferenceFields } from './attachments'
 import type { ChatAttachment } from './chatAttachment'
 import { modelSelectionIdSchema } from '../model-selection'
+import {
+  conversationForkSourceSchema, conversationHistoryReferencesSchema,
+  type ConversationThreadRelation, type ConversationThreadRelations,
+} from './thread-relations'
 
 const id = z.string().min(1).max(200)
 const text = z.string().max(120_000)
@@ -22,12 +26,27 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
   z.object({
     ...base, ...conversationAttachmentReferenceFields, type: z.literal('message.dispatch'), messageId: id, text, model, instanceId,
     deliveryIntent: z.enum(['auto', 'steer']).optional(), options: conversationModelOptionsSchema.optional(),
+    references: conversationHistoryReferencesSchema.optional(),
   }).strict(),
   z.object({ ...base, type: z.literal('queue.resume') }).strict(),
   z.object({ ...base, type: z.literal('thread.rename'), title: z.string().trim().min(1).max(500) }).strict(),
   z.object({ ...base, type: z.literal('thread.pin'), pinned: z.boolean() }).strict(),
   z.object({ ...base, type: z.literal('thread.archive'), archived: z.boolean() }).strict(),
-  z.object({ ...base, type: z.literal('thread.delete') }).strict(),
+  z.object({ ...base, type: z.literal('thread.delete'), onlyIfUnused: z.literal(true).optional() }).strict(),
+  z.object({
+    ...base, type: z.literal('thread.fork'), targetThreadId: id, sourcePoint: conversationForkSourceSchema,
+    sideChat: z.boolean().optional(), readOnly: z.literal(true).optional(), title: z.string().trim().min(1).max(500).optional(),
+    selection: z.strictObject({ instanceId, model, options: conversationModelOptionsSchema.optional() }).optional(),
+  }).strict(),
+  z.strictObject({ ...base, type: z.literal('thread.goal.set'), objective: z.string().trim().min(1).max(4_000) }),
+  z.strictObject({ ...base, type: z.literal('thread.goal.pause') }),
+  z.strictObject({ ...base, type: z.literal('thread.goal.resume') }),
+  z.strictObject({ ...base, type: z.literal('thread.goal.clear') }),
+  z.strictObject({ ...base, type: z.literal('thread.compact'), instructions: z.string().trim().min(1).max(4_000).optional() }),
+  z.strictObject({
+    ...base, type: z.literal('thread.handoff'), messageId: id, text: text.refine(value => value.trim().length > 0), instanceId, model,
+    options: conversationModelOptionsSchema.optional(), references: conversationHistoryReferencesSchema.optional(),
+  }),
   z.object({ ...run, ...conversationAttachmentReferenceFields, type: z.literal('queued-run.edit'), text }).strict(),
   z.object({ ...run, type: z.literal('queued-run.cancel') }).strict(),
   z.object({ ...run, type: z.literal('queued-run.start') }).strict(),
@@ -65,6 +84,7 @@ export interface ConversationThreadCommandState {
   readonly runId?: string
   readonly messageId?: string
   readonly requestId?: string
+  readonly childThreadId?: string
   readonly acceptedAt: string
   readonly resultSequence: number
   readonly dispatch: 'accepted' | 'queued' | 'paused' | 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'pending-reconciliation'
@@ -123,9 +143,45 @@ export type ConversationProjectedWorkItem = Extract<
   { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' }
 >
 
+export interface ConversationGoal {
+  readonly source: 'application'
+  readonly objective: string
+  readonly status: 'active' | 'paused'
+  readonly updatedAt: string
+}
+
+export interface ConversationTurnUsage {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cachedInputTokens?: number
+  readonly reasoningOutputTokens?: number
+  readonly contextWindow?: number
+}
+
+export interface ConversationCompaction {
+  readonly trigger: 'manual' | 'idle'
+  readonly instructions?: string
+}
+
+export interface ConversationHandoff {
+  readonly sourceRunId: string
+  readonly sourceInstanceId: string
+  readonly targetInstanceId: string
+  readonly sourceThreadIds: readonly string[]
+  readonly includedMessages: number
+  readonly omittedMessages: number
+  readonly omittedAttachments: number
+  readonly state: 'prepared' | 'accepted'
+}
+
 export interface ConversationThreadSnapshot {
   readonly thread: OrchestrationV2AppThread
-  readonly runs: ReadonlyArray<OrchestrationV2Run & ConversationRunEvidence & { readonly lifecycle?: ConversationRunLifecycle }>
+  readonly runs: ReadonlyArray<OrchestrationV2Run & ConversationRunEvidence & {
+    readonly lifecycle?: ConversationRunLifecycle
+    readonly usage?: ConversationTurnUsage
+    readonly compaction?: ConversationCompaction
+    readonly handoff?: ConversationHandoff
+  }>
   readonly messages: readonly OrchestrationV2ConversationMessage[]
   readonly turnItems?: readonly ConversationProjectedWorkItem[]
   readonly cursor: ConversationThreadEventCursor
@@ -133,6 +189,8 @@ export interface ConversationThreadSnapshot {
   readonly historyCursor: ConversationThreadHistoryCursor | null
   readonly queuePaused: boolean
   readonly runtimeRequests: readonly ConversationRuntimeRequest[]
+  readonly relations?: ConversationThreadRelations
+  readonly goal?: ConversationGoal | null
 }
 
 export interface ConversationLifecycleEventPage extends Omit<ConversationEventPage, 'events'> {
@@ -160,6 +218,11 @@ type LifecyclePayload =
   | { readonly kind: 'run'; readonly phase: 'foreground-ended' | 'background-running' | 'settled' | 'stop-requested' | 'stop-unconfirmed' }
   | { readonly kind: 'terminal-evidence'; readonly evidence: ConversationNativeTerminalEvidence }
   | { readonly kind: 'request'; readonly request: ConversationRuntimeRequest }
+  | { readonly kind: 'relation'; readonly relation: ConversationThreadRelation; readonly removed?: true }
+  | { readonly kind: 'goal'; readonly goal: ConversationGoal | null }
+  | { readonly kind: 'usage'; readonly usage: ConversationTurnUsage }
+  | { readonly kind: 'compaction'; readonly compaction: ConversationCompaction }
+  | { readonly kind: 'handoff'; readonly handoff: ConversationHandoff }
 
 export interface ConversationLifecycleEvent {
   readonly id: string

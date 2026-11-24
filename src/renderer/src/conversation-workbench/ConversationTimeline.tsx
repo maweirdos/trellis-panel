@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, type JSX, type ReactNode } from 'react'
-import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, ListChecks, LoaderCircle, Pencil, Quote } from 'lucide-react'
+import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, GitBranch, ListChecks, LoaderCircle, Pencil, Quote } from 'lucide-react'
 import { Button } from '../my/ui'
 import { MarkdownView } from '../components/MarkdownView'
+import { ConversationLifecycleCard, type ConversationThreadTab } from './ConversationRelations'
 import type { ConversationMessage, ConversationTimelineRow } from './useConversationThread'
 import './conversation-timeline-work.css'
 
@@ -33,6 +34,8 @@ export interface ConversationTimelineProps {
   readonly onQuote?: (message: ConversationMessage, text: string) => void
   /** Only offered on the reader's own messages. */
   readonly onEdit?: (message: ConversationMessage) => void
+  readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
+  readonly onForkFromRun?: (runId: string) => void
   readonly footer?: ReactNode
   readonly emptyTitle?: string
 }
@@ -124,6 +127,8 @@ export function ConversationTimeline({
   onLoadEarlier,
   onQuote,
   onEdit,
+  onOpenRelatedThread,
+  onForkFromRun,
   footer,
   emptyTitle,
 }: ConversationTimelineProps): JSX.Element {
@@ -218,7 +223,8 @@ export function ConversationTimeline({
           </div>
         )}
         {rows.map((row) => (
-          <ConversationRow key={row.id} row={row} onQuote={onQuote} onEdit={onEdit} />
+          <ConversationRow key={row.id} row={row} onQuote={onQuote} onEdit={onEdit}
+            onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun} />
         ))}
         {working && (
           <p className="my-activity-note conversation-working" role="status">
@@ -236,11 +242,16 @@ function ConversationRow({
   row,
   onQuote,
   onEdit,
+  onOpenRelatedThread,
+  onForkFromRun,
 }: {
   readonly row: ConversationTimelineRow
   readonly onQuote?: ConversationTimelineProps['onQuote']
   readonly onEdit?: ConversationTimelineProps['onEdit']
+  readonly onOpenRelatedThread?: ConversationTimelineProps['onOpenRelatedThread']
+  readonly onForkFromRun?: ConversationTimelineProps['onForkFromRun']
 }): JSX.Element {
+  if (row.kind === 'relation') return <ConversationLifecycleCard item={row.item} onOpenRelatedThread={onOpenRelatedThread} />
   if (row.kind === 'work') {
     const { label, icon: Icon } = WORK_STATUS[row.state]
     return (
@@ -287,13 +298,14 @@ function ConversationRow({
     )
   }
   const user = row.message.role === 'user'
+  const forkRun = row.forkRunId
   return (
     <article
       className={`conversation-message conversation-message-${row.message.role}`}
       data-conversation-row-id={row.id}
       aria-label={user ? '你的消息' : row.message.role === 'assistant' ? '模型回复' : '系统消息'}
     >
-      {(onQuote || (user && onEdit)) && (
+      {(onQuote || (user && onEdit) || (forkRun && onForkFromRun)) && (
         <div className="conversation-message-actions">
           {onQuote && (
             <button
@@ -318,6 +330,10 @@ function ConversationRow({
               <Pencil size={13} aria-hidden="true" />
             </button>
           )}
+          {forkRun && onForkFromRun && <button type="button" className="my-icon-control" title="从此回合创建分支"
+            aria-label="从此回合创建分支" onClick={() => onForkFromRun(forkRun)}>
+            <GitBranch size={13} aria-hidden="true" />
+          </button>}
         </div>
       )}
       <div className="my-chat-prose conversation-message-body">

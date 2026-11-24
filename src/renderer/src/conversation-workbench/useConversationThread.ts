@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import type {
   ConversationLifecycleEvent,
+  ConversationCompaction,
+  ConversationGoal,
+  ConversationHandoff,
   ConversationProjectedWorkItem,
   ConversationRuntimeRequest,
   ConversationThreadCommand,
@@ -9,6 +14,7 @@ import type {
   ConversationThreadHistoryCursor,
   ConversationThreadHistoryPage,
   ConversationThreadSnapshot,
+  ConversationTurnUsage,
 } from '../../../shared/conversation/command-runtime'
 import type { ConversationRunEvidence } from '../../../shared/conversation/desktop'
 import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
@@ -19,6 +25,8 @@ import type {
   OrchestrationV2Run,
 } from '../../../shared/conversation/orchestrationV2'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
+import type { ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
+import { ModelSelection } from '../../../shared/conversation/modelSelection'
 import { api } from '../api'
 import { conversationError } from './useComposerSend'
 
@@ -33,6 +41,9 @@ export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'statu
   readonly engineAcceptedAt?: string | null
   readonly nativeTurnId?: string | null
   readonly queuePosition?: number | null
+  readonly usage?: ConversationTurnUsage
+  readonly compaction?: ConversationCompaction
+  readonly handoff?: ConversationHandoff
   readonly lifecycle?: {
     readonly foregroundEnded: boolean
     readonly backgroundRunning: boolean
@@ -42,7 +53,7 @@ export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'statu
 }
 
 export type ConversationTimelineRow =
-  | { readonly kind: 'message'; readonly id: string; readonly message: ConversationMessage }
+  | { readonly kind: 'message'; readonly id: string; readonly message: ConversationMessage; readonly forkRunId?: string }
   | {
       readonly kind: 'work'
       readonly id: string
@@ -51,6 +62,7 @@ export type ConversationTimelineRow =
       readonly at?: string
     }
   | { readonly kind: 'plan'; readonly id: string; readonly item: Exclude<ConversationProjectedWorkItem, { readonly type: 'dynamic_tool' }> }
+  | { readonly kind: 'relation'; readonly id: string; readonly item: ConversationThreadRelations['children'][number] }
 
 export interface ConversationThreadProjection {
   readonly thread: ConversationThread
@@ -65,6 +77,8 @@ export interface ConversationThreadProjection {
   readonly turnItems?: readonly ConversationProjectedWorkItem[]
   readonly historyCursor: ConversationThreadSnapshot['historyCursor']
   readonly hasOlderHistory: boolean
+  readonly relations: ConversationThreadRelations
+  readonly goal: ConversationGoal | null
 }
 
 export interface ThreadReadTarget {
@@ -103,6 +117,7 @@ const POLL_DELAY_MS = 450
 const IDLE_POLL_DELAY_MS = 5_000
 const READ_RETRY_MS = 1_800
 const CACHE_LIMIT = 12
+const decodeModelSelection = Schema.decodeUnknownOption(ModelSelection)
 
 export function isActiveRun(run: ConversationRun): boolean {
   return !run.outcomeUnknown && ACTIVE_RUNS.has(run.status)
@@ -169,7 +184,7 @@ function wasNotAdmitted(failure: IpcFail): boolean {
   return 'outcome' in failure && failure.outcome === 'not-admitted'
 }
 
-function commandResult(
+export function commandResult(
   commandId: string,
   receipt: ConversationThreadCommandState | null,
   source: 'apply' | 'reconcile',
@@ -189,7 +204,7 @@ function commandResult(
   return { ok: true, uncertain: false, commandId, receipt, source }
 }
 
-async function applyConversationCommand(
+export async function applyConversationCommand(
   root: string,
   command: ConversationThreadCommand,
   task?: ConversationTaskLocator,
@@ -268,6 +283,7 @@ export function deriveTimelineRows(
   messages: readonly ConversationMessage[],
   runs: readonly ConversationRun[],
   turnItems: readonly ConversationProjectedWorkItem[],
+  relations: ConversationThreadRelations['children'] = [],
 ): readonly ConversationTimelineRow[] {
   const rows: ConversationTimelineRow[] = []
   const place = (row: ConversationTimelineRow): void => {
@@ -276,6 +292,13 @@ export function deriveTimelineRows(
     else rows[index] = row
   }
   const assistantPlaced = new Set<string>()
+  const byParentRun = new Map<string, ConversationThreadRelations['children'][number][]>()
+  for (const item of relations) {
+    if (!item.parentRunId || (item.kind !== 'delegated' && item.kind !== 'native-activity')) continue
+    const current = byParentRun.get(item.parentRunId)
+    if (current) current.push(item)
+    else byParentRun.set(item.parentRunId, [item])
+  }
   for (const run of runs) {
     const prompt = messages.find((item) => item.id === run.userMessageId)
     if (prompt) place({ kind: 'message', id: prompt.id, message: prompt })
@@ -295,10 +318,12 @@ export function deriveTimelineRows(
         place({ kind: 'plan', id: item.id, item })
       }
     }
+    for (const item of byParentRun.get(run.id) ?? []) place({ kind: 'relation', id: `relation:${item.id}`, item })
     for (const message of messages) {
       if (message.role !== 'assistant' || message.runId !== run.id || assistantPlaced.has(message.id)) continue
       assistantPlaced.add(message.id)
-      place({ kind: 'message', id: message.id, message })
+      const stable = !run.outcomeUnknown && ['completed', 'failed', 'cancelled', 'interrupted'].includes(run.status)
+      place({ kind: 'message', id: message.id, message, ...(stable && { forkRunId: run.id }) })
     }
   }
   const placed = new Set(rows.map((row) => row.id))
@@ -327,13 +352,16 @@ export function queuedRunsWithText(
 
 function snapshotProjection(snapshot: ConversationThreadSnapshot): ConversationThreadProjection {
   const { thread, runs, messages, turnItems = [] } = snapshot
+  const relations = snapshot.relations ?? { parent: null, children: [] }
   const activeRun = [...runs].reverse().find((run) => isActiveRun(run))
   return {
     thread,
     messages,
     runs,
     turnItems,
-    rows: deriveTimelineRows(messages, runs, turnItems),
+    rows: deriveTimelineRows(messages, runs, turnItems, relations.children),
+    relations,
+    goal: snapshot.goal ?? null,
     queuePaused: snapshot.queuePaused,
     runtimeRequests: snapshot.runtimeRequests,
     queuedRuns: runs.filter((run) => isQueuedRun(run)),
@@ -355,7 +383,7 @@ function prependHistory(
   const runs = mergeById(pages.flatMap(page => page.runs), projection.runs)
   const turnItems = mergeById(pages.flatMap(page => page.turnItems ?? []), projection.turnItems ?? [])
   const historyCursor = pages[0].historyCursor
-  return { ...projection, messages, runs, turnItems, rows: deriveTimelineRows(messages, runs, turnItems),
+  return { ...projection, messages, runs, turnItems, rows: deriveTimelineRows(messages, runs, turnItems, projection.relations.children),
     historyCursor, hasOlderHistory: historyCursor !== null }
 }
 
@@ -372,9 +400,13 @@ export function applyEventPage(
     return { projection, cursor: page.cursor }
   }
   let messages = projection.messages
+  let thread = projection.thread
   const runs = [...projection.runs]
   let queuePaused = projection.queuePaused
   let runtimeRequests = projection.runtimeRequests
+  let parent = projection.relations?.parent ?? null
+  let goal = projection.goal ?? null
+  const children = new Map((projection.relations?.children ?? []).map(item => [item.id, item]))
   const items = new Map((projection.turnItems ?? []).map(item => [item.id, item]))
   const updateRun = (id: unknown, update: (run: ConversationRun) => ConversationRun): void => {
     const index = runs.findIndex(run => run.id === id)
@@ -384,6 +416,25 @@ export function applyEventPage(
     const event = entry.event as Record<string, unknown> & { readonly type?: string }
     const payload = event.payload as Record<string, unknown> | undefined
     if (event.type === 'crux.lifecycle') {
+      if (entry.event.type !== 'crux.lifecycle') continue
+      const body = entry.event.payload
+      if (body.kind === 'relation') {
+        const { relation, removed } = body
+        if (event.threadId === projection.thread.id) {
+          if (relation.parentThreadId === projection.thread.id) {
+            if (removed) children.delete(relation.id)
+            else children.set(relation.id, relation)
+          } else if (relation.childThreadId === projection.thread.id) {
+            if (!removed) parent = relation
+            else if (parent?.id === relation.id) parent = null
+          }
+        }
+        continue
+      }
+      if (body.kind === 'goal') goal = body.goal
+      if (body.kind === 'usage') updateRun(event.runId, run => ({ ...run, usage: body.usage }))
+      if (body.kind === 'compaction') updateRun(event.runId, run => ({ ...run, compaction: body.compaction }))
+      if (body.kind === 'handoff') updateRun(event.runId, run => ({ ...run, handoff: body.handoff }))
       const lifecycle = payload as ConversationLifecycleEvent['payload']
       if (lifecycle.kind === 'queue') queuePaused = lifecycle.paused
       if (lifecycle.kind === 'request') {
@@ -426,6 +477,11 @@ export function applyEventPage(
       continue
     }
     const wireEvent = entry.event
+    if (wireEvent.type === 'thread.metadata-updated' && wireEvent.threadId === thread.id) {
+      const { title, modelSelection } = wireEvent.payload
+      thread = { ...thread, title, modelSelection: Option.getOrElse(decodeModelSelection(modelSelection), () => thread.modelSelection) }
+      continue
+    }
     if (wireEvent.type === 'turn-item.updated') {
       const item = wireEvent.payload
       if (item.type === 'dynamic_tool' || item.type === 'proposed_plan' || item.type === 'todo_list') items.set(item.id, item)
@@ -441,16 +497,20 @@ export function applyEventPage(
     }
   }
   const turnItems = [...items.values()]
+  const relations = { parent, children: [...children.values()] }
   const activeRun = [...runs].reverse().find((run) => isActiveRun(run))
   const next: ConversationThreadProjection = {
     ...projection,
+    thread,
     cursor: page.cursor,
     messages,
     runs,
     queuePaused,
     runtimeRequests,
     turnItems,
-    rows: deriveTimelineRows(messages, runs, turnItems),
+    relations,
+    goal,
+    rows: deriveTimelineRows(messages, runs, turnItems, relations.children),
     queuedRuns: runs.filter((run) => isQueuedRun(run)),
     activeRun,
   }
@@ -489,6 +549,7 @@ export interface ConversationThreadController {
   readonly reconcile: (commandId: string) => Promise<ConversationThreadCommandState | null>
   readonly checkCommand: (commandId: string) => Promise<ConversationApplyResult>
   readonly pendingCommands: ReadonlySet<string>
+  readonly commandFailure?: Extract<ConversationApplyResult, { readonly ok: false }>
 }
 
 interface ConversationRequestAnswer {
@@ -555,6 +616,10 @@ export function useConversationThread(
   const [state, setState] = useState<ReadState>()
   const [attempt, setAttempt] = useState(0)
   const [pendingByScope, setPendingByScope] = useState<ReadonlyMap<string, ReadonlySet<string>>>(new Map())
+  const [commandIssue, setCommandIssue] = useState<{
+    readonly scope: string
+    readonly failure: Extract<ConversationApplyResult, { readonly ok: false }>
+  }>()
   const [loadingEarlierScopes, setLoadingEarlierScopes] = useState<ReadonlySet<string>>(new Set())
   const historyReads = useRef(new Set<string>())
 
@@ -731,7 +796,10 @@ export function useConversationThread(
     setCommandBusy(entry.commandId, true)
     entry.inFlight = invoke().then((result) => {
       if (!retainsCommand(result, entry)) actionCommands.delete(key)
-      if (result.receipt && currentScope.current === scope) reload()
+      if (currentScope.current === scope) {
+        setCommandIssue(result.ok ? undefined : { scope, failure: result })
+        if (result.receipt) reload()
+      }
       return result
     }).finally(() => {
       entry.inFlight = undefined
@@ -773,7 +841,7 @@ export function useConversationThread(
     if (command.threadId !== threadId) return Promise.resolve(NO_THREAD_RESULT)
     const entry: TrackedCommand = {
       commandId: command.commandId, scope,
-      waitForTerminal: command.type === 'run.interrupt' || command.type === 'runtime-request.respond',
+      waitForTerminal: command.type === 'run.interrupt' || command.type === 'runtime-request.respond' || command.type === 'thread.compact',
     }
     actionCommands.set(key, entry)
     return trackOperation(key, entry, () => applyConversationCommand(root, command, locator))
@@ -901,9 +969,10 @@ export function useConversationThread(
 
   const pendingCommands = pendingByScope.get(scope) ?? EMPTY_COMMANDS
   const loadingEarlier = loadingEarlierScopes.has(scope)
+  const commandFailure = interactive && commandIssue?.scope === scope ? commandIssue.failure : undefined
   return useMemo<ConversationThreadController>(
-    () => ({ scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands }),
-    [scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands],
+    () => ({ scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands, commandFailure }),
+    [scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands, commandFailure],
   )
 }
 

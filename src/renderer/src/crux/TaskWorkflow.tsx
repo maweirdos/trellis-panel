@@ -5,7 +5,7 @@ import type { CruxWorkLocal } from '@shared/crux-work'
 import type { ProductTaskResults } from '@shared/product-task-entry'
 import type { TaskMaterialInputReference } from '@shared/task-material-inputs'
 import { taskInputCanonical, taskInputTransitionFence, type TaskInputRead } from '@shared/team-task-inputs'
-import { getCruxTaskActions, getCruxTaskStageMetadata, isCruxTriageManager } from '@shared/crux-domain/workflow'
+import { currentTaskTestSubmission, getCruxTaskActions, getCruxTaskStageMetadata, isCruxTriageManager } from '@shared/crux-domain/workflow'
 import { api, hasIpc } from '../api'
 import { Button, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -29,6 +29,7 @@ import { recipientRole, workflowActionBlocker, workflowInputIdentity, workflowNe
 import { DesignRevisionPicker } from './workflow-stage/DesignRevisionPicker'
 import { designReferenceBody, matchesDesignReference, taskDesignReference, type DesignReference } from './workflow-stage/design-reference'
 import { AssignedTaskNextStep, hasAssignedNextStep } from './workflow-stage/AssignedTaskNextStep'
+import { buildTaskTestRun, TaskTestRunFields, type TestRunDraft } from './workflow-stage/TaskTestRunFields'
 import './workflow-stage/workflow-stage.css'
 
 const WORKFLOW_ACTION_LABELS: Record<CruxTaskAction, string> = {
@@ -358,7 +359,15 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
   const [workKind, setWorkKind] = useTaskDraftField<CruxTaskWorkKind>(draft, 'workKind', task.workKind ?? 'code')
   const [criteria, setCriteria] = useTaskDraftField(draft, 'criteria', (task.acceptanceCriteria ?? []).join('\n'))
   const fixedDelivery = task.workflow?.deliveryState
+  const testedExecution = currentTaskTestSubmission(task)?.executionDelivery
   const latestTest = fixedDelivery?.testRuns.filter(run => run.deliveryId === fixedDelivery.currentDeliveryId && run.baselineId === fixedDelivery.currentBaselineId).at(-1)
+  const testDelivery = fixedDelivery?.deliveries.find(delivery => delivery.id === fixedDelivery.currentDeliveryId
+    && delivery.baselineId === fixedDelivery.currentBaselineId && delivery.environment && delivery.testPackage)
+  const testDraftKey = `test:${testDelivery?.id ?? ''}`
+  const [testDraft, setTestDraft] = useTaskDraftField<TestRunDraft>(draft, testDraftKey, {})
+  const testEditor = Boolean(testDelivery && ['pass_test', 'return_development'].includes(action)
+    && (fixedDelivery?.roles.testOwnerId ?? task.workflow?.handlerId) === identity.actor)
+  const testing = testEditor && Object.keys(testDraft).length > 0
   const [checked, setChecked] = useTaskDraftField<string[]>(draft, 'checked', [])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -407,10 +416,13 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
     setError('')
     const handoffBody = fixedPlanBody ?? [body.trim(), design && ['submit_design', 'approve_design'].includes(action) ? designReferenceBody(design) : ''].filter(Boolean).join('\n\n')
     if (BODY_REQUIRED.has(action) && !handoffBody) { setError(action === 'decline' && task.workflow && !task.triagePending ? '请填写取消原因' : '请填写本次交接内容，或选择共享设计固定版本'); return }
+    if (testedExecution && action === 'pass_test' && !handoffBody) { setError('请填写此交付版本的实际测试结果。'); return }
     if (HANDED.has(action) && !recipients.some((candidate) => candidate.member.id === recipient)) { setError(`请明确选择本空间的${recipientLabel}；原处理人不会自动代收。`); return }
     const acceptance = criteria.split('\n').map((item) => item.trim()).filter(Boolean)
     if (action === 'arrange' && !acceptance.length) { setError('请补充至少一项验收标准'); return }
-    if (action === 'pass_test' && (fixedDelivery ? !latestTest : !task.acceptanceCriteria?.length || task.acceptanceCriteria.some(criterion => !checked.includes(criterion)))) {
+    const testRun = testing && testDelivery ? buildTaskTestRun(testDelivery, body, testDraft) : null
+    if (testing && !testRun) { setError('请填写本轮测试说明并逐项记录实际结果。'); return }
+    if (action === 'pass_test' && (fixedDelivery ? !latestTest && !testRun : !task.acceptanceCriteria?.length || task.acceptanceCriteria.some(criterion => !checked.includes(criterion)))) {
       setError(fixedDelivery ? '请先记录当前交付版本的测试结果。' : '请逐项确认验收标准')
       return
     }
@@ -430,7 +442,8 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
       ...(action === 'supplement' && !task.acceptanceCriteria?.length && acceptance.length ? { acceptanceCriteria: acceptance } : {}),
       ...((action === 'approve_plan' || action === 'submit_delivery') && !task.acceptanceCriteria?.length && acceptance.length ? { acceptanceCriteria: acceptance } : {}),
       ...(fixedDelivery && ['submit_test', 'submit_delivery', 'pass_test', 'accept_delivery', 'return_development', 'return_delivery'].includes(action) ? { deliveryId: fixedDelivery.currentDeliveryId } : {}),
-      ...(action === 'pass_test' ? fixedDelivery ? { testRunId: latestTest?.id } : { checkedCriteria: checked } : {}),
+      ...(testedExecution && ['pass_test', 'accept_delivery', 'return_development', 'return_delivery'].includes(action) ? { executionDelivery: testedExecution } : {}),
+      ...(testRun ? { testRun } : action === 'pass_test' ? fixedDelivery ? { testRunId: latestTest?.id } : { checkedCriteria: checked } : {}),
       ...(fixedDelivery && action === 'accept_delivery' ? { testRunId: fixedDelivery.passedTestRunId } : {}) }
     inFlight.current = true
     setSubmitting(true)
@@ -486,6 +499,10 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
             ...(codeKind === 'git-commit' && nativeResults?.repositoryId ? { code: { kind: 'git-commit' as const, repositoryId: nativeResults.repositoryId, base: codeBase.trim(), commit: codeCommit.trim() } } : {}) })
           if (!owns()) return { ok: false as const, error: '原任务来源已变化，请重新打开。' }
           if (!result.ok) return { ok: false as const, error: result.error }
+          const { executionId, finalized, manifest, checkpoint } = result.value
+          if (finalized && executionId && manifest && checkpoint) {
+            input.executionDelivery = { executionId, manifest, checkpoint }
+          }
         }
         const result = await api.crux.transitionTask(input)
         if (result.ok) acknowledge()
@@ -512,11 +529,17 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
       {action === 'pass_test' && (fixedDelivery
         ? <p className="my-item-description">{latestTest ? `本轮测试记录 · ${latestTest.id}` : '当前交付尚无测试记录。'}</p>
         : <div className="flex flex-col gap-3">{(task.acceptanceCriteria ?? []).map((criterion) => <label key={criterion} className="flex items-start gap-2 text-my-sm"><input type="checkbox" className="mt-0.5" checked={checked.includes(criterion)} onChange={(event) => setChecked((previous) => event.target.checked ? [...previous, criterion] : previous.filter((item) => item !== criterion))} /><span>{criterion}</span></label>)}</div>)}
+      {testEditor && testDelivery && <details className="space-y-2" open={!latestTest || undefined}>
+        <summary className="my-item-title cursor-pointer">记录本轮测试结果</summary>
+        <TaskTestRunFields delivery={testDelivery} value={testDraft} onChange={setTestDraft} />
+      </details>}
+      {testedExecution && ['pass_test', 'return_development', 'accept_delivery', 'return_delivery'].includes(action) &&
+        <p className="my-item-description break-words">本轮交付版本 {testedExecution.manifest.versionId}</p>}
       {['submit_design', 'approve_design'].includes(action) && <DesignRevisionPicker task={task} purpose={action === 'approve_design' ? 'approve' : 'submit'} value={design} onChange={setDesign} disabled={submitting || busy} />}
       {planReference ? <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2"><span className="my-item-title min-w-0 flex-1 break-words">{planReference.title}</span>{onEditPlan && <Button size="sm" variant="ghost" onClick={() => { if (owns()) onEditPlan(planReference) }}><Pencil size={13} />修改材料</Button>}</div>
         <div aria-label="已采用的技术方案" className="my-scrollbar max-h-72 overflow-auto"><TeamMarkdown text={fixedPlanBody ?? ''} identity={`${planReference.documentId}:${planReference.versionId}:${planReference.bodyDigest}`} /></div>
-      </div> : BODY_LABELS[action] && <Field label={action === 'decline' && task.workflow && !task.triagePending ? '取消原因' : BODY_LABELS[action] ?? '交接说明'}><textarea autoFocus className={textareaClass} rows={action === 'submit_design' ? 8 : 4} placeholder={action === 'submit_design' ? '可直接编写设计方案、关键交互与评审重点，或关联上方共享设计版本。' : undefined} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void save() } }} /></Field>}
+      </div> : BODY_LABELS[action] && <Field label={action === 'decline' && task.workflow && !task.triagePending ? '取消原因' : action === 'pass_test' && testedExecution ? '实际测试结果' : BODY_LABELS[action] ?? '交接说明'}><textarea autoFocus className={textareaClass} rows={action === 'submit_design' ? 8 : 4} placeholder={action === 'submit_design' ? '可直接编写设计方案、关键交互与评审重点，或关联上方共享设计版本。' : undefined} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void save() } }} /></Field>}
       {action === 'submit_test' && nativeResults?.canFinish && !nativeResults.checkpoint && <div className="space-y-3">
         <Field label="交付代码"><Select className="w-full" value={codeKind} onChange={(val) => setCodeKind(val === 'git-commit' ? 'git-commit' : 'captured')} options={[{ value: 'captured', label: '本次捕获的工程文件' }, { value: 'git-commit', label: '已核实的 Git 提交' }]} /></Field>
         {codeKind === 'git-commit' && <><Field label="代码基线"><input className={inputClass} value={codeBase} onChange={event => setCodeBase(event.target.value)} placeholder="完整对象编号" /></Field><Field label="交付提交"><input className={inputClass} value={codeCommit} onChange={event => setCodeCommit(event.target.value)} placeholder="完整对象编号" /></Field></>}

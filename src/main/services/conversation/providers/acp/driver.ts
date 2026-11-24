@@ -389,9 +389,9 @@ class RegisteredAcpDriver implements ConversationDriverSession {
 export function listRegisteredAcpDrivers(userData: string): readonly ConversationDriverRegistration[] {
   return listLocalProviders(userData).filter(provider => provider.enabled).map(provider => {
     const resolve = () => resolveAdmittedLocalProvider(userData, provider.id)
-    const configurationKey = (): string => {
+    const configurationKey = (_env?: NodeJS.ProcessEnv, fingerprintKey?: Buffer): string => {
       const record = resolve()
-      return driverConfigurationKey([record.provenance, record.argv, record.env])
+      return driverConfigurationKey([record.provenance, record.argv, record.env], fingerprintKey)
     }
     return {
       instanceId: ProviderInstanceId.make(provider.id),
@@ -404,13 +404,13 @@ export function listRegisteredAcpDrivers(userData: string): readonly Conversatio
         if (process.platform === 'win32' && extname(record.executable).toLowerCase() !== '.exe') {
           throw new DaemonError('E_UNAVAILABLE', 'ACP v2 扩展需要已登记的本地原生可执行文件。')
         }
-        const expected = configurationKey()
+        const expected = configurationKey(input.env, input.fingerprintKey)
         const owned = await spawnCodexOwnedProcess({
           ...input, ownerKind: 'acp-v2', command: record.executable, args: record.argv,
           env: { ...(input.env ?? process.env), ...Object.fromEntries(record.env.map(entry => [entry.key, entry.value])) },
           assertCanSpawn() {
             input.assertCanSpawn()
-            if (configurationKey() !== expected) throw new DaemonError('E_CONFLICT', 'ACP 扩展来源已变化。')
+            if (configurationKey(input.env, input.fingerprintKey) !== expected) throw new DaemonError('E_CONFLICT', 'ACP 扩展来源已变化。')
           },
         })
         const session = new RegisteredAcpDriver(owned, input, expected)

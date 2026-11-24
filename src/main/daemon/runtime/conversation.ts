@@ -9,6 +9,16 @@ import { ThreadMessageIntake } from '../../services/conversation/orchestration/T
 import { ConversationEventSink } from '../../services/conversation/orchestration/EventSink'
 import { ThreadCommands, lifecycleEvent, type ThreadEffectRow } from '../../services/conversation/orchestration/ThreadCommands'
 import { completeThreadDeletion, recordThreadDeletionDetach } from '../../services/conversation/orchestration/ThreadDeletion'
+import { ThreadRelations } from '../../services/conversation/orchestration/ThreadRelations'
+import { compactionFromPayload, ThreadContinuation } from '../../services/conversation/orchestration/ThreadContinuation'
+import { ContextHandoff, renderPortableHistory, type PortableHistory } from '../../services/conversation/orchestration/ContextHandoff'
+import {
+  DEFAULT_DELEGATION_WAIT_MS, MAX_DELEGATION_WAIT_MS, DelegatedWork, delegateTaskArguments, delegationOperationId,
+  taskRespondArguments, taskStatusArguments,
+} from '../../services/conversation/orchestration/DelegatedWork'
+import {
+  completionIntent, planDelegatedCompletionDelivery, requireUnchangedCompletion, type DelegatedCompletionIntent,
+} from '../../services/conversation/orchestration/DelegatedCompletion'
 import { ConversationDeadlineError, ConversationEffectWorker, awaitDeadline, runBounded } from '../../services/conversation/orchestration/EffectWorker'
 import { decideThreadResume, THREAD_RESUME_MAX_REPLAY_EVENTS } from '../../services/conversation/orchestration/ThreadStream'
 import { ANSWER_ATTACHMENT_MAX_BYTES, assertPromptAttachments, nativeTextAttachment, TEXT_ATTACHMENTS } from '../../services/conversation/providers/core/attachment-input'
@@ -26,13 +36,15 @@ import type {
 } from '../../../shared/conversation/attachments'
 import { conversationAttachmentLimitError } from '../../../shared/conversation/attachments'
 import type { ChatAttachment } from '../../../shared/conversation/chatAttachment'
+import type { ConversationDelegationCall, ConversationDelegationReply, ConversationNativeSubagentEvent } from '../../../shared/conversation/thread-relations'
 import type { ProviderOptionSelections } from '../../../shared/conversation/model'
-import { ModelSelection, OrchestrationV2DomainEventJson, ProviderDriverKind, type OrchestrationV2DomainEvent } from '../../../shared/conversation/contracts'
+import { ModelSelection, OrchestrationV2DomainEventJson, ProviderDriverKind, RunId, type OrchestrationV2DomainEvent, type OrchestrationV2Run } from '../../../shared/conversation/contracts'
 import {
   conversationThreadCommandSchema, type ConversationRuntimeRequest, type ConversationRuntimeRequestResponse,
   type ConversationThreadCommand, type ConversationThreadCommandState, type ConversationThreadEventCursor, type ConversationThreadEventPage,
   type ConversationThreadHistoryCursor, type ConversationThreadHistoryPage, type ConversationThreadSnapshot,
   type ConversationNativeTerminalEvidence, type ConversationProjectedWorkItem,
+  type ConversationHandoff, type ConversationLifecycleEvent, type ConversationTurnUsage,
 } from '../../../shared/conversation/command-runtime'
 
 export interface ConversationRuntimePorts {
@@ -49,7 +61,22 @@ type CommandAuthority = ConversationAuthority & {
   assertReadable?(): Promise<void>
   assertSpawnCurrent?(): void
 }
-interface DriverIdentity { readonly projectId: string; readonly fingerprint: string; readonly ordinaryTask: boolean }
+interface DriverIdentity {
+  readonly projectId: string
+  readonly fingerprint: string
+  readonly ordinaryTask: boolean
+  readonly ownerScope?: string
+  readonly managedExecution?: true
+}
+
+const driverSlotKey = (instanceId: string, cwd: string, ownerScope?: string): string =>
+  JSON.stringify(ownerScope === undefined ? [instanceId, pathKey(cwd)] : [instanceId, pathKey(cwd), ownerScope])
+
+function nativeTaskOwnerScope(authority: ConversationAuthority): string | undefined {
+  if (authority.binding.kind === 'planning') return `planning:${authority.binding.planningId}`
+  if (authority.binding.kind === 'task' && authority.binding.mode === 'execution') return `execution:${authority.projectId}`
+  return undefined
+}
 interface ActiveTurn {
   readonly row: ThreadEffectRow
   readonly runId: string
@@ -59,6 +86,8 @@ interface ActiveTurn {
   readonly nativeThreadId: string
   readonly authority: CommandAuthority
   readonly configurationFingerprint: string
+  readonly completion?: DelegatedCompletionIntent
+  completionAccepted?: boolean
   controlTurnId?: string
   waitForControlTurn?: Promise<string | undefined>
   signalControlTurn?: (turnId?: string) => void
@@ -88,6 +117,10 @@ export class ConversationRuntime {
   private readonly attachments: ConversationAttachmentStore
   private readonly intake: ThreadMessageIntake
   private readonly commands: ThreadCommands
+  private readonly relations: ThreadRelations
+  private readonly continuation: ThreadContinuation
+  private readonly contextHandoff: ContextHandoff
+  private readonly delegatedWork: DelegatedWork
   private readonly worker: ConversationEffectWorker
   private readonly storageId: string
   private readonly deadlines
@@ -106,6 +139,9 @@ export class ConversationRuntime {
   private readonly closingDrivers = new WeakMap<ConversationDriverSession, Promise<void>>()
   private readonly verifiedDeletionCloses = new WeakMap<ConversationDriverSession, string>()
   private readonly nativeRequests = new Map<string, { turn: ActiveTurn; nativeRequestId: string }>()
+  private readonly idleCompactions = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly delegationCalls = new Map<string, { input: string; result: Promise<ConversationDelegationReply> }>()
+  private readonly delegationContinuationParents = new Map<string, ActiveTurn>()
   private readonly unsettledTerminals = new Map<string, { turn: ActiveTurn; detail: string; terminal: ConversationNativeTerminalEvidence }>()
   private readonly shutdownController = new AbortController()
   private closing = false
@@ -116,17 +152,22 @@ export class ConversationRuntime {
     this.eventSink = new ConversationEventSink(this.database)
     this.attachments = new ConversationAttachmentStore(this.database)
     this.commands = new ThreadCommands(this.database, this.eventSink, this.attachments)
+    this.contextHandoff = new ContextHandoff(this.database, this.commands)
+    this.relations = new ThreadRelations(this.database, this.commands, this.contextHandoff)
+    this.delegatedWork = new DelegatedWork(this.database, this.commands, this.eventSink)
+    this.continuation = new ThreadContinuation(this.database)
     this.intake = new ThreadMessageIntake(this.database, this.eventSink, this.commands, this.attachments)
     this.worker = new ConversationEffectWorker(this.database, this.eventSink)
     this.storageId = (this.database.prepare("SELECT value FROM conversation_meta WHERE key = 'storage_id'").get() as { value: string }).value
     this.deadlines = { open: 30_000, thread: 30_000, turn: 31 * 60_000, control: 15_000, close: 8_000, ...ports.deadlines }
     this.worker.recover()
+    this.relations.reconcileAfterRecovery(this.eventSink)
   }
 
-  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false) {
+  private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false, ownerScope?: string, managedExecution?: true) {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed while the kernel shuts down.')
-    const key = JSON.stringify([registration.instanceId, pathKey(cwd)])
+    const key = driverSlotKey(registration.instanceId, cwd, ownerScope)
     const fingerprint = this.configurationFingerprint(registration)
     const assertConfiguration = (): void => {
       const current = this.driverRegistry.get(registration.instanceId)
@@ -154,7 +195,7 @@ export class ConversationRuntime {
       assertConfiguration()
       return reserve(driver)
     }
-    const identity = { projectId, fingerprint, ordinaryTask }
+    const identity = { projectId, fingerprint, ordinaryTask, ownerScope, managedExecution }
     const opening = Promise.resolve().then(() => this.runOpenDriver(key, cwd, identity, registration, assertConfiguration, assertCurrent))
     this.driverOpenings.set(key, { root: cwd, ...identity, opening })
     const driver = await opening
@@ -186,6 +227,8 @@ export class ConversationRuntime {
       assertCurrent()
       const driver = await runBounded(registration.open({
         instanceId: registration.instanceId,
+        ownerScope: identity.ownerScope,
+        managedExecution: identity.managedExecution,
         directory: this.ports.directory,
         cwd,
         ...(identity.ordinaryTask && { ordinaryTask: true as const }),
@@ -281,11 +324,11 @@ export class ConversationRuntime {
     }
   }
 
-  async describeDriver(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void, ordinaryTask = false): Promise<ConversationDriverDescriptor> {
+  async describeDriver(cwd: string, projectId: string, instanceId: string, assertCurrent: () => void, ordinaryTask = false, ownerScope?: string): Promise<ConversationDriverDescriptor> {
     assertCurrent()
     const registration = this.requireDriver(instanceId, ordinaryTask)
     const fingerprint = this.configurationFingerprint(registration)
-    const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertCurrent, ordinaryTask)
+    const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertCurrent, ordinaryTask, ownerScope)
     try {
       assertCurrent()
       if (!driver.describe) throw new DaemonError('E_UNAVAILABLE', '当前对话驱动没有已验证的能力目录。')
@@ -379,8 +422,7 @@ export class ConversationRuntime {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed.')
     input.assertCurrent()
-    if (input.binding.kind === 'task' &&
-      (input.binding.mode !== 'conversation' || !input.assertAuthorityCurrent || !input.assertSpawnCurrent)) {
+    if (input.binding.kind !== 'personal' && (!input.assertAuthorityCurrent || !input.assertSpawnCurrent)) {
       throw new DaemonError('E_DENIED', '任务会话须通过受控任务入口。')
     }
     if (!input.text.trim() && !input.attachmentIds?.length) throw new DaemonError('E_INVALID_ARG', '请输入文字或添加附件。')
@@ -390,6 +432,13 @@ export class ConversationRuntime {
         FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal = 1`).get(existing.threadId) as { provider: string } | undefined : undefined
     if (existing && !original) throw new DaemonError('E_CONFLICT', '此命令编号已用于另一个请求。')
     const registration = original ? undefined : this.requireDriver(input.instanceId, this.isOrdinaryTask(input))
+    if (input.binding.kind === 'planning' && registration && !registration.planningAccess) {
+      throw new DaemonError('E_UNAVAILABLE', '此引擎没有原工程只读规划能力。')
+    }
+    if (input.binding.kind === 'task' && input.binding.mode !== 'conversation' &&
+      (input.binding.mode !== 'execution' || registration && !registration.executionAccess)) {
+      throw new DaemonError('E_UNAVAILABLE', '此引擎没有原工作副本的托管执行能力。')
+    }
     if (registration && input.options?.length && !registration.turnModelOptions) {
       throw new DaemonError('E_UNAVAILABLE', '此引擎暂不接受回合模型参数。')
     }
@@ -414,15 +463,59 @@ export class ConversationRuntime {
     if (command.type === 'thread.delete') return this.deleteThread(command, authority)
     const prior = this.commands.replay(command, authority)
     if (prior) return this.withUnsettledTerminal(prior)
+    const delegated = this.relations.delegatedParent(command.threadId)
+    const restrictedRelation = delegated ?? this.relations.restrictedParent(command.threadId)
+    if (delegated && !['thread.rename', 'thread.pin', 'thread.archive', 'run.interrupt', 'runtime-request.respond',
+      'queue.resume', 'queued-run.start', 'queued-run.cancel'].includes(command.type)) {
+      throw new DaemonError('E_DENIED', '委派子会话只接受原运行的控制和答复。')
+    }
     if (!command.type.startsWith('thread.') && this.commands.isArchived(command.threadId)) {
       throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
     }
     const active = this.activeTurns.get(command.threadId)
     switch (command.type) {
-      case 'thread.rename':
+      case 'thread.rename': {
+        const previous = this.relations.read(command.threadId).parent
+        const change = previous && this.relations.update({ ...previous, title: command.title, updatedAt: new Date().toISOString() })
+        return this.commands.changeThread(command, authority, undefined, change?.hostEvents, change?.apply)
+      }
       case 'thread.pin':
       case 'thread.archive':
         return this.commands.changeThread(command, authority)
+      case 'thread.fork': {
+        if (this.commands.isArchived(command.threadId) || authority.binding.kind === 'planning' ||
+          authority.binding.kind === 'task' && !this.isOrdinaryTask(authority)) {
+          throw new DaemonError('E_DENIED', '此会话当前不能派生其他会话。')
+        }
+        if (restrictedRelation && !command.readOnly) throw new DaemonError('E_DENIED', '只读会话只能派生只读分支。')
+        const plan = this.relations.planFork(command, authority)
+        if (command.readOnly || command.selection) {
+          const registration = this.requireDriver(plan.relation.instanceId, this.isOrdinaryTask(authority) || !!command.readOnly)
+          if (command.readOnly && registration.ordinaryTaskAccess !== 'native-read-only') {
+            throw new DaemonError('E_UNAVAILABLE', '所选引擎没有可核实的原生只读能力。')
+          }
+          if (command.selection?.options?.length && !registration.turnModelOptions) {
+            throw new DaemonError('E_UNAVAILABLE', '所选引擎不支持此模型参数。')
+          }
+          if (command.selection) decodeModelSelection(command.selection)
+        }
+        return this.commands.commit(command, authority, plan)
+      }
+      case 'thread.goal.set':
+      case 'thread.goal.pause':
+      case 'thread.goal.resume':
+      case 'thread.goal.clear':
+        if (this.commands.isArchived(command.threadId)) throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+        return this.commands.commit(command, authority, this.continuation.planGoal(command))
+      case 'thread.compact':
+        return this.acceptCompaction(command, authority, 'manual')
+      case 'thread.handoff':
+        if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId) ||
+          this.activeTurns.has(command.threadId) || this.commands.isPaused(command.threadId)) {
+          throw new DaemonError('E_BUSY', '仅可在已结算且未暂停的个人会话中交接。')
+        }
+        this.continuation.latestForCompaction(command.threadId)
+        break
       case 'message.dispatch': {
         const registration = this.requireDriver(command.instanceId, this.isOrdinaryTask(authority))
         if (command.options?.length && (!registration.turnModelOptions || command.deliveryIntent === 'steer')) {
@@ -434,6 +527,7 @@ export class ConversationRuntime {
           configurationFingerprint: this.configurationFingerprint(registration),
         }
         if (command.deliveryIntent === 'steer') {
+          if (command.references?.length) throw new DaemonError('E_UNAVAILABLE', '带历史引用的消息请正常发送或加入队列。')
           if (command.attachmentIds?.length) throw new DaemonError('E_UNAVAILABLE', '当前插话入口只支持文字，请把附件加入队列。')
           const turn = this.requireControlTurn(active, 'steerTurn')
           if (turn.configurationFingerprint !== selection.configurationFingerprint) {
@@ -445,7 +539,8 @@ export class ConversationRuntime {
           this.scheduleControl(command, authority, turn, state.runId)
           return state
         }
-        const receipt = this.commands.appendMessage(command, authority, selection, undefined, registration.promptAttachments)
+        const portableHistory = command.references?.map(reference => this.contextHandoff.capture(reference, authority))
+        const receipt = this.commands.appendMessage(command, authority, selection, undefined, registration.promptAttachments, portableHistory, this.relations)
         this.authorizations.set(command.commandId, authority)
         this.scheduleNext(command.threadId, authority)
         return receipt
@@ -455,12 +550,25 @@ export class ConversationRuntime {
       case 'queued-run.edit':
       case 'queued-run.reorder':
       case 'queued-run.cancel': {
+        const queued = command.type === 'queued-run.start' ? this.commands.effectForRun(command.threadId, command.runId) : undefined
+        const originalCompletion = completionIntent(queued)
+        if (originalCompletion && command.type === 'queued-run.start') {
+          this.assertDelegatedCompletionCurrent(command.threadId, originalCompletion, authority, command.runId, true)
+        }
         const cancelled = command.type === 'queued-run.cancel' ? this.commands.effectForRun(command.threadId, command.runId) : undefined
         const edited = command.type === 'queued-run.edit' && command.attachmentIds?.length
           ? this.commands.requireQueued(command.threadId, command.runId) : undefined
-        const receipt = this.commands.queue(command, authority, edited ? this.driverRegistry.require(edited.provider_instance_id).promptAttachments : undefined)
+        const previous = command.type === 'queued-run.cancel' ? this.relations.read(command.threadId).parent : null
+        const at = new Date().toISOString()
+        const change = command.type === 'queued-run.cancel' && previous?.childRunId === command.runId
+          ? delegated ? this.settleDelegatedWork(delegated, 'cancelled', at, [])
+            : this.relations.childUpdate(command.threadId, 'cancelled', command.runId, at)
+          : cancelled ? this.disposeDelegatedCompletion(cancelled, at) : undefined
+        const receipt = this.commands.queue(command, authority, edited ? this.driverRegistry.require(edited.provider_instance_id).promptAttachments : undefined, change)
         if (cancelled) this.authorizations.delete(cancelled.command_id)
+        if (queued && originalCompletion) this.authorizations.set(queued.command_id, authority)
         if (command.type === 'queue.resume' || command.type === 'queued-run.start') this.scheduleNext(command.threadId, authority)
+        if (previous?.kind === 'delegated' && change) this.offerDelegatedCompletionDelivery(previous.parentThreadId, previous.parentRunId)
         return receipt
       }
       case 'run.interrupt':
@@ -468,10 +576,15 @@ export class ConversationRuntime {
       case 'queued-message.promote-to-steer': {
         const turn = this.requireControlTurn(active, 'steerTurn', command.targetRunId)
         const run = this.commands.requireQueued(command.threadId, command.queuedRunId)
+        const source = this.commands.effectForRun(command.threadId, run.run_id)
+        if (compactionFromPayload(run.payload_json) || completionIntent(source) || source && (JSON.parse(source.payload_json) as {
+          portableHistory?: unknown; handoff?: true
+        }).portableHistory) {
+          throw new DaemonError('E_UNAVAILABLE', '压缩或带历史引用的队列操作需要独立回合。')
+        }
         if (this.commands.readUserMessage(run.run_id).attachments?.length) {
           throw new DaemonError('E_UNAVAILABLE', '带附件的队列消息需要独立回合。')
         }
-        const source = this.commands.effectForRun(command.threadId, run.run_id)
         if (!source) throw new DaemonError('E_CONFLICT', '队列项身份已失效。')
         const receipt = this.commands.commit(command, authority, {
           target: { run_id: run.run_id },
@@ -496,7 +609,7 @@ export class ConversationRuntime {
           throw new DaemonError('E_CONFLICT', '原审批或提问已失效。')
         }
         const turn = this.requireControlTurn(active, 'respondToRuntimeRequest', request.runId)
-        if (this.isOrdinaryTask(authority) && request.kind === 'approval' && command.decision !== 'decline' && command.decision !== 'cancel') {
+        if ((this.isOrdinaryTask(authority) || restrictedRelation) && request.kind === 'approval' && command.decision !== 'decline' && command.decision !== 'cancel') {
           throw new DaemonError('E_DENIED', '普通任务的对话不能批准工具操作。')
         }
         const response = this.requestResponse(request, command)
@@ -523,6 +636,92 @@ export class ConversationRuntime {
         return receipt
       }
     }
+    const registration = this.requireDriver(command.instanceId, this.isOrdinaryTask(authority))
+    if (command.options?.length && !registration.turnModelOptions) throw new DaemonError('E_UNAVAILABLE', '所选引擎不支持此模型参数。')
+    const modelSelection = decodeModelSelection({ instanceId: registration.instanceId, model: command.model, options: command.options })
+    const portableHistory = (command.references ?? [{ threadId: command.threadId }])
+      .map(reference => this.contextHandoff.capture(reference, authority))
+    const result = this.commands.appendMessage(command, authority, {
+      driverKind: registration.driverKind, modelSelection, configurationFingerprint: this.configurationFingerprint(registration),
+    }, undefined, undefined, portableHistory, this.relations)
+    this.authorizations.set(command.commandId, authority)
+    this.scheduleNext(command.threadId, authority)
+    return result
+  }
+
+  async cleanupTaskConversation(
+    input: { readonly receipt: Pick<ConversationCommandState, 'threadId' | 'runId'> | null; readonly commandId: string; readonly instanceId: string },
+    authority: CommandAuthority,
+  ): Promise<boolean> {
+    const ownerScope = nativeTaskOwnerScope(authority)
+    if (!ownerScope || !authority.assertSpawnCurrent) {
+      throw new DaemonError('E_DENIED', '只能清理原任务会话作用域。')
+    }
+    const { receipt, commandId, instanceId } = input
+    const verify = (): void => {
+      this.ports.assertOwner()
+      authority.assertSpawnCurrent?.()
+      if (receipt && !this.commands.hasThread(receipt.threadId, authority)) throw new DaemonError('E_DENIED', '此会话不在原任务范围。')
+    }
+    verify()
+    const key = driverSlotKey(instanceId, authority.cwd, ownerScope)
+    if (receipt) {
+      const { threadId, runId } = receipt
+      const run = this.commands.run(threadId, runId)
+      if (!run || decodeModelSelection(JSON.parse(run.payload_json).modelSelection).instanceId !== instanceId) {
+        throw new DaemonError('E_DENIED', '找不到同一任务会话的原回合与实例。')
+      }
+      const operation = this.commands.effectForRun(threadId, runId)
+      if (!this.closing && operation && ['pending', 'running'].includes(operation.status)) {
+        await this.command({ type: 'run.interrupt', threadId, runId, commandId }, authority).catch(error => {
+          if (!(error instanceof DaemonError) || error.code !== 'E_CONFLICT') throw error
+        })
+      }
+    }
+    verify()
+    const opening = this.driverOpenings.get(key)
+    const ready = this.ready.get(key)
+    if ((opening && opening.projectId !== authority.projectId) || (ready && ready.projectId !== authority.projectId)) {
+      throw new DaemonError('E_DENIED', '原任务进程属于其他会话范围。')
+    }
+    const owned = this.processes.get(key)
+    if (owned) {
+      if (!receipt || pathKey(owned.root) !== pathKey(authority.cwd) ||
+        [...this.loadedThreads].some(([id, loaded]) => id !== receipt.threadId && loaded.driver === owned.driver)) {
+        throw new DaemonError('E_CONFLICT', '原任务进程缺少匹配的会话，需先核对。')
+      }
+      await this.closeOwned(key, owned)
+    }
+    if (opening) await awaitDeadline(opening.opening.catch(() => undefined), this.deadlines.open, '核对原任务引擎启动')
+    verify()
+    if (this.processes.has(key) || this.driverOpenings.has(key)) return false
+    const registration = this.driverRegistry.get(instanceId)
+    return registration?.reconcileOwnerClosure?.({
+      directory: this.ports.directory, cwd: authority.cwd, instanceId, ownerScope, assertCurrent: verify,
+    }) ?? false
+  }
+
+  private acceptCompaction(
+    command: Extract<ConversationThreadCommand, { type: 'thread.compact' }>, authority: CommandAuthority,
+    trigger: 'manual' | 'idle',
+  ): ConversationThreadCommandState {
+    if (this.commands.isArchived(command.threadId) || this.activeTurns.has(command.threadId) || this.commands.isPaused(command.threadId)) {
+      throw new DaemonError('E_BUSY', '请先恢复会话或等待正在运行的工作结束。')
+    }
+    const last = this.continuation.latestForCompaction(command.threadId)
+    const modelSelection = decodeModelSelection(JSON.parse(last.payload_json).modelSelection)
+    const registration = this.requireDriver(modelSelection.instanceId, this.isOrdinaryTask(authority))
+    const active = this.loadedThreads.get(command.threadId)
+    if (active ? !active.driver.compactThread : !['codex', 'pi'].includes(registration.instanceId)) {
+      throw new DaemonError('E_UNAVAILABLE', '原引擎未提供可用的原生压缩。')
+    }
+    const configurationFingerprint = this.configurationFingerprint(registration)
+    this.assertNativeBindingConfiguration(command.threadId, configurationFingerprint)
+    const result = this.commands.compact(command, authority, { driverKind: registration.driverKind, modelSelection, configurationFingerprint },
+      { trigger, ...(command.instructions && { instructions: command.instructions }) })
+    this.authorizations.set(command.commandId, authority)
+    this.scheduleNext(command.threadId, authority)
+    return result
   }
 
   private async deleteThread(
@@ -535,7 +734,7 @@ export class ConversationRuntime {
     if (original && hasLiveTurn) return original
     const accepted = original ?? this.commands.changeThread(command, authority, {
       hasLiveTurn, hasLoadedThread: this.loadedThreads.has(threadId),
-    })
+    }, this.relations.deletionEvents(threadId, authority, command.onlyIfUnused === true))
     let cleanup = this.dispatches.get(commandId)
     if (!cleanup) {
       const work = this.cleanDeletedThread(threadId, commandId, authority)
@@ -561,7 +760,9 @@ export class ConversationRuntime {
     } | undefined
     if (!binding?.configuration_fingerprint || binding.native_thread_id !== loaded.nativeThreadId) return
     const { instance_id: instanceId, configuration_fingerprint: fingerprint } = binding
-    const key = JSON.stringify([instanceId, pathKey(authority.cwd)])
+    const restrictedRelation = this.relations.restrictedParent(threadId)
+    const scope = restrictedRelation && `${restrictedRelation.kind === 'delegated' ? 'delegated' : 'read-only'}:${restrictedRelation.id}`
+    const key = driverSlotKey(instanceId, authority.cwd, scope)
     const owned = this.processes.get(key)
     if (!owned || owned.driver !== loaded.driver || pathKey(owned.root) !== pathKey(authority.cwd)) return
     const verify = (): void => {
@@ -570,7 +771,7 @@ export class ConversationRuntime {
       if (this.loadedThreads.get(threadId) !== loaded || this.activeTurns.has(threadId)
         || this.processes.get(key) !== owned || ready?.driver !== loaded.driver
         || ready.projectId !== authority.projectId || ready.fingerprint !== fingerprint
-        || ready.ordinaryTask !== this.isOrdinaryTask(authority)
+        || ready.ordinaryTask !== (this.isOrdinaryTask(authority) || Boolean(restrictedRelation))
         || [...this.loadedThreads].some(([id, peer]) => id !== threadId
           && peer.driver === loaded.driver && peer.nativeThreadId === loaded.nativeThreadId)) {
         throw new DaemonError('E_CONFLICT', '会话原生订阅的归属无法核实。')
@@ -667,6 +868,13 @@ export class ConversationRuntime {
     const wasPending = source.status === 'pending'
     const detail = canSubmit || wasPending || attempt?.phase === 'preparing' ? undefined : '队列已暂停。引擎未确认原回合停止。'
     const cancelledRun = { ...JSON.parse(run.payload_json), status: 'cancelled', completedAt: occurredAt }
+    const child = this.relations.delegatedParent(threadId)
+    const childChange = child?.childRunId === runId && wasPending
+      ? this.settleDelegatedWork(child, 'cancelled', occurredAt, [])
+      : child?.question && expiredRequests.some(request => request.requestId === child.question?.requestId)
+        ? this.relations.update({ ...child, question: undefined, updatedAt: occurredAt }) : undefined
+    const lateResults = this.disallowLateDeliveries(threadId, runId, occurredAt)
+    const disposedCompletion = wasPending ? this.disposeDelegatedCompletion(source, occurredAt) : undefined
     const result = this.commands.commit(command, authority, {
       target: { run_id: runId, detail: detail ?? null },
       events: wasPending ? [decodeEvent({ id: randomUUID(), threadId, runId, occurredAt, type: 'run.updated', payload: cancelledRun })] : [],
@@ -674,9 +882,15 @@ export class ConversationRuntime {
         lifecycleEvent(threadId, { kind: 'queue', paused: true }, runId, occurredAt),
         lifecycleEvent(threadId, { kind: 'run', phase: detail ? 'stop-unconfirmed' : 'stop-requested' }, runId, occurredAt),
         ...expiredRequests.map(request => lifecycleEvent(threadId, { kind: 'request', request }, runId, occurredAt)),
+        ...(childChange?.hostEvents ?? []),
+        ...lateResults.flatMap(change => change.hostEvents),
+        ...(disposedCompletion?.hostEvents ?? []),
       ],
       apply: () => {
         this.commands.setPaused(threadId, true)
+        childChange?.apply()
+        for (const change of lateResults) change.apply()
+        disposedCompletion?.apply()
         if (wasPending) {
           this.database.prepare("UPDATE conversation_v2_effect_outbox SET status = 'cancelled', completed_at = ?, updated_at = ? WHERE effect_id = ? AND status = 'pending'")
             .run(occurredAt, occurredAt, source.effect_id)
@@ -692,6 +906,7 @@ export class ConversationRuntime {
     if (exactTurn) this.clearRequestBindings(exactTurn)
     if (wasPending) this.authorizations.delete(source.command_id)
     if (canSubmit) this.scheduleControl(command, authority, exactTurn)
+    if (wasPending && childChange && child) this.offerDelegatedCompletionDelivery(child.parentThreadId, child.parentRunId)
     return result
   }
 
@@ -802,6 +1017,18 @@ export class ConversationRuntime {
         : status === 'unknown' ? 'pending-reconciliation' as const
           : this.nativeRequests.has(request.requestId) ? 'pending' as const : 'expired' as const,
     }
+    const delegated = updatedRequest ? this.relations.delegatedParent(threadId) : undefined
+    const nextQuestion = updatedRequest && delegated?.question?.requestId === updatedRequest.requestId
+      ? this.commands.requests(threadId).find(candidate => candidate.requestId !== updatedRequest.requestId &&
+        candidate.runId === updatedRequest.runId && candidate.kind === 'user-input' && candidate.status === 'pending')
+      : undefined
+    const questionChange = updatedRequest && delegated?.question?.requestId === updatedRequest.requestId &&
+      ['resolved', 'expired', 'pending-reconciliation'].includes(updatedRequest.status)
+      ? this.relations.update({ ...delegated,
+        question: nextQuestion ? { requestId: nextQuestion.requestId, generation: nextQuestion.generation, title: nextQuestion.payload.title } : undefined,
+        status: updatedRequest.status === 'pending-reconciliation' ? 'pending-reconciliation' : nextQuestion ? 'waiting' : 'running',
+        updatedAt: occurredAt })
+      : undefined
     const run = steerRunId ? this.commands.run(threadId, steerRunId) : undefined
     const runStatus = status === 'succeeded' ? 'completed' : status === 'unknown' ? 'waiting' : 'failed'
     const runPayload = run && {
@@ -812,6 +1039,7 @@ export class ConversationRuntime {
       events: runPayload && steerRunId ? [decodeEvent({ id: randomUUID(), threadId, runId: steerRunId, occurredAt, type: 'run.updated', payload: runPayload })] : [],
       hostEvents: [
         ...(updatedRequest ? [lifecycleEvent(threadId, { kind: 'request', request: updatedRequest }, updatedRequest.runId, occurredAt)] : []),
+        ...(questionChange?.hostEvents ?? []),
         ...(command.type === 'run.interrupt' ? [lifecycleEvent(threadId, { kind: 'run', phase: 'stop-unconfirmed' }, command.runId, occurredAt)] : []),
       ],
     }, () => {
@@ -827,18 +1055,46 @@ export class ConversationRuntime {
         this.commands.writeRequest(threadId, updatedRequest, null)
         if (updatedRequest.status === 'resolved') this.nativeRequests.delete(updatedRequest.requestId)
       }
+      questionChange?.apply()
     })
   }
 
   private scheduleNext(threadId: string, current: CommandAuthority): void {
     if (this.closing) return
-    const commandId = this.commands.nextCommand(threadId)
-    if (!commandId || this.dispatches.has(commandId)) return
+    const commandId = this.commands.nextCommand(threadId, command => this.authorizations.has(command))
+    if (!commandId) {
+      this.scheduleIdleCompaction(threadId, current)
+      return
+    }
+    const idle = this.idleCompactions.get(threadId)
+    if (idle) {
+      clearTimeout(idle)
+      this.idleCompactions.delete(threadId)
+    }
+    if (this.dispatches.has(commandId)) return
     const authority = this.authorizations.get(commandId) ?? current
     this.scheduleWork(commandId, authority, () => this.drainOne(commandId, authority), () => {
       this.authorizations.delete(commandId)
       this.scheduleNext(threadId, current)
     })
+  }
+
+  private scheduleIdleCompaction(threadId: string, authority: CommandAuthority): void {
+    if (authority.binding.kind !== 'personal' || this.idleCompactions.has(threadId) || this.commands.isPaused(threadId) ||
+      !this.loadedThreads.get(threadId)?.driver.compactThread) return
+    const run = this.continuation.idleCandidate(threadId)
+    if (!run) return
+    const timer = setTimeout(() => {
+      this.idleCompactions.delete(threadId)
+      void this.assertCurrent(threadId, authority).then(() => {
+        if (this.continuation.idleCandidate(threadId)?.run_id !== run.run_id ||
+          this.relations.read(threadId).children.some(relation => ['queued', 'running', 'waiting', 'pending-reconciliation'].includes(relation.status))) return
+        const command = { type: 'thread.compact', threadId, commandId: `idle-compact:${run.run_id}` } as const
+        if (!this.commands.replay(command, authority)) this.acceptCompaction(command, authority, 'idle')
+      }).catch(() => {})
+    }, 120_000)
+    timer.unref()
+    this.idleCompactions.set(threadId, timer)
   }
 
   private scheduleWork(commandId: string, authority: CommandAuthority, execute: () => Promise<void>, after?: () => void): void {
@@ -886,10 +1142,12 @@ export class ConversationRuntime {
     }
   }
 
-  private async openNativeThread(threadId: string, instanceId: string, model: string, cwd: string, driver: ConversationDriverSession): Promise<string> {
+  private async openNativeThread(
+    threadId: string, instanceId: string, model: string, cwd: string, driver: ConversationDriverSession, fresh = false,
+  ): Promise<string> {
     const loaded = this.loadedThreads.get(threadId)
-    if (loaded?.driver === driver) return loaded.nativeThreadId
-    const existing = this.database.prepare(`SELECT instance_id, native_thread_id FROM conversation_v2_native_bindings WHERE thread_id = ?
+    if (!fresh && loaded?.driver === driver) return loaded.nativeThreadId
+    const existing = fresh ? undefined : this.database.prepare(`SELECT instance_id, native_thread_id FROM conversation_v2_native_bindings WHERE thread_id = ?
       UNION ALL SELECT provider_instance_id, provider_thread_id FROM conversation_v2_projection_runs
         WHERE thread_id = ? AND provider_thread_id IS NOT NULL LIMIT 1`)
       .get(threadId, threadId) as { instance_id: string; native_thread_id: string } | undefined
@@ -931,11 +1189,12 @@ export class ConversationRuntime {
   private async drainOne(commandId: string, authority: CommandAuthority): Promise<void> {
     this.ports.assertOwner()
     const row = this.commands.effect(commandId)
-    if (!row || row.status !== 'pending' || this.closing || this.commands.nextCommand(row.thread_id) !== commandId) return
+    if (!row || row.status !== 'pending' || this.closing || this.commands.nextCommand(row.thread_id, command => this.authorizations.has(command)) !== commandId) return
     const runId = this.worker.runId(row)
     if (!runId) throw new Error('The accepted operation has no run.')
     const { cwd, projectId } = authority
     const threadId = row.thread_id
+    const completion = completionIntent(row)
     const attemptId = this.worker.claim(row)
     if (!attemptId) return
     let turn: ActiveTurn | undefined
@@ -945,10 +1204,20 @@ export class ConversationRuntime {
       this.worker.assertAttempt(row, attemptId)
       const run = this.commands.run(threadId, runId)
       if (!run) throw new Error('The accepted run is missing.')
+      if (completion) this.assertDelegatedCompletionCurrent(threadId, completion, authority, runId)
+      else this.delegationContinuationParents.delete(threadId)
       const selection = decodeModelSelection(JSON.parse(run.payload_json).modelSelection)
+      const intent = JSON.parse(row.payload_json) as { handoff?: true; portableHistory?: readonly PortableHistory[] }
       const ordinaryTask = this.isOrdinaryTask(authority)
-      const registration = this.requireDriver(selection.instanceId, ordinaryTask)
-      const message = this.commands.readUserMessage(runId)
+      const planning = authority.binding.kind === 'planning' ? authority.binding : undefined
+      const related = this.relations.restrictedParent(threadId)
+      const restricted = ordinaryTask || Boolean(planning || related)
+      const managedExecution = authority.binding.kind === 'task' && authority.binding.mode === 'execution' ? true : undefined
+      const registration = this.requireDriver(selection.instanceId, restricted)
+      if (planning && !registration.planningAccess) throw new DaemonError('E_UNAVAILABLE', '此引擎没有原工程只读规划能力。')
+      if (managedExecution && !registration.executionAccess) throw new DaemonError('E_UNAVAILABLE', '此引擎没有正式任务托管执行能力。')
+      const compaction = compactionFromPayload(run.payload_json)
+      const message = compaction ? { text: '', attachments: undefined } : this.commands.readUserMessage(runId)
       assertPromptAttachments(message.attachments, registration.promptAttachments)
       const attachments = this.readAttachmentContents(threadId, message.attachments, authority)
       for (const content of attachments) if (content.attachment.type === 'file') nativeTextAttachment(content)
@@ -960,49 +1229,94 @@ export class ConversationRuntime {
       if (admittedFingerprint && admittedFingerprint !== expectedFingerprint) {
         throw new DaemonError('E_CONFLICT', '排队时选定的引擎配置已失效。')
       }
-      this.assertNativeBindingConfiguration(threadId, expectedFingerprint)
+      const fork = compaction ? undefined : this.relations.forkContext(threadId, run.ordinal)
+      const histories = [...(intent.portableHistory ?? []), ...(fork ? [fork] : [])]
+      for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
+      if (!intent.handoff) this.assertNativeBindingConfiguration(threadId, expectedFingerprint)
       const fence = (): void => {
         this.assertSpawnAuthority(threadId, authority)
         this.assertDriverFingerprint(selection.instanceId, expectedFingerprint)
         this.worker.assertAttempt(row, attemptId)
+        if (completion && !turn?.completionAccepted) this.assertDelegatedCompletionCurrent(threadId, completion, authority, runId)
       }
-      const reservation = await this.ensureDriver(cwd, projectId, registration, fence, ordinaryTask)
+      const ownerScope = nativeTaskOwnerScope(authority) ?? (related
+        ? `${related.kind === 'delegated' ? 'delegated' : 'read-only'}:${related.id}` : undefined)
+      const reservation = await this.ensureDriver(cwd, projectId, registration, fence, restricted, ownerScope, managedExecution)
       const { driver } = reservation
       unpin = reservation.unpin
       await this.assertCurrent(threadId, authority)
       fence()
+      if (compaction && !driver.compactThread) throw new ConversationTurnRejectedError('原引擎未提供可用的原生压缩。')
       if (message.attachments?.length) driver.validatePromptAttachments?.(message.attachments)
+      for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
+      const handoffSource = intent.handoff ? await this.prepareHandoffSource(threadId, authority, fence) : undefined
       const nativeThreadId = await this.driverFence.run(fence, () =>
-        this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver))
+        this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource)))
+      if (!nativeThreadId) throw new ConversationTurnRejectedError('引擎未返回接力会话身份。')
+      if (completion && nativeThreadId !== completion.nativeThreadId) throw new ConversationTurnRejectedError('引擎没有接回原委派的父会话。')
       await this.assertCurrent(threadId, authority)
       fence()
-      const { text } = message
-      const prompt = run.ordinal === 1 && ordinaryTask && authority.taskContext
-        ? `以下是原团队任务的固定材料摘要。\n\n${authority.taskContext}\n\n用户消息\n${text}`
-        : text
+      for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
+      const goal = compaction || completion ? null : this.continuation.readGoal(threadId)
+      const { text: contextText, ...coverage } = renderPortableHistory(histories)
+      const handoff: ConversationHandoff | undefined = handoffSource ? {
+        sourceRunId: handoffSource.previous_run_id, sourceInstanceId: handoffSource.instance_id,
+        targetInstanceId: selection.instanceId, ...coverage, state: 'prepared',
+      } : undefined
+      const prompt = [
+        ...(run.ordinal === 1 && ordinaryTask && authority.taskContext ? [`以下是原团队任务的固定材料摘要。\n\n${authority.taskContext}`] : []),
+        ...(goal?.status === 'active' ? [`当前会话的用户目标（Crux）\n${goal.objective}`] : []),
+        `${contextText}${message.text}`,
+      ].filter(Boolean).join('\n\n')
       const startedAt = new Date().toISOString()
-      const payload = { ...JSON.parse(run.payload_json), status: 'running', providerThreadId: nativeThreadId, startedAt }
+      const payload = { ...JSON.parse(run.payload_json), status: 'running', providerThreadId: nativeThreadId, startedAt,
+        ...(handoff && { handoff }) }
+      const relation = compaction ? undefined : this.relations.childUpdate(threadId, 'running', runId, startedAt)
+      const metadata = handoffSource ? this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_threads WHERE thread_id = ?`)
+        .get(threadId) as { payload_json: string } | undefined : undefined
+      const newThread = metadata && { ...JSON.parse(metadata.payload_json), providerInstanceId: selection.instanceId, modelSelection: selection, updatedAt: startedAt }
       this.worker.markDispatched(row, attemptId, nativeThreadId, () => {
         this.database.prepare("UPDATE conversation_v2_projection_runs SET provider_thread_id = ?, status = 'running', payload_json = ? WHERE run_id = ?")
           .run(nativeThreadId, JSON.stringify(payload), runId)
+        if (handoffSource) {
+          this.database.prepare(`INSERT INTO conversation_v2_handoff_bindings
+            (command_id, thread_id, previous_instance_id, previous_native_thread_id, previous_fingerprint, next_instance_id, next_native_thread_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(commandId, threadId, handoffSource.instance_id, handoffSource.native_thread_id,
+            handoffSource.configuration_fingerprint, selection.instanceId, nativeThreadId, startedAt)
+          this.database.prepare(`UPDATE conversation_v2_projection_threads SET default_provider = ?, updated_at = ?,
+            payload_json = ? WHERE thread_id = ?`).run(selection.instanceId, startedAt, JSON.stringify(newThread), threadId)
+        }
         this.database.prepare(`INSERT INTO conversation_v2_native_bindings (thread_id, instance_id, native_thread_id, configuration_fingerprint)
-          VALUES (?, ?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET native_thread_id = excluded.native_thread_id,
-          configuration_fingerprint = COALESCE(conversation_v2_native_bindings.configuration_fingerprint, excluded.configuration_fingerprint)`)
+          VALUES (?, ?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET instance_id = excluded.instance_id, native_thread_id = excluded.native_thread_id,
+          configuration_fingerprint = excluded.configuration_fingerprint`)
           .run(threadId, selection.instanceId, nativeThreadId, expectedFingerprint)
-      }, undefined, [decodeEvent({ type: 'run.updated', id: randomUUID(), threadId, runId, occurredAt: startedAt, payload })])
+        if (relation) relation.apply()
+      }, undefined, [
+        decodeEvent({ type: 'run.updated', id: randomUUID(), threadId, runId, occurredAt: startedAt, payload }),
+        ...(newThread ? [decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId, occurredAt: startedAt, payload: newThread })] : []),
+      ],
+      [...(relation?.hostEvents ?? []), ...(handoff ? [lifecycleEvent(threadId, { kind: 'handoff', handoff }, runId, startedAt)] : [])])
       this.loadedThreads.set(threadId, { driver, nativeThreadId })
-      const active: ActiveTurn = { row, runId, ordinal: run.ordinal, attemptId, driver, nativeThreadId, authority, configurationFingerprint: expectedFingerprint }
+      const active: ActiveTurn = { row, runId, ordinal: run.ordinal, attemptId, driver, nativeThreadId, authority,
+        configurationFingerprint: expectedFingerprint, completion }
       active.waitForControlTurn = new Promise(resolve => { active.signalControlTurn = resolve })
       turn = active
       this.activeTurns.set(threadId, active)
       unpin()
       unpin = undefined
-      const acceptedTurnId = await this.driverFence.run(fence, () => runBounded(
-        driver.startTurn(nativeThreadId, cwd, prompt, selection.model, event => this.observeTurn(active, event), {
+      const onEvent = (event: ConversationDriverTurnEvent): void => this.observeTurn(active, event)
+      const context = {
           requestId: row.command_id, modelOptions: selection.options, assertCurrent: fence,
-          ...(ordinaryTask && { assertAuthorized: () => this.assertCurrent(threadId, authority) }),
+          ...((restricted || managedExecution) && { assertAuthorized: () => this.assertCurrent(threadId, authority) }),
           ...(attachments.length ? { attachments } : {}),
-        }),
+          ...(registration.ordinaryTaskAccess === 'native-read-only' && authority.binding.kind === 'personal' && !compaction && !completion && !related && {
+              delegation: (call: ConversationDelegationCall) => this.acceptDelegationCall(active, call),
+            }),
+      }
+      const acceptedTurnId = await this.driverFence.run(fence, () => runBounded(
+        compaction && driver.compactThread
+          ? driver.compactThread({ nativeThreadId, cwd, model: selection.model, instructions: compaction.instructions, onEvent, context })
+          : driver.startTurn(nativeThreadId, cwd, prompt, selection.model, onEvent, context),
         this.deadlines.turn, '等待原回合结束', this.shutdownController.signal,
       ))
       if (!this.worker.isOwned(row)) return
@@ -1033,13 +1347,349 @@ export class ConversationRuntime {
     }
   }
 
-  private observeTurn(turn: ActiveTurn, event: ConversationDriverTurnEvent): void {
+  private async acceptDelegationCall(turn: ActiveTurn, call: ConversationDelegationCall): Promise<ConversationDelegationReply> {
+    try {
+      const { authority, row, attemptId, nativeThreadId, runId } = turn
+      const { thread_id: threadId } = row
+      if (authority.binding.kind !== 'personal' || !call.callId || call.callId.length > 512 ||
+        call.nativeThreadId !== nativeThreadId || call.nativeTurnId !== turn.controlTurnId || !turn.hasNativeTurnId) {
+        throw new DaemonError('E_DENIED', '委派调用缺少原生父回合身份。')
+      }
+      const verify = () => this.assertDelegationParentCurrent(turn, call.nativeTurnId)
+      await this.assertCurrent(threadId, authority)
+      verify()
+      const run = this.commands.run(threadId, runId)
+      if (!run) throw new DaemonError('E_DENIED', '原委派运行已不可用。')
+      const selection = decodeModelSelection(JSON.parse(run.payload_json).modelSelection)
+      const operationId = delegationOperationId([threadId, runId, attemptId, call.callId])
+      const input = call.tool === 'delegate_task' ? delegateTaskArguments.parse(call.arguments)
+        : call.tool === 'task_respond' ? taskRespondArguments.parse(call.arguments)
+          : taskStatusArguments.parse(call.arguments)
+      const intent = { tool: call.tool, input }
+      const original = this.delegatedWork.readReply(operationId, intent)
+      const waitInput = 'mode' in input && input.mode === 'wait' ? input : undefined
+      const waitReplyId = waitInput ? delegationOperationId([operationId, 'wait-reply']) : undefined
+      if (original && !waitReplyId) return original
+      const originalWait = waitReplyId && this.delegatedWork.readReply(waitReplyId, intent)
+      if (originalWait) return originalWait
+      const previous = this.delegationCalls.get(operationId)
+      if (previous) {
+        if (previous.input !== JSON.stringify(intent)) throw new DaemonError('E_CONFLICT', '原委派工具调用的内容已变化。')
+        return await previous.result
+      }
+      if (call.tool === 'delegate_task' && 'task' in input && !original) {
+        const registration = this.requireDriver(selection.instanceId, true)
+        if (registration.ordinaryTaskAccess !== 'native-read-only') throw new DaemonError('E_UNAVAILABLE', '原引擎没有可验证的只读子任务配置。')
+        const delegated = this.delegatedWork.request(operationId, {
+          threadId, runId, attemptId, nativeThreadId, nativeTurnId: call.nativeTurnId, selection,
+          driverKind: registration.driverKind, fingerprint: turn.configurationFingerprint,
+        }, authority, input, intent)
+        if (delegated.relation.childThreadId) {
+          this.authorizations.set(operationId, authority)
+          this.scheduleNext(delegated.relation.childThreadId, authority)
+        }
+        if (!waitInput) return delegated.reply
+      }
+      const taskId = waitInput ? operationId : 'taskId' in input ? input.taskId : undefined
+      if (!taskId) throw new DaemonError('E_INVALID_ARG', '需要原委派身份。')
+      const readTask = () => {
+        const relation = this.relations.childOf(threadId, taskId)
+        if (!relation || relation.kind !== 'delegated' || relation.parentRunId !== runId ||
+          !relation.parentNodeId || !relation.childThreadId || !relation.childRunId ||
+          !this.commands.hasThread(relation.childThreadId, authority) || !this.delegatedWork.matchesOriginalAttempt(relation, attemptId)) {
+          throw new DaemonError('E_DENIED', '子任务不属于原父运行和节点。')
+        }
+        return { relation, childThreadId: relation.childThreadId, childRunId: relation.childRunId }
+      }
+      const execute = async (): Promise<ConversationDelegationReply> => {
+        const { relation, childThreadId, childRunId } = readTask()
+        let reply: ConversationDelegationReply
+        let delivery: ReturnType<ThreadRelations['update']> | undefined
+        if (call.tool === 'task_status' || waitInput) {
+          const pendingApproval = () => this.commands.requests(childThreadId).find(request =>
+            request.kind === 'approval' && request.status === 'pending' && request.runId === childRunId)
+          let waitTimedOut = false
+          if (waitInput) {
+            const timeoutMs = Math.min(MAX_DELEGATION_WAIT_MS, Math.max(1, waitInput.timeoutMs ?? DEFAULT_DELEGATION_WAIT_MS))
+            waitTimedOut = await this.waitForDelegatedUpdate([threadId, childThreadId], timeoutMs, () => {
+              verify()
+              const { relation: current } = readTask()
+              return Boolean(current.question || current.result || pendingApproval() ||
+                !['queued', 'running', 'waiting'].includes(current.status))
+            })
+            await this.assertCurrent(threadId, authority)
+            verify()
+          }
+          const { relation: current } = readTask()
+          const approval = pendingApproval()
+          const detail = current.result?.state === 'available' ? current.result.text : undefined
+          reply = { success: true, text: JSON.stringify({
+            taskId, childThreadId, childRunId, status: current.status, question: current.question, result: detail,
+            hasPendingQuestion: Boolean(current.question),
+            pendingApproval: approval ? { requestId: approval.requestId, kind: approval.kind, runId: approval.runId } : null,
+            waitTimedOut,
+          }) }
+          if (current.result?.state === 'available') {
+            delivery = this.relations.update({ ...current, result: { ...current.result, state: 'delivered' },
+              completionDelivery: { state: 'acknowledged', observedByRunId: RunId.make(runId) }, updatedAt: new Date().toISOString() })
+          }
+        } else {
+          const childAuthority = { ...authority, assertCurrent: async () => { await authority.assertCurrent(); verify() }, assertSpawnCurrent: verify }
+          const commandId = delegationOperationId([operationId, 'control'])
+          const response = call.tool === 'task_respond' ? taskRespondArguments.parse(call.arguments) : undefined
+          const command = call.tool === 'task_cancel'
+            ? { type: 'run.interrupt' as const, threadId: childThreadId, commandId, runId: childRunId }
+            : response ? { type: 'runtime-request.respond' as const, threadId: childThreadId, commandId,
+              requestId: response.requestId, generation: response.generation, answers: response.answers } : undefined
+          if (!command) throw new DaemonError('E_INVALID_ARG', '需要原请求的结构化答复。')
+          if (command.type === 'runtime-request.respond' && (relation.question?.requestId !== command.requestId ||
+            relation.question?.generation !== command.generation)) throw new DaemonError('E_DENIED', '只可答复原子任务的当前问题。')
+          const result = await this.command(command, childAuthority)
+          reply = { success: true, text: JSON.stringify({ taskId: relation.id, commandId, dispatch: result.dispatch }) }
+        }
+        this.eventSink.commit({ hostEvents: delivery?.hostEvents }, () => {
+          if (delivery) delivery.apply()
+          this.delegatedWork.writeReply(waitReplyId ?? operationId, intent, reply)
+        })
+        return reply
+      }
+      const result = execute()
+      this.delegationCalls.set(operationId, { input: JSON.stringify(intent), result })
+      try { return await result } finally { this.delegationCalls.delete(operationId) }
+    } catch (error) {
+      return { success: false, text: error instanceof DaemonError ? error.message : '委派工具参数或原运行状态不可用。' }
+    }
+  }
+
+  private assertDelegationParentCurrent(turn: ActiveTurn, nativeTurnId?: string, allowCompletedForeground = false): void {
+    const { row, authority, attemptId, driver, nativeThreadId, configurationFingerprint } = turn
+    const threadId = row.thread_id
+    try { this.assertSpawnAuthority(threadId, authority) } catch (error) {
+      if (error instanceof DaemonError) throw error
+      throw new DaemonError('E_DENIED', '无法复核原委派的工程授权。')
+    }
+    const attempt = this.worker.attempt(row.effect_id)
+    const loaded = this.loadedThreads.get(threadId)
+    const closedForeground = Boolean(turn.terminal || attempt?.foreground_ended)
+    if (!nativeTurnId || !turn.hasNativeTurnId || turn.controlTurnId !== nativeTurnId ||
+      this.activeTurns.get(threadId) !== turn || attempt?.attempt_id !== attemptId ||
+      attempt.phase !== 'dispatching' || attempt.native_turn_id !== nativeTurnId || attempt.stop_requested ||
+      closedForeground && !(allowCompletedForeground && turn.terminal?.status === 'completed') ||
+      this.commands.isPaused(threadId) || this.commands.isArchived(threadId) ||
+      loaded?.driver !== driver || loaded.nativeThreadId !== nativeThreadId) {
+      throw new DaemonError('E_DENIED', '原委派回合已停止、结束或换代。')
+    }
+    const binding = this.database.prepare(`SELECT instance_id FROM conversation_v2_native_bindings
+      WHERE thread_id = ? AND native_thread_id = ? AND configuration_fingerprint = ?`)
+      .get(threadId, nativeThreadId, configurationFingerprint) as { instance_id: string } | undefined
+    if (!binding) throw new DaemonError('E_DENIED', '原委派的原生会话归属已变化。')
+    this.assertDriverFingerprint(binding.instance_id, configurationFingerprint)
+  }
+
+  private delegatedCompletionSource(turn: ActiveTurn) {
+    return turn.hasNativeTurnId && turn.controlTurnId ? {
+      parentRunId: turn.runId, parentAttemptId: turn.attemptId, nativeThreadId: turn.nativeThreadId, nativeTurnId: turn.controlTurnId,
+    } : undefined
+  }
+
+  private assertDelegatedCompletionSource(threadId: string, source: NonNullable<ReturnType<ConversationRuntime['delegatedCompletionSource']>>,
+    authority: CommandAuthority, continuationRunId?: string, allowPaused = false) {
+    this.assertSpawnAuthority(threadId, authority)
+    if (authority.binding.kind !== 'personal' || this.commands.isArchived(threadId) || !allowPaused && this.commands.isPaused(threadId)) {
+      throw new DaemonError('E_DENIED', '原委派的父会话已暂停或失去授权。')
+    }
+    const run = this.commands.run(threadId, source.parentRunId)
+    const effect = this.commands.effectForRun(threadId, source.parentRunId)
+    const attempt = effect && this.worker.attempt(effect.effect_id)
+    const terminal = effect && this.database.prepare(`SELECT 1 FROM conversation_v2_native_terminal_evidence
+      WHERE effect_id = ? AND status = 'completed' AND native_turn_id = ?`).get(effect.effect_id, source.nativeTurnId)
+    if (run?.status !== 'completed' || effect?.status !== 'succeeded' || !terminal || attempt?.phase !== 'settled' ||
+      !attempt.foreground_ended || attempt.stop_requested || attempt.attempt_id !== source.parentAttemptId ||
+      attempt.provider_thread_id !== source.nativeThreadId || attempt.native_turn_id !== source.nativeTurnId ||
+      this.database.prepare(`SELECT 1 FROM conversation_v2_projection_runs
+        WHERE thread_id = ? AND ordinal > ? AND run_id <> ? LIMIT 1`).get(threadId, run.ordinal, continuationRunId ?? '')) {
+      throw new DaemonError('E_CONFLICT', '原父回合没有正常结束凭据，或会话已进入新运行。')
+    }
+    const fingerprint = this.worker.configurationFingerprint(effect)
+    const binding = fingerprint && this.database.prepare(`SELECT 1 FROM conversation_v2_native_bindings
+      WHERE thread_id = ? AND instance_id = ? AND native_thread_id = ? AND configuration_fingerprint = ?`)
+      .get(threadId, run.provider_instance_id, source.nativeThreadId, fingerprint)
+    if (!fingerprint || !binding) throw new DaemonError('E_CONFLICT', '原委派的父会话绑定已变化。')
+    this.assertDriverFingerprint(run.provider_instance_id, fingerprint)
+    return { run, fingerprint, payload: JSON.parse(run.payload_json) as OrchestrationV2Run }
+  }
+
+  private assertDelegatedCompletionCurrent(threadId: string, intent: DelegatedCompletionIntent, authority: CommandAuthority,
+    runId: string, allowPaused = false): void {
+    const { payload } = this.assertDelegatedCompletionSource(threadId, intent, authority, runId, allowPaused)
+    requireUnchangedCompletion(payload.delegatedCompletion, intent)
+    this.completionRelations(threadId, intent, runId, authority)
+  }
+
+  private completionRelations(threadId: string, intent: DelegatedCompletionIntent, runId: string, authority: CommandAuthority) {
+    return intent.taskIds.map((taskId, index) => {
+      const relation = this.relations.childOf(threadId, taskId)
+      if (!relation?.childThreadId || relation.parentRunId !== intent.parentRunId ||
+        !this.commands.hasThread(relation.childThreadId, authority) || !this.delegatedWork.matchesOriginalAttempt(relation, intent.parentAttemptId) ||
+        relation.parentNodeId !== intent.nodeIds[index] || relation.result?.deliveryId !== intent.resultIds[index] || relation.continuation?.runId !== runId ||
+        relation.completionDelivery?.state !== 'claimed') {
+        throw new DaemonError('E_CONFLICT', '待回送的原子任务结果已变化。')
+      }
+      return relation
+    })
+  }
+
+  private disposeDelegatedCompletion(effect: ThreadEffectRow, at: string) {
+    const intent = completionIntent(effect)
+    if (!intent) return
+    const changes = intent.taskIds.flatMap((taskId, index) => {
+      const relation = this.relations.childOf(effect.thread_id, taskId)
+      return relation?.completionDelivery?.state === 'claimed' && relation.result?.deliveryId === intent.resultIds[index] &&
+        relation.continuation?.commandId === effect.command_id
+        ? [this.relations.update({ ...relation, completionDelivery: { state: 'disposed', observedByRunId: null }, updatedAt: at })]
+        : []
+    })
+    return {
+      hostEvents: changes.flatMap(change => change.hostEvents),
+      apply: () => { for (const change of changes) change.apply() },
+    }
+  }
+
+  private offerDelegatedCompletionDelivery(threadId: string, parentRunId?: string): void {
+    queueMicrotask(() => {
+      const parent = this.delegationContinuationParents.get(threadId)
+      if (!parent || parent.runId !== parentRunId || this.closing) return
+      const source = this.delegatedCompletionSource(parent)
+      if (!source) return
+      try {
+        const { authority } = parent
+        const { run, fingerprint, payload } = this.assertDelegatedCompletionSource(threadId, source, authority)
+        if (payload.delegatedCompletion) return
+        const children = this.relations.read(threadId).children.filter(relation => relation.kind === 'delegated' &&
+          relation.parentRunId === parentRunId && this.delegatedWork.matchesOriginalAttempt(relation, parent.attemptId))
+        const plan = planDelegatedCompletionDelivery(source, children)
+        if (!plan) {
+          if (children.every(child => child.result)) this.delegationContinuationParents.delete(threadId)
+          return
+        }
+        const selection = decodeModelSelection(payload.modelSelection)
+        const registration = this.requireDriver(selection.instanceId, false)
+        const at = new Date().toISOString()
+        const changes = plan.tasks.map(relation => this.relations.update({ ...relation,
+          completionDelivery: { state: 'claimed', observedByRunId: null }, updatedAt: at,
+          continuation: { commandId: plan.commandId, runId: plan.runId },
+        }))
+        const updated = { ...payload, delegatedCompletion: plan.cohort }
+        this.commands.appendMessage({
+          type: 'message.dispatch', commandId: plan.commandId, threadId, messageId: plan.messageId, text: plan.text,
+          instanceId: selection.instanceId, model: selection.model,
+        }, authority, { modelSelection: selection, driverKind: registration.driverKind, configurationFingerprint: fingerprint },
+        undefined, undefined, undefined, undefined, {
+          intent: plan.intent, runId: plan.runId, plan: {
+            events: [decodeEvent({ type: 'run.updated', id: randomUUID(), threadId, runId: run.run_id, occurredAt: at, payload: updated })],
+            hostEvents: changes.flatMap(change => change.hostEvents),
+            apply: () => {
+              this.database.prepare('UPDATE conversation_v2_projection_runs SET payload_json = ? WHERE run_id = ?')
+                .run(JSON.stringify(updated), run.run_id)
+              for (const change of changes) change.apply()
+            },
+          },
+        })
+        this.delegationContinuationParents.delete(threadId)
+        this.authorizations.set(plan.commandId, authority)
+        this.scheduleNext(threadId, authority)
+      } catch (error) {
+        this.delegationContinuationParents.delete(threadId)
+        if (!(error instanceof DaemonError)) {
+          process.emitWarning('Unable to reserve the original delegated completion.', { code: 'CRUX_DELEGATED_COMPLETION' })
+        }
+      }
+    })
+  }
+
+  private async waitForDelegatedUpdate(threadIds: readonly string[], timeoutMs: number, ready: () => boolean): Promise<boolean> {
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const signal = AbortSignal.any([timeout, this.shutdownController.signal])
+    while (!signal.aborted) {
+      if (ready()) return false
+      try {
+        await this.eventSink.waitForLifecycle(threadIds, signal)
+      } catch (error) {
+        if (!timeout.aborted || this.shutdownController.signal.aborted) throw error
+      }
+    }
+    this.shutdownController.signal.throwIfAborted()
+    return true
+  }
+
+  private async prepareHandoffSource(threadId: string, authority: CommandAuthority, fence: () => void) {
+    const binding = this.database.prepare(`SELECT binding.instance_id, binding.native_thread_id, binding.configuration_fingerprint,
+      (SELECT run_id FROM conversation_v2_projection_runs run WHERE run.thread_id = binding.thread_id
+        AND run.provider_thread_id = binding.native_thread_id AND run.provider_instance_id = binding.instance_id
+        AND run.status = 'completed' ORDER BY run.ordinal DESC LIMIT 1) AS previous_run_id
+      FROM conversation_v2_native_bindings binding WHERE thread_id = ?`).get(threadId) as {
+      instance_id: string; native_thread_id: string; configuration_fingerprint: string | null; previous_run_id: string | null
+    } | undefined
+    if (!binding?.previous_run_id) throw new ConversationTurnRejectedError('找不到接力来源的已结算原生回合。')
+    const source = { ...binding, previous_run_id: binding.previous_run_id }
+    const loaded = this.loadedThreads.get(threadId)
+    if (!loaded) return source
+    const key = JSON.stringify([binding.instance_id, pathKey(authority.cwd)])
+    const owned = this.processes.get(key)
+    const verify = (): void => {
+      fence()
+      if (this.loadedThreads.get(threadId) !== loaded || owned?.driver !== loaded.driver ||
+        this.processes.get(key) !== owned || loaded.nativeThreadId !== binding.native_thread_id ||
+        this.ready.get(key)?.fingerprint !== binding.configuration_fingerprint
+        || [...this.loadedThreads].some(([id, peer]) => id !== threadId && peer.driver === loaded.driver && peer.nativeThreadId === loaded.nativeThreadId)) {
+        throw new DaemonError('E_CONFLICT', '接力来源的原生会话归属已变化。')
+      }
+    }
+    verify()
+    if (loaded.driver.detachThread) {
+      const unpin = this.pinPreparation(loaded.driver)
+      try {
+        await runBounded(loaded.driver.detachThread({ nativeThreadId: loaded.nativeThreadId, assertCurrent: verify }),
+          this.deadlines.control, '解除接力来源订阅', this.shutdownController.signal)
+        verify()
+        this.loadedThreads.delete(threadId)
+      } finally { unpin() }
+    } else {
+      if (!owned || !loaded.driver.canConfirmWindowsJobClose?.(loaded.nativeThreadId) || this.driverOpenings.has(key) ||
+        this.preparingDrivers.has(loaded.driver) || this.closingDrivers.has(loaded.driver) ||
+        [...this.activeTurns.values()].some(turn => turn.driver === loaded.driver) ||
+        [...this.loadedThreads].some(([id, peer]) => id !== threadId && peer.driver === loaded.driver)) {
+        throw new DaemonError('E_BUSY', '原引擎仍有共享会话或无法确认解绑，接力尚未发送。')
+      }
+      await this.closeOwned(key, owned)
+    }
+    return source
+  }
+
+  private observeTurn(turn: ActiveTurn, event: ConversationDriverTurnEvent | ConversationNativeSubagentEvent): void {
     const { row, runId } = turn
     if (this.closing || !event.turnId || event.turnId.length > 512 || this.activeTurns.get(row.thread_id) !== turn || !this.worker.canObserve(row, turn.attemptId)) return
     this.ports.assertOwner()
     if (turn.controlTurnId && turn.controlTurnId !== event.turnId) return
     const state = this.worker.attempt(row.effect_id)
     if (!state) return
+    if (event.type === 'native-subagent') {
+      if (event.turnIdSource === 'host' || state.native_turn_id !== event.turnId || state.provider_thread_id !== turn.nativeThreadId) return
+      const run = this.commands.run(row.thread_id, runId)
+      if (!run) return
+      const selection = decodeModelSelection(JSON.parse(run.payload_json).modelSelection)
+      this.relations.recordNativeActivity(this.eventSink, {
+        threadId: row.thread_id, runId, attemptId: turn.attemptId, instanceId: selection.instanceId, model: selection.model,
+      }, event)
+      return
+    }
+    if (event.type === 'usage') {
+      if (state.provider_thread_id !== turn.nativeThreadId || turn.controlTurnId !== event.turnId ||
+        turn.hasNativeTurnId !== (event.turnIdSource !== 'host') || state.foreground_ended ||
+        turn.hasNativeTurnId && state.native_turn_id !== event.turnId) return
+      this.recordUsage(row.thread_id, runId, event.usage)
+      return
+    }
     if (event.type === 'work-item') {
       if (event.turnIdSource !== 'host' && !state.foreground_ended &&
         state.provider_thread_id === turn.nativeThreadId && state.native_turn_id === event.turnId) {
@@ -1053,13 +1703,25 @@ export class ConversationRuntime {
     const nativeTurnId = turn.hasNativeTurnId ? event.turnId : undefined
     if (event.type === 'turn-receipt' || event.type === 'turn-accepted') {
       const accepted = event.type === 'turn-accepted'
+      const handoff = accepted ? this.currentHandoff(row.thread_id, runId) : undefined
+      const acceptedHandoff = handoff?.state === 'prepared' ? { ...handoff, state: 'accepted' as const } : undefined
+      const delivery = accepted && nativeTurnId && turn.completion && !turn.completionAccepted
+        ? this.completionRelations(row.thread_id, turn.completion, runId, turn.authority).map(relation => this.relations.update({
+          ...relation, ...(relation.result && { result: { ...relation.result, state: 'delivered' as const } }),
+          completionDelivery: { state: 'delivered', observedByRunId: RunId.make(runId) }, updatedAt: new Date().toISOString(),
+        })) : []
       this.recordTurnEvidence(row.thread_id, runId, {
         ...(nativeTurnId ? { nativeTurnId } : {}),
         ...(accepted ? { engineAcceptedAt: new Date().toISOString() } : {}),
         ...(accepted && event.nativeStartedAt ? { nativeStartedAt: event.nativeStartedAt } : {}),
       }, () => {
         if (nativeTurnId) this.worker.recordNativeTurn(row, nativeTurnId)
-      })
+        if (acceptedHandoff) this.database.prepare(`UPDATE conversation_v2_projection_runs
+          SET payload_json = json_patch(payload_json, ?) WHERE run_id = ?`).run(JSON.stringify({ handoff: acceptedHandoff }), runId)
+        for (const change of delivery) change.apply()
+      }, [...(acceptedHandoff ? [lifecycleEvent(row.thread_id, { kind: 'handoff', handoff: acceptedHandoff }, runId)] : []),
+        ...delivery.flatMap(change => change.hostEvents)])
+      if (delivery.length) turn.completionAccepted = true
     }
     if ((event.type === 'text-delta' || event.type === 'text-final') && event.text && event.itemId && !state.foreground_ended) {
       this.writeAssistantText(row.thread_id, runId, event.itemId, event.text, event.type === 'text-final')
@@ -1072,9 +1734,18 @@ export class ConversationRuntime {
         requestId, runId, generation: turn.ordinal, kind: event.request.kind,
         payload: event.request, createdAt: new Date().toISOString(), status: 'pending',
       }
-      this.eventSink.commit({ hostEvents: [lifecycleEvent(row.thread_id, { kind: 'request', request }, runId)] }, () => {
+      const delegated = request.kind === 'user-input' ? this.relations.delegatedParent(row.thread_id) : undefined
+      const relation = delegated?.childRunId === runId && !delegated.question ? this.relations.update({
+        ...delegated, status: 'waiting', updatedAt: request.createdAt,
+        question: { requestId, generation: request.generation, title: request.payload.title },
+      }) : undefined
+      this.eventSink.commit({ hostEvents: [
+        lifecycleEvent(row.thread_id, { kind: 'request', request }, runId),
+        ...(relation?.hostEvents ?? []),
+      ] }, () => {
         this.commands.writeRequest(row.thread_id, request, nativeTurnId ?? null)
         this.commands.bindNativeRequest(requestId, turn.attemptId, event.nativeRequestId)
+        relation?.apply()
       })
       this.nativeRequests.set(requestId, { turn, nativeRequestId: event.nativeRequestId })
     }
@@ -1103,6 +1774,18 @@ export class ConversationRuntime {
       turn.terminalObservedAt ??= new Date().toISOString()
       if (state.phase === 'unknown' || state.foreground_ended) this.finishForeground(turn)
     }
+  }
+
+  private currentHandoff(threadId: string, runId: string): ConversationHandoff | undefined {
+    const run = this.commands.run(threadId, runId)
+    return run ? (JSON.parse(run.payload_json) as { handoff?: ConversationHandoff }).handoff : undefined
+  }
+
+  private recordUsage(threadId: string, runId: string, usage: ConversationTurnUsage): void {
+    if (Object.values(usage).some(value => value !== undefined && (!Number.isSafeInteger(value) || value < 0))) return
+    this.eventSink.commit({ hostEvents: [lifecycleEvent(threadId, { kind: 'usage', usage }, runId)] }, () => {
+      this.continuation.writeUsage(runId, usage)
+    })
   }
 
   private applyWorkItem(turn: ActiveTurn, nativeTurnId: string, item: ConversationDriverWorkItem): void {
@@ -1180,14 +1863,17 @@ export class ConversationRuntime {
       const state = this.worker.attempt(row.effect_id)
       if (!state?.foreground_ended) {
         const expiredRequests = this.expiringRequests(turn)
+        const lateResults = this.disallowLateDeliveries(threadId, runId, evidence.observedAt)
         this.eventSink.commit({ hostEvents: [
           lifecycleEvent(threadId, { kind: 'run', phase: 'foreground-ended' }, runId, evidence.observedAt),
           lifecycleEvent(threadId, { kind: 'terminal-evidence', evidence }, runId, evidence.observedAt),
           ...expiredRequests.map(request => lifecycleEvent(threadId, { kind: 'request', request }, runId, evidence.observedAt)),
+          ...lateResults.flatMap(change => change.hostEvents),
         ] }, () => {
           this.worker.recordNativeTerminal(row, evidence)
           this.database.prepare('UPDATE conversation_v2_dispatch_attempts SET foreground_ended = 1 WHERE effect_id = ?').run(row.effect_id)
           for (const request of expiredRequests) this.commands.writeRequest(threadId, request, null)
+          for (const change of lateResults) change.apply()
           this.settleStopFromTerminal(turn, evidence.observedAt)
         })
         this.clearRequestBindings(turn)
@@ -1263,10 +1949,11 @@ export class ConversationRuntime {
     return { id: randomUUID(), threadId, runId, occurredAt, type: 'crux.run-evidence', payload: evidence }
   }
 
-  private recordTurnEvidence(threadId: string, runId: string, evidence: ConversationRunEvidence, apply?: () => void): void {
+  private recordTurnEvidence(threadId: string, runId: string, evidence: ConversationRunEvidence, apply?: () => void,
+    extraEvents: readonly ConversationLifecycleEvent[] = []): void {
     this.ports.assertOwner()
     const event = this.runEvidenceEvent(threadId, runId, evidence, new Date().toISOString())
-    this.eventSink.commit({ hostEvents: [event] }, () => {
+    this.eventSink.commit({ hostEvents: [event, ...extraEvents] }, () => {
       this.applyTurnEvidence(runId, evidence)
       apply?.()
     })
@@ -1274,6 +1961,12 @@ export class ConversationRuntime {
 
   private applyTurnEvidence(runId: string, evidence: ConversationRunEvidence): void {
     this.database.prepare('UPDATE conversation_v2_projection_runs SET payload_json = json_patch(payload_json, ?) WHERE run_id = ?').run(JSON.stringify(evidence), runId)
+  }
+
+  private disallowLateDeliveries(threadId: string, runId: string, at: string) {
+    return this.relations.read(threadId).children.flatMap(relation =>
+      relation.parentRunId === runId && relation.result?.state === 'available'
+        ? [this.relations.update({ ...relation, updatedAt: at, result: { ...relation.result, state: 'read-only' } })] : [])
   }
 
   /** A dispatch failure leaves the run visibly failed with the actual cause; it never looks running. */
@@ -1286,6 +1979,13 @@ export class ConversationRuntime {
     const run = this.database.prepare('SELECT payload_json FROM conversation_v2_projection_runs WHERE run_id = ?').get(runId) as { payload_json: string } | undefined
     const outputs = this.database.prepare("SELECT payload_json FROM conversation_v2_projection_messages WHERE run_id = ? AND role = 'assistant'").all(runId) as { payload_json: string }[]
     const events: OrchestrationV2DomainEvent[] = []
+    const childStatus = outboxStatus === 'succeeded' ? 'completed' : outboxStatus
+    const delegated = this.relations.delegatedParent(threadId)
+    const relation = delegated?.childRunId === runId
+      ? this.settleDelegatedWork(delegated, childStatus, settled, outputs, detail)
+      : run && !compactionFromPayload(run.payload_json) ? this.relations.childUpdate(threadId, childStatus, runId, settled) : undefined
+    const lateResults = this.disallowLateDeliveries(threadId, runId, settled)
+    const disposedCompletion = outboxStatus === 'succeeded' ? undefined : this.disposeDelegatedCompletion(row, settled)
     if (run) events.push(decodeEvent({
       type: 'run.updated', id: randomUUID(), threadId, runId, occurredAt: settled,
       payload: { ...JSON.parse(run.payload_json), status, completedAt: settled },
@@ -1297,10 +1997,57 @@ export class ConversationRuntime {
     this.eventSink.commit({ commandId: row.command_id, events, hostEvents: [
       lifecycleEvent(threadId, { kind: 'run', phase: 'settled' }, runId, settled),
       ...(detail ? [this.runEvidenceEvent(threadId, runId, { failure: detail }, settled)] : []),
+      ...(relation ? relation.hostEvents : []),
+      ...lateResults.flatMap(change => change.hostEvents),
+      ...(disposedCompletion?.hostEvents ?? []),
     ] }, () => {
       this.settleRun(threadId, runId, status, detail, settled)
       this.worker.releaseClaim(row, settled, outboxStatus, detail)
+      if (relation) relation.apply()
+      for (const change of lateResults) change.apply()
+      disposedCompletion?.apply()
       if (turn) this.settleStopFromTerminal(turn, settled)
+    })
+    if (turn && !turn.completion && status === 'completed' && this.delegatedCompletionSource(turn) &&
+      this.relations.read(threadId).children.some(child => child.parentRunId === runId && child.completionWake)) {
+      this.delegationContinuationParents.set(threadId, turn)
+      this.offerDelegatedCompletionDelivery(threadId, runId)
+    }
+    if (delegated?.childRunId === runId) this.offerDelegatedCompletionDelivery(delegated.parentThreadId, delegated.parentRunId)
+  }
+
+  private settleDelegatedWork(relation: NonNullable<ReturnType<ThreadRelations['delegatedParent']>>,
+    status: 'completed' | 'failed' | 'cancelled', at: string, outputs: readonly { payload_json: string }[], failure?: string) {
+    const parent = this.activeTurns.get(relation.parentThreadId)
+    const endedParent = this.delegationContinuationParents.get(relation.parentThreadId)
+    let available = false
+    let eligible = false
+    if (parent && parent.runId === relation.parentRunId && this.delegatedWork.matchesOriginalAttempt(relation, parent.attemptId)) {
+      try {
+        this.assertDelegationParentCurrent(parent, parent.controlTurnId, true)
+        available = !parent.terminal
+        eligible = true
+      } catch (error) {
+        if (!(error instanceof DaemonError)) throw error
+      }
+    } else if (endedParent && endedParent.runId === relation.parentRunId &&
+      this.delegatedWork.matchesOriginalAttempt(relation, endedParent.attemptId)) {
+      const source = this.delegatedCompletionSource(endedParent)
+      try {
+        if (source) {
+          this.assertDelegatedCompletionSource(relation.parentThreadId, source, endedParent.authority)
+          eligible = true
+        }
+      } catch {
+        eligible = false
+      }
+    }
+    const text = outputs.map(row => (JSON.parse(row.payload_json) as { text?: string }).text ?? '').filter(Boolean).join('\n\n').slice(0, 8_000)
+      || failure?.slice(0, 2_000)
+    return this.relations.update({
+      ...relation, status, question: undefined, updatedAt: at,
+      ...(relation.completionWake && { completionDelivery: { state: eligible ? 'pending' : 'disposed', observedByRunId: null } }),
+      result: { deliveryId: delegationOperationId([relation.id, 'result']), state: available ? 'available' : 'read-only', ...(text && { text }) },
     })
   }
 
@@ -1308,16 +2055,24 @@ export class ConversationRuntime {
     this.ports.assertOwner()
     const evidence: ConversationRunEvidence = { outcomeUnknown: true, outcomeUnknownAt: settled, failure: detail, ...(nativeTurnId ? { nativeTurnId } : {}) }
     const threadId = row.thread_id
+    const run = this.commands.run(threadId, runId)
+    const relation = run && !compactionFromPayload(run.payload_json)
+      ? this.relations.childUpdate(threadId, 'pending-reconciliation', runId, settled) : undefined
+    const lateResults = this.disallowLateDeliveries(threadId, runId, settled)
     this.eventSink.commit({ commandId: row.command_id, hostEvents: [
       this.runEvidenceEvent(threadId, runId, evidence, settled),
       lifecycleEvent(threadId, { kind: 'dispatch', status: 'unknown' }, runId, settled),
       lifecycleEvent(threadId, { kind: 'queue', paused: true }, runId, settled),
       ...(terminal ? [lifecycleEvent(threadId, { kind: 'terminal-evidence', evidence: terminal }, runId, settled)] : []),
+      ...(relation ? relation.hostEvents : []),
+      ...lateResults.flatMap(change => change.hostEvents),
     ] }, () => {
       this.applyTurnEvidence(runId, evidence)
       if (terminal) this.worker.recordNativeTerminal(row, terminal)
       this.worker.markUnknown(row, settled, detail)
       this.commands.setPaused(threadId, true)
+      if (relation) relation.apply()
+      for (const change of lateResults) change.apply()
     })
   }
 
@@ -1404,6 +2159,8 @@ export class ConversationRuntime {
       } : run) : page.runs,
       queuePaused: !!unrecorded || this.commands.isPaused(threadId),
       runtimeRequests: this.commands.requests(threadId),
+      relations: this.relations.read(threadId),
+      goal: this.continuation.readGoal(threadId),
     }
   }
 
@@ -1509,6 +2266,8 @@ export class ConversationRuntime {
    */
   async shutdown(): Promise<void> {
     this.closing = true
+    for (const timer of this.idleCompactions.values()) clearTimeout(timer)
+    this.idleCompactions.clear()
     this.shutdownController.abort(new DaemonError('E_UNAVAILABLE', '会话内核正在关闭。'))
     for (const turn of this.activeTurns.values()) {
       turn.signalControlTurn?.()

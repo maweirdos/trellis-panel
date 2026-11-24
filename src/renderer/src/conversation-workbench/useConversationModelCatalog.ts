@@ -28,7 +28,12 @@ export interface ConversationInstanceCatalog {
   readonly read?: DescriptorRead
 }
 
-export function useConversationModelCatalog(root: string, interactive: boolean, scopeKey?: string, task?: ConversationTaskLocator) {
+type CatalogSource = {
+  list(): Promise<Awaited<ReturnType<typeof api.conversationDrivers>>>
+  describe(instanceId: string): Promise<Awaited<ReturnType<typeof api.conversationDescribeDriver>>>
+}
+
+export function useConversationModelCatalog(root: string, interactive: boolean, scopeKey?: string, task?: ConversationTaskLocator, source?: CatalogSource) {
   const key = JSON.stringify([scopeKey, projectRootKey(root) ?? root, task ?? null])
   const [listByScope, setLists] = useState<ReadonlyMap<string, CatalogRead>>(() => new Map())
   const [reads, setReads] = useState<ReadonlyMap<string, DescriptorRead>>(() => new Map())
@@ -42,7 +47,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
     setLists((previous) => new Map(previous).set(key, loading))
     let next: CatalogRead
     try {
-      const result = await api.conversationDrivers(root, task)
+      const result = await (source ? source.list() : api.conversationDrivers(root, task))
       next = result.ok ? { status: 'ready', drivers: result.drivers } : { status: 'failed', error: normalizeFeedbackDiagnostic(result.error) }
     } catch (error) {
       next = { status: 'failed', error: normalizeFeedbackDiagnostic(conversationError(error)) }
@@ -50,7 +55,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
       pending.current.delete(key)
     }
     setLists((previous) => previous.get(key) === loading ? new Map(previous).set(key, next) : previous)
-  }, [interactive, key, root, task])
+  }, [interactive, key, root, task, source])
 
   const ensure = useCallback(async (instanceId: string, force = false): Promise<void> => {
     const readKey = JSON.stringify([key, instanceId])
@@ -61,7 +66,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
     setReads((previous) => new Map(previous).set(readKey, loading))
     let next: DescriptorRead
     try {
-      const result = await api.conversationDescribeDriver({ cwd: root, instanceId, ...(task ? { task } : {}) })
+      const result = await (source ? source.describe(instanceId) : api.conversationDescribeDriver({ cwd: root, instanceId, ...(task ? { task } : {}) }))
       next = result.ok ? { status: 'ready', descriptor: result.descriptor } : { status: 'failed', error: normalizeFeedbackDiagnostic(result.error) }
     } catch (error) {
       next = { status: 'failed', error: normalizeFeedbackDiagnostic(conversationError(error)) }
@@ -69,7 +74,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
       pending.current.delete(readKey)
     }
     setReads((previous) => previous.get(readKey) === loading ? new Map(previous).set(readKey, next) : previous)
-  }, [interactive, key, reads, root, task])
+  }, [interactive, key, reads, root, task, source])
 
   const instances = useMemo<readonly ConversationInstanceCatalog[]>(() => {
     if (list?.status !== 'ready') return []
@@ -82,7 +87,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
   ), [instances])
 
   return { status: list?.status ?? 'idle', error: list?.status === 'failed' ? list.error : undefined,
-    instances, models, scopeAllowsSkills: !task, refresh, ensure } as const
+    instances, models, scopeAllowsSkills: !task && !source, refresh, ensure } as const
 }
 
 export type ConversationModelCatalog = ReturnType<typeof useConversationModelCatalog>

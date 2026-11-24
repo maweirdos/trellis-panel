@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import * as Effect from 'effect/Effect'
 import { DaemonError } from '../../../daemon/errors'
 import type { ConversationRunEvidence } from '../../../../shared/conversation/desktop'
-import type { ConversationNativeTerminalEvidence, ConversationRuntimeRequest } from '../../../../shared/conversation/command-runtime'
+import type { ConversationLifecycleEvent, ConversationNativeTerminalEvidence, ConversationRuntimeRequest } from '../../../../shared/conversation/command-runtime'
 import * as Schema from 'effect/Schema'
 import { OrchestrationV2DomainEventJson, type OrchestrationV2DomainEvent } from '../../../../shared/conversation/contracts'
 import type { ConversationEventSink } from './EventSink'
@@ -193,12 +193,13 @@ export class ConversationEffectWorker {
       .get(row.effect_id, this.ownerId) !== undefined
   }
 
-  markDispatched(row: ThreadEffectRow, attemptId: string, nativeThreadId: string, apply: () => void, nativeTurnId?: string, events?: readonly OrchestrationV2DomainEvent[]): void {
+  markDispatched(row: ThreadEffectRow, attemptId: string, nativeThreadId: string, apply: () => void, nativeTurnId?: string,
+    events?: readonly OrchestrationV2DomainEvent[], hostEvents: readonly ConversationLifecycleEvent[] = []): void {
     this.assertAttempt(row, attemptId)
     this.sink.commit({
       commandId: row.command_id,
       events,
-      hostEvents: [lifecycleEvent(row.thread_id, { kind: 'dispatch', status: 'dispatching' }, this.runId(row))],
+      hostEvents: [lifecycleEvent(row.thread_id, { kind: 'dispatch', status: 'dispatching' }, this.runId(row)), ...hostEvents],
     }, () => {
       this.database.prepare("UPDATE conversation_v2_dispatch_attempts SET phase = 'dispatching', provider_thread_id = ?, native_turn_id = ? WHERE effect_id = ?")
         .run(nativeThreadId, nativeTurnId ?? null, row.effect_id)

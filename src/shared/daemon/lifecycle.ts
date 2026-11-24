@@ -12,11 +12,13 @@ export type DaemonActivity = z.infer<typeof daemonActivitySchema>
 export const LIFECYCLE_RUNTIME_CONTROLS: readonly string[] = [
   'runtime.status', 'runtime.command', 'runtime.cancel', 'runtime.end',
   'runtime.privateCancel', 'runtime.privateEnd', 'runtime.handoffCancel',
+  'runtime.taskPlanningStop',
   'runtime.workflow.stop', 'runtime.workflow.cancelRevision'
 ]
 export const LIFECYCLE_SESSION_ADMISSIONS: readonly string[] = [
   'runtime.privateSend', 'runtime.prompt', 'runtime.new', 'runtime.resume',
-  'runtime.handoffCreate', 'runtime.recover', 'runtime.privateRecoverModel'
+  'runtime.handoffCreate', 'runtime.recover', 'runtime.privateRecoverModel',
+  'runtime.taskPlanningCatalog', 'runtime.taskPlanningLaunch'
 ]
 export const daemonLifecycleStopSchema = z.object({
   version: z.literal(1), attemptId: z.string().uuid(), nonce: z.string().uuid(),

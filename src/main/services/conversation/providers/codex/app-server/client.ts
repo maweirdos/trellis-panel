@@ -97,6 +97,12 @@ export const V2TurnStartParams = CodexSchema.V2TurnStartParams.pipe(
   }),
 );
 
+const V2ThreadStartParams = CodexSchema.V2ThreadStartParams.pipe(
+  Schema.fieldsAssign({
+    dynamicTools: Schema.optionalKey(Schema.Array(CodexSchema.V2ThreadStartParams__DynamicToolSpec)),
+  }),
+);
+
 export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make")(function* (
   stdio: Stdio.Stdio,
   options: CodexAppServerClientOptions = {},
@@ -134,6 +140,8 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     | undefined =>
     method === "turn/start"
       ? (V2TurnStartParams as never)
+      : method === "thread/start"
+        ? (V2ThreadStartParams as never)
       : (CodexRpc.CLIENT_REQUEST_PARAMS[method] as never);
 
   const getClientRequestResponseSchema = <M extends CodexRpc.ClientRequestMethod>(

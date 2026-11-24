@@ -7,11 +7,15 @@ export const CONVERSATION_TEXT_LIMIT = 120_000
 
 const storagePrefix = 'crux.conversation-draft.v1:'
 const maxStoredDrafts = 32
-export interface ComposerReference {
+interface ComposerReferenceBase {
   readonly id: string
   readonly label: string
-  readonly text: string
 }
+
+export type ComposerReference = ComposerReferenceBase & (
+  | { readonly text: string; readonly threadId?: never; readonly messageIds?: never }
+  | { readonly threadId: string; readonly messageIds?: readonly string[]; readonly text?: never }
+)
 
 export interface ComposerDraftContent {
   readonly text: string

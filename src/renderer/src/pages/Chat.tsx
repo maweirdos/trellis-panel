@@ -8,6 +8,7 @@ import { useMy } from '../my/store'
 import { FeedbackNotice } from '../my/FeedbackNotice'
 import { Button, EmptyState } from '../my/ui'
 import { useApp } from '../store'
+import { useTaskWorkThread } from '../conversation-workbench/task-work-navigation'
 
 const NativeConversation = lazy(() => import('../conversation-workbench/ConversationWorkbench').then((module) => ({ default: module.ConversationWorkbench })))
 
@@ -15,6 +16,7 @@ function WorkConversation({ active }: { active: boolean }): JSX.Element {
   const [root, setRoot] = useState<string>()
   const [issue, setIssue] = useState('')
   const [retry, setRetry] = useState(0)
+  const taskThread = useTaskWorkThread(root)
 
   useEffect(() => {
     if (!active || !hasIpc) return
@@ -29,7 +31,7 @@ function WorkConversation({ active }: { active: boolean }): JSX.Element {
     return () => { current = false }
   }, [active, retry])
 
-  if (root) return <NativeConversation key={projectRootKey(root)} root={root} source="work" />
+  if (root) return <NativeConversation key={taskThread?.key ?? projectRootKey(root)} root={root} source="work" initialThreadId={taskThread?.threadId} />
   if (!hasIpc) return <EmptyState title="请在 Crux 桌面端打开对话" />
   if (issue) return <FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
     actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} />

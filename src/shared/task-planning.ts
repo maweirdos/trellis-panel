@@ -1,15 +1,15 @@
 import { z } from 'zod'
-import { modelSelectionIdSchema } from './model-selection'
 import { cruxMaterialScopeSchema } from './crux-task-materials'
 import { requirementCandidateSchema } from './conversation-requirements'
 import { teamTaskMaterialReceiptSchema } from './team-task-materials'
 import { conversationRespondSchema, type ConversationResult } from './private-conversations'
+import { taskPlanningRuntimeSelection, type TaskPlanningRuntimeCatalog, type TaskPlanningRuntimeCatalogRequest } from './conversation/task-planning-runtime'
 
 export const taskPlanningQuerySchema = cruxMaterialScopeSchema
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 export const taskPlanningPrepareSchema = taskPlanningQuerySchema.extend({
   commandId: z.string().uuid(), expectedUpdatedAt: z.string().min(1).max(100),
-  agentId: z.literal('codex'), modelId: modelSelectionIdSchema,
+  ...taskPlanningRuntimeSelection.shape,
   reusePlanningId: z.string().uuid().optional()
 }).strict()
 export const taskPlanningControlSchema = z.object({ planningId: z.string().uuid() }).strict()
@@ -42,7 +42,7 @@ export const taskPlanningViewSchema = z.object({
   planningId: z.string().uuid().nullable(),
   state: z.enum(['empty', 'prepared', 'sending', 'running', 'candidate', 'cancelled', 'failed', 'unknown']),
   sourceDigest: digest.nullable(), current: z.boolean(), sourceError: z.string().nullable(),
-  directoryName: z.string().nullable(), agentId: z.literal('codex').nullable(), modelId: z.string().nullable(),
+  directoryName: z.string().nullable(), agentId: z.string().nullable(), modelId: z.string().nullable(),
   sources: z.array(z.object({ title: z.string(), revision: digest }).strict()).max(160),
   candidate: z.object({ revision: digest, value: requirementCandidateSchema }).strict().nullable(),
   nativeView: taskPlanningNativeViewSchema.optional(),
@@ -56,14 +56,16 @@ export type TaskPlanningQuery = z.infer<typeof taskPlanningQuerySchema>
 export type TaskPlanningView = z.infer<typeof taskPlanningViewSchema>
 export type TaskPlanningNativeView = z.infer<typeof taskPlanningNativeViewSchema>
 export type TaskPlanningReply = ConversationResult<TaskPlanningView>
+export type TaskPlanningStopState = { cleanupConfirmed: boolean }
 export interface TaskPlanningApi {
+  catalog(input: TaskPlanningRuntimeCatalogRequest): Promise<ConversationResult<TaskPlanningRuntimeCatalog>>
   read(input: TaskPlanningQuery): Promise<TaskPlanningReply>
   prepare(input: z.infer<typeof taskPlanningPrepareSchema>): Promise<TaskPlanningReply>
   selectSources(input: z.infer<typeof taskPlanningControlSchema>): Promise<TaskPlanningReply>
   generate(input: z.infer<typeof taskPlanningGenerateSchema>): Promise<TaskPlanningReply>
   respond(input: z.infer<typeof taskPlanningRespondSchema>): Promise<TaskPlanningReply>
   reconcile(input: z.infer<typeof taskPlanningControlSchema>): Promise<TaskPlanningReply>
-  stop(input: z.infer<typeof taskPlanningControlSchema>): Promise<TaskPlanningReply>
+  stop(input: z.infer<typeof taskPlanningControlSchema>): Promise<ConversationResult<TaskPlanningStopState>>
   saveDraft(input: z.infer<typeof taskPlanningSaveSchema>): Promise<TaskPlanningReply>
   recoverSave(input: z.infer<typeof taskPlanningRecoverySchema>): Promise<TaskPlanningReply>
 }

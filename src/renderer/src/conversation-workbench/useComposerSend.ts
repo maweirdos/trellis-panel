@@ -3,11 +3,13 @@ import type { ConversationThreadCommandState } from '../../../shared/conversatio
 import type { ConversationCommandState } from '../../../shared/conversation/desktop'
 import type { ProviderOptionSelections } from '../../../shared/conversation/model'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
+import { conversationHistoryReferenceSchema } from '../../../shared/conversation/thread-relations'
 import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { api } from '../api'
 import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import type { OptimisticUserMessage } from './optimisticUserMessages'
+import type { SideChatInput } from './useSideChat'
 import { useComposerAttachments } from './useComposerAttachments'
 import {
   CONVERSATION_TEXT_LIMIT, composerDraftKey, emptyDraftContent, hasComposerDraftContent,
@@ -62,6 +64,8 @@ export interface ComposerSendInput {
   readonly running: boolean
   readonly canSteer: boolean
   readonly onAccepted: (receipt: ComposerReceipt, message: OptimisticUserMessage) => void
+  readonly onSideChat?: (input: SideChatInput) => Promise<boolean>
+  readonly onSideChatError?: (message: string) => void
 }
 
 function wasNotAdmitted(failure: IpcFail, commandId: string): boolean {
@@ -81,7 +85,8 @@ function matchesReceipt(
 async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 'steer') {
   const { commandId, model, message, root, threadId, task } = submission
   const attachmentIds = submittedContent(submission).attachments.map(attachment => attachment.id)
-  const references = attachmentIds.length && submission.draftId ? { draftId: submission.draftId, attachmentIds } : {}
+  const attachments = attachmentIds.length && submission.draftId ? { draftId: submission.draftId, attachmentIds } : {}
+  const references = historyReferences(submittedContent(submission))
   const options = model.options?.length ? [...model.options] : undefined
   const text = submission.wireText ?? message.text
   if (!threadId) {
@@ -89,11 +94,12 @@ async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 
     const title = Array.from(titleSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
     return api.conversationCreate({ cwd: root, commandId, messageId: message.id, text,
       title, instanceId: model.instanceId, model: model.id, ...(options ? { options } : {}),
-      ...(task ? { task } : {}), ...references })
+      ...(task ? { task } : {}), ...attachments })
   }
   const result = await api.conversationApply({ cwd: root, ...(task ? { task } : {}), command: {
     type: 'message.dispatch', threadId, commandId, messageId: message.id, text,
-    instanceId: model.instanceId, model: model.id, deliveryIntent, ...(options ? { options } : {}), ...references,
+    instanceId: model.instanceId, model: model.id, deliveryIntent, ...(options ? { options } : {}), ...attachments,
+    ...(references.length && { references }),
   } })
   return result.ok ? { ok: true as const, ...result.receipt } : result
 }
@@ -116,13 +122,24 @@ function submittedContent(submission: Submission): ComposerDraftContent {
 
 function outgoingText(content: ComposerDraftContent): string {
   return [
-    ...content.references.map(reference => `${reference.label}\n${reference.text.split(/\r?\n/u).map(line => `> ${line}`).join('\n')}`),
+    ...content.references.flatMap(reference => reference.text
+      ? [`${reference.label}\n${reference.text.split(/\r?\n/u).map(line => `> ${line}`).join('\n')}`] : []),
     content.text.trim(),
   ].filter(Boolean).join('\n\n')
 }
 
+function historyReferences(content: ComposerDraftContent) {
+  return content.references.flatMap(({ threadId, messageIds }) =>
+    threadId ? [{ threadId, ...(messageIds?.length && { messageIds: [...messageIds] }) }] : [])
+}
+
+export function parseSideChatCommand(text: string): { readonly prompt: string } | null {
+  const match = /^\/(?:side|btw)(?:\s+([\s\S]*))?$/i.exec(text.trim())
+  return match ? { prompt: match[1]?.trim() ?? '' } : null
+}
+
 export function useComposerSend({
-  root, threadId, scopeKey, task, interactive, running, canSteer, onAccepted,
+  root, threadId, scopeKey, task, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
 }: ComposerSendInput) {
   const key = composerDraftKey(root, threadId, scopeKey)
   const currentKey = useRef(key)
@@ -187,20 +204,37 @@ export function useComposerSend({
     const current = readComposerDraft(key)
     const text = outgoingText(current)
     const hasAttachments = current.attachments.length > 0
+    const references = historyReferences(current)
     const deliveryIntent = options?.deliveryIntent ?? 'auto'
     if (!interactive || !canInteract() || currentKey.current !== key || attachmentIntake.isPending() ||
-      (!text && !hasAttachments) || Math.max(text.length, current.text.length) > CONVERSATION_TEXT_LIMIT ||
+      (!text && !hasAttachments && !references.length) || (references.length && !threadId) ||
+      Math.max(text.length, current.text.length) > CONVERSATION_TEXT_LIMIT ||
       (hasAttachments && (!current.draftId || current.attachments.some(item => item.expiresAt <= Date.now()))) ||
-      (current.state.phase !== 'idle' && !(current.state.phase === 'rejected' && current.state.restored)) ||
-      (deliveryIntent === 'steer' && (!threadId || !running || !canSteer || hasAttachments || selection.options?.length))) return
+      (current.state.phase !== 'idle' && !(current.state.phase === 'rejected' && current.state.restored))) return
+    const side = onSideChat && parseSideChatCommand(current.text)
+    if (side && onSideChat) {
+      if (hasAttachments || current.references.length) {
+        onSideChatError?.('请先打开侧聊，再在侧聊输入框添加附件或引用。')
+        return
+      }
+      if (await onSideChat({ text: side.prompt, selection: {
+        instanceId: selection.instanceId, model: selection.id, ...(selection.options?.length && { options: [...selection.options] }),
+      } })) {
+        updateComposerDraft(key, latest => latest === current ? { ...latest, ...emptyDraftContent } : latest)
+      }
+      return
+    }
+    if (deliveryIntent === 'steer' && (!threadId || !running || !canSteer || hasAttachments || references.length || selection.options?.length)) return
     const attachmentOnlyPrompt = '[User attached one or more files without additional text. Respond using the conversation context and the attached files.]'
     const submission: Submission = {
       commandId: crypto.randomUUID(),
       root, threadId, ...(task ? { task: { ...task } } : {}),
       model: selection, sourceText: current.text, source: draftContent(current),
       draftId: current.draftId ?? undefined,
-      wireText: text || attachmentOnlyPrompt,
-      message: { id: crypto.randomUUID(), role: 'user', text: text || current.attachments.map(item => item.name).join('、'), createdAt: new Date().toISOString() },
+      wireText: text || (references.length ? '请结合引用的会话内容回复。' : attachmentOnlyPrompt),
+      message: { id: crypto.randomUUID(), role: 'user',
+        text: text || [...current.attachments.map(item => item.name), ...current.references.map(item => item.label)].join('、'),
+        createdAt: new Date().toISOString() },
     }
     const submitting = { phase: 'submitting', submission } as const
     const started = updateComposerDraft(key, (latest) => latest === current
@@ -271,8 +305,14 @@ export function useComposerSend({
       updateComposerDraft(key, (current) => ({ ...current, model: next }))
     },
     addReference(reference: ComposerReference): void {
-      if (!interactive || !canInteract() || !reference.text.trim()) return
-      updateComposerDraft(key, (current) => current.references.some(item => item.id === reference.id)
+      if (!interactive || !canInteract() || currentKey.current !== key) return
+      if (reference.threadId) {
+        if (!threadId || !conversationHistoryReferenceSchema.safeParse({
+          threadId: reference.threadId, ...(reference.messageIds && { messageIds: reference.messageIds }),
+        }).success) return
+      } else if (!reference.text?.trim()) return
+      updateComposerDraft(key, (current) => current.references.some(item => item.id === reference.id) ||
+        (reference.threadId && historyReferences(current).length >= 8)
         ? current
         : { ...current, references: [...current.references, reference] })
     },

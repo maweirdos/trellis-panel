@@ -1417,6 +1417,9 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   /* --- 新版对话内核（T3 移植） --- */
   conversationWorkRoot: () => Promise<{ ok: true; root: string } | IpcFail>
   conversationProjectWorkbench: import('./conversation/project-workbench').ProjectWorkbenchApi
+  conversationWorkTaskAction: (input: import('./conversation/work-task-action').WorkTaskAction) => Promise<
+    import('./private-conversations').ConversationResult<import('./conversation/work-task-action').WorkTaskActionValue>
+  >
   conversationTaskScope: (task: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; scope: import('./conversation/task-scope').ConversationTaskScope } | IpcFail>
   conversationModels: (cwd: string, task?: import('./conversation/task-scope').ConversationTaskLocator) => Promise<{ ok: true; models: Array<{ id: string; displayName: string; isDefault: boolean }> } | IpcFail>
   conversationCreate: (input: { cwd: string } & import('./daemon-runtime').ConversationDesktopBody<'runtime.conversationCreate'>) => Promise<({ ok: true } & import('./conversation/desktop').ConversationCommandState) | IpcFail>

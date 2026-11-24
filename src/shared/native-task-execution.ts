@@ -7,8 +7,19 @@ import { workflowIdSchema } from './workflow/identity'
 import { executionContextManifestSchema, platformReferenceDeliveryReceiptSchema } from './team-execution-input'
 import { teamTaskRefSchema } from './team-task-execution'
 import { nativeTaskFailureSchema } from './native-task-failure'
+import { modelSelectionIdSchema } from './model-selection'
+import { conversationModelOptionsSchema } from './conversation/command-runtime'
 
 const uuid = z.string().uuid()
+export const nativeTaskEngineSchema = z.strictObject({
+  agentId: z.enum(['pi', 'codex', 'claude']),
+  profileId: z.string().min(1).max(200).regex(/^[\w.-]+$/).optional(),
+  conversation: z.strictObject({
+    instanceId: z.string().min(1).max(200).regex(/^[\w.-]+$/),
+    model: modelSelectionIdSchema,
+    options: conversationModelOptionsSchema.optional(),
+  }).optional(),
+})
 const databaseDelivery = databaseDeliveryCaptureRequestSchema.omit({ operation: true, preparationId: true, files: true }).extend({
   implementationOutputId: workflowIdSchema, reportOutputId: workflowIdSchema
 }).strict()
@@ -18,7 +29,7 @@ export const nativeTaskOutputSelectionSchema = z.object({ outputId: workflowIdSc
   source: z.discriminatedUnion('kind', [z.object({ kind: z.literal('file'), relativePath: relativeFile }).strict(),
     z.object({ kind: z.literal('assistant') }).strict()]) }).strict()
 export const nativeTaskStartSchema = z.object({ operation: z.literal('start'), dispatchId: uuid, preparationId: uuid,
-  engine: z.object({ agentId: z.enum(['pi', 'codex', 'claude']), profileId: z.string().min(1).max(200).regex(/^[\w.-]+$/).optional() }).strict(),
+  engine: nativeTaskEngineSchema,
   instruction: z.string().min(1).max(32000), databaseDelivery: databaseDelivery.optional(), outputs: z.array(nativeTaskOutputSelectionSchema).max(16),
   expectedConfigurationDigest: teamDigestSchema.optional(),
   sharing: z.object({ task: teamTaskRefSchema, outputIds: z.array(workflowIdSchema).min(1).max(16) }).strict().optional()
@@ -54,6 +65,7 @@ export const nativeTaskExecutionResultSchema = z.object({ dispatchId: uuid, prep
   manifest: z.object({ versionId: z.string(), digest: teamDigestSchema }).strict().nullable(),
   checkpoint: z.object({ versionId: z.string(), digest: teamDigestSchema }).strict().nullable(),
   context: executionContextManifestSchema.nullable(), referenceDelivery: platformReferenceDeliveryReceiptSchema.optional(),
+  conversation: z.strictObject({ threadId: z.string().min(1), runId: z.string().min(1) }).optional(),
   cleanupConfirmed: z.boolean(), pendingCommands: z.array(uuid).max(64),
   /** Fresh runtime projection of private non-send/cleanup evidence, never a client grant. */
   canRetry: z.boolean().optional(),

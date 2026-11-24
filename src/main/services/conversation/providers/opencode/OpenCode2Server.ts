@@ -11,9 +11,9 @@ import { driverConfigurationKey } from '../core/catalog'
 import type { ConversationDriverOpenInput } from '../registry'
 import { makeOpenCodeClient } from './OpenCode2Client'
 
-export function openCodeConfigurationKey(env: NodeJS.ProcessEnv = process.env): string {
+export function openCodeConfigurationKey(env: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
   return driverConfigurationKey([env.CRUX_OPENCODE_SERVER_URL, env.OPENCODE_PASSWORD, env.OPENCODE_SERVER_PASSWORD,
-    env.OPENCODE_EXECUTABLE, env.PATH ?? env.Path, env.OPENCODE_CONFIG, env.OPENCODE_CONFIG_DIR, env.OPENCODE_CONFIG_CONTENT])
+    env.OPENCODE_EXECUTABLE, env.PATH ?? env.Path, env.OPENCODE_CONFIG, env.OPENCODE_CONFIG_DIR, env.OPENCODE_CONFIG_CONTENT], fingerprintKey)
 }
 
 function executable(env: NodeJS.ProcessEnv): string {

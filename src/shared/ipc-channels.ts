@@ -14,6 +14,7 @@
  */
 
 import { JIRA_IPC } from './jira-integration'
+import { workTaskActionChannel } from './conversation/work-task-action'
 import { GITLAB_IPC } from './gitlab-integration'
 import { DINGTALK_IPC } from './dingtalk-integration'
 import { FEISHU_IPC } from './feishu-integration'
@@ -181,6 +182,7 @@ export const ipcInvoke = {
     removeCrew: 'crux:removeCrew'
   },
   taskPlanning: {
+    catalog: 'taskPlanning:catalog',
     read: 'taskPlanning:read', prepare: 'taskPlanning:prepare', selectSources: 'taskPlanning:selectSources', generate: 'taskPlanning:generate',
     respond: 'taskPlanning:respond',
     reconcile: 'taskPlanning:reconcile', stop: 'taskPlanning:stop', saveDraft: 'taskPlanning:saveDraft', recoverSave: 'taskPlanning:recoverSave'
@@ -522,6 +524,7 @@ export const ipcInvoke = {
     attachmentRelease: 'conversation:attachment-release',
     attachmentRead: 'conversation:attachment-read',
     projectWorkbench: 'conversation:projectWorkbench',
+    workTaskAction: workTaskActionChannel,
   },
   acp: {
     agents: 'acp:agents',

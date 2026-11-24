@@ -66,6 +66,7 @@ const CLOSED_ADMISSION_EXEMPTIONS = new Set<string>([
   'runtime.privateCancel',
   'runtime.privateEnd',
   'runtime.handoffCancel',
+  'runtime.taskPlanningStop',
   'runtime.workflow.stop',
   'runtime.workflow.cancelRevision',
 ])

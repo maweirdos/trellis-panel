@@ -7,9 +7,11 @@ import type { ConversationAttachmentStore, ConversationAttachmentDraftScope } fr
 
 export function conversationAttachmentDraftScope(authority: ConversationAuthority, target: ConversationAttachmentDraftTarget): ConversationAttachmentDraftScope {
   const { ownerId, spaceId, cwd: root, projectId, binding } = authority
-  const identity = binding.kind === 'personal'
-    ? [binding.kind]
-    : [binding.kind, binding.mode ?? 'execution', binding.taskId, binding.executionId, binding.nodeId, binding.assigneeGeneration, binding.materialRevision, binding.codeRevision]
+  const identity = binding.kind === 'task'
+    ? [binding.kind, binding.mode ?? 'execution', binding.taskId, binding.executionId, binding.nodeId, binding.assigneeGeneration, binding.materialRevision, binding.codeRevision]
+    : binding.kind === 'planning'
+      ? [binding.kind, binding.planningId, binding.taskId, binding.taskCreatedAt, binding.assigneeGeneration, binding.materialRevision]
+      : [binding.kind]
   const draftId = createHash('sha256').update(JSON.stringify(target.requestId
     ? [projectId, identity, target.threadId, target.draftId, target.requestId, target.generation]
     : [projectId, identity, target.threadId ?? null, target.draftId])).digest('hex')

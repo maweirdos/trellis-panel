@@ -1,0 +1,92 @@
+import { useMemo, type JSX, type ReactNode } from 'react'
+import { ArrowUpLeft, Link2, Square } from 'lucide-react'
+import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
+import { Button } from '../my/ui'
+import { ConversationTimeline } from './ConversationTimeline'
+import { ConversationQueue } from './ConversationQueue'
+import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
+import { isActiveRun, queuedRunsWithText, useConversationThread, type ConversationThreadController } from './useConversationThread'
+
+export interface ParentDraftThreadReference {
+  readonly threadId: string
+  readonly label: string
+  readonly messageIds?: readonly string[]
+}
+
+export interface SideThreadPaneProps {
+  readonly root: string
+  readonly scopeKey: string
+  readonly hostThreadId: string
+  readonly threadId: string
+  readonly task?: ConversationTaskLocator
+  readonly interactive: boolean
+  readonly writable?: boolean
+  readonly onAddToParentDraft?: (reference: ParentDraftThreadReference) => void
+  readonly onOpenParent?: (threadId: string) => void
+  readonly renderComposer?: (input: { readonly threadId: string; readonly controller: ConversationThreadController }) => ReactNode
+}
+
+export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
+  const { root, scopeKey, hostThreadId, threadId, task, interactive, writable = interactive,
+    onAddToParentDraft, onOpenParent, renderComposer } = props
+  const hostScope = JSON.stringify([scopeKey, root, hostThreadId])
+  const target = useMemo(() => ({ threadId }), [threadId])
+  const controller = useConversationThread(root, target, interactive, hostScope, task)
+  const result = controller.active
+  const projection = result?.projection
+  const relation = projection?.relations.parent
+  const belongsToHost = relation?.parentThreadId === hostThreadId
+  const nativeChild = relation?.kind === 'native-activity'
+  const delegated = relation?.kind === 'delegated'
+  const childrenReady = projection && belongsToHost
+  const canOperate = writable && interactive && Boolean(childrenReady && !nativeChild && !result?.error)
+  const canCompose = canOperate && !delegated
+  const title = childrenReady ? projection.thread.title : '侧边会话'
+  const queued = childrenReady ? queuedRunsWithText(projection.queuedRuns, projection.messages) : []
+  const queuedIds = new Set(queued.map(item => item.run.userMessageId as string))
+  const rows = childrenReady ? projection.rows.filter(row => !queuedIds.has(row.id)) : []
+  const canReference = canOperate && projection?.messages.some(message => message.role === 'user')
+  const activeRun = projection?.activeRun
+  const stopRunId = activeRun && relation?.childRunId === activeRun.id && isActiveRun(activeRun) ? activeRun.id : undefined
+
+  return <section className="my-conversation-frame conversation-side-thread" aria-label={title}>
+    <header className="conversation-side-thread-heading">
+      <strong className="my-item-title">{title}</strong>
+      {relation?.access === 'read-only' && !delegated && <span className="my-item-description">工程只读</span>}
+      {belongsToHost && onOpenParent && <Button size="sm" variant="ghost" onClick={() => onOpenParent(hostThreadId)}>
+        <ArrowUpLeft size={14} aria-hidden="true" />父会话
+      </Button>}
+      {relation?.kind === 'side-chat' && onAddToParentDraft && <Button size="sm" variant="ghost" disabled={!canReference}
+        onClick={() => onAddToParentDraft({ threadId, label: title })}>
+        <Link2 size={14} aria-hidden="true" />添加到对话
+      </Button>}
+    </header>
+    {result?.error && <p className="my-item-description conversation-side-thread-error" role="alert">{result.error}</p>}
+    {projection && !belongsToHost && <p className="my-item-description conversation-side-thread-error" role="status">此会话与当前父会话无关联。</p>}
+    <ConversationTimeline threadId={JSON.stringify([controller.scope, projection?.cursor?.storageId])} rows={rows}
+      working={!result || Boolean(childrenReady && activeRun && isActiveRun(activeRun) && !result?.error)}
+      workingLabel={!result ? '正在读取会话…' : undefined}
+      hasOlderHistory={Boolean(childrenReady && projection.hasOlderHistory)} loadingEarlier={controller.loadingEarlier}
+      onLoadEarlier={() => void controller.loadEarlier()}
+      onQuote={canReference && onAddToParentDraft ? message => onAddToParentDraft({ threadId, label: title, messageIds: [message.id] }) : undefined}
+      footer={childrenReady && <>
+        {canCompose && <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!canOperate} />}
+        {!nativeChild && <ConversationRuntimeRequests controller={controller} requests={delegated
+          ? projection.runtimeRequests.filter(request => request.runId === relation.childRunId) : projection.runtimeRequests} disabled={!canOperate}
+          cwd={root} threadId={threadId} task={task} />}
+      </>} />
+    {childrenReady && nativeChild && <p className="my-item-description conversation-side-thread-bar">{projection.thread.modelSelection.model} · 引擎子会话仅供阅读</p>}
+    {childrenReady && delegated && <div className="conversation-side-thread-bar">
+      <span className="my-item-description">委派子会话</span>
+      {stopRunId && <Button size="sm" variant="ghost" disabled={!canOperate || Boolean(controller.pendingCommands.size)}
+        onClick={() => void controller.stop(stopRunId)}><Square size={13} aria-hidden="true" />停止原运行</Button>}
+      {controller.commandFailure && <span className="my-item-description" role="status">{controller.commandFailure.reason}</span>}
+      {controller.commandFailure?.uncertain && <Button size="sm" variant="ghost" disabled={!canOperate || Boolean(controller.pendingCommands.size)}
+        onClick={() => {
+          const failure = controller.commandFailure
+          if (failure?.uncertain) void controller.checkCommand(failure.commandId)
+        }}>查询回执</Button>}
+    </div>}
+    {canCompose && renderComposer?.({ threadId, controller })}
+  </section>
+}

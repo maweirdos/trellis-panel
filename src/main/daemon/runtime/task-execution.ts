@@ -24,7 +24,7 @@ import { BUILTINS } from '../../services/acp/setup'
 import { PI_VERSION } from '../../services/pi/protocol'
 import { observeWorkflowAcp } from '../../services/workflow-runtime/acp-events'
 import { prepareExecutionAgentRules } from '../../services/agent-rules'
-import { preparePlatformExecutionInput, transitionPlatformDelivery } from '../../services/platform-reference-delivery'
+import { composePlatformExecutionPrompt, preparePlatformExecutionInput, transitionPlatformDelivery } from '../../services/platform-reference-delivery'
 import { captureSelectedFile, verifyHandoffSource } from '../../services/crux/task-outputs/handoff-source'
 import { readTaskSessionIntent } from '../../services/workcopy-use/task-session-intent'
 import { hasAcpJobOwner, isAcpJobOwnerCleaned } from '../../services/workcopy-use/acp-jobs'
@@ -35,6 +35,7 @@ import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
 import { resolveWorkcopy, assertWorkcopyObservation } from '../../services/workcopy-use/identity'
 import type { WorkspaceAdmission } from '../../services/workflow-admission'
 import type { TaskExecutionTransport } from '../../services/team-platform/task-execution-transport'
+import type { ManagedTaskConversationAuthority, ManagedTaskConversationPort } from './managed-task-conversation'
 
 const hash = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex')
 const MAX_RECORD_BYTES = 4 * 1024 * 1024
@@ -50,6 +51,7 @@ const recordSchema = z.object({ version: z.literal(1), request: nativeTaskStartS
   commandIds: z.array(z.string().uuid()).max(128), lease: workcopyLeaseSchema.nullable(),
   nativeIntents: z.array(z.object({ commandId: z.string().uuid(), request: nativeTaskExecutionRequestSchema }).strict()).max(128),
   context: executionContextManifestSchema.nullable(),
+  managedAssigneeGeneration: z.number().int().positive().safe().optional(),
   registration: z.object({ outputIds: z.array(z.string()).min(1).max(16), remainingWork: z.string().max(8192) }).strict().optional(),
   outputSync: nativeTaskOutputSyncSchema.optional(), finishRequested: z.boolean().optional(),
   codeObservation: z.object({ verification: z.literal('device-reported'), observedAt: z.number().int().nonnegative(),
@@ -62,14 +64,15 @@ type Record = z.infer<typeof recordSchema>
 type Report = z.infer<typeof reportSchema>
 type Candidate = z.infer<typeof candidateSchema>
 type Live = { admission?: WorkspaceAdmission; launch?: acp.PlatformAcpLaunch; start?: Promise<void>; capture?: Promise<void>; stop?: Promise<void>; unobserve?: () => void;
-  startBoundary?: 'native-session' | 'prompt'; phase?: string }
+  managedCheck?: Promise<void>; startBoundary?: 'native-session' | 'prompt'; phase?: string }
 export interface NativeTaskExecutionPorts {
   directory: string
   workcopies: WorkcopyUseRegistry
   preparation: Pick<NativeTaskPreparation, 'retained' | 'authorizeAuthority' | 'execute' | 'withExecution' | 'executionRules' | 'withReceipts' | 'withCapturedOutputs'
-    | 'taskStartHook' | 'assertTaskStartHook' | 'recordTaskStartFailure'>
+    | 'taskStartHook' | 'assertTaskStartHook' | 'recordTaskStartFailure'> & Pick<NativeTaskPreparation, 'managedTaskAssignment'>
   assertOwner(): void
   assertCurrent(grant: Record['grant']): void
+  conversation?: ManagedTaskConversationPort
 }
 
 /** A facade over existing native controllers, not an engine, scheduler or task-state owner. */
@@ -223,6 +226,7 @@ export class NativeTaskExecutions {
         await this.stop(record)
       } else if (request.operation === 'reconcile') await this.reconcile(record, request.retryOutputs === true)
       else if (request.operation === 'permission') {
+        if (record.request.engine.conversation) throw new DaemonError('E_UNAVAILABLE', '正式会话请求须从原对话回答。')
         await this.assertUse(record)
         const launch = this.live.get(record.request.dispatchId)?.launch
         if (!launch) throw new DaemonError('E_UNKNOWN', 'Original native configuration owner is unavailable', 'unknown')
@@ -248,7 +252,7 @@ export class NativeTaskExecutions {
     return this.result(this.record(request.dispatchId))
   }
   private result(record: Record): NativeTaskExecutionResult {
-    const native = acp.platformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId)
+    const native = record.request.engine.conversation ? undefined : acp.platformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId)
     if (native) {
       if (native.connectionGeneration !== record.result.native.connectionGeneration) throw new DaemonError('E_CONFLICT', 'Original native connection generation changed')
       record.result.native.backendSessionId = native.backendSessionId ?? null
@@ -270,6 +274,7 @@ export class NativeTaskExecutions {
       canRestart: Boolean(record.result.native.outcome) && this.canRetry(record, 'finished') })
   }
   private canRetry(record: Record, mode: 'unsent' | 'finished' = 'unsent'): boolean {
+    if (record.request.engine.conversation) return false
     try {
       this.ports.assertOwner()
       const stored = recordSchema.parse(JSON.parse(readBounded(this.path(record.request.dispatchId), MAX_RECORD_BYTES)))
@@ -424,13 +429,20 @@ export class NativeTaskExecutions {
   }
   private async launch(record: Record, authority: NativeTaskPreparationAuthority, live: Live): Promise<void> {
     const request = record.request
+    const selected = request.engine.conversation
+    const conversation = this.ports.conversation
     live.phase = 'configuration'
-    const plan = await acp.preparePlatformAcpLaunch(record.root, request.engine)
+    const managed = selected && conversation ? await conversation.plan(record.root, request.engine) : undefined
+    if (selected && !managed) throw new DaemonError('E_UNAVAILABLE', '所选实例暂无正式托管执行能力。')
+    const plan = managed ?? await acp.preparePlatformAcpLaunch(record.root, request.engine)
+    const assertConfiguration = (): void => { if ('assertCurrent' in plan) plan.assertCurrent(); else plan.assertRouteCurrent() }
     if (request.expectedConfigurationDigest && request.expectedConfigurationDigest !== plan.digest) throw new DaemonError('E_CONFLICT', 'Prepared product engine configuration changed before native admission')
     if (record.stopRequested) throw new DaemonError('E_CONFLICT', 'Original native start was stopped before admission')
-    live.launch = plan; record.result.native.configurationDigest = plan.digest
+    if ('assertCurrent' in plan) live.launch = plan
+    record.result.native.configurationDigest = plan.digest
     live.phase = 'reservation'
-    record.result.native.connectionGeneration = await acp.reservePlatformAcpSession(record.root, record.result.native.sessionId, request.engine.agentId)
+    record.result.native.connectionGeneration = managed ? request.dispatchId
+      : await acp.reservePlatformAcpSession(record.root, record.result.native.sessionId, request.engine.agentId)
     this.save(record)
     const hookIdentity = () => ({ dispatchId: request.dispatchId, sessionId: record.result.native.sessionId,
       connectionGeneration: record.result.native.connectionGeneration })
@@ -438,17 +450,18 @@ export class NativeTaskExecutions {
     await this.ports.preparation.execute(record.root, { operation: 'verify', preparationId: request.preparationId }, { ...authority,
       assertOperation: () => { if (record.stopRequested) throw new DaemonError('E_CONFLICT', 'Original native start was stopped before admission') }
     }, (binding, admission, releasePreparation) => {
-      plan.assertCurrent()
+      assertConfiguration()
       live.phase = 'handoff'
       if (record.stopRequested || binding.request.origin !== 'product' || binding.execution.ownership !== 'product-managed') throw new DaemonError('E_CONFLICT', 'Original product launch is no longer admitted')
-      const version = request.engine.agentId === 'pi' ? PI_VERSION : BUILTINS[request.engine.agentId].version
+      const version = managed?.adapterVersion ?? (request.engine.agentId === 'pi' ? PI_VERSION : BUILTINS[request.engine.agentId].version)
       record.result.native.adapterVersion = version
       if (binding.execution.executor.engine !== request.engine.agentId || binding.execution.executor.adapterVersion !== version) throw new DaemonError('E_CONFLICT', 'Actual engine/adapter does not match the fixed server executor')
       const node = binding.input.definition.nodes.find(node => node.id === binding.execution.nodeId)
       if (!node || node.kind !== 'agent') throw new DaemonError('E_UNAVAILABLE', 'Product start requires the declared current Agent node')
       const role = binding.input.definition.roles.find(role => role.id === node.roleId)
       const required = [...node.requiredCapabilities, ...role?.requiredCapabilities ?? []]
-      if (required.some(capability => capability !== (request.engine.agentId === 'pi' ? 'sdkContext' : 'embeddedContext'))) throw new DaemonError('E_UNAVAILABLE', 'Required native capability has no verified adapter evidence')
+      const capabilities = managed?.capabilities ?? [request.engine.agentId === 'pi' ? 'sdkContext' : 'embeddedContext']
+      if (required.some(capability => !capabilities.includes(capability))) throw new DaemonError('E_UNAVAILABLE', 'Required native capability has no verified adapter evidence')
       for (const output of request.outputs) {
         const declared = node.outputs.find(item => item.id === output.outputId)
         if (!declared || !executionArtifactKindSchema.safeParse(declared.kind).success || output.source.kind === 'assistant' && ['source-patch', 'selected-file'].includes(declared.kind)) throw new DaemonError('E_UNAVAILABLE', 'Selected output requires a supported declared native artifact kind')
@@ -496,6 +509,34 @@ export class NativeTaskExecutions {
     record.context = platformInput?.control.manifest ?? prepared?.manifest ?? null
     if (platformInput) record.result.referenceDelivery = { ...platformInput.aggregate, state: 'prepared' }
     this.save(record)
+    if (selected && conversation && managed) {
+      if (!platformInput) throw new DaemonError('E_UNAVAILABLE', '所选正式执行实例无法交付固定输入。')
+      await this.captureBaselines(record)
+      const target = { ...hookIdentity(), connectionGeneration: request.dispatchId,
+        preparationId: request.preparationId, taskIdentity: teamTaskIdentity(binding.request.task) }
+      const composed = await composePlatformExecutionPrompt(platformInput, text, target, true)
+      const prompt = [text, composed.context.resource.text, composed.text].filter(Boolean).join('\n\n')
+      record.result.native.promptDigest = hash(prompt)
+      record.result.native.modelId = selected.model
+      this.save(record)
+      await this.ports.preparation.taskStartHook(binding, () => this.assertOwned(record), hookIdentity(), 'native-session')
+      await this.ports.preparation.taskStartHook(binding, () => this.assertOwned(record), hookIdentity(), 'prompt')
+      record.managedAssigneeGeneration = await this.ports.preparation.managedTaskAssignment(binding, () => this.assertOwned(record))
+      const scoped = this.managedAuthority(record, binding, managed.assertRouteCurrent)
+      await scoped.assertCurrent()
+      live.phase = 'managed-conversation'
+      record.nativeEntered = true
+      this.save(record)
+      this.wake()
+      const ids = await conversation.launch({ authority: scoped, commandId: request.dispatchId,
+        instanceId: selected.instanceId, model: selected.model, options: selected.options, text: prompt })
+      record.result.conversation = ids
+      record.result.state = record.stopRequested ? 'stop-requested' : 'running'
+      this.save(record)
+      this.wake()
+      return
+    }
+    if (!('assertCurrent' in plan)) throw new DaemonError('E_UNAVAILABLE', 'Original legacy native owner is unavailable')
     live.unobserve = observeWorkflowAcp({ scope: { projectRoot: record.root, sessionId: record.result.native.sessionId, connectionGeneration: record.result.native.connectionGeneration ?? undefined },
       event: event => this.event(record, event, live) })
     await this.ports.preparation.taskStartHook(binding, () => this.assertOwned(record), hookIdentity(), 'native-session')
@@ -518,15 +559,7 @@ export class NativeTaskExecutions {
     record.result.native.modelId = created.session.currentModelId ?? null
     this.save(record)
     this.assertOwned(record); await prepared?.assertCurrent()
-    for (const selected of request.outputs) {
-      let digest: string | null = null
-      if (selected.source.kind === 'file') {
-        try { digest = (await captureSelectedFile({ root: record.root, relativePath: selected.source.relativePath, assertOwned: () => this.assertOwned(record) })).bodyDigest }
-        catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error }
-      }
-      record.baselines.push({ outputId: selected.outputId, digest })
-    }
-    this.save(record)
+    await this.captureBaselines(record)
     record.result.native.promptDigest = hash(text); this.save(record)
     await this.ports.preparation.taskStartHook(binding, () => this.assertOwned(record), hookIdentity(), 'prompt')
     let sendingPrompt = true
@@ -559,6 +592,45 @@ export class NativeTaskExecutions {
     }
     if (!record.result.native.promptWritten) throw new DaemonError('E_UNKNOWN', 'Original product prompt write was not confirmed; it will not be replayed', 'unknown')
   }
+  private async captureBaselines(record: Record): Promise<void> {
+    for (const selected of record.request.outputs) {
+      let digest: string | null = null
+      if (selected.source.kind === 'file') {
+        try { digest = (await captureSelectedFile({ root: record.root, relativePath: selected.source.relativePath, assertOwned: () => this.assertOwned(record) })).bodyDigest }
+        catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error }
+      }
+      record.baselines.push({ outputId: selected.outputId, digest })
+    }
+    this.save(record)
+  }
+  private managedAuthority(record: Record, binding = this.binding(record), assertRouteCurrent = (): void => {}): ManagedTaskConversationAuthority {
+    const assigneeGeneration = record.managedAssigneeGeneration
+    if (!assigneeGeneration) throw new DaemonError('E_UNKNOWN', '正式会话缺少原分配代次，须保留原执行。', 'unknown')
+    const task = binding.request.task
+    const expected = binding.request.expected
+    const identity = { dispatchId: record.request.dispatchId, sessionId: record.result.native.sessionId,
+      connectionGeneration: record.result.native.connectionGeneration }
+    const assertSpawnCurrent = (): void => {
+      this.assertOwned(record)
+      assertRouteCurrent()
+      this.ports.preparation.assertTaskStartHook(binding, () => this.assertOwned(record), identity, 'prompt')
+    }
+    return {
+      cwd: record.root, ownerId: record.nativeOwner.userId, spaceId: task.spaceId, projectId: record.executionKey,
+      binding: { kind: 'task', mode: 'execution', taskId: task.taskId, taskCreatedAt: task.taskCreatedAt,
+        executionId: expected.executionId, generation: expected.generation, nodeId: expected.nodeId, attempt: expected.attempt,
+        assigneeGeneration, materialRevision: expected.inputDigest, codeRevision: binding.workcopy.revision },
+      assertSpawnCurrent,
+      assertCurrent: async () => {
+        assertSpawnCurrent()
+        await this.assertUse(record)
+        if (await this.ports.preparation.managedTaskAssignment(binding, assertSpawnCurrent) !== assigneeGeneration) {
+          throw new DaemonError('E_DENIED', '原正式执行的分配代次已撤销。')
+        }
+        assertSpawnCurrent()
+      },
+    }
+  }
   private lease(record: Record): WorkcopyLease { if (!record.lease) throw new DaemonError('E_DENIED', 'Original native writer lease is unavailable'); return record.lease }
   private event(record: Record, event: TimelineEvent, live: Live): void {
     if (event.turnId !== record.result.native.turnId || event.connectionGeneration !== record.result.native.connectionGeneration || event.kind !== 'turn-done') return
@@ -589,6 +661,14 @@ export class NativeTaskExecutions {
     const reply = final.length ? final : typeof lastMessageId === 'string' && lastMessageId
       ? events.filter(event => event.payload?.messageId === lastMessageId) : events
     const assistant = reply.map(event => event.text).join('')
+    await this.captureOutputs(record, assistant, () => {
+      const facts = acp.listOwnedAcpSessionFacts().find(item => item.sessionId === record.result.native.sessionId)
+      if (!facts || facts.backgroundWork || facts.unfinishedTools || facts.cleanupRequired || facts.turnActive || facts.settling) {
+        throw new DaemonError('E_UNKNOWN', 'Original native tools or turn settlement remain unfinished', 'unknown')
+      }
+    })
+  }
+  private async captureOutputs(record: Record, assistant: string, assertSettled: () => void | Promise<void>): Promise<void> {
     const binding = this.binding(record)
     const candidates: Candidate[] = []
     for (const selected of record.request.outputs) {
@@ -610,9 +690,8 @@ export class NativeTaskExecutions {
       writeExclusiveAtomic(this.outputPath(record, selected.outputId, true), captured.text)
       candidates.push({ outputId: selected.outputId, bodyDigest: captured.bodyDigest, byteLength: captured.byteLength, artifactKind, capturedAt: Date.now() })
     }
+    await assertSettled()
     await this.assertUse(record)
-    const facts = acp.listOwnedAcpSessionFacts().find(item => item.sessionId === record.result.native.sessionId)
-    if (!facts || facts.backgroundWork || facts.unfinishedTools || facts.cleanupRequired || facts.turnActive || facts.settling) throw new DaemonError('E_UNKNOWN', 'Original native tools or turn settlement remain unfinished', 'unknown')
     record.candidates = candidates; record.result.state = 'idle'
     if (record.request.sharing) {
       record.registration = { outputIds: [...record.request.sharing.outputIds], remainingWork: '' }
@@ -620,6 +699,81 @@ export class NativeTaskExecutions {
     }
     this.save(record)
     this.wake()
+  }
+  private async pollManaged(record: Record): Promise<void> {
+    const conversation = this.ports.conversation
+    if (!conversation || !this.managedOwned(record)) return
+    const live = this.live.get(record.request.dispatchId)
+    if (!live?.admission || live.managedCheck) return
+    let authorityLost = false
+    const checkAuthority = async (): Promise<ManagedTaskConversationAuthority> => {
+      try {
+        const authority = this.managedAuthority(record)
+        await authority.assertCurrent()
+        return authority
+      } catch (error) {
+        authorityLost = true
+        throw error
+      }
+    }
+    const task = (async () => {
+      const authority = await checkAuthority()
+      if (record.result.state !== 'running') return
+      const run = conversation.read(authority, record.request.dispatchId)
+      if (!run) return
+      const original = record.result.conversation
+      if (original && (original.threadId !== run.threadId || original.runId !== run.runId)) {
+        throw new DaemonError('E_CONFLICT', '托管执行回执不属于原线程和回合。')
+      }
+      record.result.conversation ??= { threadId: run.threadId, runId: run.runId }
+      const native = record.result.native
+      if (native.turnId && run.nativeTurnId && native.turnId !== run.nativeTurnId
+        || native.backendSessionId && run.nativeThreadId && native.backendSessionId !== run.nativeThreadId) {
+        throw new DaemonError('E_CONFLICT', '托管执行的原生会话或回合身份已变化。')
+      }
+      native.backendSessionId ??= run.nativeThreadId ?? null
+      native.turnId ??= run.nativeTurnId ?? null
+      if (run.engineAccepted && native.turnId) {
+        native.promptWritten = true
+        const reference = record.result.referenceDelivery
+        if (reference?.state === 'prepared' && native.connectionGeneration) {
+          const identity = { sessionId: native.sessionId, connectionGeneration: native.connectionGeneration, turnId: native.turnId }
+          const admitted = transitionPlatformDelivery(reference, { kind: 'admitted', native: identity })
+          record.result.referenceDelivery = transitionPlatformDelivery(
+            transitionPlatformDelivery(admitted, { kind: 'send-entered', native: identity }), { kind: 'written', native: identity })
+        }
+      }
+      if (!run.terminal || !run.outputSettled) {
+        this.save(record)
+        return
+      }
+      native.outcome = run.terminal
+      this.save(record)
+      if (run.terminal !== 'completed' || !native.promptWritten) {
+        record.result.state = 'failed'
+        this.save(record)
+        return
+      }
+      await checkAuthority()
+      live.capture = this.captureOutputs(record, run.finalText ?? '', async () => {
+        await checkAuthority()
+        const latest = conversation.read(authority, record.request.dispatchId)
+        if (!latest?.outputSettled || latest.terminal !== 'completed' || latest.runId !== run.runId) {
+          throw new DaemonError('E_UNKNOWN', '托管执行的原回合尚未完成结算。', 'unknown')
+        }
+      })
+      await live.capture
+    })()
+    live.managedCheck = task
+    try { await task }
+    catch (error) {
+      if (!record.stopRequested) {
+        record.result.state = 'failed'
+        record.failure = nativeTaskFailure(error, 'output-capture')
+        this.save(record)
+      }
+    } finally { live.managedCheck = undefined }
+    if (authorityLost || record.candidates.length && record.request.sharing) await this.stop(record)
   }
   private async stop(record: Record): Promise<void> {
     if (!record.stopCommandId) {
@@ -633,14 +787,23 @@ export class NativeTaskExecutions {
     const cleanup = (async () => {
       // Creation can return after Stop; join its exact alias, then canonical End.
       await live?.start?.catch(() => {})
+      await live?.managedCheck?.catch(() => {})
       await live?.capture?.catch(() => {})
       if (record.result.cleanupConfirmed) return
-      const native = acp.platformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId)
-      const intent = readTaskSessionIntent(this.ports.directory, record.root, record.result.native.sessionId)
-      if (native || record.nativeEntered || intent) {
-        await acp.stopPlatformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId, record.request.engine.agentId === 'pi' ? 'pi' : 'acp')
+      if (record.request.engine.conversation) {
+        if (record.nativeEntered) {
+          const conversation = this.ports.conversation
+          if (!conversation) throw new DaemonError('E_UNKNOWN', '正式会话清理端口不可用，保留原租约。', 'unknown')
+          await conversation.close(this.managedAuthority(record), record.request.dispatchId, record.request.engine.conversation.instanceId)
+        }
+      } else {
+        const native = acp.platformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId)
+        const intent = readTaskSessionIntent(this.ports.directory, record.root, record.result.native.sessionId)
+        if (native || record.nativeEntered || intent) {
+          await acp.stopPlatformAcpSession(record.root, record.result.native.sessionId, record.request.dispatchId, record.request.engine.agentId === 'pi' ? 'pi' : 'acp')
+        }
+        if (acp.listOwnedAcpSessionFacts().some(item => item.sessionId === record.result.native.sessionId)) throw new DaemonError('E_UNKNOWN', 'Original native owner still retains work', 'unknown')
       }
-      if (acp.listOwnedAcpSessionFacts().some(item => item.sessionId === record.result.native.sessionId)) throw new DaemonError('E_UNKNOWN', 'Original native owner still retains work', 'unknown')
       if (record.lease) {
         const released = this.ports.workcopies.release({ token: record.lease.token, owner: record.lease.owner, outcome: 'cleanup-confirmed' })
         if (!released.released) throw new DaemonError('E_UNKNOWN', 'Original native lease cleanup was not confirmed', 'unknown')
@@ -655,7 +818,7 @@ export class NativeTaskExecutions {
   }
   private async reconcile(record: Record, retryOutputs = false): Promise<void> {
     const original = record.result.referenceDelivery
-    if (original?.state === 'unknown' && original.native) {
+    if (!record.request.engine.conversation && original?.state === 'unknown' && original.native) {
       // A saved original promptStarted receipt may recover a failed T06 write.
       // Missing/partial history never proves non-send and never starts a turn.
       const page = await acp.getAcpHistoryEvents(record.root, record.result.native.sessionId, { limit: 500 })
@@ -674,13 +837,14 @@ export class NativeTaskExecutions {
       }
     }
     const live = this.live.get(record.request.dispatchId)
-    if (!live && !record.result.cleanupConfirmed) {
+    if (!record.request.engine.conversation && !live && !record.result.cleanupConfirmed) {
       // Read original intent only. No load/create, POST or guessed process exit.
       const intent = readTaskSessionIntent(this.ports.directory, record.root, record.result.native.sessionId)
       if (!record.admitted && !record.nativeEntered && (!intent || intent.nativeBoundary === 'not-entered')) {
         record.result.state = 'unknown'
       }
     }
+    if (this.managedOwned(record)) await this.pollManaged(record)
     this.save(record)
     if (record.registration || record.report) {
       if (retryOutputs && record.outputSync) {
@@ -888,7 +1052,7 @@ export class NativeTaskExecutions {
     this.timer = setTimeout(() => {
       this.timer = undefined
       void this.pump().catch(() => { /* Retained intents survive storage/owner failure. */ }).finally(() => {
-        if ([...this.records.values()].some(record => record.outputSync?.nextAttemptAt !== null && record.outputSync?.nextAttemptAt !== undefined)) this.wake()
+        if ([...this.records.values()].some(record => record.outputSync?.nextAttemptAt != null || this.managedOwned(record))) this.wake()
       })
     }, 1000)
     this.timer.unref()
@@ -897,9 +1061,15 @@ export class NativeTaskExecutions {
   async pump(): Promise<void> {
     if (this.closed) return
     this.ports.assertOwner()
-    const pending = [...this.records.values()].filter(record => (record.registration || record.report)
+    const records = [...this.records.values()]
+    await Promise.allSettled(records.filter(record => this.managedOwned(record)).map(record => this.pollManaged(record)))
+    const pending = records.filter(record => (record.registration || record.report)
       && (!record.outputSync || record.outputSync.nextAttemptAt !== null && record.outputSync.nextAttemptAt <= Date.now()))
     await Promise.allSettled(pending.slice(0, 4).map(record => this.synchronize(record)))
+  }
+  private managedOwned(record: Record): boolean {
+    return Boolean(record.request.engine.conversation && record.nativeEntered && record.managedAssigneeGeneration
+      && this.live.has(record.request.dispatchId) && !record.result.cleanupConfirmed && !record.stopRequested)
   }
   private version(value: { versionId: string; digest: string } | undefined): { versionId: string; digest: string } | null { return value ? { versionId: value.versionId, digest: value.digest } : null }
   busy(): boolean { return this.syncing.size > 0 || [...this.records.values()].some(record => !record.result.cleanupConfirmed || record.outputSync?.nextAttemptAt != null) }

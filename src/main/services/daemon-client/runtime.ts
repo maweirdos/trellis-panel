@@ -28,6 +28,7 @@ import { withDesktopTeamService } from '../team-desktop'
  * methods, not feature operations that can bypass GUI admission closure. Literal
  * provider names come from their schema-paired native contracts. */
 const cleanupMethods: readonly DaemonMethod[] = [
+  'runtime.taskPlanningStop',
   'runtime.privateCancel', 'runtime.privateEnd', 'runtime.privateRespond',
   'runtime.cancel', 'runtime.end', 'runtime.handoffCancel', 'runtime.permission', 'runtime.workflow.stop', 'runtime.workflow.cancelRevision',
   JIRA_DAEMON.cancelRead, JIRA_DAEMON.cancel, GITLAB_DAEMON.cancelJob, DINGTALK_DAEMON.cancelExecution

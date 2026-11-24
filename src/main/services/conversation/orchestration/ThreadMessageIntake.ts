@@ -18,7 +18,7 @@ import { commandPayloadDigest } from '../persistence/event-store'
 import { ConversationEventSink } from './EventSink'
 import { ThreadCommands } from './ThreadCommands'
 import type { ConversationAuthority } from '../../../../shared/conversation/desktop'
-import type { ConversationRunLifecycle } from '../../../../shared/conversation/command-runtime'
+import type { ConversationThreadSnapshot } from '../../../../shared/conversation/command-runtime'
 import type { ConversationAttachmentReferences } from '../../../../shared/conversation/attachments'
 import type { ConversationAttachmentStore } from '../attachments'
 import { prepareConversationAttachmentClaim } from '../attachments/claims'
@@ -202,7 +202,7 @@ export class ThreadMessageIntake {
 
   readHistory(threadId: string, beforeRunOrdinal: number, limit: number): {
     messages: OrchestrationV2ConversationMessage[]
-    runs: Array<OrchestrationV2Run & ConversationRunEvidence & { lifecycle?: ConversationRunLifecycle }>
+    runs: Array<ConversationThreadSnapshot['runs'][number]>
     hasOlder: boolean
   } {
     const runRows = this.database.prepare(`SELECT run.run_id, run.payload_json, attempt.foreground_ended, attempt.background_running,
@@ -219,7 +219,7 @@ export class ThreadMessageIntake {
       terminal_status: string | null; terminal_at: string | null; terminal_turn_id: string | null
     }>
     const messages: OrchestrationV2ConversationMessage[] = []
-    const runs: Array<OrchestrationV2Run & ConversationRunEvidence & { lifecycle?: ConversationRunLifecycle }> = []
+    const runs: Array<ConversationThreadSnapshot['runs'][number]> = []
     const readMessages = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_messages
       WHERE thread_id = ? AND run_id = ? ORDER BY created_at, message_id`)
     let bytes = 0
@@ -238,6 +238,9 @@ export class ThreadMessageIntake {
         ...(typeof raw.nativeStartedAt === 'string' ? { nativeStartedAt: raw.nativeStartedAt } : {}),
         ...(typeof raw.engineAcceptedAt === 'string' ? { engineAcceptedAt: raw.engineAcceptedAt } : {}),
         ...(typeof raw.firstOutputAt === 'string' ? { firstOutputAt: raw.firstOutputAt } : {}),
+        ...(raw.usage ? { usage: raw.usage as ConversationThreadSnapshot['runs'][number]['usage'] } : {}),
+        ...(raw.compaction ? { compaction: raw.compaction as ConversationThreadSnapshot['runs'][number]['compaction'] } : {}),
+        ...(raw.handoff ? { handoff: raw.handoff as ConversationThreadSnapshot['runs'][number]['handoff'] } : {}),
         ...(row.phase !== null ? { lifecycle: {
           foregroundEnded: row.foreground_ended === 1,
           backgroundRunning: row.background_running === 1 && row.phase !== 'settled',
