@@ -16,7 +16,7 @@ import {
   type WorkflowStopInput, type WorkflowArtifactInput, type WorkflowOrigin, type WorkflowApplicationPreview,
   type WorkflowApplicationAdmission, type WorkflowApplicationSnapshot, type WorkflowApplicationEventPage
 } from '../../../shared/workflow-application'
-import { WorkflowControlService } from '../workflow-control'
+import { WorkflowControlError, WorkflowControlService } from '../workflow-control'
 import {
   AcpxWorkflowDriver, WorkflowMaterialStore, prepareWorkflowContext,
   type MaterialOwner, type StoredWorkflowMaterial, type StageResult
@@ -428,8 +428,11 @@ export class WorkflowApplicationService {
       this.live.set(live.run.run.runId, live)
       if (preview.authorize) this.authorizations.set(live.run.run.runId, preview.authorize)
       live.promise = this.execute(live).catch(async () => {
-        // Preserve durable head/outbox and original operation. Never replay on a failed ack.
-        await this.serialize(() => this.updateState(live, 'outcome-unknown', 'workflow.coordinator-degraded', { operationId: live.stage.request.operationId, reason: 'Controller acknowledgement unavailable; inspect durable state before continuing' })).catch(() => { live.run.state = 'outcome-unknown' })
+        await this.serialize(async () => {
+          if (!terminal.has(live.run.state)) {
+            await this.updateState(live, 'outcome-unknown', 'workflow.coordinator-degraded', { operationId: live.stage.request.operationId, reason: 'Controller acknowledgement unavailable; inspect durable state before continuing' })
+          }
+        }).catch(() => { if (!terminal.has(live.run.state)) live.run.state = 'outcome-unknown' })
       })
       return { commandId: input.commandId, status: admitted.status === 'duplicate' ? 'duplicate' : 'committed', run: live.run.run, scope: live.scope }
     })
@@ -572,6 +575,27 @@ export class WorkflowApplicationService {
     }
     return { next: live.compiled.plan.nodes.indexOf(node) + 1, abort: !pass && gate.onFail !== 'continue' }
   }
+  private async settleRunBoundary(live: ApplicationLiveRun, result: StageResult): Promise<void> {
+    await this.serialize(async () => {
+      if (terminal.has(live.run.state)) return
+      const revision = live.pendingRevision
+      const stopIds = [...live.stopOperationIds]
+      if (revision?.cancelled && revision.stopIntentStarted) {
+        await revision.stopPromise?.catch(() => {})
+        if (revision.stopOperationId) stopIds.push(revision.stopOperationId)
+      }
+      let stopped = false
+      for (const operationId of stopIds) {
+        if ((await this.control.getOperation(live.scope, operationId))?.operation.state === 'confirmed') {
+          stopped = true
+          break
+        }
+      }
+      const state = result.status === 'failed' || result.status === 'outcome-unknown' ? result.status
+        : stopped ? 'stopped' : result.status === 'cancelled' ? 'cancelled' : 'outcome-unknown'
+      await this.updateState(live, state, 'workflow.run-boundary', { result: plain(result), stopRequested: live.stopRequested })
+    })
+  }
   private async execute(live: ApplicationLiveRun): Promise<void> {
     let prior: OriginMeta['priorNodes'] = [...(live.priorNodes ?? [])]
     let index = live.startIndex ?? 0
@@ -610,22 +634,8 @@ export class WorkflowApplicationService {
           if (changed) { index = live.startIndex ?? 0; prior = [...(live.priorNodes ?? [])]; continue }
           if (live.run.state === 'outcome-unknown') break
         }
-        if (live.stopRequested || result.status !== 'passed') {
-          await this.serialize(async () => {
-            let stopped = live.stopRequested && (result.status === 'cancelled' || result.status === 'passed')
-            const cancelledRevision = live.pendingRevision
-            if (cancelledRevision?.cancelled && cancelledRevision.stopIntentStarted) {
-              if (cancelledRevision.stopPromise) await cancelledRevision.stopPromise.catch(() => {})
-              if (result.status === 'cancelled') await this.recordRevisionStop(live, cancelledRevision, { operationId: result.operationId, status: 'stopped', evidenceRefs: ['driver-late-canonical-stop-confirmed'] })
-              const operation = cancelledRevision.stopOperationId ? await this.control.getOperation(live.scope, cancelledRevision.stopOperationId) : null
-              stopped = operation?.operation.state === 'confirmed'
-            }
-            for (const operationId of live.stopOperationIds) {
-              const operation = await this.control.getOperation(live.scope, operationId)
-              if (stopped && operation?.operation.state === 'outcome-unknown') await this.control.reconcileOperation({ scope: live.scope, owner: live.owner, operationId, status: 'confirmed', result: plain(result), evidenceRefs: ['driver-clean-boundary-no-successor-dispatch'] })
-            }
-            await this.updateState(live, stopped ? 'stopped' : live.stopRequested ? 'outcome-unknown' : result.status === 'failed' ? 'failed' : result.status === 'cancelled' ? 'cancelled' : 'outcome-unknown', 'workflow.run-boundary', { result: plain(result), stopRequested: live.stopRequested })
-          })
+        if (result.status !== 'passed') {
+          await this.settleRunBoundary(live, result)
           break
         }
         let next = index + 1
@@ -641,8 +651,8 @@ export class WorkflowApplicationService {
         }
         if (live.pendingRevision && !live.pendingRevision.cancelled) {
           if (await this.applyRevision(live, live.pendingRevision, result)) { index = live.startIndex ?? 0; prior = [...(live.priorNodes ?? [])]; continue }
+          if (live.run.state === 'outcome-unknown') break
         }
-        if (live.stopRequested) { await this.serialize(() => this.updateState(live, 'stopped', 'workflow.stopped-at-boundary', { nodeId: live.stage.request.node.nodeId })); break }
         if (gateAborted) { await this.serialize(() => this.updateState(live, 'failed', 'workflow.gate-aborted', { nodeId: live.compiled.plan.nodes[next - 1]?.nodeId ?? live.stage.request.node.nodeId })); break }
         if (next >= live.compiled.plan.nodes.length) {
           const finished = await this.serialize(async () => {
@@ -652,13 +662,26 @@ export class WorkflowApplicationService {
           if (finished) break
           continue
         }
+        if (live.stopRequested) { await this.settleRunBoundary(live, result); break }
         if (await this.scheduleStage(live, live.compiled.plan.nodes[next], prior, next <= index ? 'declared-gate-retry' : 'preset-stage-boundary')) index = next
         else if (live.pendingRevision && !live.pendingRevision.cancelled) {
           if (await this.applyRevision(live, live.pendingRevision, result)) { index = live.startIndex ?? 0; prior = [...(live.priorNodes ?? [])] }
-          else if (live.stopRequested) break
-        } else break
+          else if (live.run.state === 'outcome-unknown') break
+          else if (live.stopRequested) { await this.settleRunBoundary(live, result); break }
+        } else {
+          if (live.stopRequested) await this.settleRunBoundary(live, result)
+          break
+        }
       }
-    } finally { if (terminal.has(live.run.state)) await this.control.releaseWorkspace(live.scope, live.owner) }
+    } finally {
+      if (terminal.has(live.run.state)) {
+        try {
+          await this.control.releaseWorkspace(live.scope, live.owner)
+        } catch (error) {
+          if (!(error instanceof WorkflowControlError) || error.code !== 'OUTCOME_UNKNOWN') throw error
+        }
+      }
+    }
   }
 
   async previewRevision(raw: WorkflowRevisionPreviewInput): Promise<WorkflowRevisionPreview> {
@@ -838,16 +861,24 @@ export class WorkflowApplicationService {
       if (beforeDispatch === null) return { operationId: live.stage.request.operationId, status: 'rejected' as const, evidenceRefs: ['revision-cancelled-before-stop'] }
       const stop: DriverStopResult = beforeDispatch ? { operationId: live.stage.request.operationId, status: 'stopped', evidenceRefs: [pending.noNativeAdmissionConfirmed ? 'pending-intent-cancelled-before-native-driver-claim' : 'main-controller-never-called-driver'] }
         : interrupt ? await this.driver.requestStop({ operationId: live.stage.request.operationId, scope: live.scope, run: live.run.run, owner: live.owner })
-          : await this.closeRevisionSession(live, result?.sessionId ?? null)
+          : await this.closeRevisionSession(live, result)
       await this.recordRevisionStop(live, pending, stop)
       return stop
     })()
     return pending.stopPromise
   }
-  private async closeRevisionSession(live: ApplicationLiveRun, sessionId: string | null): Promise<DriverStopResult> {
-    if (!sessionId) return { operationId: live.stage.request.operationId, status: 'unconfirmed', evidenceRefs: ['native-session-identity-unavailable'] }
-    const ended = await this.options.acp.end(this.projectRoot, sessionId).catch(() => ({ ok: false }))
-    return { operationId: live.stage.request.operationId, status: ended.ok ? 'stopped' : 'unconfirmed', evidenceRefs: [ended.ok ? 'facade-canonical-shutdown' : 'facade-shutdown-unconfirmed'] }
+  private async closeRevisionSession(live: ApplicationLiveRun, result?: StageResult): Promise<DriverStopResult> {
+    const { operationId } = live.stage.request
+    const unconfirmed: DriverStopResult = { operationId, status: 'unconfirmed', evidenceRefs: ['native-session-identity-unavailable'] }
+    if (result?.operationId !== operationId || !result.sessionId || !result.turnId || !result.historyCommitted || result.historySeq === null) return unconfirmed
+    const { sessionId, turnId, historySeq } = result
+    const page = await this.options.acp.historyEvents(this.projectRoot, sessionId, { limit: 500 }).catch(() => null)
+    if (!page?.ok || page.historyPersistence.state !== 'saved') return unconfirmed
+    const original = page.events.find(event => event.kind === 'turn-done' && event.sessionId === sessionId && event.turnId === turnId
+      && event.historySeq === historySeq && sameRoot(event.projectRoot, this.projectRoot))
+    if (!original?.connectionGeneration) return unconfirmed
+    const ended = await this.options.acp.stop(this.projectRoot, sessionId, original.connectionGeneration).catch(() => ({ stopped: false }))
+    return { operationId, status: ended.stopped ? 'stopped' : 'unconfirmed', evidenceRefs: [ended.stopped ? 'facade-canonical-shutdown' : 'facade-shutdown-unconfirmed'] }
   }
   private async recordRevisionStop(live: ApplicationLiveRun, pending: PendingApplicationRevision, stop: DriverStopResult): Promise<void> {
     const operationId = pending.stopOperationId
@@ -877,11 +908,8 @@ export class WorkflowApplicationService {
       const stage = await this.prepareStage(candidate, node, candidate.run.run, prior)
       // No native stop occurs until the concrete final effective input fits and validates.
       let stop = await this.beginRevisionStop(live, pending, false, result)
-      if (stop.status !== 'stopped' && result.status === 'cancelled') {
-        stop = { operationId: result.operationId, status: 'stopped', evidenceRefs: ['driver-late-canonical-stop-confirmed'] }
-        await this.recordRevisionStop(live, pending, stop)
-      } else if (stop.status !== 'stopped' && result.status === 'passed') {
-        stop = await this.closeRevisionSession(live, result.sessionId)
+      if (stop.status === 'rejected' && stop.evidenceRefs.includes('already-settling') && result.status === 'passed') {
+        stop = await this.closeRevisionSession(live, result)
         await this.recordRevisionStop(live, pending, stop)
       }
       if (pending.cancelled) return false
