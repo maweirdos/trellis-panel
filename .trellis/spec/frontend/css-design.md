@@ -62,8 +62,13 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   rail; `--my-bg-sidebar` belongs to contextual navigation; canvas belongs to the
   content. `--my-bg-panel`, `--my-bg-panel-header` and `--my-bg-input` separate
   grouped settings, section headings and fields. Theme values live only in
-  `my-tokens.css`. `my-app-window` and `my-shell-layout` paint the shell with
-  shared inset/radius/border tokens. Utility-window roots do not acquire that frame.
+  `my-tokens.css` and keep strict zero-blue neutral (`R = G = B`) surface/text
+  steps: Light lifts off muddy grey onto crisp paper white (`#f5f5f5` shell →
+  `#f9f9f9` sidebar → `#ffffff` canvas/panel/input, `#141414` ink); Dark deepens
+  into pure neutral charcoal (`#0d0d0d` shell → `#121212` sidebar → `#151515`
+  canvas → `#1b1b1b` panel, `#fafafa` / `#d4d4d4` / `#9a9a9a` text). `my-app-window`
+  and `my-shell-layout` paint the shell with shared inset/radius/border tokens.
+  Utility-window roots do not acquire that frame.
 - Conversation geometry: place `my-conversation-column` inside
   `my-conversation-frame`. Transcript and composer use the same 760px maximum and
   24px gutters (20px at the compact breakpoint), including when an inspector changes
@@ -225,11 +230,26 @@ Example:
 - Menu captions use the shared `my-menu-header` role: `--my-menu-title-size`
   (`--my-text-xs`, standard12px), `--my-menu-title-color` (tertiary), medium weight
   and no option hover treatment. Options use `my-menu-item` / `my-select-option`:
-  `--my-menu-option-size` (`--my-text-ui`, standard14px),
-  `--my-menu-option-color` (primary). Both scale through the same font preset;
-  captions remain 2px smaller. Do not use secondary color and the same type size
-  for both a caption and an enabled choice. Actual page/dialog headings and the
-  selected strength value retain their own stronger heading/value roles.
+  `--my-menu-option-size` (`--my-text-sm`, standard13px),
+  `--my-menu-option-color` (primary), fixed `30px` row height and `0 8px` padding.
+  Both scale through the same font preset; captions stay smaller (`12px` vs `13px`).
+  Do not use secondary color and the same type size for both a caption and an enabled choice.
+  Actual page/dialog headings and the selected strength value retain their own stronger heading/value roles.
+  All vertical option containers (`my-menu`, `my-menu > .my-scrollbar`, `my-select-menu`,
+  command lists and navigation sub-lists) must lay out options with
+  `display: flex; flex-direction: column; gap: var(--my-space-2)` (2px) so
+  selected, hovered and active pill backgrounds never collide edge-to-edge.
+  `my-select-menu` uses `scrollbar-gutter: auto` and omits `my-fade-scroll` so short
+  dropdowns do not wash out top/bottom items or reserve a blank trailing scrollbar column.
+  `my-select-option` uses the same selected/hover background mixes as `my-menu-item`
+  (`6%` hover / `10%` selected / `12%` active) so selected rows stay clearly
+  distinguishable from hovered rows in both themes.
+  Focus uses a 3-tier neutral hierarchy: frameless editors/composers and
+  `.my-command-search` opt out of focus rings (`.my-focus-none` / `[data-focus-ring='none']`);
+  `.my-input` and `.my-select-trigger` emphasize their existing 1px border
+  (`--my-border-strong-1` + `--my-focus-shadow`) without heavy 2px outlines;
+  and interactive controls/nav items show a restrained `--my-focus-width` (1.5px)
+  `--my-focus-ring` only on `:focus-visible`.
 - Custom navigation headers (such as the model chooser) compose `my-menu-header`
   rather than inventing a local text style. Keep back-control hit targets, but
   avoid excess leading padding/gaps that push the caption far right. Actions in
