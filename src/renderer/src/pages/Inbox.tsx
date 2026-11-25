@@ -170,7 +170,7 @@ function TodoCard({
             Jira {todo.jiraKey}
           </span>
         )}
-        <span className="ml-auto font-mono text-my-2xs text-my-tertiary">{todo.createdAt}</span>
+        <span className="ml-auto font-mono text-my-2xs text-my-tertiary tabular-nums">{todo.createdAt}</span>
       </div>
 
       <div

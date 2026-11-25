@@ -397,7 +397,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
                     value={fields[k] ?? ''}
                     onChange={(e) => setFields((f) => ({ ...f, [k]: e.target.value }))}
                     rows={3}
-                    className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                    className="my-input min-h-[76px] resize-y px-3 py-2 font-mono text-my-sm"
                     placeholder={ext.kind === 'skill' ? '写触发条件而非技能身份——平台据此自动触发' : '主会话据此决定何时派生该子代理'}
                   />
                 ) : (
@@ -925,7 +925,7 @@ function ExtSection({
           <SearchInput value={query} onChange={setQuery} placeholder="搜索名称 / 平台 / 路径…" />
         </div>
         <span className="text-my-xs text-my-tertiary">{extensions.length} 个</span>
-        <button onClick={() => setAggMode((v) => !v)} className={clsx('my-chipborder transition-colors ml-auto', aggMode ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary')} title="同名扩展在哪些平台存在/缺失，一键补齐">
+        <button onClick={() => setAggMode((v) => !v)} className={clsx('my-chip border transition-colors ml-auto', aggMode ? 'border-my-line-accent-subtle text-my-accent-text' : 'border-my-line text-my-tertiary')} title="同名扩展在哪些平台存在/缺失，一键补齐">
           跨平台矩阵{aggMode ? ' 开' : ' 关'}
         </button>
         <Button variant="primary" onClick={() => onCreate(kind)}>

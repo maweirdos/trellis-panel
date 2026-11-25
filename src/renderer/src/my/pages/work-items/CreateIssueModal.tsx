@@ -126,7 +126,7 @@ function CreateIssueForm(): JSX.Element {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="添加描述…"
-              className="min-h-[90px] w-full resize-none rounded-my-md border border-my-line bg-my-layer-2 p-2 text-my-md leading-5 text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="my-input min-h-[90px] resize-none p-2 text-my-md leading-5"
             />
           </div>
         </div>

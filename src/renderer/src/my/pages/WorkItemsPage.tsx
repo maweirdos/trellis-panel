@@ -1742,9 +1742,10 @@ function WorkItemsPageInner(): JSX.Element {
                 )}
                 {source.presentation?.filterContent}
                 {filterCount > 0 && (
-                  <div className="mt-1 border-t border-my-line pt-1">
+                  <>
+                    <div className="my-menu-divider" />
                     <DropdownItem onClick={() => store.clearFilters()}>清除筛选</DropdownItem>
-                  </div>
+                  </>
                 )}
               </>
             )}
@@ -1821,17 +1822,18 @@ function WorkItemsPageInner(): JSX.Element {
                   </DropdownItem>
                 ))}
                 <DropdownHeader>显示</DropdownHeader>
-                <div className="flex w-full items-center gap-2 px-3 py-1.5">
-                  <Checkbox
-                    checked={display.showEmptyGroups}
-                    onChange={(v) => store.setDisplay({ showEmptyGroups: v })}
-                  />
-                  <span className="text-my-sm text-my-secondary">显示空分组</span>
-                </div>
-                <div className="flex w-full items-center gap-2 px-3 py-1.5">
-                  <Checkbox checked={display.showSubIssues} onChange={(v) => store.setDisplay({ showSubIssues: v })} />
-                  <span className="text-my-sm text-my-secondary">显示子工作项</span>
-                </div>
+                <DropdownItem
+                  selected={display.showEmptyGroups}
+                  onClick={() => store.setDisplay({ showEmptyGroups: !display.showEmptyGroups })}
+                >
+                  显示空分组
+                </DropdownItem>
+                <DropdownItem
+                  selected={display.showSubIssues}
+                  onClick={() => store.setDisplay({ showSubIssues: !display.showSubIssues })}
+                >
+                  显示子工作项
+                </DropdownItem>
               </>
             )}
           </Dropdown>

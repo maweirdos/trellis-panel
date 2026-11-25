@@ -8,7 +8,7 @@ import { useApp } from '../../store'
 import { api } from '../../api'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { currentWeekKey, nextWeekKey } from '../isoWeek'
-import { Avatar, Checkbox, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
+import { Avatar, Dropdown, DropdownHeader, DropdownItem, Tabs } from '../ui'
 import { WorkspaceMark, PriorityIcon, StateGroupIcon } from '../icons'
 import type { Issue, Label, Member, Priority, WorkItemState } from '../types'
 
@@ -49,7 +49,7 @@ function DateField({ value, onChange }: { value: string | null; onChange: (v: st
       value={value ?? ''}
       onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
       style={{ colorScheme: theme }}
-      className="h-7 w-full rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary outline-none focus:border-my-line-accent"
+      className="my-input h-7 px-2 py-0 text-my-sm text-my-secondary"
     />
   )
 }
@@ -319,7 +319,7 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                     if (e.key === 'Enter') confirmAttach()
                   }}
                   placeholder="项目内路径，如 docs/需求摘要.md"
-                  className="h-7 w-full rounded-my-sm border border-my-line bg-my-layer-1 px-2 text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                  className="my-input h-7 px-2 py-0 text-my-xs"
                 />
                 <div className="flex items-center gap-1.5">
                   <button
@@ -500,23 +500,22 @@ function PeekBody({ issue, ident }: PeekBodyProps): JSX.Element {
                 <>
                   <DropdownHeader>设置标签</DropdownHeader>
                   {data.labels.map((lb) => (
-                    <button
+                    <DropdownItem
                       key={lb.id}
-                      type="button"
+                      selected={issue.labelIds.includes(lb.id)}
+                      icon={
+                        <span
+                          className="h-2 w-2 rounded-my-sm"
+                          style={{ background: `var(--my-label-${lb.color}-icon)` }}
+                        />
+                      }
                       onClick={() => toggleLabel(lb.id)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-my-layer-1-hover"
                     >
-                      <Checkbox checked={issue.labelIds.includes(lb.id)} onChange={() => toggleLabel(lb.id)} />
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-my-sm"
-                        style={{ background: `var(--my-label-${lb.color}-icon)` }}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{lb.name}</span>
-                    </button>
+                      {lb.name}
+                    </DropdownItem>
                   ))}
-                  <div className="mt-1 border-t border-my-line pt-1">
-                    <DropdownItem onClick={close}>完成</DropdownItem>
-                  </div>
+                  <div className="my-menu-divider" />
+                  <DropdownItem onClick={close}>完成</DropdownItem>
                 </>
               )}
             </Dropdown>

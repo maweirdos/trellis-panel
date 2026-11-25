@@ -29,7 +29,7 @@
   border: var(--my-space-1) solid var(--my-border-subtle);
   border-radius: var(--my-radius-base);
   background: var(--my-bg-panel);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
   text-align: left;
   cursor: pointer;
   transition: transform var(--my-motion-fast) var(--my-ease-out),
@@ -42,15 +42,19 @@
   transform: translateY(-1px);
   border-color: var(--my-border-strong);
   background: var(--my-bg-panel);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-200);
 }
 
 .design-new-card:not(:disabled):active {
-  transform: translateY(0);
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+  transition: transform var(--my-dur-micro) var(--my-ease-snappy);
 }
 
 .design-new-card:disabled {
-  opacity: 0.45;
+  background: var(--my-bg-layer-disabled);
+  border-color: var(--my-border-disabled);
+  color: var(--my-txt-disabled);
+  box-shadow: none;
   cursor: default;
 }
 
@@ -63,37 +67,45 @@
   min-height: var(--my-space-32);
   flex: 0 0 var(--my-space-32);
   border-radius: var(--my-radius-base);
-  transition: transform var(--my-motion-fast);
+  transform-origin: center;
+  backface-visibility: hidden;
+  transition: scale var(--my-motion-fast) var(--my-ease-out);
 }
 
-.design-new-card:not(:disabled):hover .design-new-badge {
-  transform: scale(1.05);
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .design-new-card:not(:disabled):hover:not(:active) .design-new-badge {
+    scale: var(--my-icon-hover-scale);
+  }
+  .design-new-card:not(:disabled):active .design-new-badge {
+    scale: 1;
+    transition: scale var(--my-dur-micro) var(--my-ease-snappy);
+  }
 }
 
 /* Strategic 5% Accent Tint Badges */
 .design-new-badge--design {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
+  background: color-mix(in oklab, var(--my-label-purple-icon) 14%, transparent);
+  color: var(--my-label-purple-text);
 }
 
 .design-new-badge--document {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: color-mix(in oklab, var(--my-txt-blue-secondary) 14%, transparent);
+  color: var(--my-txt-blue-secondary);
 }
 
 .design-new-badge--slides {
-  background: rgba(249, 115, 22, 0.12);
-  color: #f97316;
+  background: color-mix(in oklab, var(--my-label-orange-icon) 14%, transparent);
+  color: var(--my-label-orange-text);
 }
 
 .design-new-badge--chart {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
+  background: color-mix(in oklab, var(--my-label-indigo-icon) 14%, transparent);
+  color: var(--my-label-indigo-text);
 }
 
 .design-new-badge--whiteboard {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: color-mix(in oklab, var(--my-label-emerald-icon) 14%, transparent);
+  color: var(--my-label-emerald-text);
 }
 
 .design-new-info {
@@ -128,7 +140,7 @@
   border: var(--my-space-1) solid var(--my-border-subtle);
   border-radius: var(--my-radius-base);
   background: var(--my-bg-panel);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 4px 12px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
   cursor: pointer;
   outline: none;
   transition: transform var(--my-motion-normal) var(--my-ease-out),
@@ -139,11 +151,11 @@
 .design-library-card:hover {
   transform: translateY(-2px);
   border-color: var(--my-border-strong);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-200);
 }
 
 .design-library-card:focus-visible {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
   outline-offset: var(--my-space-2);
 }
 
@@ -165,8 +177,8 @@
   height: 100%;
   border-radius: var(--my-radius-base);
   background: var(--my-bg-panel);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  border: var(--my-space-1) solid rgba(0, 0, 0, 0.06);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+  border: var(--my-space-1) solid var(--my-border-subtle);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -283,14 +295,14 @@
 }
 
 .design-library-caption-text .my-item-title {
-  font-size: var(--my-text-sm);
+  font-size: var(--my-text-item-title);
   font-weight: var(--my-weight-medium);
-  color: var(--my-txt-primary);
+  color: var(--my-txt-item-title);
 }
 
 .design-library-caption-text .my-item-description {
-  font-size: var(--my-text-xs);
-  color: var(--my-txt-secondary);
+  font-size: var(--my-text-item-description);
+  color: var(--my-txt-item-description);
 }
 
 /* Circular Tint Badges - strictly circular and never stretched */
@@ -310,24 +322,24 @@
 }
 
 .creation-icon-badge--design {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
+  background: color-mix(in oklab, var(--my-label-purple-icon) 14%, transparent);
+  color: var(--my-label-purple-text);
 }
 
 .creation-icon-badge--document {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: color-mix(in oklab, var(--my-txt-blue-secondary) 14%, transparent);
+  color: var(--my-txt-blue-secondary);
 }
 
 .creation-icon-badge--chart,
 .creation-icon-badge--prototype {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
+  background: color-mix(in oklab, var(--my-label-indigo-icon) 14%, transparent);
+  color: var(--my-label-indigo-text);
 }
 
 .creation-icon-badge--whiteboard {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: color-mix(in oklab, var(--my-label-emerald-icon) 14%, transparent);
+  color: var(--my-label-emerald-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

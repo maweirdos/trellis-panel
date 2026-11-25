@@ -498,7 +498,7 @@ export function YourWorkPage(): JSX.Element {
                   </div>
                 </header>
                 {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
-                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
+                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar my-fade-scroll" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
                   {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onInstructions={showInstructions} />)}
                 </ul> : <div className="my-home-empty" role="status">
                   <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>

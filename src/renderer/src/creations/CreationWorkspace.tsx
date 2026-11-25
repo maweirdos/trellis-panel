@@ -542,7 +542,7 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
           )}
 
           {/* Category Tabs */}
-          <div className="creation-category-pills">
+          <div className="creation-category-pills my-fade-scroll-x">
             <Tabs<CreationCategory>
               tabs={categoryTabs}
               active={category}

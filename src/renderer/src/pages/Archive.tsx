@@ -33,7 +33,7 @@ export function ArchivePage(): JSX.Element {
                     {t.record?.completedAt ? ` · 完成于 ${t.record.completedAt}` : ''}
                   </div>
                 </div>
-                <span className="shrink-0 text-my-xs text-my-tertiary">{relTime(t.updatedAt)}</span>
+                <span className="shrink-0 text-my-xs text-my-tertiary tabular-nums">{relTime(t.updatedAt)}</span>
                 {t.record && (
                   <>
                     <PriorityBadge priority={t.record.priority} />

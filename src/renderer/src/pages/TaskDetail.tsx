@@ -222,7 +222,7 @@ function FieldRow({
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent resize-y"
+              className="my-input min-h-[72px] resize-y px-2.5 py-1.5 text-my-sm"
             />
           ) : (
             <input
@@ -233,7 +233,7 @@ function FieldRow({
                 if (e.key === 'Enter') done()
                 if (e.key === 'Escape') setEditing(false)
               }}
-              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="my-input h-8 px-2.5 py-0 text-my-sm"
             />
           )}
           {!options && (
@@ -887,7 +887,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                               value={newBranch}
                               onChange={(e) => setNewBranch(e.target.value)}
                               placeholder={`从 ${r.base_branch ?? 'main'} 新建分支…`}
-                              className="h-8 w-full flex-1 rounded-my-md border border-my-line bg-my-surface-1 px-2.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                              className="my-input h-8 min-w-0 flex-1 px-2.5 py-0 font-mono text-my-sm"
                             />
                               <Button variant="outline" size="sm" disabled={!newBranch.trim()} onClick={async () => {
                                 const res = await api.gitCreateBranch(newBranch.trim(), r?.base_branch ?? 'main')
