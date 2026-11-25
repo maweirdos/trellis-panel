@@ -103,6 +103,10 @@
   padding: 0.125rem 0.25rem 1rem;
 }
 
+.conversation-message-assistant[data-compact] {
+  padding-block-end: 0.125rem;
+}
+
 .conversation-message-bubble {
   min-width: 0;
   max-width: 100%;
@@ -583,12 +587,6 @@
 
 /* Upstream working row: text-sm muted tabular-nums, 24px line, live shimmer. */
 .conversation-working {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 1.5rem;
-  padding: 0.25rem 0.25rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--my-border-subtle) 60%, transparent);
   color: var(--conversation-muted);
   font-size: var(--my-text-ui);
   line-height: 1.625;
@@ -601,9 +599,26 @@
   color: var(--conversation-muted);
 }
 
-.conversation-working > svg {
-  width: 0.875rem;
-  height: 0.875rem;
+.assistant-message-preserve-lines p {
+  white-space: pre-line;
+}
+
+.conversation-working-time {
+  padding: var(--my-space-4) var(--my-space-4) var(--my-space-8);
+  border-bottom: 1px solid var(--my-border-subtle);
+}
+
+.conversation-working-status {
+  display: flex;
+  min-height: var(--my-space-24);
+  align-items: center;
+  gap: var(--my-space-6);
+  padding-inline: var(--my-space-4);
+}
+
+.conversation-working-status > svg {
+  margin-inline: var(--my-space-4);
+  flex: none;
 }
 
 /* Live text shimmer from upstream .live-activity-focus. */

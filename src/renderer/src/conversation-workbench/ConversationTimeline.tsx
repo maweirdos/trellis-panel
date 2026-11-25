@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
-import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, ListChecks, LoaderCircle } from 'lucide-react'
+import { flushSync } from 'react-dom'
+import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, Globe, ListChecks, LoaderCircle } from 'lucide-react'
 import { Button } from '../my/ui'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
@@ -9,7 +10,7 @@ import { resolveAssistantCitationRange } from './AssistantCitationSource'
 import { AssistantSelectionToolbar } from './AssistantSelectionToolbar'
 import { ChatMarkdown } from './ChatMarkdown'
 import { ConversationTimelineRelationRow, type ConversationThreadTab } from './ConversationRelations'
-import { AssistantTimelineRow, UserMessageRow, WorkingTimelineRow, type TimelineMessageActions } from './TimelineMessageRows'
+import { AssistantTimelineRow, formatDuration, UserMessageRow, WorkingTimelineRow, type TimelineMessageActions } from './TimelineMessageRows'
 import { TimelineMinimap } from './TimelineMinimap'
 import {
   deriveTimelineMinimapItems,
@@ -21,7 +22,7 @@ import {
   TIMELINE_MINIMAP_TARGET_OFFSET,
 } from './timelineMinimapLogic'
 import { forwardWheelToTimeline } from './timelineMinimapWheel'
-import { WorkLogRow } from './WorkLog'
+import { WorkLogDisclosure, WorkLogRow } from './WorkLog'
 import { resolveListMarkerSansEm } from './listMarker'
 import type { ConversationTimelineRow } from './useConversationThread'
 import './conversation-timeline-work.css'
@@ -145,6 +146,17 @@ function setsEqual(left: ReadonlySet<number>, right: ReadonlySet<number>): boole
   return left.size === right.size && [...left].every(value => right.has(value))
 }
 
+function hasActivityAfter(rows: readonly ConversationTimelineRow[], anchor: number): boolean {
+  for (let index = anchor + 1; index < rows.length; index += 1) {
+    const row = rows[index]
+    if (row.kind === 'message') {
+      if (row.message.role === 'user') return false
+      if (row.message.role === 'assistant' && row.message.text.trim()) return true
+    } else if (row.kind !== 'work-fold') return true
+  }
+  return false
+}
+
 export function ConversationTimeline({
   threadId,
   rows,
@@ -165,9 +177,16 @@ export function ConversationTimeline({
   footer,
   emptyTitle,
 }: ConversationTimelineProps): JSX.Element {
-  const workingAnchor = working && rows.find(row => row.kind === 'message' && row.message.role === 'user' && row.message.id === workingUserMessageId)?.id
-  const workingRow = working ? <WorkingTimelineRow startedAt={workingStartedAt ?? undefined} label={workingLabel} /> : null
+  const workingIndex = working && workingUserMessageId ? rows.findIndex(row => row.id === workingUserMessageId) : -1
+  const workingAnchor = rows[workingIndex]?.id
+  const showWorkingStatus = working && (workingIndex < 0 || !hasActivityAfter(rows, workingIndex))
+  const workingRow = useMemo(() => working ? (
+    <WorkingTimelineRow startedAt={workingStartedAt ?? undefined} label={workingLabel} showStatus={showWorkingStatus} />
+  ) : null, [working, workingStartedAt, workingLabel, showWorkingStatus])
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
+  const [openWorkLogs, setOpenWorkLogs] = useState<ReadonlySet<string>>(() => new Set())
+  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow }),
+    [openWorkLogs, workingAnchor, workingRow])
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
   const [follow, setFollow] = useState(() => loadReadingPosition(threadId)?.atEnd !== false)
@@ -216,18 +235,24 @@ export function ConversationTimeline({
       viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1)
   }, [minimapItems, minimapRowIndices, rows])
 
+  const committedMinimapRefresh = useRef(refreshMinimap)
+  useLayoutEffect(() => {
+    committedMinimapRefresh.current = refreshMinimap
+  }, [refreshMinimap])
+
   const minimapFrame = useRef<number | null>(null)
   const scheduleMinimapRefresh = useCallback((): void => {
     if (minimapFrame.current !== null) return
     // LegendList recycles row containers before React commits their positions.
     minimapFrame.current = requestAnimationFrame(() => {
       minimapFrame.current = null
-      refreshMinimap()
+      committedMinimapRefresh.current()
     })
-  }, [refreshMinimap])
+  }, [])
 
   useEffect(() => () => {
     if (minimapFrame.current !== null) cancelAnimationFrame(minimapFrame.current)
+    minimapFrame.current = null
   }, [])
 
   const measureGutter = useCallback((viewport: HTMLElement): void => {
@@ -273,22 +298,29 @@ export function ConversationTimeline({
   function restoreReadingPosition(): void {
     const position = restoring.current
     if (!position || !scrollElement || !listRef.current || seeking.current) return
-    const index = rows.findIndex(row => row.id === position.anchorId)
+    const index = rows.findIndex(row => row.id === position.anchorId ||
+      (row.kind === 'work-fold' && row.entries.some(entry => entry.id === position.anchorId)))
     if (index < 0) {
-      if (!hasOlderHistory || restorePages.current >= MAX_RESTORE_PAGES) restoring.current = null
+      if (!hasOlderHistory || restorePages.current >= MAX_RESTORE_PAGES) {
+        restoring.current = null
+        scheduleMinimapRefresh()
+      }
       return
     }
-    if (restoreAnchor(scrollElement, position)) {
+    const target = rows[index].id === position.anchorId ? position : { ...position, anchorId: rows[index].id }
+    if (restoreAnchor(scrollElement, target)) {
       restoring.current = null
+      scheduleMinimapRefresh()
       return
     }
     seeking.current = position
     void listRef.current.scrollToIndex({ index, viewOffset: position.offset, animated: false }).then(() => {
       if (restoring.current !== position) return
-      restoreAnchor(scrollElement, position)
+      restoreAnchor(scrollElement, target)
     }).finally(() => {
       if (seeking.current === position) seeking.current = null
       if (restoring.current === position) restoring.current = null
+      scheduleMinimapRefresh()
     }).catch(() => undefined)
   }
 
@@ -315,12 +347,27 @@ export function ConversationTimeline({
 
   useEffect(() => () => stopCitationHighlight.current?.(), [sourceThreadId])
 
-  const openCitation = async (citation: AssistantCitation): Promise<boolean> => {
+  const setWorkLogOpen = (id: string, open: boolean): void => {
+    setOpenWorkLogs(current => {
+      if (current.has(id) === open) return current
+      const next = new Set(current)
+      if (open) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const openCitationTarget = async (citation: AssistantCitation): Promise<boolean> => {
     if (!canInteract() || !scrollElement || !sourceThreadId ||
       citation.environmentId !== LOCAL_ASSISTANT_CITATION_ENVIRONMENT || citation.threadId !== sourceThreadId) return false
-    const index = rows.findIndex(row => row.kind === 'message' && row.message.id === citation.messageId && row.message.role === 'assistant')
+    const matches = (row: ConversationTimelineRow) => row.kind === 'message' && row.message.id === citation.messageId && row.message.role === 'assistant'
+    const index = rows.findIndex(row => matches(row) || (row.kind === 'work-fold' && row.entries.some(matches)))
     if (index === -1) return false
     releaseFollow()
+    const target = rows[index]
+    if (target.kind === 'work-fold' && !openWorkLogs.has(target.id)) {
+      flushSync(() => setWorkLogOpen(target.id, true))
+    }
     try {
       await listRef.current?.scrollToIndex({ index, viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET, animated: false })
     } catch { return false }
@@ -344,7 +391,12 @@ export function ConversationTimeline({
     }
     return true
   }
-  useImperativeHandle(citationRef, () => ({ open: openCitation }))
+  const citationTarget = useRef(openCitationTarget)
+  useLayoutEffect(() => {
+    citationTarget.current = openCitationTarget
+  })
+  const openCitation = useCallback((citation: AssistantCitation) => citationTarget.current(citation), [])
+  useImperativeHandle(citationRef, () => ({ open: openCitation }), [openCitation])
 
   useEffect(() => {
     if (!scrollElement) return
@@ -403,6 +455,7 @@ export function ConversationTimeline({
             ref={listRef}
             scrollElement={scrollElement}
             data={rows}
+            extraData={rowRenderState}
             keyExtractor={keyExtractor}
             getItemType={getItemType}
             estimatedItemSize={90}
@@ -412,11 +465,16 @@ export function ConversationTimeline({
             maintainVisibleContentPosition={visiblePosition}
             onScroll={scheduleMinimapRefresh}
             onItemSizeChanged={scheduleMinimapRefresh}
+            onMetricsChange={scheduleMinimapRefresh}
             onReady={restoreReadingPosition}
             renderItem={({ item }) => <div data-conversation-row-id={item.id} data-timeline-row-kind={item.kind}>
-              <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
+              {item.kind === 'work-fold' ? <WorkLogDisclosure label={`工作了 ${formatDuration(item.durationMs)}`}
+                open={openWorkLogs.has(item.id)} onOpenChange={open => setWorkLogOpen(item.id, open)}>
+                {item.entries.map(entry => <ConversationRow key={entry.id} row={entry}
+                  sourceThreadId={sourceThreadId} />)}
+              </WorkLogDisclosure> : <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
                 onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun}
-                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitation : undefined} />
+                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitation : undefined} />}
               {item.id === workingAnchor && workingRow}
             </div>}
           />}
@@ -439,7 +497,7 @@ export function ConversationTimeline({
             index: item.rowIndex,
             animated: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
             viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET,
-          }).catch(() => undefined)
+          }).then(scheduleMinimapRefresh).catch(() => undefined)
         }}
       />
     </div>
@@ -456,7 +514,7 @@ function ConversationRow({
   onOpenCitation,
   sourceThreadId,
 }: {
-  readonly row: ConversationTimelineRow
+  readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' }>
   readonly onQuote?: ConversationTimelineProps['onQuote']
   readonly onEdit?: ConversationTimelineProps['onEdit']
   readonly onOpenRelatedThread?: ConversationTimelineProps['onOpenRelatedThread']
@@ -470,7 +528,8 @@ function ConversationRow({
     <ConversationTurnFileChange item={row.item} />
   </Suspense>
   if (row.kind === 'work') {
-    const { label, icon: Icon } = WORK_STATUS[row.state]
+    const { label, icon } = WORK_STATUS[row.state]
+    const Icon = row.state === 'done' && (row.toolName === 'web_search' || row.toolName === '搜索网页') ? Globe : icon
     return (
       <WorkLogRow
         data-state={row.state}
@@ -514,5 +573,6 @@ function ConversationRow({
   }
   return row.message.role === 'user'
     ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onOpenCitation={onOpenCitation} />
-    : <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId} onForkFromRun={onForkFromRun} />
+    : <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId}
+      onForkFromRun={onForkFromRun} />
 }

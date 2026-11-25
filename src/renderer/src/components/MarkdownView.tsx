@@ -211,7 +211,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
           return <AsciiDiagramBlock chart={text} />
         }
         if (surface === 'chat') {
-          return <ChatCodeBlock code={plainSource} language={fenceLanguage}>{children}</ChatCodeBlock>
+          return <ChatCodeBlock code={plainSource} language={fenceLanguage} streaming={dataStreaming !== undefined}>{children}</ChatCodeBlock>
         }
       }
       const source = child ? String((child.props as { children?: React.ReactNode }).children ?? '') : undefined
@@ -286,7 +286,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         </code>
       )
     }
-  }), [headingAnchorsByLine, hasAssetContext, forwardMarkdownLink, surface, resolveChatFile, canInteract])
+  }), [headingAnchorsByLine, hasAssetContext, forwardMarkdownLink, surface, resolveChatFile, canInteract, dataStreaming])
 
   return (
     <div className={[surface === 'chat' ? 'chat-markdown' : 'md', className].filter(Boolean).join(' ')}

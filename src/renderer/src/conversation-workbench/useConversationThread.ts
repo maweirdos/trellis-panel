@@ -41,6 +41,7 @@ export type ConversationMessage = Pick<
   readonly updatedAt?: OrchestrationV2ConversationMessage['updatedAt'] | string
 }
 export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'status' | 'modelSelection' | 'userMessageId' | 'startedAt' | 'requestedAt'> & {
+  readonly completedAt?: OrchestrationV2Run['completedAt'] | string
   readonly failure?: string
   readonly outcomeUnknown?: boolean
   readonly engineAcceptedAt?: string | null
@@ -57,18 +58,27 @@ export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'statu
   }
 }
 
-export type ConversationTimelineRow =
-  | { readonly kind: 'message'; readonly id: string; readonly message: ConversationMessage; readonly forkRunId?: string }
+type ConversationTimelineEntry =
+  | { readonly kind: 'message'; readonly id: string; readonly message: ConversationMessage
+      readonly forkRunId?: string; readonly showAssistantMeta?: boolean }
   | {
       readonly kind: 'work'
       readonly id: string
       readonly text: string
+      readonly toolName?: string | null
       readonly state: 'running' | 'done' | 'failed' | 'cancelled'
       readonly at?: string
     }
   | { readonly kind: 'plan'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'proposed_plan' | 'todo_list' }> }
   | { readonly kind: 'file-change'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'file_change' }> }
   | { readonly kind: 'relation'; readonly id: string; readonly item: ConversationThreadRelations['children'][number] }
+
+export type ConversationTimelineRow = ConversationTimelineEntry | {
+  readonly kind: 'work-fold'
+  readonly id: string
+  readonly durationMs: number
+  readonly entries: readonly ConversationTimelineEntry[]
+}
 
 export interface ConversationThreadProjection {
   readonly thread: ConversationThread
@@ -284,6 +294,37 @@ function upsertRequest(
   return copy
 }
 
+function timelineTime(value: string | { readonly epochMilliseconds: number } | null | undefined): number | undefined {
+  const time = typeof value === 'string' ? Date.parse(value) : value?.epochMilliseconds
+  return time !== undefined && Number.isFinite(time) ? time : undefined
+}
+
+export function runStartIso(run: ConversationRun | undefined): string | null {
+  const time = timelineTime(run?.startedAt ?? run?.requestedAt)
+  if (time === undefined) return null
+  const date = new Date(time)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null
+}
+
+function completedWorkLog(
+  run: ConversationRun,
+  entries: readonly ConversationTimelineEntry[],
+  finalIndex: number,
+): readonly ConversationTimelineRow[] {
+  if (run.status !== 'completed' || run.outcomeUnknown || run.lifecycle?.backgroundRunning) return entries
+  const start = timelineTime(run.startedAt ?? run.requestedAt)
+  const end = timelineTime(run.completedAt)
+  if (start === undefined || end === undefined || end < start) return entries
+  const finalReply = entries[finalIndex]
+  if (finalReply?.kind !== 'message' || finalReply.message.streaming) return entries
+  const history = entries.slice(0, finalIndex)
+  if (!history.some(entry => entry.kind === 'work') ||
+    !history.every(entry => (entry.kind === 'message' && !entry.message.streaming) ||
+      (entry.kind === 'work' && entry.state === 'done'))) return entries
+  return [{ kind: 'work-fold', id: `work-fold:${run.id}`, durationMs: end - start, entries: history },
+    ...entries.slice(finalIndex)]
+}
+
 /** Projects snapshot + delta into rows; a repeated id replaces its own row instead of duplicating it. */
 export function deriveTimelineRows(
   messages: readonly ConversationMessage[],
@@ -308,10 +349,9 @@ export function deriveTimelineRows(
   for (const run of runs) {
     const prompt = messages.find((item) => item.id === run.userMessageId)
     if (prompt) place({ kind: 'message', id: prompt.id, message: prompt })
-    const turn: Array<{ row: ConversationTimelineRow; time?: number }> = []
-    const append = (row: ConversationTimelineRow, startedAt: string | { readonly epochMilliseconds: number } | null | undefined): void => {
-      const time = typeof startedAt === 'string' ? Date.parse(startedAt) : startedAt?.epochMilliseconds
-      turn.push({ row, time: time !== undefined && Number.isFinite(time) ? time : undefined })
+    const turn: Array<{ row: ConversationTimelineEntry; time?: number }> = []
+    const append = (row: ConversationTimelineEntry, startedAt: string | { readonly epochMilliseconds: number } | null | undefined): void => {
+      turn.push({ row, time: timelineTime(startedAt) })
     }
     for (const item of turnItems) {
       if (item.runId !== run.id) continue
@@ -321,6 +361,7 @@ export function deriveTimelineRows(
           kind: 'work',
           id: item.id,
           text: item.title,
+          toolName: item.toolName,
           state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
             : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
           ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
@@ -341,11 +382,17 @@ export function deriveTimelineRows(
     const dated = turn.flatMap(entry => entry.time === undefined ? [] : [{ row: entry.row, time: entry.time }])
       .sort((left, right) => left.time - right.time)
     let datedIndex = 0
-    for (const entry of turn) place(entry.time === undefined ? entry.row : dated[datedIndex++].row)
+    const ordered = turn.map(entry => entry.time === undefined ? entry.row : dated[datedIndex++].row)
+    const finalIndex = ordered.reduce((last, entry, index) =>
+      entry.kind === 'message' && entry.message.text.trim() ? index : last, -1)
+    const entries = ordered.map((entry, index) => entry.kind === 'message'
+      ? { ...entry, showAssistantMeta: index === finalIndex && Boolean(entry.forkRunId) && !entry.message.streaming }
+      : entry)
+    for (const entry of completedWorkLog(run, entries, finalIndex)) place(entry)
   }
   const placed = new Set(rows.map((row) => row.id))
   for (const message of messages) {
-    if (placed.has(message.id)) continue
+    if (placed.has(message.id) || assistantPlaced.has(message.id)) continue
     rows.push({ kind: 'message', id: message.id, message })
   }
   return rows

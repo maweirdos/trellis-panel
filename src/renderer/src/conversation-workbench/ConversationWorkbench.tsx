@@ -50,8 +50,8 @@ import { useCodeTaskActions } from './useCodeTaskActions'
 import { closeUnusedSideThread, useSideChat } from './useSideChat'
 import { useWorkTaskActions } from './useWorkTaskActions'
 import {
-  isActiveRun, queuedRunsWithText, useConversationThread,
-  type ConversationApplyResult, type ConversationRun, type ConversationTimelineRow, type ThreadReadTarget,
+  isActiveRun, queuedRunsWithText, runStartIso, useConversationThread,
+  type ConversationApplyResult, type ConversationTimelineRow, type ThreadReadTarget,
 } from './useConversationThread'
 import '../acp/workspace.css'
 import './conversation-workbench.css'
@@ -69,13 +69,6 @@ function rememberThread(key: string, threadId: string | null): void {
     if (threadId) localStorage.setItem(`crux.conversation.selected:${key}`, threadId)
     else localStorage.removeItem(`crux.conversation.selected:${key}`)
   } catch {}
-}
-
-function runStartIso(run: ConversationRun | undefined): string | null {
-  const startedAt = run?.startedAt ?? run?.requestedAt
-  if (!startedAt) return null
-  const date = new Date(typeof startedAt === 'string' ? startedAt : startedAt.epochMilliseconds)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null
 }
 
 function savedProjectRole(key: string): ConversationProjectRole | undefined {
@@ -495,6 +488,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     rows.push({ kind: 'message', id: message.id, message: { ...message, runId: null, streaming: false } })
   }
   const runPending = Boolean(run && isActiveRun(run))
+  const runningProvider = catalog.instances.find(item => item.instanceId === activeRun?.modelSelection.instanceId)?.driverKind
   const loadingThread = Boolean(target && !projection && !read?.error)
   const draftIsEmpty = !target && !rows.length && composer.state.phase === 'idle'
 
@@ -711,7 +705,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           working={submitting || loadingThread || runPending && !read?.error}
           workingLabel={loadingThread ? '正在读取会话…' : submitting && !target ? '正在发送给 Crux…'
             : run?.status === 'queued' || run?.status === 'preparing' ? '已受理，等待模型…'
-              : run?.nativeTurnId || run?.engineAcceptedAt ? '模型已接收，正在回复…' : '正在连接并发送给模型…'}
+              : activeRun?.nativeTurnId || activeRun?.engineAcceptedAt ? '模型已接收，正在回复…'
+                : activeRun?.status === 'starting' ? (runningProvider === 'codex' ? '正在启动 Codex…' : '正在启动模型…')
+                  : '正在连接并发送给模型…'}
           workingStartedAt={runStartIso(activeRun)}
           workingUserMessageId={activeRun?.userMessageId}
           hasOlderHistory={Boolean(projection?.hasOlderHistory)} loadingEarlier={loadingEarlier}

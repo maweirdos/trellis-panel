@@ -3,6 +3,10 @@ import { MarkdownView } from '../components/MarkdownView'
 import { ChatProjectFileLinks, resolveChatProjectFile } from './chatProjectFileLinks'
 import { splitMarkdownBlocks } from './markdownStreamBlocks'
 
+function shouldPreserveAssistantLineBreaks(text: string): boolean {
+  return /^★ Insight(?:\s|─)/mu.test(text)
+}
+
 export const ChatMarkdown = memo(function ChatMarkdown({ text, isStreaming = false, user = false }: {
   readonly text: string
   readonly isStreaming?: boolean
@@ -15,5 +19,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ text, isStreaming = fal
   const blocks = isStreaming ? splitMarkdownBlocks(text) ?? [text] : [text]
   return <MarkdownView content={text} surface="chat" blocks={blocks}
     chatFileLinks={resolve && files ? { resolve, open: files.open } : undefined}
-    className={user ? 'user-message-markdown' : undefined} data-streaming={isStreaming ? '' : undefined} />
+    className={user ? 'user-message-markdown'
+      : shouldPreserveAssistantLineBreaks(text) ? 'assistant-message-preserve-lines' : undefined}
+    data-streaming={isStreaming ? '' : undefined} />
 })

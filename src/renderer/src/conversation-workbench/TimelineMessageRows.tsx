@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Check, Copy, GitFork, Pencil, Reply, TriangleAlert } from 'lucide-react'
+import { Brain, Check, Copy, GitFork, Pencil, Reply, TriangleAlert } from 'lucide-react'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import { collectAssistantCitations } from '../../../shared/conversation/assistantCitationText'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
@@ -129,11 +129,12 @@ export function UserMessageRow({ row, onQuote, onEdit, onOpenCitation }: Message
 }
 
 export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sourceThreadId }: MessageRowProps) {
-  const { message, forkRunId } = row
+  const { message, forkRunId, showAssistantMeta = !message.streaming } = row
   const isCitationSource = message.role === 'assistant' && !message.streaming && Boolean(sourceThreadId)
   const canCite = isCitationSource && Boolean(onCite)
   return (
-    <article className="conversation-message conversation-message-assistant" data-assistant-message-row>
+    <article className="conversation-message conversation-message-assistant" data-assistant-message-row
+      data-compact={showAssistantMeta ? undefined : ''}>
       <div className="conversation-message-bubble">
         <MessageAuthorHeading>{message.role === 'system' ? '系统消息' : '模型回复'}</MessageAuthorHeading>
         <div className="conversation-message-body" tabIndex={isCitationSource ? -1 : undefined}
@@ -141,7 +142,7 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sour
           <ChatMarkdown text={message.text} isStreaming={message.streaming} />
         </div>
       </div>
-      <MessageActions>
+      {showAssistantMeta && <MessageActions>
         {message.text && <MessageCopyButton message={message} user={false} />}
         {forkRunId && onForkFromRun && <button type="button" className="my-icon-control" title="从此回合创建分支"
           aria-label="从此回合创建分支" onClick={() => onForkFromRun(forkRunId)}>
@@ -162,7 +163,7 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sour
             }}><Reply size={13} aria-hidden="true" /></button>
         ) : message.text && onQuote && <MessageReplyButton message={message} onQuote={onQuote} label="引用这段回复" />}
         {!message.streaming && <TimelineRowTimestamp createdAt={message.updatedAt ?? message.createdAt} />}
-      </MessageActions>
+      </MessageActions>}
     </article>
   )
 }
@@ -171,17 +172,24 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sour
  * Upstream WorkingTimelineRow: a muted 24px line with a live elapsed timer and a
  * sweeping focus band while the model runs. Reduced motion hides the band.
  */
-export function WorkingTimelineRow({ startedAt, label }: { readonly startedAt?: string; readonly label?: string }) {
+export function WorkingTimelineRow({ startedAt, label, showStatus }: {
+  readonly startedAt?: string
+  readonly label?: string
+  readonly showStatus: boolean
+}) {
   const elapsed = useElapsedLabel(startedAt)
   const status = label ?? '正在工作…'
-  const text = startedAt ? `${status.replace(/…$/, '')} · 已工作 ${elapsed}` : status
   return (
-    <div className="conversation-working" role="status" aria-live="polite">
-      <span className="conversation-live-label" aria-hidden="true">
-        {text}
-        <span className="conversation-live-focus"><span>{text}</span></span>
-      </span>
-      <span className="conversation-sr-only">{status}</span>
+    <div className="conversation-working">
+      {startedAt && <div className="conversation-working-time">已工作 {elapsed}</div>}
+      {(showStatus || !startedAt) && <div className="conversation-working-status" role="status">
+        {startedAt && <Brain size={16} aria-hidden="true" />}
+        <span className="conversation-live-label" aria-hidden="true">
+          {status}
+          <span className="conversation-live-focus"><span>{status}</span></span>
+        </span>
+        <span className="conversation-sr-only">{status}</span>
+      </div>}
     </div>
   )
 }
