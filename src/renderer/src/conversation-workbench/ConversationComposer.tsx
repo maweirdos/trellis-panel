@@ -122,13 +122,14 @@ export function ConversationComposer({
   const selectedInstanceId = model?.instanceId
   const describeForSkill = catalog.scopeAllowsSkills && Boolean(activeTrigger &&
     (activeTrigger.kind === 'skill' || activeTrigger.kind === 'slash-command' && activeTrigger.query !== 'model'))
+  const needsDescriptor = interactive && (Boolean(lockedInstanceId) || describeForSkill)
   const selectedInstance = catalog.instances.find(item => item.instanceId === selectedInstanceId)
   const { ensure, refresh, status: catalogStatus } = catalog
   useEffect(() => {
-    if (!describeForSkill || !selectedInstanceId) return
+    if (!needsDescriptor || !selectedInstanceId) return
     if (catalogStatus === 'idle') void refresh()
     else if (selectedInstance && !selectedInstance.read) void ensure(selectedInstanceId)
-  }, [catalogStatus, describeForSkill, ensure, refresh, selectedInstance, selectedInstanceId])
+  }, [catalogStatus, ensure, needsDescriptor, refresh, selectedInstance, selectedInstanceId])
   const skills = catalog.scopeAllowsSkills && selectedInstanceId
     ? catalog.suggestionSkills?.(selectedInstanceId) ?? noSkills : noSkills
   const files = useComposerProjectPaths(projectPaths, activeTrigger)
