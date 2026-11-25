@@ -902,11 +902,11 @@ export function Tabs<T extends string>({
             'my-control my-control-sm rounded-my-md font-medium transition-colors select-none',
             active === t.id
               ? 'bg-[var(--my-bg-layer-transparent-active)] text-[var(--my-txt-primary)]'
-              : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)]'
+              : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]'
           )}
         >
           <span>{t.label}</span>
-          {t.count !== undefined && <span className="ml-1 text-my-xs opacity-70 tabular-nums">{t.count}</span>}
+          {t.count !== undefined && <span className={clsx('ml-1 text-my-xs tabular-nums', active === t.id ? 'text-[var(--my-txt-secondary)]' : 'text-[var(--my-txt-tertiary)]')}>{t.count}</span>}
         </button>
       ))}
     </div>

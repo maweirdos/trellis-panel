@@ -217,7 +217,7 @@ export function CommandPalette(): JSX.Element | null {
             <span className="my-kbd">Esc</span>
           </div>
         </div>
-        <div id="palette-results" role="listbox" aria-label="搜索结果" className="my-scrollbar my-command-results min-h-0 p-1.5">
+        <div id="palette-results" role="listbox" aria-label="搜索结果" className="my-scrollbar my-fade-scroll my-command-results flex min-h-0 flex-col gap-0.5 p-1.5">
           {filtered.length === 0 && (
             <div className="px-2.5 py-6 text-center text-my-sm text-my-tertiary">无匹配结果</div>
           )}
@@ -225,8 +225,8 @@ export function CommandPalette(): JSX.Element | null {
             const header = item.section !== lastSection ? item.section : null
             lastSection = item.section
             return (
-              <div key={item.id}>
-                {header && <div className="px-2.5 pb-1 pt-2 text-my-xs text-my-tertiary">{header}</div>}
+              <div key={item.id} className="flex flex-col gap-0.5">
+                {header && <div className="my-menu-header">{header}</div>}
                 <button
                   type="button"
                   id={`palette-option-${index}`}
@@ -238,14 +238,14 @@ export function CommandPalette(): JSX.Element | null {
                   onMouseEnter={() => setSelected(index)}
                   onClick={item.run}
                   className={clsx(
-                    'flex h-9 w-full items-center gap-2.5 rounded-my-md px-2.5 text-left text-my-md',
+                    'flex h-9 w-full items-center gap-2.5 rounded-my-md px-2.5 text-left text-my-md transition-colors duration-100',
                     activeSelected === index ? 'bg-my-layer-1-active text-my-primary' : 'text-my-secondary'
                   )}
                 >
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">{item.icon}</span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {item.fulltext && query.trim() && !item.label.toLowerCase().includes(query.trim().toLowerCase()) && (
-                    <span className="my-item-description shrink-0 rounded bg-my-layer-3 px-1 text-my-secondary">描述命中</span>
+                    <span className="my-chip shrink-0 bg-my-layer-3 text-my-secondary">描述命中</span>
                   )}
                   {item.hint && <span className={clsx('my-item-description shrink-0', activeSelected === index && 'text-my-secondary')}>{item.hint}</span>}
                 </button>

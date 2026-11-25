@@ -241,7 +241,7 @@ function GitBranchSession(): JSX.Element {
           <button type="button" className="my-menu-item" disabled={!snapshot.head || Boolean(state.busy)} onClick={() => { close(); openCreate() }}><Plus size={14} /><span>创建分支…</span></button>
           <h3 className="my-menu-header">本地分支</h3>
           <div className="my-git-local-branches my-scrollbar">{snapshot.branches.map((branch) => <button type="button" className="my-menu-item" key={branch.name} title={branch.worktree ? `${branch.name} · ${branch.worktree}` : branch.name} aria-label={`切换到分支 ${branch.name}`} disabled={branch.current || !snapshot.clean || Boolean(snapshot.operation) || Boolean(branch.worktree) || Boolean(state.busy)} onClick={() => { const scope = gitActionScope(); if (scope) { close(); setDialog({ kind: 'switch', scope, branch }) } }}>
-            <span className="min-w-0 flex-1 truncate text-left">{branch.name}</span>{branch.current && <Check size={13} aria-hidden="true" />}{branch.worktree && !branch.current && <span className="text-my-2xs text-my-tertiary">工作树</span>}
+            <span className="min-w-0 flex-1 truncate text-left">{branch.name}</span>{branch.current && <Check size={14} className="shrink-0 text-my-primary" aria-hidden="true" />}{branch.worktree && !branch.current && <span className="text-my-2xs text-my-tertiary">工作树</span>}
           </button>)}</div>
           {!snapshot.clean && <p className="px-2 py-1 text-my-xs text-my-tertiary">处理未提交更改后可切换分支。</p>}
         </>}

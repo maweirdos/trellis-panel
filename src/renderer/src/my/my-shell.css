@@ -48,7 +48,8 @@
   line-height: 1;
   border: 1px solid transparent;
   color: var(--my-txt-icon-secondary);
-  transition: background-color var(--my-motion-fast) var(--my-ease-out),
+  transition: transform var(--my-motion-fast) var(--my-ease-out),
+              background-color var(--my-motion-fast) var(--my-ease-out),
               border-color var(--my-motion-fast) var(--my-ease-out),
               color var(--my-motion-fast) var(--my-ease-out),
               box-shadow var(--my-motion-fast) var(--my-ease-out);
@@ -129,6 +130,9 @@
 .my-root .my-navigation-summary > svg { transition: transform var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-navigation-group[open] > .my-navigation-summary > svg { transform: rotate(90deg); }
 .my-root .my-navigation-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-2);
   margin-inline-start: var(--my-space-10);
   padding-inline-start: var(--my-space-8);
   border-inline-start: 1px solid var(--my-border-subtle);
@@ -219,10 +223,18 @@
   background: var(--my-bg-panel) !important;
   color: var(--my-txt-primary) !important;
   box-shadow: inset 0 0 0 1px var(--my-border-subtle), var(--my-shadow-raised-100);
-  transition: transform var(--my-motion-fast) var(--my-ease-out);
+  transform-origin: center;
+  backface-visibility: hidden;
+  transition: scale var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-rail-account-trigger:hover .my-rail-account-avatar {
-  transform: scale(1.06);
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .my-root .my-rail-account-trigger:hover:not(:active):not([aria-expanded='true']) .my-rail-account-avatar {
+    scale: var(--my-icon-hover-scale);
+  }
+  .my-root .my-rail-account-trigger:active .my-rail-account-avatar {
+    scale: 1;
+    transition: scale var(--my-dur-micro) var(--my-ease-snappy);
+  }
 }
 .my-root .my-window-controls { flex-shrink: 0; }
 .my-root .my-window-button { width: var(--my-space-44); flex-shrink: 0; }
@@ -257,19 +269,19 @@
 .my-root:has(.my-window-header .my-shell-code-tools:not([hidden])) > .my-git-workspace-panel { top: calc(var(--my-workspace-header-height) + var(--my-header-code-tools-height)); }
 .my-root .my-shell-view-switcher { padding: var(--my-space-3); gap: var(--my-space-2); border: 1px solid var(--my-border-subtle); background: var(--my-bg-layer-transparent); border-radius: var(--my-radius-lg); }
 .my-root .my-shell-view-switcher .my-control { height: var(--my-header-segment-height); padding-inline: var(--my-space-8); border-radius: var(--my-radius-inset); }
-.my-root .my-shell-view-switcher .my-control[aria-pressed='true'] { background: var(--my-bg-panel); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
+.my-root .my-shell-view-switcher .my-control[aria-pressed='true'] { background: var(--my-bg-panel); box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100); color: var(--my-txt-primary); }
 .my-root .my-window-search {
   display: flex; align-items: center; gap: var(--my-space-8);
   height: var(--my-header-control-height); min-width: 0; width: var(--my-header-search-width);
   margin-left: auto; margin-right: var(--my-space-4); padding-inline: var(--my-space-10);
   border: 1px solid var(--my-border-subtle); border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-secondary); font-size: var(--my-text-sm);
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .my-window-search:hover:not(:disabled) { background: var(--my-bg-layer-transparent-active); border-color: var(--my-border-strong); color: var(--my-txt-primary); }
 .my-root .my-window-search > span { min-width: 0; flex: 1; text-align: left; }
-.my-root .my-window-search > kbd { flex-shrink: 0; padding: var(--my-space-1) var(--my-space-4); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-sm); font-family: inherit; font-size: var(--my-text-2xs); color: var(--my-txt-tertiary); }
-.my-root .my-window-search:disabled { opacity: .5; cursor: default; }
+.my-root .my-window-search > kbd { flex-shrink: 0; padding: var(--my-space-1) var(--my-space-5); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-sm); background: var(--my-bg-layer-1); font-family: inherit; font-size: var(--my-text-2xs); font-variant-numeric: tabular-nums; color: var(--my-txt-tertiary); }
+.my-root .my-window-search:disabled { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); opacity: 1; cursor: default; }
 @media (max-width: 1100px) {
   .my-root .my-shell-view-switcher svg { display: none; }
   .my-root .my-header-team { max-width: var(--my-space-192); }

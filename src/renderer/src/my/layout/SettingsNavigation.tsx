@@ -75,7 +75,7 @@ export function SettingsNavigation(): JSX.Element {
         <X aria-hidden="true" />
       </button>}
     </div>
-    <nav ref={navigationRef} id={resultsId} aria-label="设置分类" className="my-settings-navigation-results my-scrollbar">
+    <nav ref={navigationRef} id={resultsId} aria-label="设置分类" className="my-settings-navigation-results my-scrollbar my-fade-scroll">
       {SETTINGS_GROUPS.map((group, groupIndex) => {
         const destinations = visibleDestinations.filter((destination) => destination.group === group)
         if (destinations.length === 0) return null

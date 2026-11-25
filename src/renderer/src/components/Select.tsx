@@ -158,7 +158,7 @@ export function Select<T extends string = string>({
                 {option.dot && <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', option.dot)} />}
                 {option.icon && <span className="shrink-0 text-my-icon-tertiary">{option.icon}</span>}
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {selected && <Check size={13} className="shrink-0" />}
+                {selected && <Check size={14} className="shrink-0 text-my-primary" />}
               </button>
             )
           })}

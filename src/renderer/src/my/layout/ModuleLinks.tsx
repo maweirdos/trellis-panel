@@ -33,7 +33,7 @@ export function ModuleLinks({ domain, agentView }: {
     const app = useApp.getState()
     if (app.page !== target || target === 'chat' && app.privateCodeChat) setPage(target)
   })
-  return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="shrink-0 space-y-0.5 border-b border-my-line px-2 py-2">
+  return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="flex shrink-0 flex-col gap-0.5 border-b border-my-line px-2 py-2">
     {domain === 'agents' ? <>
       {route('chat', '对话', <MessagesSquare size={16} />)}
       {hasProject && <>

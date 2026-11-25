@@ -33,8 +33,9 @@
 }
 
 .my-root .my-settings-navigation-search-input:focus {
-  border-color: var(--my-focus-ring);
+  border-color: var(--my-border-strong-1);
   background: var(--my-bg-input);
+  box-shadow: var(--my-focus-shadow);
 }
 .my-root .my-settings-navigation-search-input::placeholder { color: var(--my-txt-secondary); }
 
@@ -152,11 +153,18 @@
 
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .my-root .my-settings-navigation-icon {
+    transform-origin: center;
+    backface-visibility: hidden;
     transition: scale var(--my-motion-fast) var(--my-ease-out);
   }
 
-  .my-root .my-settings-navigation-item:hover:not([aria-current='page']) .my-settings-navigation-icon {
+  .my-root .my-settings-navigation-item:hover:not(:active):not([aria-current='page']) .my-settings-navigation-icon {
     scale: var(--my-icon-hover-scale);
+  }
+
+  .my-root .my-settings-navigation-item:active .my-settings-navigation-icon {
+    scale: 1;
+    transition: scale var(--my-dur-micro) var(--my-ease-snappy);
   }
 }
 

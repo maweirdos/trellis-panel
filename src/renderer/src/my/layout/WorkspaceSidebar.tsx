@@ -87,7 +87,7 @@ function ContextSidebar(): JSX.Element {
     <header className="flex h-my-header shrink-0 items-center gap-2 px-4">
       <h2 className="my-sidebar-heading flex-1 font-medium text-my-primary">{DOMAIN_LABELS[domain]}</h2>
     </header>
-    {domain === 'settings' ? <SettingsNavigation /> : <div className="my-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+    {domain === 'settings' ? <SettingsNavigation /> : <div className="my-scrollbar my-fade-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
       {domain === 'home' && <>
         {row('all', '任务', page === 'tasks' && (personalTaskSource === 'team' || view === 'items'), <ListTodo size={16} />, () => { setView('items'); setPage('tasks') })}
         {row('creations', getPageNavigation('creations').title, page === 'creations', <PanelsTopLeft size={16} />, () => setPage('creations'))}
@@ -102,21 +102,25 @@ function ContextSidebar(): JSX.Element {
             {row('tools', '工具', ['devtools', 'architecture', 'studio'].includes(page), <Wrench size={16} />, () => { const tool = useMy.getState().toolView; setPage(tool === 'architecture' || tool === 'studio' ? tool : 'devtools') })}
           {savedViews.length > 0 && <details open className="my-navigation-group mt-5">
             <summary className="my-navigation-summary"><span>视图</span><ChevronRight aria-hidden="true" size={14} /></summary>
-            {savedViews.map((saved) => <div key={saved.id} className="group/view flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
-              <button type="button" className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary" onClick={() => { localTasks(); applyView(saved.id) }}>
+            <div className="mt-0.5 flex flex-col gap-0.5">
+            {savedViews.map((saved) => <div key={saved.id} className="group/view flex items-center gap-1 rounded-my-md transition-colors hover:bg-my-layer-transparent-hover">
+              <button type="button" className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary hover:text-my-primary" onClick={() => { localTasks(); applyView(saved.id) }}>
                 <NavIcon name="views" size={16} /><span className="truncate" title={saved.name}>{saved.name}</span>
               </button>
-              <button type="button" aria-label={`删除视图 ${saved.name}`} onClick={() => removeView(saved.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/view:opacity-100 focus:opacity-100"><X size={12} /></button>
+              <button type="button" aria-label={`删除视图 ${saved.name}`} onClick={() => removeView(saved.id)} className="my-hover-reveal-target mr-1 rounded-my-sm p-1 text-my-icon-tertiary opacity-0 transition-all hover:bg-my-layer-transparent-hover hover:text-my-primary group-hover/view:opacity-100 group-focus-within/view:opacity-100 focus-visible:opacity-100"><X size={12} /></button>
             </div>)}
+            </div>
           </details>}
           {data.issues.some((issue) => favorites.includes(issue.id)) && <details open className="my-navigation-group mt-5">
             <summary className="my-navigation-summary"><span>收藏</span><ChevronRight aria-hidden="true" size={14} /></summary>
-            {data.issues.filter((issue) => favorites.includes(issue.id)).map((issue) => <div key={issue.id} className="group/favorite flex items-center gap-1 rounded-my-md hover:bg-my-layer-transparent-hover">
-              <button type="button" onClick={() => { localTasks(); openIssue(issue.id) }} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary">
+            <div className="mt-0.5 flex flex-col gap-0.5">
+            {data.issues.filter((issue) => favorites.includes(issue.id)).map((issue) => <div key={issue.id} className="group/favorite flex items-center gap-1 rounded-my-md transition-colors hover:bg-my-layer-transparent-hover">
+              <button type="button" onClick={() => { localTasks(); openIssue(issue.id) }} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-my-sm text-my-secondary hover:text-my-primary">
                 <Star size={16} className="shrink-0 text-my-icon-tertiary" /><span className="truncate" title={issue.name}>{issue.name}</span>
               </button>
-              <button type="button" aria-label={`取消收藏 ${issue.name}`} onClick={() => toggleFavorite(issue.id)} className="mr-1 p-1 text-my-icon-tertiary opacity-0 group-hover/favorite:opacity-100 focus:opacity-100"><X size={12} /></button>
+              <button type="button" aria-label={`取消收藏 ${issue.name}`} onClick={() => toggleFavorite(issue.id)} className="my-hover-reveal-target mr-1 rounded-my-sm p-1 text-my-icon-tertiary opacity-0 transition-all hover:bg-my-layer-transparent-hover hover:text-my-primary group-hover/favorite:opacity-100 group-focus-within/favorite:opacity-100 focus-visible:opacity-100"><X size={12} /></button>
             </div>)}
+            </div>
           </details>}
           </div>
         </details>

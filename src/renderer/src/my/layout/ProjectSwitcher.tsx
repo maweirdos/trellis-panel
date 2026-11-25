@@ -27,14 +27,14 @@ export function ProjectSwitcher({ keepPage = false }: { keepPage?: boolean }): J
       </button>
     )}>
       {(close) => (
-        <div>
+        <div className="flex flex-col gap-0.5">
           <DropdownHeader>最近打开的本机工程</DropdownHeader>
-          <div className="my-scrollbar max-h-[40vh] px-1">
-            {choices.length === 0 && <p className="my-item-description px-3 py-3">尚无项目记录</p>}
+          <div className="my-scrollbar my-fade-scroll flex max-h-[40vh] flex-col gap-0.5 px-1">
+            {choices.length === 0 && <p className="my-item-description px-2.5 py-3">尚无项目记录</p>}
             {choices.map((path) => (
               <button key={projectRootKey(path)} type="button" disabled={!canOpen}
-                className={clsx('flex w-full items-center gap-3 rounded-my-md px-2.5 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50',
-                  projectRootKey(path) === projectRootKey(root) ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover')}
+                className={clsx('flex w-full shrink-0 items-center gap-3 rounded-my-md px-2.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:text-my-disabled',
+                  projectRootKey(path) === projectRootKey(root) ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary')}
                 onClick={() => { if (projectRootKey(path) !== projectRootKey(root)) void openProjectPath(path, { keepPage }); close() }}>
                 <FolderOpen size={17} strokeWidth={1.7} className="shrink-0 text-my-icon-secondary" />
                 <span className="min-w-0 flex-1">
@@ -45,15 +45,15 @@ export function ProjectSwitcher({ keepPage = false }: { keepPage?: boolean }): J
               </button>
             ))}
           </div>
-          <div className="my-1 border-t border-my-line" />
-          <div className="px-1">
+          <div className="my-menu-divider" role="separator" />
+          <div className="flex flex-col gap-0.5 px-1">
             <button type="button" disabled={!canOpen} onClick={() => { void pickAndOpen({ keepPage }); close() }}
-              className="flex min-h-9 w-full items-center gap-3 rounded-my-md px-2.5 py-2 text-left text-my-md text-my-secondary hover:bg-my-layer-1-hover disabled:cursor-not-allowed disabled:opacity-50">
+              className="flex min-h-9 w-full items-center gap-3 rounded-my-md px-2.5 py-2 text-left text-my-md text-my-secondary transition-colors hover:bg-my-layer-1-hover hover:text-my-primary disabled:cursor-not-allowed disabled:text-my-disabled">
               <FolderOpen size={17} strokeWidth={1.7} />打开本机工程…
             </button>
           </div>
-          {!canOpen && <p className="my-item-description px-3 pb-2">浏览器预览不读取本机目录，请在桌面应用中打开项目。</p>}
-          {openError && <p role="status" className="px-3 pb-2 text-my-xs text-my-danger-text">{openError}</p>}
+          {!canOpen && <p className="my-item-description px-2.5 pb-2">浏览器预览不读取本机目录，请在桌面应用中打开项目。</p>}
+          {openError && <p role="status" className="px-2.5 pb-2 text-my-xs text-my-danger-text">{openError}</p>}
         </div>
       )}
     </Dropdown>

@@ -3,7 +3,6 @@ import {
   RotateCw,
   Plus,
   ChevronDown,
-  Check,
   Zap,
   CheckCircle2,
   XCircle,
@@ -841,7 +840,6 @@ export function ModelsPage(): JSX.Element {
                           <DropdownItem
                             selected={active}
                             disabled={active || !provider.enabled || !provider.baseUrl.trim()}
-                            icon={<Check size={14} />}
                             onClick={() => {
                               close()
                               runAction(persistProviders((current) => current, provider.id))

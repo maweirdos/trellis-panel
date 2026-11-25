@@ -6,6 +6,9 @@ import { DaemonLifecycleDialog } from './daemon/LifecycleDialog'
 import { BootstrapGate } from './daemon/BootstrapGate'
 import './my/my.css'
 import './styles.css'
+import { installScrollEdgeFades } from './my/scroll-edge-fade'
+
+installScrollEdgeFades()
 
 const rootEl = document.getElementById('root')
 if (!rootEl) throw new Error('#root not found')

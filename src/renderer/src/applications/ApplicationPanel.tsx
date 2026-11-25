@@ -88,12 +88,12 @@ export function ApplicationPanel(): JSX.Element {
           if (index >= 0 && options[index]) { event.preventDefault(); options[index].focus() }
         }}>
           {state.apps.map((app) => <button key={app.definition.id} type="button" role="option" aria-selected={selected?.definition.id === app.definition.id} aria-label={`选择配置 ${app.definition.name}`} className="my-menu-item" data-selected={selected?.definition.id === app.definition.id || undefined} onClick={() => { selectApplication(app.definition.id, state.generation); close() }}>
-            <Terminal size={14} className="shrink-0 text-my-tertiary" /><span className="min-w-0 flex-1 truncate">{app.definition.name}</span><span className="text-my-xs text-my-tertiary">{app.processState === 'running' ? '运行中' : app.approval === 'pending' ? '待确认' : ''}</span>{selected?.definition.id === app.definition.id && <Check size={13} className="shrink-0" />}
+            <Terminal size={14} className="shrink-0 text-my-tertiary" /><span className="min-w-0 flex-1 truncate">{app.definition.name}</span><span className="text-my-xs text-my-tertiary">{app.processState === 'running' ? '运行中' : app.approval === 'pending' ? '待确认' : ''}</span>{selected?.definition.id === app.definition.id && <Check size={14} className="shrink-0 text-my-primary" />}
           </button>)}
           {!hasIpc ? <p className="my-application-empty">桌面端可管理本地应用</p> : !state.root ? <p className="my-application-empty">选择项目后添加运行配置</p> : state.loading && state.apps.length === 0 ? <p className="my-application-empty" role="status">正在读取配置…</p> : state.apps.length === 0 ? <p className="my-application-empty">还没有运行配置</p> : null}
           {state.error && <p role="alert" className="my-application-message text-my-danger-text">{state.error}</p>}
         </div>
-        <div className="border-t border-my-line px-2 py-1"><button type="button" className="my-menu-item" disabled={!enabled} onClick={(event) => { close(); openApplicationEditor(selected ? { kind: 'edit', definition: selected.definition } : { kind: 'new' }, state.generation, event.currentTarget) }}><Settings2 size={14} />编辑配置…</button></div>
+        <div className="border-t border-my-line py-1"><button type="button" className="my-menu-item" disabled={!enabled} onClick={(event) => { close(); openApplicationEditor(selected ? { kind: 'edit', definition: selected.definition } : { kind: 'new' }, state.generation, event.currentTarget) }}><Settings2 size={14} />编辑配置…</button></div>
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-my-line px-3 py-2"><span className="text-my-xs text-my-tertiary">当前项目</span><Button size="sm" variant="ghost" disabled={!state.root} onClick={() => { close(); useMy.getState().setToolView('run'); useApp.getState().setPage('devtools') }}>在运行页打开<ArrowUpRight size={12} /></Button></footer>
       </div>}
     </Dropdown>

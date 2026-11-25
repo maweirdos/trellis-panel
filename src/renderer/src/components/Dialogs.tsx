@@ -153,7 +153,7 @@ function ConfirmPanel({ req, onCancel }: { req: ConfirmRequest; onCancel: () => 
   const { title, message, confirmText, danger } = req.opts
   return (
     <>
-      <div className="text-my-sm font-semibold text-my-primary">{title}</div>
+      <div className="my-text-balance text-my-md font-semibold text-my-primary">{title}</div>
       {message && <div className="mt-2 whitespace-pre-line text-my-xs leading-5 text-my-secondary">{message}</div>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" autoFocus={danger} onClick={onCancel}>
@@ -201,7 +201,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
 
   return (
     <>
-      <div className="text-my-sm font-semibold text-my-primary">{title}</div>
+      <div className="my-text-balance text-my-md font-semibold text-my-primary">{title}</div>
       {label && <label htmlFor={fieldId} className="my-item-title mt-3 mb-1.5 block">{label}</label>}
       {multiline ? (
         <textarea
@@ -215,7 +215,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           rows={4}
-          className="w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent resize-y"
+          className="my-input resize-y"
         />
       ) : (
         <input
@@ -231,7 +231,7 @@ function PromptPanel({ req, onCancel }: { req: PromptRequest; onCancel: () => vo
           }}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+          className="my-input"
         />
       )}
       {error && <div id={errorId} role="alert" className="mt-1.5 text-my-xs text-my-danger-text">{error}</div>}

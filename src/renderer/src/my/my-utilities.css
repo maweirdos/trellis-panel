@@ -37,7 +37,7 @@
 .my-root .my-floating-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--my-bg-accent-primary); transition: width var(--my-motion-normal); }
 .my-root .my-floating-subtask { display: flex; align-items: flex-start; width: 100%; gap: var(--my-space-8); padding: var(--my-space-6) var(--my-space-4); border-radius: var(--my-radius-inset); color: var(--my-txt-secondary); font-size: var(--my-text-xs); }
 .my-root .my-floating-subtask:hover:not(:disabled) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root .my-floating-subtask:disabled { opacity: .65; }
+.my-root .my-floating-subtask:disabled { color: var(--my-txt-disabled); }
 .my-root .my-floating-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--my-space-12); padding: var(--my-space-24) var(--my-space-8); text-align: center; }
 .my-root .my-floating-editor { min-height: var(--my-floating-editor-min-height); padding: var(--my-space-16); }
 .my-root .my-floating-editor:focus-visible { outline: none; }

@@ -19,9 +19,13 @@
   user-select: text;
 }
 .my-root ::selection { background: var(--my-selection-bg); color: var(--my-txt-primary); }
-.my-root :where(button, [role='button'], [role='dialog'], [tabindex], a, input, select, textarea, [contenteditable='true'], summary):focus-visible {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
+.my-root :where(button, [role='button'], [tabindex], a, select, summary):not(.my-focus-none):not([data-focus-ring='none']):focus-visible {
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
   outline-offset: var(--my-space-1);
+}
+.my-root :is(.my-focus-none, [data-focus-ring='none'], .my-focus-none :is(input, textarea, [contenteditable='true']), [data-focus-ring='none'] :is(input, textarea, [contenteditable='true'])):is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
 }
 .my-root :where(button, [role='button']):not(:disabled):not([aria-disabled='true']) { cursor: pointer; }
 .my-root :where(button, [role='button']):is(:disabled, [aria-disabled='true']) { cursor: default; }
@@ -98,29 +102,46 @@
   font-size: var(--my-text-sm);
   font-weight: var(--my-weight-medium);
   white-space: nowrap;
-  transition: transform var(--my-dur-micro) var(--my-ease-snappy), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root :is(
-  .my-control,
-  .my-icon-control,
-  .my-composer-control,
-  .my-segment,
-  .my-nav-item,
-  .collab-nav-item,
-  .my-menu-item,
-  .my-select-option,
-  .my-tab,
-  .my-tab-item,
-  .acp-agent-card,
-  .acp-header-task,
-  .acp-add-action,
-  .task-pill,
-  button.my-card,
-  a.my-card[href],
-  .my-card[role='button']
-):active:not(:disabled):not([aria-disabled='true']):not([aria-haspopup='true']) {
-  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
-  transition: transform var(--my-dur-micro) var(--my-ease-snappy);
+@media (prefers-reduced-motion: no-preference) {
+  .my-root :is(
+    .my-control,
+    .my-icon-control,
+    .my-composer-control,
+    .my-segment,
+    .my-module-button,
+    .my-tab,
+    .my-tab-item,
+    .acp-agent-card,
+    .acp-header-task,
+    .acp-add-action,
+    .task-pill,
+    button.my-card,
+    a.my-card[href],
+    .my-card[role='button']
+  ) {
+    transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  }
+  .my-root :is(
+    .my-control,
+    .my-icon-control,
+    .my-composer-control,
+    .my-segment,
+    .my-module-button,
+    .my-tab,
+    .my-tab-item,
+    .acp-agent-card,
+    .acp-header-task,
+    .acp-add-action,
+    .task-pill,
+    button.my-card,
+    a.my-card[href],
+    .my-card[role='button']
+  ):active:not(:disabled):not([aria-disabled='true']):not([aria-haspopup='true']) {
+    transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+    transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  }
 }
 .my-root .my-control-sm { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); gap: var(--my-space-4); }
 .my-root .my-control-lg { height: var(--my-control-height-lg); }
@@ -145,7 +166,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 var(--my-icon-control-size); width: var(--my-icon-control-size); height: var(--my-icon-control-size);
   border-radius: var(--my-control-radius);
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-neutral, .my-button-outline, .my-button-ghost, .my-button-danger)) { color: var(--my-txt-secondary); }
 .my-root :where(.my-icon-control):not(:where(.my-button-primary, .my-button-neutral, .my-button-outline, .my-button-ghost, .my-button-danger)):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
@@ -154,7 +175,7 @@
 .my-root .my-composer-control {
   border-radius: var(--my-control-radius);
   background: var(--my-bg-layer-transparent);
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+  transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 /* Keep text-trigger layout footprints while giving feedback room around the label. */
 .my-root .my-composer-control-label {
@@ -164,9 +185,9 @@
 .my-root .my-composer-control:hover:not(:disabled):not([aria-disabled='true']),
 .my-root .my-composer-control[aria-expanded='true']:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root .my-composer-control:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-transparent-active); }
-.my-root .my-composer-control:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
+.my-root .my-composer-control:focus-visible { outline: var(--my-focus-width) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .my-root .my-segmented { display: inline-flex; align-items: center; gap: var(--my-space-2); padding: var(--my-space-2); border-radius: var(--my-radius-lg); background: var(--my-bg-layer-transparent-hover); }
-.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-control-radius); transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-segment { display: inline-flex; align-items: center; justify-content: center; width: var(--my-icon-control-size); height: var(--my-icon-control-size); border-radius: var(--my-control-radius); transition: transform var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-segment:hover:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']) { background: var(--my-bg-layer-transparent-active); color: var(--my-txt-primary); }
 .my-root .my-segment:active:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']):not([aria-selected='true']) { background: var(--my-bg-layer-2-active); }
 .my-root .my-segment:is([aria-pressed='true'], [aria-selected='true']) { background: var(--my-bg-panel); box-shadow: var(--my-shadow-raised-100); color: var(--my-txt-primary); }
@@ -191,7 +212,7 @@
 .my-root .my-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--my-scrollbar-thumb-hover); }
 
 .my-root .my-menu {
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; gap: var(--my-space-2);
   scrollbar-gutter: auto;
   max-width: calc(100vw - var(--my-space-16));
   z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-4);
@@ -201,12 +222,12 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   box-shadow: var(--my-surface-rim), var(--my-shadow-overlay-200);
 }
-.my-root .my-menu > .my-scrollbar { min-height: 0; flex-shrink: 1; }
+.my-root .my-menu > .my-scrollbar { display: flex; flex-direction: column; gap: var(--my-space-2); min-height: 0; flex-shrink: 1; scrollbar-gutter: auto; }
 .my-root .my-menu-item {
-  display: flex; width: 100%; align-items: center; gap: var(--my-space-8);
+  display: flex; flex-shrink: 0; width: 100%; align-items: center; gap: var(--my-space-8);
   height: 30px; min-height: 30px; padding: 0 var(--my-space-8);
   border-radius: var(--my-control-radius); text-align: left;
-  font-size: var(--my-text-sm); color: var(--my-txt-primary);
+  font-size: var(--my-menu-option-size); color: var(--my-txt-primary);
   background: transparent;
   transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
@@ -229,7 +250,7 @@
 .my-root .my-menu-item:active:not(:disabled):not([aria-disabled='true']) {
   background: color-mix(in oklab, var(--my-txt-primary) 12%, transparent);
 }
-.my-root :is(.my-menu-item, .my-select-option):focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
+.my-root :is(.my-menu-item, .my-select-option):focus-visible { outline: var(--my-focus-width) solid var(--my-focus-ring); outline-offset: calc(var(--my-focus-width) * -1); box-shadow: none; }
 .my-root .my-menu-item[data-danger='true'] { color: var(--my-txt-danger-primary); }
 .my-root .my-menu-item[data-danger='true'] .my-menu-icon { color: var(--my-txt-danger-primary); }
 .my-root .my-menu-item[data-danger='true']:hover:not(:disabled):not([aria-disabled='true']) {
@@ -242,7 +263,7 @@
 .my-root .my-menu-item:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); background: var(--my-bg-layer-transparent); }
 .my-root .my-menu-header { padding: var(--my-space-8) var(--my-space-10) var(--my-space-6); font-size: var(--my-menu-title-size); color: var(--my-menu-title-color); font-weight: var(--my-weight-medium); line-height: var(--my-line-ui); cursor: default; }
 .my-root .my-menu-header:not(:first-child) { margin-top: var(--my-space-6); }
-.my-root .my-menu-divider { height: 1px; margin: var(--my-space-4) 0; background: var(--my-border-subtle); }
+.my-root .my-menu-divider { flex-shrink: 0; height: 1px; margin: var(--my-space-2) 0; background: var(--my-border-subtle); }
 .my-root .my-menu-shortcut { margin-left: auto; padding-left: var(--my-space-14); font-size: var(--my-text-xs); color: var(--my-txt-tertiary); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .my-root .my-menu-chevron { margin-left: auto; color: var(--my-txt-tertiary); flex-shrink: 0; }
 .my-root .my-menu-item.my-menu-item-multiline,
@@ -282,31 +303,31 @@
 }
 .my-root .my-select-trigger:hover:not(:disabled):not([aria-disabled='true']):not([aria-expanded='true']):not(:focus-visible) { border-color: var(--my-border-strong-1); }
 .my-root .my-select-trigger:active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-active); }
-.my-root .my-select-trigger[aria-expanded='true']:not(:disabled):not([aria-disabled='true']) { border-color: var(--my-focus-ring); }
-.my-root .my-select-trigger:focus-visible { border-color: var(--my-focus-ring); outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
+.my-root .my-select-trigger[aria-expanded='true']:not(:disabled):not([aria-disabled='true']),
+.my-root .my-select-trigger:focus-visible { border-color: var(--my-border-strong-1); outline: none; box-shadow: var(--my-focus-shadow); }
 .my-root .my-select-trigger:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); cursor: default; }
 .my-root :where(.my-select-trigger-sm) { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); font-size: var(--my-text-xs); }
 .my-root .my-select-value { display: flex; min-width: 0; align-items: center; gap: var(--my-space-6); }
 .my-root .my-select-chevron { color: var(--my-txt-tertiary); }
 .my-root .my-select-trigger:is(:disabled, [aria-disabled='true']) .my-select-chevron { color: var(--my-txt-disabled); }
-.my-root .my-select-menu { width: max-content; min-width: 100%; max-width: min(420px, calc(100vw - var(--my-space-24))); }
+.my-root .my-select-menu { display: flex; flex-direction: column; gap: var(--my-space-2); width: max-content; min-width: 100%; max-width: min(420px, calc(100vw - var(--my-space-24))); scrollbar-gutter: auto; }
 .my-root .my-select-option {
-  display: flex; width: 100%; min-height: var(--my-control-height-sm); align-items: center; gap: var(--my-space-8);
-  padding: var(--my-space-6) var(--my-space-10); border-radius: var(--my-control-radius);
-  color: var(--my-menu-option-color); text-align: left; font-size: var(--my-menu-option-size);
+  display: flex; flex-shrink: 0; width: 100%; height: 30px; min-height: 30px; align-items: center; gap: var(--my-space-8);
+  padding: 0 var(--my-space-8); border-radius: var(--my-control-radius);
+  color: var(--my-txt-primary); text-align: left; font-size: var(--my-menu-option-size);
   transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-select-option:hover:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
-.my-root .my-select-option:active:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: var(--my-bg-layer-transparent-active); }
-.my-root .my-select-option:is(.is-selected, [aria-selected='true']) { background: var(--my-bg-accent-subtle); color: var(--my-txt-accent-primary); }
+.my-root .my-select-option:hover:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: color-mix(in oklab, var(--my-txt-primary) 6%, transparent); color: var(--my-txt-primary); }
+.my-root .my-select-option:active:not(:disabled):not([aria-disabled='true']):not(:where(.is-selected, [aria-selected='true'])) { background: color-mix(in oklab, var(--my-txt-primary) 12%, transparent); }
+.my-root .my-select-option:is(.is-selected, [aria-selected='true']) { background: color-mix(in oklab, var(--my-txt-primary) 10%, transparent); color: var(--my-txt-primary); }
 .my-root .my-select-option:is(:disabled, [aria-disabled='true']) { color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-command-backdrop { display: flex; justify-content: center; align-items: flex-start; padding: clamp(24px, 14vh, 112px) var(--my-space-16) var(--my-space-16); }
 .my-root .my-command-panel { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - var(--my-space-32)); margin: 0; }
-.my-root .my-command-search { background: var(--my-bg-input); transition: border-color var(--my-motion-fast) var(--my-ease-out); }
-.my-root .my-command-search:focus-within { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
-.my-root .my-command-search input:focus-visible { outline: none; }
+.my-root .my-command-search { background: var(--my-bg-input); transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out); }
+.my-root .my-command-search:focus-within { outline: none; box-shadow: none; }
+.my-root .my-command-search input:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
 .my-root .my-command-results { flex: 1 1 auto; max-height: min(52vh, 520px); }
-.my-root .my-tooltip { z-index: var(--my-z-tooltip); max-width: calc(100vw - var(--my-space-16)); white-space: normal; overflow-wrap: anywhere; border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-shadow-raised-200); }
+.my-root .my-tooltip { z-index: var(--my-z-tooltip); max-width: calc(100vw - var(--my-space-16)); white-space: normal; overflow-wrap: anywhere; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-inset); background: var(--my-bg-layer-3); box-shadow: var(--my-surface-rim), var(--my-shadow-raised-200); }
 /* Disabled buttons swallow pointer events; pass them through so the tooltip anchor still sees hover/focus. */
 .my-root .my-tooltip-anchor > button:disabled { pointer-events: none; }
 .my-root .my-modal-backdrop { z-index: var(--my-z-modal); background: var(--my-bg-backdrop); padding-inline: var(--my-space-16); }
@@ -326,15 +347,15 @@
   width: 100%; height: var(--my-field-height); padding: var(--my-space-9) var(--my-space-11);
   border: 1px solid var(--my-border-input); border-radius: var(--my-control-radius);
   background: var(--my-bg-input); color: var(--my-txt-primary); font-size: var(--my-text-ui);
-  outline: none; transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  outline: none; transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root textarea.my-input { height: auto; min-height: var(--my-field-height); line-height: var(--my-line-document); }
 .my-root .my-input::placeholder { color: var(--my-txt-placeholder); opacity: 1; }
 .my-root .my-input:hover:not(:disabled):not([aria-disabled='true']):not([aria-invalid='true']):not([readonly]):not(:focus) { border-color: var(--my-border-strong-1); }
-/* The inset outline covers the existing border, keeping one focus contour. */
-.my-root .my-input:focus { border-color: var(--my-focus-ring); outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: calc(var(--my-space-2) * -1); box-shadow: none; }
+/* Restrained 1px hairline border emphasis instead of a heavy black outline. */
+.my-root .my-input:focus { border-color: var(--my-border-strong-1); outline: none; box-shadow: var(--my-focus-shadow); }
 .my-root :is(.my-input, .my-select-trigger)[aria-invalid='true'] { border-color: var(--my-border-danger-strong); }
-.my-root :is(.my-input, .my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong); outline-color: var(--my-border-danger-strong); }
+.my-root :is(.my-input, .my-select-trigger)[aria-invalid='true']:is(:focus, :focus-visible) { border-color: var(--my-border-danger-strong); outline: none; box-shadow: 0 0 0 1px color-mix(in oklab, var(--my-border-danger-strong) 25%, transparent); }
 .my-root .my-input:is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); cursor: default; }
 .my-root .my-search-input { height: var(--my-control-height); padding-block: 0; padding-left: var(--my-space-28); font-size: var(--my-text-sm); }
 .my-root .my-search-input-sm { height: var(--my-control-height-sm); }
@@ -349,11 +370,18 @@
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item) > svg:first-child:not(.animate-spin),
   .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item) > span:first-child > svg:only-child:not(.animate-spin) {
+    transform-origin: center;
+    backface-visibility: hidden;
     transition: scale var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
   }
-  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.animate-spin),
-  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.animate-spin) {
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:active):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > svg:first-child:not(.animate-spin),
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):hover:not(:active):not(:disabled):not([aria-disabled='true']):not([aria-busy='true']):not(:where(.is-selected, [aria-current]:not([aria-current='false']), [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], [data-selected='true'], [aria-expanded='true'])) > span:first-child > svg:only-child:not(.animate-spin) {
     scale: var(--my-icon-hover-scale);
+  }
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):active:not(:disabled):not([aria-disabled='true']) > svg:first-child:not(.animate-spin),
+  .my-root :where(.my-nav-item, .collab-nav-item, .my-menu-item, .my-control, .my-icon-control, .my-composer-control, .my-segment):not(.my-settings-navigation-item):active:not(:disabled):not([aria-disabled='true']) > span:first-child > svg:only-child:not(.animate-spin) {
+    scale: 1;
+    transition: scale var(--my-dur-micro) var(--my-ease-snappy), transform var(--my-dur-micro) var(--my-ease-snappy);
   }
 }
 
@@ -367,10 +395,42 @@
   .my-root *, .my-root *::before, .my-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
 }
 
+@property --my-fade-top-stop { syntax: '<color>'; inherits: false; initial-value: black; }
+@property --my-fade-bottom-stop { syntax: '<color>'; inherits: false; initial-value: black; }
+@property --my-fade-left-stop { syntax: '<color>'; inherits: false; initial-value: black; }
+@property --my-fade-right-stop { syntax: '<color>'; inherits: false; initial-value: black; }
+
 .my-root .my-fade-scroll {
-  scrollbar-gutter: stable;
-  mask-image: linear-gradient(to bottom, transparent, black var(--my-space-16), black calc(100% - var(--my-space-16)), transparent);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--my-space-16), black calc(100% - var(--my-space-16)), transparent);
+  --my-fade-top-stop: black;
+  --my-fade-bottom-stop: black;
+  mask-image: linear-gradient(to bottom, var(--my-fade-top-stop) 0, black var(--my-space-16), black calc(100% - var(--my-space-16)), var(--my-fade-bottom-stop) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, var(--my-fade-top-stop) 0, black var(--my-space-16), black calc(100% - var(--my-space-16)), var(--my-fade-bottom-stop) 100%);
+  transition: --my-fade-top-stop var(--my-motion-fast) var(--my-ease-out), --my-fade-bottom-stop var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-fade-scroll[data-fade-top='true'] { --my-fade-top-stop: transparent; }
+.my-root .my-fade-scroll[data-fade-bottom='true'] { --my-fade-bottom-stop: transparent; }
+
+.my-root .my-fade-scroll-x {
+  --my-fade-left-stop: black;
+  --my-fade-right-stop: black;
+  mask-image: linear-gradient(to right, var(--my-fade-left-stop) 0, black var(--my-space-16), black calc(100% - var(--my-space-16)), var(--my-fade-right-stop) 100%);
+  -webkit-mask-image: linear-gradient(to right, var(--my-fade-left-stop) 0, black var(--my-space-16), black calc(100% - var(--my-space-16)), var(--my-fade-right-stop) 100%);
+  transition: --my-fade-left-stop var(--my-motion-fast) var(--my-ease-out), --my-fade-right-stop var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-fade-scroll-x[data-fade-left='true'] { --my-fade-left-stop: transparent; }
+.my-root .my-fade-scroll-x[data-fade-right='true'] { --my-fade-right-stop: transparent; }
+
+.my-root .my-text-balance {
+  text-wrap: balance;
+}
+
+.my-root .my-hover-reveal {
+  opacity: 0;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root :is(:hover, :focus-within) > .my-hover-reveal,
+.my-root :is(:hover, :focus-within) .my-hover-reveal-target {
+  opacity: 1;
 }
 
 /* Card 06: 长按蓄能防误触按钮 (Hold to Confirm) */

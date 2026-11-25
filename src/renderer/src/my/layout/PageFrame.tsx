@@ -33,7 +33,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
     <PageBody key={`${page}:${page === 'settings' ? settingsView : ''}`}><PageContent>
       <header className="settings-page-heading">
         <span className="settings-page-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.7} /></span>
-        <div className="settings-page-copy"><h1>{destination.title}</h1><p>{destination.description}</p></div>
+        <div className="settings-page-copy"><h1 className="my-text-balance">{destination.title}</h1><p>{destination.description}</p></div>
         {page === 'settings' && settingsView === 'preferences' && <Button className="settings-page-action" variant="outline"
           disabled={!hasIpc || !api.onboarding} onClick={() => window.dispatchEvent(new Event('trellis-open-onboarding'))}>打开设置向导</Button>}
       </header>
@@ -43,7 +43,7 @@ export function PageFrame({ page, children }: { page: Page; children: ReactNode 
   }
   return <PageLayout variant={variant}>
     {!embeddedKnowledgeLayout && <PageHeader>
-      <h1 className="text-my-md font-semibold text-my-primary">{title}</h1>
+      <h1 className="my-text-balance text-my-md font-semibold text-my-primary">{title}</h1>
       {navigation.scope !== 'project' && <span className="my-chip bg-my-layer-1 text-my-secondary">{navigationScopeLabel(navigation.scope)}</span>}
       {(tools || intake) && <nav aria-label={tools ? '工具类型' : '接入来源'} className="ml-auto flex flex-wrap items-center gap-1">
         {tools ? TOOLS.map((item) => {
