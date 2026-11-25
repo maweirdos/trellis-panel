@@ -28,6 +28,7 @@ import {
   type OptimisticUserMessage,
 } from './optimisticUserMessages'
 import { ConversationComposer } from './ConversationComposer'
+import { insertAssistantCitationIntoDraft, type CitationDraftHandle } from './assistantCitationDraft'
 import { ChatView } from './ChatView'
 import { ChatProjectFileLinks, type ChatProjectFile } from './chatProjectFileLinks'
 import { ConversationActivityControls } from './ConversationActivityControls'
@@ -38,14 +39,14 @@ import { ConversationRightPanel, useNarrowConversationPanel } from './Conversati
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
-import { conversationFileSurface, conversationPanelKey, conversationPanelScope, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
 import { useConversationModelCatalog } from './useConversationModelCatalog'
 import type { ComposerPromptEditorHandle } from './ComposerPromptEditorTiptap'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
-import { serializeAssistantCitation } from '../../../shared/conversation/assistantCitationText'
+import { LOCAL_ASSISTANT_CITATION_ENVIRONMENT } from '../../../shared/conversation/assistantCitationText'
 import { useCodeTaskActions } from './useCodeTaskActions'
 import { closeUnusedSideThread, useSideChat } from './useSideChat'
 import { useWorkTaskActions } from './useWorkTaskActions'
@@ -59,6 +60,14 @@ import './conversation-workbench.css'
 type ThreadChange = Extract<ConversationThreadCommand, { type: `thread.${string}` }>
 type ThreadChangeIntent = ThreadChange extends infer Change ? Change extends ThreadChange ? Omit<Change, 'commandId'> : never : never
 interface SideCleanupRequest { threadId: string; commandId: string; reason: string }
+
+interface CitationRouteRequest {
+  readonly citation: AssistantCitation
+  readonly target: ThreadReadTarget
+  readonly sideThreadId?: string
+  readonly resolve: (found: boolean) => void
+  phase: 'parent' | 'side' | 'revealing'
+}
 
 function savedThread(key: string): string | null {
   try { return localStorage.getItem(`crux.conversation.selected:${key}`) } catch { return null }
@@ -189,6 +198,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const targetRef = useRef(target)
   const composerRef = useRef<ComposerPromptEditorHandle>(null)
   const citationRef = useRef<ConversationCitationNavigation>(null)
+  const sideCitationRef = useRef<ConversationCitationNavigation>(null)
+  const sideCitationDraftRef = useRef<CitationDraftHandle>(null)
+  const citationRouteGeneration = useRef(0)
+  const currentCitationRoute = useRef<CitationRouteRequest | null>(null)
+  const [citationRoute, setCitationRoute] = useState<CitationRouteRequest | null>(null)
   const panelTrigger = useRef<HTMLButtonElement>(null)
   const panelReturnFocus = useRef<HTMLElement | null>(null)
   const panelId = useId()
@@ -203,6 +217,17 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     rootKey, workspaceContext.key, workspaceContext.actorId, workspaceContext.instanceId, workspaceContext.epoch,
   ])
   const readScopeKey = JSON.stringify([conversationPanelScope(panelScopeKey), workspaceContext.authorizationRevision ?? 0])
+  const finishCitationRoute = useCallback((request: CitationRouteRequest, found: boolean): void => {
+    if (currentCitationRoute.current !== request) return
+    currentCitationRoute.current = null
+    request.resolve(found)
+    setCitationRoute(null)
+  }, [])
+  useLayoutEffect(() => () => {
+    citationRouteGeneration.current += 1
+    currentCitationRoute.current?.resolve(false)
+    currentCitationRoute.current = null
+  }, [interactive, readScopeKey])
   const controller = useConversationThread(root, target, interactive && hasIpc, readScopeKey, task)
   const { active: read, reload, loadEarlier, loadingEarlier, stop, queue } = controller
   const projection = read?.projection
@@ -333,6 +358,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   }, [interactive, listRevision, query, root, task])
 
   function select(next: ThreadReadTarget | null): void {
+    citationRouteGeneration.current += 1
+    if (currentCitationRoute.current) finishCitationRoute(currentCitationRoute.current, false)
     rememberThread(rootKey, next?.threadId ?? null)
     targetRef.current = next
     setTarget(next)
@@ -340,6 +367,93 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setQueueEdit(undefined)
     setSidebarOpen(false)
   }
+
+  async function openAssistantCitation(citation: AssistantCitation): Promise<boolean> {
+    if (!interactive || !hasIpc || !canInteract() || citation.environmentId !== LOCAL_ASSISTANT_CITATION_ENVIRONMENT) return false
+    const generation = ++citationRouteGeneration.current
+    if (currentCitationRoute.current) finishCitationRoute(currentCitationRoute.current, false)
+    const origin = targetRef.current
+    if (origin?.threadId === citation.threadId) {
+      if (narrowPanel && panel.active) hidePanel(false)
+      return citationRef.current?.open(citation) ?? false
+    }
+    const canContinue = () => mounted.current && canInteract() && citationRouteGeneration.current === generation
+    try {
+      const sourceRead = await api.conversationRead(citation.threadId, root, task)
+      if (!canContinue() || !sourceRead.ok || sourceRead.thread.id !== citation.threadId ||
+        sourceRead.cursor.threadId !== citation.threadId) return false
+      const relation = sourceRead.relations?.parent
+      const sideThreadId = relation?.kind === 'side-chat' && relation.childThreadId === citation.threadId
+        ? citation.threadId : undefined
+      const parentId = sideThreadId && relation ? relation.parentThreadId : citation.threadId
+      if (sideThreadId && parentId === sideThreadId) return false
+      if (sideThreadId && parentId !== origin?.threadId) {
+        const parentRead = await api.conversationRead(parentId, root, task)
+        if (!canContinue() || !parentRead.ok || parentRead.thread.id !== parentId ||
+          parentRead.cursor.threadId !== parentId || !parentRead.relations?.children.some(child =>
+            child.kind === 'side-chat' && child.parentThreadId === parentId && child.childThreadId === sideThreadId)) return false
+      }
+      const next = origin?.threadId === parentId ? origin : { threadId: parentId }
+      if (next !== origin) select(next)
+      return new Promise<boolean>(resolve => {
+        const request: CitationRouteRequest = { citation, target: next, sideThreadId, resolve, phase: 'parent' }
+        currentCitationRoute.current = request
+        setCitationRoute(request)
+      })
+    } catch {
+      return false
+    }
+  }
+
+  const revealSideCitation = useCallback((threadId: string, readable: boolean): void => {
+    if (!citationRoute || currentCitationRoute.current !== citationRoute || citationRoute.sideThreadId !== threadId ||
+      citationRoute.target !== targetRef.current || citationRoute.phase === 'revealing') return
+    queueMicrotask(() => {
+      if (currentCitationRoute.current !== citationRoute || citationRoute.phase !== 'side') return
+      const timeline = sideCitationRef.current
+      if (!readable || !canInteract() || !timeline) {
+        finishCitationRoute(citationRoute, false)
+        return
+      }
+      citationRoute.phase = 'revealing'
+      void timeline.open(citationRoute.citation).then(
+        found => finishCitationRoute(citationRoute, found),
+        () => finishCitationRoute(citationRoute, false),
+      )
+    })
+  }, [canInteract, citationRoute, finishCitationRoute])
+
+  useEffect(() => {
+    if (!citationRoute || currentCitationRoute.current !== citationRoute) return
+    if (!interactive || citationRoute.target !== targetRef.current || read?.error) {
+      finishCitationRoute(citationRoute, false)
+      return
+    }
+    if (!projection || projection.thread.id !== citationRoute.target.threadId) return
+    if (citationRoute.sideThreadId) {
+      const surface = conversationThreadSurface(citationRoute.sideThreadId)
+      if (!panelKey || !projection.relations.children.some(child => child.kind === 'side-chat' &&
+        child.parentThreadId === projection.thread.id && child.childThreadId === citationRoute.sideThreadId)) {
+        finishCitationRoute(citationRoute, false)
+        return
+      }
+      if (citationRoute.phase === 'parent') {
+        citationRoute.phase = 'side'
+        openPanel(surface)
+      } else if (panel.active?.id !== surface.id) {
+        finishCitationRoute(citationRoute, false)
+      }
+      return
+    }
+    if (citationRoute.phase === 'revealing') return
+    if (narrowPanel && panel.active) panel.hide()
+    citationRoute.phase = 'revealing'
+    queueMicrotask(() => {
+      if (currentCitationRoute.current !== citationRoute) return
+      const lookup = citationRef.current?.open(citationRoute.citation) ?? Promise.resolve(false)
+      void lookup.then(found => finishCitationRoute(citationRoute, found), () => finishCitationRoute(citationRoute, false))
+    })
+  }, [citationRoute, finishCitationRoute, interactive, narrowPanel, openPanel, panel.active, panel.hide, panelKey, projection, read?.error])
 
   function changeConfirmed(command: ThreadChange): void {
     savePendingThreadChange(rootKey)
@@ -537,26 +651,10 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   }
 
   function insertAssistantCitation(citation: AssistantCitation): void {
-    const origin = targetRef.current?.threadId
-    if (!writable || !canInteract() || origin !== citation.threadId || !projection || projection.thread.id !== origin ||
+    const origin = targetRef.current
+    if (!writable || !canInteract() || origin?.threadId !== citation.threadId || !projection || projection.thread.id !== citation.threadId ||
       !projection.messages.some(message => message.id === citation.messageId && message.role === 'assistant' && !message.streaming)) return
-    const current = composer.readDraft()
-    const { start, end } = composerRef.current?.readSnapshot().selection ?? { start: current.length, end: current.length }
-    const serialized = serializeAssistantCitation(citation)
-    const before = current.slice(0, start)
-    const after = current.slice(end)
-    const leading = before && !/\s$/u.test(before) ? ' ' : ''
-    const trailing = !after || !/^\s/u.test(after) ? ' ' : ''
-    const value = `${before}${leading}${serialized}${trailing}${after}`
-    const position = before.length + leading.length + serialized.length + trailing.length
-    composer.setDraft(text => text === current ? value : text)
-    requestAnimationFrame(() => {
-      const editor = composerRef.current
-      if (canInteract() && targetRef.current?.threadId === origin && editor?.readSnapshot().value === value) {
-        editor.focus()
-        editor.setSelectionRange(position, position)
-      }
-    })
+    insertAssistantCitationIntoDraft(citation, composer, composerRef, () => canInteract() && targetRef.current === origin)
   }
 
   function applyControl(operation: ReturnType<typeof stop>): void {
@@ -698,6 +796,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         }} />}>
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
           sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
+          onOpenCitation={openAssistantCitation}
           onOpenRelatedThread={openRelatedThread}
           onForkFromRun={writable && projection && !archivedThread ? runId => {
             void sideChat.open({ sourcePoint: { type: 'run', runId } })
@@ -787,7 +886,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           } : undefined}
           disabledReason={target && !projection ? '正在读取原会话。' : undefined}
           editorRef={composerRef} previousPrompt={previousPrompt?.text}
-          onOpenCitation={citation => citationRef.current?.open(citation) ?? Promise.resolve(false)}
+          onOpenCitation={openAssistantCitation}
           projectPaths={code && projectAvailable && projection ? { cwd: root, threadId: projection.thread.id, task } : undefined}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
             .map(({ id, title }) => ({ id, title }))}
@@ -799,6 +898,13 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
           root={root} scopeKey={readScopeKey} hostThreadId={hostThreadId}
           threadId={surface.threadId} task={task} interactive={interactive && hasIpc} writable={writable}
+          citationRef={sideCitationRef} onOpenCitation={openAssistantCitation}
+          onCitationReady={citationRoute?.sideThreadId === surface.threadId ? revealSideCitation : undefined}
+          onCite={writable && !archivedThread ? citation => {
+            if (currentPanelOwner.current !== panelKey || targetRef.current?.threadId !== hostThreadId ||
+              citation.threadId !== surface.threadId || !canInteract()) return
+            sideCitationDraftRef.current?.insert(citation)
+          } : undefined}
           onOpenParent={() => hidePanel()}
           onAddToParentDraft={writable ? reference => {
             if (currentPanelOwner.current !== panelKey || targetRef.current?.threadId !== hostThreadId || !canInteract()) return
@@ -808,6 +914,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           } : undefined}
           renderComposer={({ threadId, controller: childController }) => <ConversationSideThreadComposer root={root}
             scopeKey={sideThreadDraftScope(panelScopeKey, root, hostThreadId)} task={task} threadId={threadId}
+            citationDraftRef={sideCitationDraftRef} onOpenCitation={openAssistantCitation}
             controller={childController} catalog={catalog} writable={writable} />} />
           : projectAvailable ? <ConversationProjectSurfaces selected={selected}
             target={{ cwd: root, threadId: hostThreadId, ...(task && { task }) }} surface={surface} open={panel.open}

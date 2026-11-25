@@ -1,10 +1,12 @@
-import { useContext, useMemo, type JSX, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, type JSX, type ReactNode, type RefObject } from 'react'
 import { ArrowUpLeft, Link2, Square } from 'lucide-react'
+import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { Button } from '../my/ui'
 import { projectRootKey } from '../my/navigation'
 import { ChatProjectFileLinks } from './chatProjectFileLinks'
-import { ConversationTimeline } from './ConversationTimeline'
+import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
+import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ConversationQueue } from './ConversationQueue'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { isActiveRun, queuedRunsWithText, runStartIso, useConversationThread, type ConversationThreadController } from './useConversationThread'
@@ -23,6 +25,10 @@ export interface SideThreadPaneProps {
   readonly task?: ConversationTaskLocator
   readonly interactive: boolean
   readonly writable?: boolean
+  readonly citationRef?: RefObject<ConversationCitationNavigation | null>
+  readonly onCitationReady?: (threadId: string, readable: boolean) => void
+  readonly onCite?: (citation: AssistantCitation) => void
+  readonly onOpenCitation?: OpenAssistantCitation
   readonly onAddToParentDraft?: (reference: ParentDraftThreadReference) => void
   readonly onOpenParent?: (threadId: string) => void
   readonly renderComposer?: (input: { readonly threadId: string; readonly controller: ConversationThreadController }) => ReactNode
@@ -30,7 +36,7 @@ export interface SideThreadPaneProps {
 
 export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const { root, scopeKey, hostThreadId, threadId, task, interactive, writable = interactive,
-    onAddToParentDraft, onOpenParent, renderComposer } = props
+    citationRef, onCitationReady, onCite, onOpenCitation, onAddToParentDraft, onOpenParent, renderComposer } = props
   const hostScope = JSON.stringify([scopeKey, root, hostThreadId])
   const target = useMemo(() => ({ threadId }), [threadId])
   const controller = useConversationThread(root, target, interactive, hostScope, task)
@@ -54,6 +60,11 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const activeRun = projection?.activeRun
   const stopRunId = activeRun && relation?.childRunId === activeRun.id && isActiveRun(activeRun) ? activeRun.id : undefined
   const timelineKey = JSON.stringify([controller.scope, projection?.cursor?.storageId])
+  const readSettled = Boolean(result)
+  const citationReadable = interactive && Boolean(childrenReady && !result?.error)
+  useEffect(() => {
+    if (readSettled) onCitationReady?.(threadId, citationReadable)
+  }, [citationReadable, onCitationReady, readSettled, threadId])
 
   return <section className="my-conversation-frame conversation-side-thread" aria-label={title}>
     <header className="conversation-side-thread-heading">
@@ -71,6 +82,12 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
     {projection && !belongsToHost && <p className="my-item-description conversation-side-thread-error" role="status">此会话与当前父会话无关联。</p>}
     <ChatProjectFileLinks.Provider value={fileLinks}>
     <ConversationTimeline key={timelineKey} threadId={timelineKey} rows={rows}
+      sourceThreadId={citationReadable ? threadId : undefined}
+      citationRef={citationRef} onOpenCitation={onOpenCitation}
+      onCite={canCompose && relation?.kind === 'side-chat' && onCite ? citation => {
+        if (citation.threadId === threadId && projection?.messages.some(message =>
+          message.id === citation.messageId && message.role === 'assistant' && !message.streaming)) onCite(citation)
+      } : undefined}
       working={!result || Boolean(childrenReady && activeRun && isActiveRun(activeRun) && !result?.error)}
       workingLabel={!result ? '正在读取会话…' : undefined}
       workingStartedAt={runStartIso(activeRun)}

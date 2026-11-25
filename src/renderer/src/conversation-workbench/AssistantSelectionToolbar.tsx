@@ -6,6 +6,16 @@ import { useInteractionActive } from '../utils/interaction-scope'
 import { captureAssistantTextSelection } from './AssistantCitationSource'
 import './assistant-citation.css'
 
+function modalLayer(viewport: HTMLElement | null): { root: HTMLElement | null; layer: string | undefined } | null {
+  // A fixed toolbar inside the animated modal panel would be positioned in the
+  // panel's box, not the viewport. Mount beside the modal and carry its layer id
+  // so focus containment, Escape and the tab loop keep treating it as inside.
+  const panel = viewport?.closest<HTMLElement>('.my-modal-panel')
+  const layer = panel?.closest<HTMLElement>('[data-my-layer]')?.dataset.myLayer
+  const root = viewport?.closest<HTMLElement>('.my-root')
+  return panel && layer && root ? { root, layer } : null
+}
+
 export function AssistantSelectionToolbar({ viewport, threadId, onCite }: {
   readonly viewport: HTMLElement | null
   readonly threadId: string
@@ -14,7 +24,9 @@ export function AssistantSelectionToolbar({ viewport, threadId, onCite }: {
   const [selection, setSelection] = useState<{ citation: AssistantCitation; x: number; y: number } | null>(null)
   const toolbarRef = useRef<HTMLButtonElement>(null)
   const active = useInteractionActive()
-  const portalRoot = viewport?.closest('.my-root')
+  const modal = modalLayer(viewport)
+  const portalRoot = modal?.root ?? viewport?.closest('.my-root')
+  const layerIds = modal?.layer
 
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current
@@ -77,7 +89,8 @@ export function AssistantSelectionToolbar({ viewport, threadId, onCite }: {
 
   if (!viewport || !portalRoot || !selection || !active || selection.citation.threadId !== threadId) return null
   return createPortal(
-    <button ref={toolbarRef} type="button" className="my-control my-control-sm my-button-neutral conversation-selection-action"
+    <button ref={toolbarRef} type="button" data-my-layer={layerIds}
+      className="my-control my-control-sm my-button-neutral conversation-selection-action"
       onMouseDown={event => event.preventDefault()}
       onClick={() => {
         const current = captureAssistantTextSelection(viewport, threadId, window.getSelection())

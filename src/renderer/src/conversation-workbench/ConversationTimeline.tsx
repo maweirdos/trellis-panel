@@ -185,6 +185,7 @@ export function ConversationTimeline({
   onForkFromRun,
   sourceThreadId,
   onCite,
+  onOpenCitation,
   citationRef,
   footer,
   emptyTitle,
@@ -424,10 +425,15 @@ export function ConversationTimeline({
     return true
   }
   const citationTarget = useRef(openCitationTarget)
+  const citationLinkHandler = useRef(onOpenCitation)
   useLayoutEffect(() => {
     citationTarget.current = openCitationTarget
+    citationLinkHandler.current = onOpenCitation
   })
   const openCitation = useCallback((citation: AssistantCitation) => citationTarget.current(citation), [])
+  const openCitationLink = useCallback((citation: AssistantCitation) => {
+    return citationLinkHandler.current?.(citation) ?? openCitation(citation)
+  }, [openCitation])
   useImperativeHandle(citationRef, () => ({ open: openCitation }), [openCitation])
 
   useEffect(() => {
@@ -544,7 +550,7 @@ export function ConversationTimeline({
                   sourceThreadId={sourceThreadId} />)}
               </WorkLogDisclosure> : <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
                 onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun}
-                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitation : undefined} />}
+                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined} />}
               {item.id === workingAnchor && workingRow}
             </div>}
           />}

@@ -49,7 +49,7 @@ export function AssistantCitationChip({ citation, onSave, onOpenSource, sent = f
   const anchor = useRef<HTMLButtonElement>(null)
   const active = useInteractionActive()
   const label = assistantCitationLabel(citation)
-  const portalRoot = anchor.current?.closest<HTMLElement>('.my-root')
+  const portalRoot = anchor.current?.closest<HTMLElement>('.my-modal-panel') ?? anchor.current?.closest<HTMLElement>('.my-root')
   const setPopupOpen = (next: boolean): void => {
     if (!next) {
       findRequest.current = null
