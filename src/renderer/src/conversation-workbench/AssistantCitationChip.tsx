@@ -44,13 +44,33 @@ export function AssistantCitationChip({ citation, onSave, onOpenSource, sent = f
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [missing, setMissing] = useState(false)
+  const [finding, setFinding] = useState(false)
+  const findRequest = useRef<symbol | null>(null)
   const anchor = useRef<HTMLButtonElement>(null)
   const active = useInteractionActive()
   const label = assistantCitationLabel(citation)
   const portalRoot = anchor.current?.closest<HTMLElement>('.my-root')
   const setPopupOpen = (next: boolean): void => {
-    if (!next) { setEditing(false); setMissing(false) }
+    if (!next) {
+      findRequest.current = null
+      setEditing(false)
+      setMissing(false)
+      setFinding(false)
+    }
     setOpen(next)
+  }
+  const findSource = async (): Promise<void> => {
+    if (!onOpenSource || findRequest.current) return
+    const request = Symbol()
+    findRequest.current = request
+    setMissing(false)
+    setFinding(true)
+    const found = await onOpenSource(citation).catch(() => false)
+    if (findRequest.current !== request) return
+    findRequest.current = null
+    setFinding(false)
+    if (found) setPopupOpen(false)
+    else setMissing(true)
   }
   return (
     <Popover.Root open={active && open} onOpenChange={setPopupOpen}>
@@ -72,11 +92,12 @@ export function AssistantCitationChip({ citation, onSave, onOpenSource, sent = f
                   {onSave && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)}>
                     <Pencil size={13} aria-hidden="true" />{citation.comment ? '编辑备注' : '添加备注'}
                   </Button>}
-                  {onOpenSource && <Button type="button" size="sm" variant="ghost" onClick={() => {
-                    void onOpenSource(citation).then(found => { if (found) setPopupOpen(false); else setMissing(true) })
-                  }}><ArrowUpRight size={13} aria-hidden="true" />查看原文</Button>}
+                  {onOpenSource && <Button type="button" size="sm" variant="ghost" aria-disabled={finding} aria-busy={finding}
+                    onClick={() => void findSource()}><ArrowUpRight size={13} aria-hidden="true" />
+                    {finding ? '正在查找原文…' : '查看原文'}
+                  </Button>}
                 </div>}
-                {missing && <p className="my-item-description" role="status">当前已加载的会话记录里找不到这段原文。</p>}
+                {missing && <p className="my-item-description" role="status">找不到可访问的原文。</p>}
               </>}
           </Popover.Popup>
         </Popover.Positioner>

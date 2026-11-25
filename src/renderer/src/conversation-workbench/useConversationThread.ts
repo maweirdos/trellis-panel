@@ -595,7 +595,7 @@ export interface ConversationThreadController {
   readonly scope: string
   readonly active: ConversationThreadReading | ConversationThreadReadFailure | undefined
   readonly reload: () => void
-  readonly loadEarlier: () => Promise<void>
+  readonly loadEarlier: () => Promise<boolean>
   readonly loadingEarlier: boolean
   readonly apply: (command: ConversationThreadCommand) => Promise<ConversationApplyResult>
   readonly queue: {
@@ -976,13 +976,13 @@ export function useConversationThread(
     [applyRemembered, threadId],
   )
 
-  const loadEarlier = useCallback(async (): Promise<void> => {
-    if (!target || currentScope.current !== scope || historyReads.current.has(scope)) return
+  const loadEarlier = useCallback(async (): Promise<boolean> => {
+    if (!target || currentScope.current !== scope || historyReads.current.has(scope)) return false
     const selection = target
     const key = scope
     const current = projectionCache.get(key)?.projection
     const historyCursor = current?.historyCursor
-    if (!current || !historyCursor) return
+    if (!current || !historyCursor) return false
     historyReads.current.add(key)
     setLoadingEarlierScopes(new Set(historyReads.current))
     try {
@@ -993,24 +993,25 @@ export function useConversationThread(
         limit: 32,
         ...(locator && { task: locator }),
       })
-      if (currentScope.current !== key) return
+      if (currentScope.current !== key) return false
       if (!result.ok) throw Object.assign(new Error(result.error), { code: result.code })
       const page: ConversationThreadHistoryPage = result.page
       const latest = projectionCache.get(key)?.projection
       if (!latest || !sameReadIdentity(latest.historyCursor, historyCursor) ||
-        latest.historyCursor?.beforeRunOrdinal !== historyCursor.beforeRunOrdinal) return
+        latest.historyCursor?.beforeRunOrdinal !== historyCursor.beforeRunOrdinal) return false
       historyPageCursor(page, historyCursor)
       const merged = prependHistory(latest, [page])
       remember(key, merged)
       setState((value) => (value?.scope === key && value.target === selection ? { ...value, result: { projection: merged } } : value))
+      return true
     } catch (error) {
-      if (currentScope.current !== key) return
+      if (currentScope.current !== key) return false
       const code = (error as { code?: unknown }).code
       if (code === IpcErrorCode.ResetRequired) {
         projectionCache.delete(key)
         setState(undefined)
         reload()
-        return
+        return false
       }
       const lostAccess = losesReadAccess(code)
       if (lostAccess) projectionCache.delete(key)
@@ -1025,6 +1026,7 @@ export function useConversationThread(
             }
           : current,
       )
+      return false
     } finally {
       historyReads.current.delete(key)
       setLoadingEarlierScopes(new Set(historyReads.current))

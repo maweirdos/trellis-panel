@@ -76,7 +76,7 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
       workingStartedAt={runStartIso(activeRun)}
       workingUserMessageId={activeRun?.userMessageId}
       hasOlderHistory={Boolean(childrenReady && projection.hasOlderHistory)} loadingEarlier={controller.loadingEarlier}
-      onLoadEarlier={() => void controller.loadEarlier()}
+      onLoadEarlier={controller.loadEarlier}
       onQuote={canReference && onAddToParentDraft ? message => onAddToParentDraft({ threadId, label: title, messageIds: [message.id] }) : undefined}
       footer={childrenReady && <>
         {canCompose && <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!canOperate} />}

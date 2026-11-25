@@ -3,7 +3,7 @@ import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import { flushSync } from 'react-dom'
 import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, Globe, ListChecks, LoaderCircle } from 'lucide-react'
 import { Button } from '../my/ui'
-import { useInteractionGuard } from '../utils/interaction-scope'
+import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import { LOCAL_ASSISTANT_CITATION_ENVIRONMENT } from '../../../shared/conversation/assistantCitationText'
 import { resolveAssistantCitationRange } from './AssistantCitationSource'
@@ -57,7 +57,7 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly workingUserMessageId?: string
   readonly hasOlderHistory: boolean
   readonly loadingEarlier: boolean
-  readonly onLoadEarlier: () => void
+  readonly onLoadEarlier: () => Promise<boolean>
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
   readonly footer?: ReactNode
   readonly emptyTitle?: string
@@ -72,6 +72,12 @@ interface ReadingPosition {
   readonly anchorId: string
   readonly offset: number
   readonly atEnd?: boolean
+}
+
+interface CitationSeek {
+  readonly citation: AssistantCitation
+  readonly resolve: (found: boolean) => void
+  phase: 'ready' | 'loading' | 'revealing'
 }
 
 const readPositions = new Map<string, ReadingPosition>()
@@ -157,6 +163,12 @@ function hasActivityAfter(rows: readonly ConversationTimelineRow[], anchor: numb
   return false
 }
 
+function citationRowIndex(rows: readonly ConversationTimelineRow[], messageId: string): number {
+  const matches = (row: ConversationTimelineRow) =>
+    row.kind === 'message' && row.message.id === messageId && row.message.role === 'assistant'
+  return rows.findIndex(row => matches(row) || (row.kind === 'work-fold' && row.entries.some(matches)))
+}
+
 export function ConversationTimeline({
   threadId,
   rows,
@@ -187,8 +199,12 @@ export function ConversationTimeline({
   const [openWorkLogs, setOpenWorkLogs] = useState<ReadonlySet<string>>(() => new Set())
   const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow }),
     [openWorkLogs, workingAnchor, workingRow])
+  const interactionActive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
+  const pendingCitationSeek = useRef<CitationSeek | null>(null)
+  const citationNavigationGeneration = useRef(0)
+  const [citationSeekRevision, setCitationSeekRevision] = useState(0)
   const [follow, setFollow] = useState(() => loadReadingPosition(threadId)?.atEnd !== false)
   const [minimapGutter, setMinimapGutter] = useState(false)
   const [minimapHitWidth, setMinimapHitWidth] = useState(0)
@@ -331,7 +347,7 @@ export function ConversationTimeline({
       restoreThrough.current === earliestRow || restorePages.current >= MAX_RESTORE_PAGES) return
     restoreThrough.current = earliestRow
     restorePages.current += 1
-    onLoadEarlier()
+    void onLoadEarlier()
   }, [threadId, rows, loadingEarlier, hasOlderHistory, onLoadEarlier, scrollElement])
 
   const releaseFollow = (): void => {
@@ -342,10 +358,15 @@ export function ConversationTimeline({
 
   const loadEarlier = (): void => {
     releaseFollow()
-    onLoadEarlier()
+    void onLoadEarlier()
   }
 
   useEffect(() => () => stopCitationHighlight.current?.(), [sourceThreadId])
+  useLayoutEffect(() => () => {
+    citationNavigationGeneration.current += 1
+    pendingCitationSeek.current?.resolve(false)
+    pendingCitationSeek.current = null
+  }, [threadId, sourceThreadId])
 
   const setWorkLogOpen = (id: string, open: boolean): void => {
     setOpenWorkLogs(current => {
@@ -357,13 +378,24 @@ export function ConversationTimeline({
     })
   }
 
-  const openCitationTarget = async (citation: AssistantCitation): Promise<boolean> => {
+  const openCitationTarget = async (citation: AssistantCitation, allowHistory = true): Promise<boolean> => {
     if (!canInteract() || !scrollElement || !sourceThreadId ||
       citation.environmentId !== LOCAL_ASSISTANT_CITATION_ENVIRONMENT || citation.threadId !== sourceThreadId) return false
-    const matches = (row: ConversationTimelineRow) => row.kind === 'message' && row.message.id === citation.messageId && row.message.role === 'assistant'
-    const index = rows.findIndex(row => matches(row) || (row.kind === 'work-fold' && row.entries.some(matches)))
-    if (index === -1) return false
+    if (allowHistory) {
+      citationNavigationGeneration.current += 1
+      pendingCitationSeek.current?.resolve(false)
+      pendingCitationSeek.current = null
+    }
+    const generation = citationNavigationGeneration.current
+    const index = citationRowIndex(rows, citation.messageId)
+    if (index < 0 && (!allowHistory || !hasOlderHistory)) return false
     releaseFollow()
+    if (index < 0) {
+      return new Promise<boolean>(resolve => {
+        pendingCitationSeek.current = { citation, resolve, phase: 'ready' }
+        setCitationSeekRevision(revision => revision + 1)
+      })
+    }
     const target = rows[index]
     if (target.kind === 'work-fold' && !openWorkLogs.has(target.id)) {
       flushSync(() => setWorkLogOpen(target.id, true))
@@ -371,7 +403,7 @@ export function ConversationTimeline({
     try {
       await listRef.current?.scrollToIndex({ index, viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET, animated: false })
     } catch { return false }
-    if (!canInteract() || !scrollElement.isConnected) return false
+    if (!canInteract() || !scrollElement.isConnected || citationNavigationGeneration.current !== generation) return false
     const node = scrollElement.querySelector<HTMLElement>(`[data-assistant-citation-source="${CSS.escape(citation.messageId)}"]`)
     const range = node && resolveAssistantCitationRange(node, citation)
     if (!node || !range) return false
@@ -397,6 +429,44 @@ export function ConversationTimeline({
   })
   const openCitation = useCallback((citation: AssistantCitation) => citationTarget.current(citation), [])
   useImperativeHandle(citationRef, () => ({ open: openCitation }), [openCitation])
+
+  useEffect(() => {
+    const seek = pendingCitationSeek.current
+    if (!seek || seek.phase === 'revealing') return
+    const finish = (found: boolean): void => {
+      if (pendingCitationSeek.current !== seek) return
+      pendingCitationSeek.current = null
+      seek.resolve(found)
+    }
+    if (!interactionActive || seek.citation.threadId !== sourceThreadId) {
+      finish(false)
+      return
+    }
+    if (citationRowIndex(rows, seek.citation.messageId) >= 0) {
+      seek.phase = 'revealing'
+      queueMicrotask(() => {
+        if (pendingCitationSeek.current !== seek) return
+        void citationTarget.current(seek.citation, false).then(finish, () => finish(false))
+      })
+      return
+    }
+    if (!hasOlderHistory) {
+      finish(false)
+      return
+    }
+    if (loadingEarlier || seek.phase === 'loading') return
+    seek.phase = 'loading'
+    void onLoadEarlier().then(loaded => {
+      if (pendingCitationSeek.current !== seek) return
+      if (!loaded) {
+        finish(false)
+        return
+      }
+      if (seek.phase !== 'loading') return
+      seek.phase = 'ready'
+      setCitationSeekRevision(revision => revision + 1)
+    }, () => finish(false))
+  }, [citationSeekRevision, hasOlderHistory, interactionActive, loadingEarlier, onLoadEarlier, rows, sourceThreadId])
 
   useEffect(() => {
     if (!scrollElement) return

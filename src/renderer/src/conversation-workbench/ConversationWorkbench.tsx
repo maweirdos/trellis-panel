@@ -711,7 +711,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           workingStartedAt={runStartIso(activeRun)}
           workingUserMessageId={activeRun?.userMessageId}
           hasOlderHistory={Boolean(projection?.hasOlderHistory)} loadingEarlier={loadingEarlier}
-          onLoadEarlier={() => void loadEarlier()}
+          onLoadEarlier={loadEarlier}
           onQuote={writable && projection ? (message, text) => {
             composer.addReference({
               id: crypto.randomUUID(),
