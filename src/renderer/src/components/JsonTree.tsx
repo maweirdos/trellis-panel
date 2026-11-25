@@ -105,10 +105,10 @@ export function JsonTree({ data }: { data: unknown }): JSX.Element {
   return (
     <div className="font-mono text-my-sm">
       <div className="mb-2 flex gap-1.5">
-        <button onClick={() => setExpandToken(1)} className="my-chip border border-my-line-strong hover:border-my-line-accent">
+        <button onClick={() => setExpandToken(1)} className="my-chip border border-my-line-strong transition-colors hover:border-my-line-accent-subtle hover:bg-my-layer-1">
           展开全部
         </button>
-        <button onClick={() => setExpandToken(-1)} className="my-chip border border-my-line-strong hover:border-my-line-accent">
+        <button onClick={() => setExpandToken(-1)} className="my-chip border border-my-line-strong transition-colors hover:border-my-line-accent-subtle hover:bg-my-layer-1">
           折叠全部
         </button>
       </div>

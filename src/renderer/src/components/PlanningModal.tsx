@@ -254,11 +254,11 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
             <div className="space-y-3">
               <label className="block">
                 <span className="my-item-title mb-1 block">需求标题</span>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="如：退药审核行内绑定与比对回退" />
+                <input value={title} onChange={(e) => setTitle(e.target.value)} className="my-input h-8 px-2 py-0 text-my-sm" placeholder="如：退药审核行内绑定与比对回退" />
               </label>
               <label className="block">
                 <span className="my-item-title mb-1 block">需求描述（可编辑）</span>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="Jira 描述或原始需求…" />
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={7} className="my-input resize-y px-2 py-1.5 font-mono text-my-sm" placeholder="Jira 描述或原始需求…" />
               </label>
               <div className="flex items-center gap-2 pt-1">
                 <Button variant="primary" disabled={!aiEnabled} onClick={() => void generate()}>
@@ -303,7 +303,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="block">
                   <span className="my-item-title mb-1 block">任务标题</span>
-                  <input value={plan.title} onChange={(e) => setPlan({ ...plan, title: e.target.value })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
+                  <input value={plan.title} onChange={(e) => setPlan({ ...plan, title: e.target.value })} className="my-input h-8 px-2 py-0 text-my-sm" />
                 </label>
                 <label className="block">
                   <span className="my-item-title mb-1 block">优先级</span>
@@ -330,11 +330,11 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className="my-item-title mb-1 block">分支建议</span>
-                  <input value={plan.branch ?? ''} onChange={(e) => setPlan({ ...plan, branch: e.target.value })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" placeholder="feat/xxx" />
+                  <input value={plan.branch ?? ''} onChange={(e) => setPlan({ ...plan, branch: e.target.value })} className="my-input h-8 px-2 py-0 font-mono text-my-sm" placeholder="feat/xxx" />
                 </label>
                 <label className="block">
                   <span className="my-item-title mb-1 block">范围 / 模块（可选）</span>
-                  <input value={plan.scope ?? ''} onChange={(e) => setPlan({ ...plan, scope: e.target.value || null })} className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
+                  <input value={plan.scope ?? ''} onChange={(e) => setPlan({ ...plan, scope: e.target.value || null })} className="my-input h-8 px-2 py-0 text-my-sm" />
                 </label>
               </div>
               <label className="block">
@@ -342,11 +342,11 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
                 <div className="max-h-56 overflow-y-auto rounded-my-lg border border-my-line bg-my-canvas p-3">
                   <MarkdownView content={plan.description} />
                 </div>
-                <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="mt-1.5 w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" title="编辑 PRD 原文" />
+                <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="my-input mt-1.5 resize-y px-2 py-1.5 font-mono text-my-xs" title="编辑 PRD 原文" />
               </label>
               <label className="block">
                 <span className="my-item-title mb-1 block">子任务（每行一条）</span>
-                <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2 py-1.5 font-mono text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent" />
+                <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="my-input resize-y px-2 py-1.5 font-mono text-my-sm" />
               </label>
               {(plan.questions.length > 0 || result?.sources.length === 0) && (
                 <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3">

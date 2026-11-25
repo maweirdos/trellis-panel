@@ -150,7 +150,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
               value={title}
               onChange={(e) => { edited(); setTitle(e.target.value) }}
               placeholder="一句话说清要做什么，如：增加 Jira 状态映射配置"
-              className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="my-input h-8 px-2.5 py-0 text-my-sm"
               onKeyDown={(e) => {
                 if (e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229 || e.key !== 'Enter') return
                 e.preventDefault()
@@ -167,7 +167,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
               onChange={(e) => { edited(); setDesc(e.target.value) }}
               rows={6}
               placeholder="背景、验收标准、涉及模块…（AI 认领时可直接读取）"
-              className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-2.5 py-1.5 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              className="my-input resize-y px-2.5 py-1.5 text-my-sm"
             />
           </div>
           <div>

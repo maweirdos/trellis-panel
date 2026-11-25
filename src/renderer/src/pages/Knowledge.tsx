@@ -777,7 +777,7 @@ function KnowledgePageContent(): JSX.Element {
                 value={noteDraft.name}
                 onChange={(e) => updateNoteDraft({ ...noteDraft, name: e.target.value })}
                 placeholder="笔记名（支持中英文/数字/空格）"
-                className="min-w-0 max-w-[260px] flex-1 rounded-my-md border border-my-line bg-my-layer-2 px-2 py-1 font-mono text-my-xs text-my-primary outline-none focus:border-my-line-accent"
+                className="my-input h-7 max-w-[260px] flex-1 px-2 py-0 font-mono text-my-xs"
                 disabled={!noteDraft.isNew}
               />
               <div className="ml-auto flex items-center gap-1.5">
@@ -795,7 +795,7 @@ function KnowledgePageContent(): JSX.Element {
                 value={noteDraft.content}
                 onChange={(e) => updateNoteDraft({ ...noteDraft, content: e.target.value })}
                 spellCheck={false}
-                className="h-full w-full resize-none rounded-my-lg border border-my-line bg-my-surface-1 p-4 font-mono text-my-sm leading-6 text-my-primary outline-none focus:border-my-line-accent"
+                className="my-input h-full w-full resize-none p-4 font-mono text-my-sm leading-6"
                 placeholder="# 标题&#10;&#10;用 Markdown 记录知识，保存后立即进入五库检索与 AI 问答…"
               />
             </div>

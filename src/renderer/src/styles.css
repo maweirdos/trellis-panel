@@ -259,3 +259,4 @@ rect.arch-node-agent { fill: var(--my-label-purple-bg); stroke: var(--my-label-p
 .arch-node:hover rect { stroke: var(--my-txt-accent-primary); stroke-width: 1.6; }
 .arch-node-dim { opacity: .38; }
 .arch-node-live rect { stroke: var(--my-txt-accent-primary); stroke-width: 2; }
+@media (prefers-reduced-motion: reduce) { .arch-flow-dot { display: none; } }

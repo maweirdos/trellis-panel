@@ -351,7 +351,7 @@ export function FlowStudio(): JSX.Element {
                   onChange={(e) => setIdea(e.target.value)}
                   rows={4}
                   placeholder={'例如：\n· 帮我调研项目里所有和「支付」相关的规范和任务，整理成一份给新人看的简报\n· 每周五扫描任务看板，找出停滞的任务并给出处理建议'}
-                  className="w-full resize-none rounded-my-lg border border-my-line bg-my-surface-1 p-3 text-my-xs leading-6 text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                  className="my-input resize-none p-3 text-my-xs leading-6"
                 />
                 <div className="mt-3 flex items-center gap-2">
                   <Button variant="primary" onClick={() => void generate()} disabled={generating || !idea.trim()} className="text-my-xs">
@@ -381,7 +381,7 @@ export function FlowStudio(): JSX.Element {
                         onChange={(e) => setDraftJson(e.target.value)}
                         spellCheck={false}
                         rows={16}
-                        className="w-full resize-none rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-xs leading-5 text-my-primary outline-none focus:border-my-line-accent"
+                        className="my-input resize-none p-3 font-mono text-my-xs leading-5"
                       />
                     ) : (
                       <FlowVisual def={draft} />
@@ -419,7 +419,7 @@ export function FlowStudio(): JSX.Element {
                         value={runInputs[i.name] ?? ''}
                         onChange={(e) => setRunInputs({ ...runInputs, [i.name]: e.target.value })}
                         placeholder={i.default || ''}
-                        className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 px-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                        className="my-input h-8 px-2 py-0 text-my-sm"
                       />
                     </div>
                   ))}

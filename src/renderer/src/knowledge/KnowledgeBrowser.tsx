@@ -191,7 +191,7 @@ export function KnowledgeBrowser(props: Props): JSX.Element {
   return <>
     <aside id="knowledge-directory" hidden={!props.treeVisible} data-overlay={props.treeOverlay} className="knowledge-browser-tree shrink-0 border-r border-my-line bg-my-surface-1" aria-label="文件目录">
       <div className="flex h-my-header shrink-0 items-center border-b border-my-line px-4 text-my-xs font-semibold text-my-tertiary">文件目录</div>
-      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <div className="my-scrollbar my-fade-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {!available ? <p className="px-2 py-3 text-my-xs text-my-tertiary">{!props.root ? '请先打开项目' : '项目服务不可用'}</p> : props.remote ? <>
           <div className="px-2 pb-2 text-my-2xs text-my-tertiary">项目绑定的知识库</div>
           {props.collections.map((collection) => <button key={collection.id} type="button" onClick={() => { props.onCollection(collection.id); props.onBrowse() }} className={clsx('flex w-full items-center gap-2 rounded-my-md px-2 py-2 text-left text-my-xs', props.collectionId === collection.id ? 'bg-my-accent-subtle text-my-primary' : 'text-my-secondary hover:bg-my-layer-transparent-hover')}><Cloud size={14} /><span className="truncate" title={collection.name}>{collection.name}</span></button>)}
@@ -205,7 +205,7 @@ export function KnowledgeBrowser(props: Props): JSX.Element {
         <div className="w-64 min-w-0 max-w-[40%]">{available ? <SearchInput value={props.query} onChange={props.onQuery} placeholder={props.remote ? '搜索知识库…' : '搜索资料…'} /> : <input className="my-input w-full" disabled aria-label={props.remote ? '搜索知识库' : '搜索资料'} placeholder={props.remote ? '搜索知识库…' : '搜索资料…'} />}</div>
         {!props.remote && <Button size="sm" variant="outline" disabled={!props.noteAvailable} onClick={props.onNewNote}>新建笔记</Button>}
       </div>
-      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto"><div className="mx-auto w-full max-w-[1000px] px-5 py-5">
+      <div className="my-scrollbar my-fade-scroll min-h-0 flex-1 overflow-y-auto"><div className="mx-auto w-full max-w-[1000px] px-5 py-5">
         {!available ? <div role="status" className="py-12 text-center text-my-sm text-my-tertiary">{!props.root && <p>尚未打开项目，请先打开项目。</p>}{!props.serviceAvailable && <p>桌面项目服务不可用，请在桌面应用中打开项目。</p>}</div> : <>
         <p className="pb-3 text-my-xs text-my-tertiary">{props.remote ? (props.remoteFolder === null ? '全部文档' : props.remoteFolder || '根目录') : (folder || '当前项目')}</p>
         {props.remote && searching && <p className="pb-3 text-my-xs text-my-tertiary">搜索项目绑定范围{props.collectionId ? '，当前列表按所选知识库筛选' : ''}；搜索不按目录筛选。</p>}
@@ -224,7 +224,7 @@ export function KnowledgeBrowser(props: Props): JSX.Element {
         {visibleRows.map((row) => {
           if (!props.remote) {
             const { doc, hit } = row as { doc: KbDoc; hit?: KbHit }
-            return <button key={doc.id} type="button" onClick={() => props.onOpenLocal(doc)} aria-pressed={props.selectedLocal === doc.id} className="flex w-full items-center gap-3 border-b border-my-line px-3 py-3 text-left hover:bg-my-layer-1"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-my-md bg-my-layer-2 text-my-icon-tertiary"><FileText size={17} /></span><span className="min-w-0 flex-1"><span className="my-item-title block truncate">{doc.title}</span><span className="my-item-description block truncate">{hit ? hit.snippet.replace(/[\u0000\u0001]/g, '') : localFolder(props.root, doc) || doc.name}</span></span><span className="my-item-description w-28 shrink-0 text-right">{relTime(doc.mtime)}</span></button>
+            return <button key={doc.id} type="button" onClick={() => props.onOpenLocal(doc)} aria-pressed={props.selectedLocal === doc.id} className="flex w-full items-center gap-3 border-b border-my-line px-3 py-3 text-left transition-colors hover:bg-my-layer-1"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-my-md bg-my-layer-2 text-my-icon-tertiary"><FileText size={17} /></span><span className="min-w-0 flex-1"><span className="my-item-title block truncate">{doc.title}</span><span className="my-item-description block truncate">{hit ? hit.snippet.replace(/[\u0000\u0001]/g, '') : localFolder(props.root, doc) || doc.name}</span></span><span className="my-item-description w-28 shrink-0 text-right tabular-nums">{relTime(doc.mtime)}</span></button>
           }
           const item = row as RemoteDocument | KnowledgeSource
           const handle = item.sourceHandle
