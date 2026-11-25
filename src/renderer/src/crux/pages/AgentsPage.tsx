@@ -1,12 +1,21 @@
 /** Agent 职责、技能和生命周期配置。 */
 import { useState } from 'react'
-import { Archive, Plus, RotateCcw } from 'lucide-react'
+import { Archive, Cpu, Plus, RotateCcw } from 'lucide-react'
 import type { CruxAgent, CruxAgentInput, CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
 import { api } from '../../api'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import { FlowIcon } from '../icons'
+import {
+  APPROVAL_OPTIONS_BY_RUNTIME,
+  MODEL_PRESET_OPTIONS,
+  RUNTIME_KIND_OPTIONS,
+  WORKDIR_MODE_OPTIONS,
+  runtimeKindLabel,
+  useLocalExecutionSlot,
+  type LocalApprovalPolicy
+} from '../local-execution-slot'
 import { useCrux } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, compactInputClass, Select } from '../ui'
+import { PageHeader, Field, inputClass, textareaClass, Select } from '../ui'
 
 type AgentView = 'active' | 'disabled' | 'archived' | 'exclusive'
 
@@ -24,6 +33,7 @@ export function AgentsPage(): JSX.Element | null {
   const currentSpaceId = useCrux((state) => state.currentSpaceId)
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
+  const resolveAgentSlot = useLocalExecutionSlot((state) => state.resolveAgentSlot)
   const [editing, setEditing] = useState<CruxAgent | 'new' | null>(null)
   const [view, setView] = useState<AgentView>('active')
   const [keyword, setKeyword] = useState('')
@@ -33,7 +43,7 @@ export function AgentsPage(): JSX.Element | null {
     (view === 'archived' ? agent.archived : !agent.archived && (view === 'exclusive' ? Boolean(agent.exclusiveCrewId) : !agent.exclusiveCrewId && (view === 'active' ? agent.enabled : !agent.enabled))))
 
   return <div className="flex min-h-0 flex-1 flex-col gap-3">
-    <PageHeader title="Agent" description="维护稳定职责、工作指令与技能；任务目标和验收标准留在任务中。"
+    <PageHeader title="Agent" description="第一层维护团队共享职责、工作指令与技能；第二层本机执行槽（Runtime/模型/审批）仅在各人本机生效。"
       actions={<Button variant="primary" size="sm" disabled={busy || !currentSpaceId} onClick={() => setEditing('new')}><Plus size={14} />新建 Agent</Button>} />
     <div className="flex flex-wrap items-center gap-2">
       <input className={`${inputClass} max-w-xs`} aria-label="搜索 Agent" placeholder="搜索 Agent 名称或职责" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
@@ -51,21 +61,23 @@ export function AgentsPage(): JSX.Element | null {
       />
       <span className="text-my-xs text-my-tertiary">{agents.length} 个 Agent</span>
     </div>
-    <p className="text-my-xs text-my-tertiary">此处保存协作配置。指派后的执行与对话等待 Runtime 接入。</p>
+    <p className="text-my-xs text-my-tertiary">团队共享岗位定义（左侧/上级配置）；各自本机默认执行槽可在「Agent 目录」全局设置或点「编辑」单独覆盖。</p>
     {agents.length === 0 ? <EmptyState title="没有匹配的 Agent" description="调整筛选，或先创建一个职责明确的 Agent" /> :
       <div className="my-scrollbar grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
         {agents.map((agent) => {
           const tasks = snapshot.tasks.filter((task) => task.executor?.kind === 'agent' && task.executor.id === agent.id)
           const crews = snapshot.crews.filter((crew) => crew.captain.id === agent.id || crew.members.some((ref) => ref.kind === 'agent' && ref.id === agent.id))
           const captainOf = crews.find((crew) => !crew.archived && crew.captain.id === agent.id)
+          const localSlot = resolveAgentSlot(agent.id)
           return <section key={agent.id} className="flex flex-col gap-3 rounded-my-md border border-my-line bg-my-layer-1 p-3">
             <header className="flex items-start gap-2">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-md bg-my-layer-2 text-my-secondary"><FlowIcon name="agents" size={20} /></span>
               <div className="min-w-0 flex-1"><h2 className="my-item-title truncate">{agent.name}</h2><p className="my-item-description">{agent.description || '暂无职责描述'}</p></div>
               {!agent.archived && <Switch checked={agent.enabled} disabled={busy || Boolean(captainOf)} label={captainOf ? `请先更换「${captainOf.name}」的队长` : `启用 ${agent.name}`} onChange={(enabled) => void run('更新 Agent 状态', () => api.crux.saveAgent({ ...agentInput(agent), enabled }))} />}
             </header>
-            <div className="flex flex-wrap gap-2 text-my-2xs text-my-tertiary">
+            <div className="flex flex-wrap items-center gap-2 text-my-2xs text-my-tertiary">
               <span>{agent.archived ? '已归档' : agent.enabled ? '已启用' : '已停用'}</span>
+              <span className="inline-flex items-center gap-1 text-my-secondary"><Cpu size={11} aria-hidden="true" />本机槽位：{localSlot.overridden ? '单独覆盖' : '跟随默认'} · {runtimeKindLabel(localSlot.slot.runtimeKind)}</span>
               {agent.exclusiveCrewId && <span>小队专属 · {snapshot.crews.find((crew) => crew.id === agent.exclusiveCrewId)?.name ?? '所属小队'}</span>}
               {captainOf && <span>队长 · {captainOf.name}</span>}
             </div>
@@ -97,6 +109,7 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
   const snapshot = useCrux((state) => state.snapshot)
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
+  const { resolveAgentSlot, setAgentOverride, clearAgentOverride, conflictNotice, clearConflictNotice } = useLocalExecutionSlot()
   const [name, setName] = useState(agent?.name ?? '')
   const [description, setDescription] = useState(agent?.description ?? '')
   const [instructions, setInstructions] = useState(agent?.instructions ?? '')
@@ -106,6 +119,7 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
   const [repos, setRepos] = useState((agent?.repositories ?? []).map((repo) => repo.name).join('\n'))
   if (!snapshot) return null
   const skills = snapshot.skills.filter((skill) => !skill.spaceId || skill.spaceId === (agent?.spaceId ?? spaceId))
+  const localSlot = agent ? resolveAgentSlot(agent.id) : null
   const submit = async (): Promise<void> => {
     if (busy || !name.trim() || !instructions.trim()) return
     const repositories = [...new Set(repos.split('\n').map((value) => value.trim()).filter(Boolean))]
@@ -122,6 +136,7 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
       <h2 className="shrink-0 text-sm font-semibold text-my-primary">{agent ? `编辑 ${agent.name}` : '新建 Agent'}</h2>
       <div className="my-scrollbar min-h-0 overflow-y-auto pr-1">
         <div className="flex flex-col gap-3">
+          <p className="text-my-2xs font-medium text-my-tertiary">第一层：共享岗位定义（随团队空间同步）</p>
           <div className="grid grid-cols-2 gap-2"><Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="如：前端修复" /></Field><Field label="职责描述"><input className={inputClass} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="适合承接什么工作" /></Field></div>
           <Field label="工作指令" hint="写清职责、动手前检查、需要先问人的情形、验证方式和汇报要求。">
             <textarea className={`${textareaClass} font-mono text-my-xs`} style={{ minHeight: 'var(--my-space-144)' }} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="接到任务后先阅读需求和最近评论；修改后运行相关检查；汇报结果、验证与风险。" />
@@ -132,11 +147,11 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
               <span><span className="font-medium">{skill.name}</span><span className="ml-2 text-my-2xs text-my-tertiary">{skill.spaceId ? '空间技能' : '组织技能'}</span>{skill.description && <span className="mt-1 block text-my-tertiary">{skill.description}</span>}</span>
             </label>)}{skills.length === 0 && <p className="text-my-xs text-my-tertiary">暂无可用技能，可先在技能库中创建。</p>}</div>
           </fieldset>
-          <details className="rounded-my-md border border-my-line p-2.5 text-my-xs text-my-secondary"><summary className="cursor-pointer">代码库与执行配置引用</summary>
+          <details className="rounded-my-md border border-my-line p-2.5 text-my-xs text-my-secondary"><summary className="cursor-pointer">团队默认引用（代码库与参考引擎）</summary>
             <div className="mt-3 flex flex-col gap-3">
-              <p className="text-my-tertiary">仅保存配置引用；连接、隔离目录和实际执行由 Runtime 模块提供。</p>
+              <p className="text-my-tertiary">仅保存团队参考引用；实际执行时的本机 Runtime、审批与目录偏好由成员各自的「本机执行槽」接管。</p>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Runtime 引用">
+                <Field label="参考 Runtime">
                   <Select
                     className="w-full"
                     value={runtimeKind}
@@ -148,7 +163,7 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
                     ]}
                   />
                 </Field>
-                <Field label="目录模式引用">
+                <Field label="参考目录模式">
                   <Select
                     className="w-full"
                     value={workingDirectory}
@@ -163,6 +178,46 @@ export function AgentEditor({ agent, spaceId, onClose }: { agent: CruxAgent | nu
               <Field label="代码库名称（每行一个）"><textarea className={`${textareaClass} font-mono text-my-xs`} style={{ minHeight: 'var(--my-space-64)' }} value={repos} onChange={(event) => setRepos(event.target.value)} /></Field>
             </div>
           </details>
+          <section aria-label="第二层：我的本机执行槽" className="rounded-my-base border border-my-line bg-my-layer-1 p-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="flex items-center gap-1.5 text-my-xs font-medium text-my-primary"><Cpu size={13} aria-hidden="true" />第二层：我的本机执行槽（仅当前设备生效）</h3>
+                <p className="mt-0.5 text-my-2xs text-my-tertiary">{agent && localSlot ? (localSlot.overridden ? '当前已为此岗位单独覆盖本机配置' : '当前继承我的全局本机默认执行槽') : '保存新岗位后，将自动继承我的全局本机默认执行槽'}</p>
+              </div>
+              {agent && localSlot && <Switch checked={localSlot.overridden} label="为此岗位单独覆盖" onChange={(checked) => {
+                if (checked) setAgentOverride(agent.id, { ...localSlot.slot })
+                else clearAgentOverride(agent.id)
+              }} />}
+            </div>
+            {agent && localSlot && (
+              <div className="grid grid-cols-2 gap-2 text-my-xs">
+                <Field label="本机 Runtime 引擎">
+                  <Select className="w-full" disabled={!localSlot.overridden} value={localSlot.slot.runtimeKind}
+                    onChange={(val) => setAgentOverride(agent.id, { runtimeKind: val as CruxRuntimeKind })}
+                    options={[...RUNTIME_KIND_OPTIONS]} />
+                </Field>
+                <Field label="本机默认模型">
+                  <Select className="w-full" disabled={!localSlot.overridden} value={localSlot.slot.model}
+                    onChange={(val) => setAgentOverride(agent.id, { model: val })}
+                    options={[...MODEL_PRESET_OPTIONS]} />
+                </Field>
+                <Field label="审批策略">
+                  <Select className="w-full" disabled={!localSlot.overridden} value={localSlot.slot.approvalPolicy}
+                    onChange={(val) => setAgentOverride(agent.id, { approvalPolicy: val as LocalApprovalPolicy })}
+                    options={[...APPROVAL_OPTIONS_BY_RUNTIME[localSlot.slot.runtimeKind]]} />
+                </Field>
+                <Field label="目录执行策略">
+                  <Select className="w-full" disabled={!localSlot.overridden} value={localSlot.slot.workingDirectory}
+                    onChange={(val) => setAgentOverride(agent.id, { workingDirectory: val as CruxWorkingDirectoryMode })}
+                    options={[...WORKDIR_MODE_OPTIONS]} />
+                </Field>
+              </div>
+            )}
+            {conflictNotice && <div className="flex items-center justify-between gap-2 text-my-2xs text-my-warning-text" role="status">
+              <span>{conflictNotice}</span>
+              <button type="button" className="text-my-secondary hover:text-my-primary" onClick={clearConflictNotice}>知道了</button>
+            </div>}
+          </section>
         </div>
       </div>
       <div className="flex shrink-0 justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy || !name.trim() || !instructions.trim()} onClick={() => void submit()}>{busy ? '保存中…' : agent ? '保存' : '创建'}</Button></div>

@@ -135,6 +135,20 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
         {currentDialog?.kind === 'binding' && root && connection && <BindingEditor key={`${owner}:${currentDialog.binding?.id ?? 'new'}:${currentDialog.binding?.revision ?? 0}`} root={root} connection={connection} provider={context.provider} binding={currentDialog.binding} onClose={() => setDialog(null)} onSaved={refresh} />}
       </InteractionScope>
     </IntegrationProviderFrame> : <div ref={directory} className="preferences-page" data-integration-directory>
+      <section aria-label="集成三层归属说明" className="mb-5 grid gap-3 rounded-my-base border border-my-line bg-my-panel p-4 md:grid-cols-3">
+        <div>
+          <p className="text-my-xs font-semibold text-my-primary">1 · 组织连接</p>
+          <p className="mt-1 text-my-xs text-my-secondary">组织统一注册企业服务地址与连接器（Jira、GitLab、企业 WeKnora），供多个团队空间复用。</p>
+        </div>
+        <div>
+          <p className="text-my-xs font-semibold text-my-primary">2 · 空间绑定</p>
+          <p className="mt-1 text-my-xs text-my-secondary">每个空间只关联对应的代码库、工作流项目或知识库范围，空间成员共享同一协作视图。</p>
+        </div>
+        <div>
+          <p className="text-my-xs font-semibold text-my-primary">3 · 个人授权</p>
+          <p className="mt-1 text-my-xs text-my-secondary">个人 OAuth 身份、凭据令牌与本机通知只保存在当前用户与设备中，不会覆盖他人凭据。</p>
+        </div>
+      </section>
       {INTEGRATION_DIRECTORY_GROUPS.map((group, index) => <PreferenceSection key={group.id} id={`integration-group-${group.id}`} title={group.name} action={index === 0 ? <Button size="sm" variant="ghost" aria-label="刷新集成" disabled={bridge !== 'ready' || loading} onClick={() => void refresh()}><RefreshCw size={13} />刷新</Button> : undefined}><div className="integration-directory-grid">
         {INTEGRATION_DIRECTORY.filter((item) => item.category === group.id).map((item) => {
           const count = item.id === 'feishu' ? undefined : data?.connections.filter((saved) => saved.providerId === item.providerId).length
