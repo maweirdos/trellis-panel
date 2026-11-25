@@ -73,6 +73,7 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
     <ConversationTimeline key={timelineKey} threadId={timelineKey} rows={rows}
       working={!result || Boolean(childrenReady && activeRun && isActiveRun(activeRun) && !result?.error)}
       workingLabel={!result ? '正在读取会话…' : undefined}
+      workingUserMessageId={activeRun?.userMessageId}
       hasOlderHistory={Boolean(childrenReady && projection.hasOlderHistory)} loadingEarlier={controller.loadingEarlier}
       onLoadEarlier={() => void controller.loadEarlier()}
       onQuote={canReference && onAddToParentDraft ? message => onAddToParentDraft({ threadId, label: title, messageIds: [message.id] }) : undefined}

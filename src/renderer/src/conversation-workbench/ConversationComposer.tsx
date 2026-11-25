@@ -129,8 +129,8 @@ export function ConversationComposer({
     if (catalogStatus === 'idle') void refresh()
     else if (selectedInstance && !selectedInstance.read) void ensure(selectedInstanceId)
   }, [catalogStatus, describeForSkill, ensure, refresh, selectedInstance, selectedInstanceId])
-  const skills = catalog.scopeAllowsSkills && selectedInstance?.read?.status === 'ready'
-    ? selectedInstance.read.descriptor.skills ?? noSkills : noSkills
+  const skills = catalog.scopeAllowsSkills && selectedInstanceId
+    ? catalog.suggestionSkills?.(selectedInstanceId) ?? noSkills : noSkills
   const files = useComposerProjectPaths(projectPaths, activeTrigger)
   const menuItems = useComposerMenuItems(activeTrigger, skills, mentionableThreads, attachmentAvailable && !attachmentPending,
     { available: interactive && send.sideChatAvailable }, files)

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { ConversationDriverDescriptor, ConversationDriverModel, ConversationDriverOption } from '../../../shared/conversation/driverCatalog'
+import type { ConversationDriverDescriptor, ConversationDriverModel, ConversationDriverOption, ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { api } from '../api'
 import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
@@ -7,14 +7,14 @@ import { projectRootKey } from '../my/navigation'
 import { conversationError, type ComposerModel } from './useComposerSend'
 
 type DescriptorRead =
-  | { status: 'loading' }
+  | { status: 'loading'; previousSkills?: readonly ConversationDriverSkill[] }
   | { status: 'ready'; descriptor: ConversationDriverDescriptor }
   | { status: 'failed'; error: string }
 
 type DriverList = Extract<Awaited<ReturnType<typeof api.conversationDrivers>>, { ok: true }>['drivers']
 
 type CatalogRead =
-  | { status: 'loading' }
+  | { status: 'loading'; request: symbol; previousDrivers?: DriverList }
   | { status: 'ready'; drivers: DriverList }
   | { status: 'failed'; error: string }
 
@@ -43,8 +43,12 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
   const refresh = useCallback(async (): Promise<void> => {
     if (!interactive || pending.current.has(key)) return
     pending.current.add(key)
-    const loading = { status: 'loading' } as const
-    setLists((previous) => new Map(previous).set(key, loading))
+    const request = Symbol()
+    setLists((previous) => {
+      const current = previous.get(key)
+      return new Map(previous).set(key, { status: 'loading', request,
+        previousDrivers: current?.status === 'ready' ? current.drivers : undefined })
+    })
     let next: CatalogRead
     try {
       const result = await (source ? source.list() : api.conversationDrivers(root, task))
@@ -54,7 +58,10 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
     } finally {
       pending.current.delete(key)
     }
-    setLists((previous) => previous.get(key) === loading ? new Map(previous).set(key, next) : previous)
+    setLists((previous) => {
+      const current = previous.get(key)
+      return current?.status === 'loading' && current.request === request ? new Map(previous).set(key, next) : previous
+    })
   }, [interactive, key, root, task, source])
 
   const ensure = useCallback(async (instanceId: string, force = false): Promise<void> => {
@@ -62,7 +69,7 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
     const current = reads.get(readKey)
     if (!interactive || pending.current.has(readKey) || current?.status === 'loading' || (!force && current)) return
     pending.current.add(readKey)
-    const loading = { status: 'loading' } as const
+    const loading = { status: 'loading', previousSkills: current?.status === 'ready' ? current.descriptor.skills : undefined } as const
     setReads((previous) => new Map(previous).set(readKey, loading))
     let next: DescriptorRead
     try {
@@ -86,11 +93,19 @@ export function useConversationModelCatalog(root: string, interactive: boolean, 
       : [],
   ), [instances])
 
+  const suggestionDrivers = list?.status === 'ready' ? list.drivers : list?.status === 'loading' ? list.previousDrivers : undefined
+  const suggestionSkills = !interactive || task || source ? undefined : (instanceId: string) => {
+    if (!suggestionDrivers?.some(driver => driver.instanceId === instanceId)) return undefined
+    const read = reads.get(JSON.stringify([key, instanceId]))
+    return read?.status === 'ready' ? read.descriptor.skills : read?.status === 'loading' ? read.previousSkills : undefined
+  }
   return { status: list?.status ?? 'idle', error: list?.status === 'failed' ? list.error : undefined,
-    instances, models, scopeAllowsSkills: !task && !source, refresh, ensure } as const
+    instances, models, scopeAllowsSkills: !task && !source, suggestionSkills, refresh, ensure } as const
 }
 
-export type ConversationModelCatalog = ReturnType<typeof useConversationModelCatalog>
+export type ConversationModelCatalog = Omit<ReturnType<typeof useConversationModelCatalog>, 'suggestionSkills'> & {
+  readonly suggestionSkills?: (instanceId: string) => readonly ConversationDriverSkill[] | undefined
+}
 
 export function isSameComposerModel(left: ComposerModel | null, right: ComposerModel): boolean {
   return left?.instanceId === right.instanceId && left.id === right.id

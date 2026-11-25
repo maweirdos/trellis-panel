@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
-import { FileCode2 } from 'lucide-react'
+import { FileCode2, Github, Globe } from 'lucide-react'
 import { MermaidBlock } from './MermaidBlock'
 import { AsciiDiagramBlock } from './AsciiDiagramBlock'
 import { GeneratedCodePreview } from './GeneratedCodePreview'
@@ -40,6 +40,18 @@ const REHYPE_PLUGINS: NonNullable<React.ComponentProps<typeof ReactMarkdown>['re
   protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? []), 'file', ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'] }
 }]]
 const REMARK_PLUGINS = [remarkGfm]
+
+function ChatExternalLinkContent({ host, children }: { host: string; children: React.ReactNode }): JSX.Element {
+  const Icon = host === 'github.com' || host === 'raw.githubusercontent.com' ? Github : Globe
+  const nodes = React.Children.toArray(children)
+  const first = nodes[0]
+  if (typeof first !== 'string') {
+    return <><Icon size={14} aria-hidden="true" />{children}</>
+  }
+  const leading = /^https?:\/\//i.exec(first)?.[0] ?? Array.from(first.slice(0, 2))[0] ?? ''
+  return <><span className="chat-external-link-leading"><Icon size={14} aria-hidden="true" />{leading}</span>
+    {first.slice(leading.length)}{nodes.slice(1)}</>
+}
 
 /** heading 覆写：按 hast position.source 行号挂稳定锚点 ID（无行号信息则不挂）。 */
 type HeadingNode = { position?: { start?: { line?: number } } } | undefined
@@ -161,6 +173,10 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
       }} onAuxClick={event => event.preventDefault()}>
         <FileCode2 size={13} aria-hidden="true" /><span>{props.children}</span>
         {file.line && <span className="chat-project-file-line"> · L{file.line}</span>}
+      </a>
+      const externalUrl = surface === 'chat' ? externalHttpUrl(props.href) : null
+      if (externalUrl) return <a {...props} className="chat-external-link" onClick={forwardMarkdownLink} onAuxClick={forwardMarkdownLink}>
+        <ChatExternalLinkContent host={new URL(externalUrl).hostname}>{props.children}</ChatExternalLinkContent>
       </a>
       return <a {...props} onClick={forwardMarkdownLink} onAuxClick={forwardMarkdownLink} />
     },

@@ -34,15 +34,20 @@
  * The host's type and control tokens drive the three interface densities.
  */
 .my-root .conversation-composer {
+  --my-composer-outline: var(--my-border-subtle);
   border: 0;
   border-radius: var(--my-radius-composer);
   background: var(--my-bg-panel);
-  box-shadow: 0 0 0 1px var(--my-border-subtle), 0 1px 2px rgb(0 0 0 / 5%);
+  box-shadow: 0 0 0 1px var(--my-composer-outline), 0 1px 2px rgb(0 0 0 / 5%);
   transition: background-color 200ms, box-shadow var(--my-motion-fast) var(--my-ease-out);
 }
 
 .my-root .conversation-composer:focus-within {
-  box-shadow: 0 0 0 1px var(--my-border-strong-1), 0 1px 2px rgb(0 0 0 / 5%);
+  --my-composer-outline: var(--my-border-strong-1);
+}
+
+.my-root .conversation-composer:has(.composer-tiptap:focus-visible) {
+  --my-composer-outline: var(--my-focus-ring);
 }
 
 .conversation-composer-toolbar {

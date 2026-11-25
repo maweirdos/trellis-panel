@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, ListChecks, LoaderCircle } from 'lucide-react'
 import { Button } from '../my/ui'
@@ -9,7 +9,6 @@ import { resolveAssistantCitationRange } from './AssistantCitationSource'
 import { AssistantSelectionToolbar } from './AssistantSelectionToolbar'
 import { ChatMarkdown } from './ChatMarkdown'
 import { ConversationTimelineRelationRow, type ConversationThreadTab } from './ConversationRelations'
-import { ConversationTurnFileChange } from './ConversationTurnFileChange'
 import { AssistantTimelineRow, UserMessageRow, WorkingTimelineRow, type TimelineMessageActions } from './TimelineMessageRows'
 import { TimelineMinimap } from './TimelineMinimap'
 import {
@@ -32,6 +31,8 @@ const FOLLOW_THRESHOLD_PX = 40
 const SCROLL_RESTORE_STORAGE_PREFIX = 'crux.conversation.readPosition.'
 const MAX_RESTORE_PAGES = 12
 const ROW_SELECTOR = '[data-conversation-row-id]'
+const ConversationTurnFileChange = lazy(() => import('./ConversationTurnFileChange')
+  .then(module => ({ default: module.ConversationTurnFileChange })))
 const visiblePosition = { data: true, size: true }
 const WORK_STATUS = {
   running: { label: '进行中', icon: LoaderCircle },
@@ -52,6 +53,7 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly workingLabel?: string
   /** Wall-clock start of the active run so the working line can count up like T3. */
   readonly workingStartedAt?: string | null
+  readonly workingUserMessageId?: string
   readonly hasOlderHistory: boolean
   readonly loadingEarlier: boolean
   readonly onLoadEarlier: () => void
@@ -149,6 +151,7 @@ export function ConversationTimeline({
   working,
   workingLabel = '模型正在回复…',
   workingStartedAt,
+  workingUserMessageId,
   hasOlderHistory,
   loadingEarlier,
   onLoadEarlier,
@@ -162,6 +165,8 @@ export function ConversationTimeline({
   footer,
   emptyTitle,
 }: ConversationTimelineProps): JSX.Element {
+  const workingAnchor = working && rows.find(row => row.kind === 'message' && row.message.role === 'user' && row.message.id === workingUserMessageId)?.id
+  const workingRow = working ? <WorkingTimelineRow startedAt={workingStartedAt ?? undefined} label={workingLabel} /> : null
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
@@ -412,10 +417,10 @@ export function ConversationTimeline({
               <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
                 onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun}
                 onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitation : undefined} />
+              {item.id === workingAnchor && workingRow}
             </div>}
           />}
-          {working && <WorkingTimelineRow startedAt={workingStartedAt ?? undefined}
-            label={workingStartedAt ? undefined : workingLabel} />}
+          {!workingAnchor && workingRow}
           {footer}
         </div>
       </div>
@@ -461,7 +466,9 @@ function ConversationRow({
   readonly sourceThreadId?: string
 }): JSX.Element {
   if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread} />
-  if (row.kind === 'file-change') return <ConversationTurnFileChange item={row.item} />
+  if (row.kind === 'file-change') return <Suspense fallback={<p className="my-item-description" role="status">正在加载文件差异：{row.item.fileName}</p>}>
+    <ConversationTurnFileChange item={row.item} />
+  </Suspense>
   if (row.kind === 'work') {
     const { label, icon: Icon } = WORK_STATUS[row.state]
     return (

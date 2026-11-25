@@ -19,6 +19,7 @@
   flex-direction: column;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
   padding-bottom: var(--chat-composer-attachment-overlap);
 }
 
@@ -26,11 +27,11 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  border: 1px solid var(--my-border-subtle);
+  border: 1px solid var(--my-composer-outline, var(--my-border-subtle));
   border-radius: var(--my-radius-base) var(--my-radius-base) var(--my-radius-none) var(--my-radius-none);
   background: var(--my-bg-composer);
   box-shadow: var(--my-shadow-raised-100);
-  mask-image: linear-gradient(to bottom, black calc(100% - var(--chat-composer-attachment-overlap)), transparent);
+  mask-image: linear-gradient(to top, transparent calc(var(--chat-composer-attachment-overlap) - 4px), black calc(var(--chat-composer-attachment-overlap) + 4px));
   content: '';
 }
 

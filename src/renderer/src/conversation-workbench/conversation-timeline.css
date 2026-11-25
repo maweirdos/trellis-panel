@@ -235,6 +235,24 @@
   text-decoration: none;
 }
 
+.conversation-message-body .chat-markdown .chat-external-link {
+  color: var(--my-txt-info-primary);
+  overflow-wrap: anywhere;
+}
+
+.chat-external-link-leading {
+  white-space: nowrap;
+}
+
+.chat-external-link > svg,
+.chat-external-link-leading > svg {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-inline: 0.25em 0.2em;
+  vertical-align: -0.125em;
+}
+
 .conversation-message-body .chat-markdown a:not(.chat-project-file-link):is(:hover, :focus-visible) {
   background-image: radial-gradient(circle, currentcolor 0.75px, transparent 1px);
   background-position: left bottom;

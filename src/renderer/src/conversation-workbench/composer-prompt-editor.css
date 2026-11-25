@@ -34,15 +34,14 @@
   margin: 0;
 }
 
+.my-root .conversation-composer .composer-tiptap[contenteditable='true']:is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
 .conversation-composer-placeholder {
   pointer-events: none;
   color: var(--my-txt-placeholder);
-}
-
-.my-root .conversation-composer:has(.composer-tiptap:focus-visible) {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
-  outline-offset: calc(var(--my-space-2) * -1);
-  box-shadow: none;
 }
 
 .composer-tiptap > p > [data-slot='context-chip'] {

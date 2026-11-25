@@ -1,7 +1,7 @@
 import { Autocomplete } from '@base-ui/react/autocomplete'
 import { Tooltip } from '@base-ui/react/tooltip'
 import { Blocks, FileText, Folder, MessagesSquare, Package, Paperclip, Settings, UserRound, type LucideIcon } from 'lucide-react'
-import { memo, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { memo, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { ConversationDriverSkillSource } from '../../../shared/conversation/driverCatalog'
 import { ComposerCommandMenuLayer } from './ComposerCommandMenuLayer'
 import type { ComposerMenuItem, ComposerTrigger } from './useComposerMenuItems'
@@ -19,6 +19,16 @@ interface ComposerMenuProps {
   readonly emptyStateText?: string
   readonly onHighlight: (index: number) => void
   readonly onSelect: (item: ComposerMenuItem) => void
+}
+
+interface ComposerMenuListProps {
+  readonly id: string
+  readonly items: readonly ComposerMenuItem[]
+  readonly activeIndex: number
+  readonly triggerKind?: TriggerKind
+  readonly onHighlight: (index: number) => void
+  readonly onSelect: (item: ComposerMenuItem) => void
+  readonly children?: ReactNode
 }
 
 const LISTBOX_LABEL_BY_TRIGGER: Record<TriggerKind, string> = {
@@ -40,17 +50,6 @@ export function composerSuggestionOptionId(listId: string, itemId: string): stri
 export const ConversationComposerMenu = memo(function ConversationComposerMenu({
   id, anchor, items, activeIndex, triggerKind, isLoading, emptyStateText, onHighlight, onSelect,
 }: ComposerMenuProps) {
-  const listRef = useRef<HTMLDivElement>(null)
-  const activeItemId = items[activeIndex]?.id
-
-  useLayoutEffect(() => {
-    if (!activeItemId) return
-    const option = listRef.current?.querySelector<HTMLElement>(
-      `[data-composer-item-id="${CSS.escape(activeItemId)}"]`,
-    )
-    option?.scrollIntoView({ block: 'nearest' })
-  }, [activeItemId])
-
   return (
     <ComposerCommandMenuLayer anchor={anchor.current}>
       <Autocomplete.Root
@@ -64,34 +63,68 @@ export const ConversationComposerMenu = memo(function ConversationComposerMenu({
           if (index >= 0 && index !== activeIndex) onHighlight(index)
         }}
       >
-        <div ref={listRef} data-composer-banner-surface="attached" data-composer-command-drawer="true">
-          {items.length > 0 ? (
-            <Autocomplete.List data-slot="command-list" id={id}
-              aria-label={triggerKind ? LISTBOX_LABEL_BY_TRIGGER[triggerKind] : '输入建议'}
-              className="my-scrollbar">
-              <Autocomplete.Group data-slot="command-group">
-                {items.map((item, index) => (
-                  <ComposerCommandMenuItem
-                    key={item.id}
-                    optionId={composerSuggestionOptionId(id, item.id)}
-                    item={item}
-                    triggerKind={triggerKind}
-                    isActive={index === activeIndex}
-                    onHighlight={() => onHighlight(index)}
-                    onSelect={onSelect}
-                  />
-                ))}
-              </Autocomplete.Group>
-            </Autocomplete.List>
-          ) : (
+        <ComposerMenuList
+          id={id}
+          items={items}
+          activeIndex={activeIndex}
+          triggerKind={triggerKind}
+          onHighlight={onHighlight}
+          onSelect={onSelect}
+        >
+          {items.length === 0 && (
             <div className="conversation-command-empty" role="status">
               {isLoading ? (triggerKind === 'path' ? '正在查找工程文件…' : '正在查找技能…')
                 : emptyStateText ?? EMPTY_STATE_BY_TRIGGER[triggerKind ?? 'slash-command']}
             </div>
           )}
-        </div>
+        </ComposerMenuList>
       </Autocomplete.Root>
     </ComposerCommandMenuLayer>
+  )
+})
+
+const ComposerMenuList = memo(function ComposerMenuList({
+  id, items, activeIndex, triggerKind, onHighlight, onSelect, children,
+}: ComposerMenuListProps) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const activeItemId = items[activeIndex]?.id
+
+  useLayoutEffect(() => {
+    if (!activeItemId) return
+    const list = listRef.current?.querySelector<HTMLElement>('[data-slot="command-list"]')
+    const option = list?.querySelector<HTMLElement>(
+      `[data-composer-item-id="${CSS.escape(activeItemId)}"]`,
+    )
+    if (!list || !option) return
+    const viewport = list.getBoundingClientRect()
+    const row = option.getBoundingClientRect()
+    if (row.top < viewport.top) list.scrollTop += row.top - viewport.top
+    else if (row.bottom > viewport.bottom) list.scrollTop += row.bottom - viewport.bottom
+  }, [activeItemId, items])
+
+  return (
+    <div ref={listRef} data-composer-banner-surface="attached" data-composer-command-drawer="true">
+      {items.length > 0 && (
+        <Autocomplete.List data-slot="command-list" id={id}
+          aria-label={triggerKind ? LISTBOX_LABEL_BY_TRIGGER[triggerKind] : '输入建议'}
+          className="my-scrollbar">
+          <Autocomplete.Group data-slot="command-group">
+            {items.map((item, index) => (
+              <ComposerCommandMenuItem
+                key={item.id}
+                optionId={composerSuggestionOptionId(id, item.id)}
+                item={item}
+                triggerKind={triggerKind}
+                isActive={index === activeIndex}
+                onHighlight={() => onHighlight(index)}
+                onSelect={onSelect}
+              />
+            ))}
+          </Autocomplete.Group>
+        </Autocomplete.List>
+      )}
+      {children}
+    </div>
   )
 })
 

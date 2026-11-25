@@ -308,31 +308,40 @@ export function deriveTimelineRows(
   for (const run of runs) {
     const prompt = messages.find((item) => item.id === run.userMessageId)
     if (prompt) place({ kind: 'message', id: prompt.id, message: prompt })
+    const turn: Array<{ row: ConversationTimelineRow; time?: number }> = []
+    const append = (row: ConversationTimelineRow, startedAt: string | { readonly epochMilliseconds: number } | null | undefined): void => {
+      const time = typeof startedAt === 'string' ? Date.parse(startedAt) : startedAt?.epochMilliseconds
+      turn.push({ row, time: time !== undefined && Number.isFinite(time) ? time : undefined })
+    }
     for (const item of turnItems) {
       if (item.runId !== run.id) continue
       if (item.type === 'dynamic_tool' && item.title) {
         const status = item.status
-        place({
+        append({
           kind: 'work',
           id: item.id,
           text: item.title,
           state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
             : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
           ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
-        })
+        }, item.startedAt)
       } else if (item.type === 'proposed_plan' || item.type === 'todo_list') {
-        place({ kind: 'plan', id: item.id, item })
+        append({ kind: 'plan', id: item.id, item }, item.startedAt)
       } else if (item.type === 'file_change') {
-        place({ kind: 'file-change', id: item.id, item })
+        append({ kind: 'file-change', id: item.id, item }, item.startedAt)
       }
     }
-    for (const item of byParentRun.get(run.id) ?? []) place({ kind: 'relation', id: `relation:${item.id}`, item })
+    for (const item of byParentRun.get(run.id) ?? []) append({ kind: 'relation', id: `relation:${item.id}`, item }, item.createdAt)
     for (const message of messages) {
       if (message.role !== 'assistant' || message.runId !== run.id || assistantPlaced.has(message.id)) continue
       assistantPlaced.add(message.id)
       const stable = !run.outcomeUnknown && ['completed', 'failed', 'cancelled', 'interrupted'].includes(run.status)
-      place({ kind: 'message', id: message.id, message, ...(stable && { forkRunId: run.id }) })
+      append({ kind: 'message', id: message.id, message, ...(stable && { forkRunId: run.id }) }, message.createdAt)
     }
+    const dated = turn.flatMap(entry => entry.time === undefined ? [] : [{ row: entry.row, time: entry.time }])
+      .sort((left, right) => left.time - right.time)
+    let datedIndex = 0
+    for (const entry of turn) place(entry.time === undefined ? entry.row : dated[datedIndex++].row)
   }
   const placed = new Set(rows.map((row) => row.id))
   for (const message of messages) {

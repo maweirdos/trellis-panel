@@ -10,6 +10,8 @@ Work, Code and authorized ordinary tasks use `ConversationWorkbench`. The host s
 - The side panel persists order, selected surface and visibility by authorized scope, canonical project path, parent thread and v2 storage ID. Equivalent Windows path spelling and the initial local workspace identity use the same key. Restore child and BTW tabs only from the current authorized parent's relationship projection. A missing selection falls back to an authorized surface. Restoration reads conversation v2 and leaves engine lifecycle unchanged.
 - Attachments for a user input request use the request ID, generation and question draft. The answer UI exposes file selection only when the native request authorizes text attachments.
 - Conversation file-change rows render stored patches with Pierre Diffs in unified mode. The renderer accepts both single-file hunk-only history and full multi-file patches. Keep recorded file names and a readable fallback when the patch parser cannot render the data. Run Shiki through its JavaScript backend under the existing renderer content security policy, and verify both syntax tokens and intra-line changes in the conversation route.
+- Place live run status beside its starting user message; tool and assistant rows follow their recorded start/create timestamps when available, retaining projection order for rows that lack timestamps. Do not render unavailable reasoning or synthesize provider events.
+- During catalog revalidation, retain the last successful suggestions for the same authorized scope and engine. Clear them when refresh fails, the engine disappears, or the scope changes. A suggestion is not an authorization to run a command.
 
 ## Named roles and execution engines
 

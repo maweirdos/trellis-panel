@@ -713,6 +713,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             : run?.status === 'queued' || run?.status === 'preparing' ? '已受理，等待模型…'
               : run?.nativeTurnId || run?.engineAcceptedAt ? '模型已接收，正在回复…' : '正在连接并发送给模型…'}
           workingStartedAt={runStartIso(activeRun)}
+          workingUserMessageId={activeRun?.userMessageId}
           hasOlderHistory={Boolean(projection?.hasOlderHistory)} loadingEarlier={loadingEarlier}
           onLoadEarlier={() => void loadEarlier()}
           onQuote={writable && projection ? (message, text) => {

@@ -173,34 +173,29 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sour
  */
 export function WorkingTimelineRow({ startedAt, label }: { readonly startedAt?: string; readonly label?: string }) {
   const elapsed = useElapsedLabel(startedAt)
-  const text = label ?? (startedAt ? `工作了 ${elapsed}` : '正在工作…')
+  const status = label ?? '正在工作…'
+  const text = startedAt ? `${status.replace(/…$/, '')} · 已工作 ${elapsed}` : status
   return (
     <div className="conversation-working" role="status" aria-live="polite">
       <span className="conversation-live-label" aria-hidden="true">
         {text}
         <span className="conversation-live-focus"><span>{text}</span></span>
       </span>
-      <span className="conversation-sr-only">{text}</span>
+      <span className="conversation-sr-only">{status}</span>
     </div>
   )
 }
 
 const SECOND = 1000
-const MINUTE = 60 * SECOND
 
-/** Upstream formatDuration: "12.3s" under 10s, "45s", "1m 02s", "1h 03m 04s". */
 export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '0ms'
-  if (ms < SECOND) return `${Math.max(1, Math.round(ms))}ms`
-  if (ms < 10 * SECOND) return `${Math.round(ms / 100) / 10}s`
-  const total = Math.round(ms / SECOND)
-  if (total < 60) return `${total}s`
+  const total = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / SECOND)) : 0
+  if (total < 60) return `${total} 秒`
   const hours = Math.floor(total / 3600)
   const minutes = Math.floor((total % 3600) / 60)
   const seconds = total % 60
-  if (hours === 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`
-  if (minutes > 0) return `${hours}h ${minutes}m ${seconds}s`
-  return seconds > 0 ? `${hours}h ${seconds}s` : `${hours}h`
+  if (hours === 0) return `${minutes} 分 ${seconds} 秒`
+  return `${hours} 小时 ${minutes} 分 ${seconds} 秒`
 }
 
 function useElapsedLabel(startedAt?: string): string {
@@ -213,7 +208,7 @@ function useElapsedLabel(startedAt?: string): string {
     const timer = window.setTimeout(() => setNow(Date.now()), delay)
     return () => window.clearTimeout(timer)
   }, [startedAt, now])
-  if (!startedAt) return '0s'
+  if (!startedAt) return '0 秒'
   const started = Date.parse(startedAt)
-  return Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '0s'
+  return Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '0 秒'
 }
