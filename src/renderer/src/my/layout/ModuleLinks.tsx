@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { Bot, BookOpen, Cloud, FileText, Hash, MessageSquare, MessagesSquare, Sparkles } from 'lucide-react'
+import { Bot, BookOpen, Cloud, FileText, FolderOpen, Hash, MessageSquare, MessagesSquare, PanelsTopLeft, Sparkles } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import type { AgentView, KnowledgeView } from '../navigation'
@@ -33,7 +33,7 @@ export function ModuleLinks({ domain, agentView }: {
     const app = useApp.getState()
     if (app.page !== target || target === 'chat' && app.privateCodeChat) setPage(target)
   })
-  return <nav aria-label={domain === 'agents' ? '对话导航' : '知识导航'} className="flex shrink-0 flex-col gap-0.5 border-b border-my-line px-2 py-2">
+  return <nav aria-label={domain === 'agents' ? '对话导航' : '资料空间导航'} className="flex shrink-0 flex-col gap-0.5 border-b border-my-line px-2 py-2">
     {domain === 'agents' ? <>
       {route('chat', '对话', <MessagesSquare size={16} />)}
       {hasProject && <>
@@ -43,9 +43,13 @@ export function ModuleLinks({ domain, agentView }: {
       {route('channels', '频道', <Hash size={16} />)}
       </>}
     </> : <>
-      {row('team', hasProject ? '资料' : '团队知识库', page === 'knowledge' && knowledgeView === 'team', <FileText size={16} />, () => knowledge('team'))}
-      {hasProject && route('spec', '规范', <BookOpen size={16} />)}
-      {row('company', hasProject ? '知识库' : '企业知识库', page === 'knowledge' && knowledgeView === 'company', <Cloud size={16} />, () => knowledge('company'))}
+      {row('team', '团队与空间资料', page === 'knowledge' && knowledgeView === 'team', <FileText size={16} />, () => knowledge('team'))}
+      {row('personal', '我的文档与产物', page === 'knowledge' && knowledgeView === 'personal', <PanelsTopLeft size={16} />, () => knowledge('personal'))}
+      {row('company', '企业知识库', page === 'knowledge' && knowledgeView === 'company', <Cloud size={16} />, () => knowledge('company'))}
+      {hasProject && <>
+        {row('project', '当前目录资料', page === 'knowledge' && knowledgeView === 'project', <FolderOpen size={16} />, () => knowledge('project'))}
+        {route('spec', '规范', <BookOpen size={16} />)}
+      </>}
     </>}
   </nav>
 }

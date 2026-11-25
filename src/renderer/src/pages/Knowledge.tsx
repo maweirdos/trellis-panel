@@ -1,7 +1,8 @@
 import { rememberVisit } from '../my/personal-history'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { PageContent, PageSection } from '../my/layout/PageLayout'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { PageLoading } from '../my/layout/PageLoading'
 import {
   FileText,
   BookOpenText,
@@ -95,6 +96,8 @@ const LIB_CHIP: Record<KbLibrary, string> = {
   archive: 'bg-my-label-purple text-my-label-purple-text'
 }
 
+const CreationWorkspace = lazy(() => import('../creations/CreationWorkspace').then((module) => ({ default: module.CreationWorkspace })))
+
 export function KnowledgePage(): JSX.Element {
   const sidebarStyle = useSidebarWidthStyle()
   const sidebarCollapsed = useMy((state) => state.sidebarCollapsed)
@@ -102,23 +105,41 @@ export function KnowledgePage(): JSX.Element {
   const pickAndOpen = useApp((state) => state.pickAndOpen)
   const openError = useApp((state) => state.openError)
   const knowledgeView = useMy((state) => state.knowledgeView)
-  if (!hasProject) {
-    return <div className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
-      <ContextRegion collapsed={sidebarCollapsed}><div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
-        <SidebarResizeHandle />
-        <header className="flex h-my-header shrink-0 items-center px-4"><h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1></header>
-        <ModuleLinks domain="knowledge" />
-      </div></ContextRegion>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">{knowledgeView === 'team' ? <TeamPublishedKnowledge /> :
-        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="企业知识库">
-          <h2 className="my-item-title">打开项目以读取企业知识库</h2>
-          <p className="my-item-description">企业知识库使用项目配置的连接。团队已发布的文档可在左侧「团队知识库」查看。</p>
-          <Button variant="outline" onClick={() => void pickAndOpen()}>打开本机项目</Button>
-          {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
-        </section>}</div>
-    </div>
+  if (hasProject && (knowledgeView === 'company' || knowledgeView === 'project')) {
+    return <KnowledgePageContent />
   }
-  return <KnowledgePageContent />
+  return <div className="flex h-full min-h-0 min-w-0 flex-row bg-my-surface-1">
+    <ContextRegion collapsed={sidebarCollapsed}><div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
+      <SidebarResizeHandle />
+      <header className="flex h-my-header shrink-0 items-center px-4"><h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">资料空间</h1></header>
+      <ModuleLinks domain="knowledge" />
+    </div></ContextRegion>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
+      {knowledgeView === 'team' ? <TeamPublishedKnowledge /> : knowledgeView === 'personal' ? (
+        <Suspense fallback={<PageLoading />}><CreationWorkspace scope="personal" /></Suspense>
+      ) : knowledgeView === 'company' ? (
+        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="企业知识库">
+          <h2 className="my-item-title">企业知识库 (WeKnora)</h2>
+          <p className="my-item-description">连接企业知识库即可跨项目检索组织沉淀；也可打开一个本机项目目录查看该项目绑定的企业库范围。</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button variant="outline" onClick={() => useApp.getState().setPage('integrations')}>前往应用集成配置 WeKnora</Button>
+            <Button variant="ghost" onClick={() => void pickAndOpen({ keepPage: true })}>选择本机项目目录…</Button>
+          </div>
+          {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
+        </section>
+      ) : (
+        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="当前目录资料">
+          <h2 className="my-item-title">打开本机目录以读取项目资料</h2>
+          <p className="my-item-description">当前未打开本地项目目录；你仍可随时查看团队固定版资料或我的个人产物。</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button variant="outline" onClick={() => void pickAndOpen({ keepPage: true })}>打开本机项目目录…</Button>
+            <Button variant="ghost" onClick={() => useMy.getState().setKnowledgeView('team')}>查看团队与空间资料</Button>
+          </div>
+          {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
+        </section>
+      )}
+    </div>
+  </div>
 }
 
 function KnowledgePageContent(): JSX.Element {
@@ -728,7 +749,7 @@ function KnowledgePageContent(): JSX.Element {
       <ContextRegion collapsed={sidebarCollapsed}><div id="knowledge-browser" style={sidebarStyle} className="my-context-sidebar flex shrink-0 flex-col border-r border-my-line">
         <SidebarResizeHandle />
         <header className="flex h-my-header shrink-0 items-center px-4">
-          <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">知识</h1>
+          <h1 className="my-sidebar-heading flex-1 truncate font-medium text-my-primary">资料空间</h1>
         </header>
         <ModuleLinks domain="knowledge" />
 
@@ -737,7 +758,7 @@ function KnowledgePageContent(): JSX.Element {
       {/* 右列：当前知识视图与阅读器 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
         <div className="my-page-toolbar-row flex-wrap">
-          <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '知识库' : '资料'}</h1>
+          <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '企业知识库' : '当前目录资料'}</h1>
           <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={!snapshot?.meta.root} onClick={() => setScopeOpen(true)} title={`${scopeInfo?.connectionName ?? '项目知识'} · ${scopeSummary}`}><Cloud size={13} />知识范围</Button>
             <Button size="sm" variant="ghost" onClick={() => void runSearch(true)} disabled={!hasIpc || !snapshot?.meta.root || (scope !== 'company' && typeof api?.kbSearch !== 'function') || localRefreshing || loading || companyLoading} title="刷新当前视图"><RefreshCw size={13} />刷新</Button>
