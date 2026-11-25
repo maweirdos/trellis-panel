@@ -5,8 +5,8 @@ import type { Settings } from '../../shared/types'
 // existing canvas / border-subtle roles from my/my-tokens.css (light and dark).
 // Keep this mapping together when those semantic tokens change.
 const MAIN_WINDOW_COLORS = {
-  light: { backgroundColor: '#ffffff', accentColor: '#ededed' },
-  dark: { backgroundColor: '#181818', accentColor: '#2a2a2a' }
+  light: { backgroundColor: '#ffffff', accentColor: '#e2e2e2' },
+  dark: { backgroundColor: '#0d0d0d', accentColor: '#232323' }
 } as const
 
 interface MainWindowAppearance {
