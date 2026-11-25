@@ -1,0 +1,121 @@
+.my-root .conversation-selection-action {
+  position: fixed;
+  z-index: var(--my-z-menu);
+  max-width: calc(100vw - 1rem);
+  -webkit-app-region: no-drag;
+}
+
+.conversation-citation-chip,
+.conversation-response-citation {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.2em;
+  border-radius: var(--my-control-radius);
+  text-align: start;
+  vertical-align: baseline;
+}
+
+.conversation-citation-chip {
+  color: var(--my-txt-info-primary);
+  font-weight: var(--my-weight-medium);
+}
+
+.conversation-citation-chip > span,
+.conversation-response-citation > span {
+  max-width: 16em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.conversation-citation-chip > svg,
+.conversation-response-citation > svg {
+  flex: none;
+}
+
+.conversation-response-citation {
+  padding: var(--my-space-4) var(--my-space-10);
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-sm);
+}
+
+.conversation-citation-chip:hover,
+.conversation-response-citation:hover {
+  background: var(--my-bg-layer-transparent-active);
+}
+
+.conversation-cited-message {
+  display: grid;
+  justify-items: start;
+  gap: var(--my-space-4);
+}
+
+.conversation-citation-chip:focus-visible,
+.conversation-response-citation:focus-visible {
+  outline: 2px solid var(--my-focus-ring);
+  outline-offset: -2px;
+}
+
+.conversation-citation-positioner {
+  z-index: var(--my-z-menu);
+  -webkit-app-region: no-drag;
+}
+
+.conversation-citation-popup {
+  width: min(24rem, calc(100vw - 1rem), var(--available-width));
+  max-height: min(24rem, var(--available-height));
+  overflow: auto;
+  padding: var(--my-space-12);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-elevated);
+  box-shadow: var(--my-shadow-overlay-200);
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-sm);
+  line-height: 1.625;
+}
+
+.conversation-citation-popup blockquote {
+  max-height: min(10rem, 35vh);
+  overflow: auto;
+  margin: 0;
+  padding: var(--my-space-6) var(--my-space-10);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.conversation-citation-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--my-space-4);
+  margin-block-start: var(--my-space-8);
+}
+
+.conversation-citation-comment textarea {
+  display: block;
+  width: 100%;
+  min-height: var(--my-space-48);
+  max-height: min(10rem, 35vh);
+  padding: var(--my-space-6);
+  border-radius: var(--my-radius-base);
+  field-sizing: content;
+  resize: none;
+}
+
+.conversation-citation-note {
+  padding: var(--my-space-6);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+::highlight(conversation-assistant-citation) {
+  background-color: var(--my-bg-warning-subtle);
+  color: var(--my-txt-primary);
+}

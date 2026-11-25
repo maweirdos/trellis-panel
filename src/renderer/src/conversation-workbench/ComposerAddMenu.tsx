@@ -30,7 +30,7 @@ export function ComposerAddMenu({ interactive, attachment, taskSection }: Compos
     action()
   }
   return <div className="conversation-add-anchor">
-    <Dropdown placement="top" align="left" width={288}
+    <Dropdown placement="top" align="left" width={288} positionAnchorRef={triggerRef}
       trigger={({ open, toggle }) => <button ref={triggerRef} type="button" className="my-icon-control conversation-add-trigger"
         title="添加内容或关联任务" aria-label="添加内容或关联任务" aria-expanded={open} onClick={toggle}>
         <Plus size={16} aria-hidden="true" />

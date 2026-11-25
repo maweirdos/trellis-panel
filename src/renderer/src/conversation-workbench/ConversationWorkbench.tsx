@@ -37,12 +37,15 @@ import { ConversationRelations } from './ConversationRelations'
 import { ConversationRightPanel, useNarrowConversationPanel } from './ConversationRightPanel'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
-import { ConversationTimeline } from './ConversationTimeline'
+import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
 import { conversationFileSurface, conversationPanelKey, conversationPanelScope, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
 import { useConversationModelCatalog } from './useConversationModelCatalog'
+import type { ComposerPromptEditorHandle } from './ComposerPromptEditorTiptap'
+import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
+import { serializeAssistantCitation } from '../../../shared/conversation/assistantCitationText'
 import { useCodeTaskActions } from './useCodeTaskActions'
 import { closeUnusedSideThread, useSideChat } from './useSideChat'
 import { useWorkTaskActions } from './useWorkTaskActions'
@@ -191,7 +194,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const draftRole = supportsProjectRole && !target ? projectRole : undefined
   const [optimistic, setOptimistic] = useState(() => emptyOptimisticUserMessages(''))
   const targetRef = useRef(target)
-  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<ComposerPromptEditorHandle>(null)
+  const citationRef = useRef<ConversationCitationNavigation>(null)
   const panelTrigger = useRef<HTMLButtonElement>(null)
   const panelReturnFocus = useRef<HTMLElement | null>(null)
   const panelId = useId()
@@ -504,7 +508,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     select(null)
     if (text) updateComposerDraft(composerDraftKey(root, null, rootKey), current => ({ ...current, text: current.text || text }))
     requestAnimationFrame(() => {
-      if (!targetRef.current && canInteract()) composerRef.current?.focus({ preventScroll: true })
+      if (!targetRef.current && canInteract()) composerRef.current?.focus()
     })
   }
 
@@ -534,7 +538,30 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   function focusComposer(): void {
     const threadId = targetRef.current?.threadId
     requestAnimationFrame(() => {
-      if (targetRef.current?.threadId === threadId && canInteract()) composerRef.current?.focus({ preventScroll: true })
+      if (targetRef.current?.threadId === threadId && canInteract()) composerRef.current?.focus()
+    })
+  }
+
+  function insertAssistantCitation(citation: AssistantCitation): void {
+    const origin = targetRef.current?.threadId
+    if (!writable || !canInteract() || origin !== citation.threadId || !projection || projection.thread.id !== origin ||
+      !projection.messages.some(message => message.id === citation.messageId && message.role === 'assistant' && !message.streaming)) return
+    const current = composer.readDraft()
+    const { start, end } = composerRef.current?.readSnapshot().selection ?? { start: current.length, end: current.length }
+    const serialized = serializeAssistantCitation(citation)
+    const before = current.slice(0, start)
+    const after = current.slice(end)
+    const leading = before && !/\s$/u.test(before) ? ' ' : ''
+    const trailing = !after || !/^\s/u.test(after) ? ' ' : ''
+    const value = `${before}${leading}${serialized}${trailing}${after}`
+    const position = before.length + leading.length + serialized.length + trailing.length
+    composer.setDraft(text => text === current ? value : text)
+    requestAnimationFrame(() => {
+      const editor = composerRef.current
+      if (canInteract() && targetRef.current?.threadId === origin && editor?.readSnapshot().value === value) {
+        editor.focus()
+        editor.setSelectionRange(position, position)
+      }
     })
   }
 
@@ -676,6 +703,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           return added
         }} />}>
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
+          sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
           onOpenRelatedThread={openRelatedThread}
           onForkFromRun={writable && projection && !archivedThread ? runId => {
             void sideChat.open({ sourcePoint: { type: 'run', runId } })
@@ -761,7 +789,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             ] }),
           } : undefined}
           disabledReason={target && !projection ? '正在读取原会话。' : undefined}
-          textareaRef={composerRef} previousPrompt={previousPrompt?.text}
+          editorRef={composerRef} previousPrompt={previousPrompt?.text}
+          onOpenCitation={citation => citationRef.current?.open(citation) ?? Promise.resolve(false)}
+          projectPaths={code && projectAvailable && projection ? { cwd: root, threadId: projection.thread.id, task } : undefined}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
             .map(({ id, title }) => ({ id, title }))}
         />}

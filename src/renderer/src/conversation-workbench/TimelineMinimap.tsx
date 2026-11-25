@@ -48,7 +48,9 @@ export function TimelineMinimap({
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [passThrough, setPassThrough] = useState(false)
   const pressedOnStrip = useRef(false)
+  const stopWatchingPress = useRef<() => void>()
   const rootRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => () => stopWatchingPress.current?.(), [])
   useEffect(() => {
     const node = rootRef.current
     if (!node) return
@@ -60,6 +62,7 @@ export function TimelineMinimap({
 
   const resolvedActiveIndex = activeIndex !== null && activeIndex < items.length ? activeIndex : null
   const activeItem = resolvedActiveIndex === null ? null : items[resolvedActiveIndex] ?? null
+  const railInteractive = hitStripWidth > 0 && !passThrough
   const navigationInteractive = resolveTimelineMinimapNavigationInteractive(hitStripWidth) && !passThrough
   const activeTopPercent = resolvedActiveIndex === null ? 0 : resolveTimelineMinimapTopPercent(resolvedActiveIndex, items.length)
   const resolvedCurrentIndex = currentIndex !== null && currentIndex >= 0 && currentIndex < items.length ? currentIndex : null
@@ -75,26 +78,34 @@ export function TimelineMinimap({
   const moveActiveIndex = (delta: number): void => {
     setActiveIndex(current => Math.max(0, Math.min(items.length - 1, (current ?? 0) + delta)))
   }
+  const watchRelease = (onRelease: () => void): void => {
+    stopWatchingPress.current?.()
+    stopWatchingPress.current = onMouseButtonsReleased(() => {
+      stopWatchingPress.current = undefined
+      onRelease()
+    })
+  }
 
   return (
     <div ref={rootRef} className="conversation-minimap" data-testid="timeline-minimap"
       data-persistent-gutter={hasPersistentGutter ? 'true' : 'false'}>
       <div className="conversation-minimap-inner">
-        <div className="conversation-minimap-rail" data-interactive={hitStripWidth > 0 && !passThrough ? 'true' : 'false'}
+        <div className="conversation-minimap-rail" data-interactive={railInteractive ? 'true' : 'false'}
           style={{ height: resolveTimelineMinimapHeightStyle(items.length), width: hitStripWidth }}
           onMouseDown={() => {
             if (pressedOnStrip.current) return
             pressedOnStrip.current = true
-            onMouseButtonsReleased(() => { pressedOnStrip.current = false })
+            watchRelease(() => { pressedOnStrip.current = false })
           }}
           onMouseMove={event => {
             if (event.buttons === 0 || pressedOnStrip.current || passThrough) return
             setPassThrough(true)
-            onMouseButtonsReleased(() => setPassThrough(false))
+            watchRelease(() => setPassThrough(false))
           }}>
           <MinimapNavButton direction="previous" disabled={previousItem === null} interactive={navigationInteractive}
             onClick={() => { if (previousItem) onSelect(previousItem) }} />
           <button type="button" className="conversation-minimap-hit"
+            tabIndex={railInteractive ? 0 : -1}
             aria-label={`跳到消息：${activeItem?.userText ?? '用户消息'}`}
             onBlur={() => setActiveIndex(null)}
             onClick={event => {
@@ -148,7 +159,8 @@ function MinimapNavButton({ direction, disabled, interactive, onClick }: {
   const Icon = previous ? ChevronUp : ChevronDown
   return <span className="conversation-minimap-nav" data-direction={direction} data-interactive={interactive ? 'true' : 'false'}
     title={previous ? '上一轮' : '下一轮'}>
-    <button type="button" className="my-icon-control" aria-label={previous ? '上一轮' : '下一轮'} disabled={disabled} onClick={onClick}>
+    <button type="button" className="my-icon-control" aria-label={previous ? '上一轮' : '下一轮'}
+      tabIndex={interactive ? 0 : -1} disabled={disabled} onClick={onClick}>
       <Icon aria-hidden="true" />
     </button>
   </span>

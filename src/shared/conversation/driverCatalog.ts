@@ -16,10 +16,13 @@ export interface ConversationDriverOption {
   readonly choices: readonly { readonly value: string; readonly label: string; readonly group?: string }[]
 }
 
+export type ConversationDriverSkillSource = 'app' | 'repo' | 'personal' | 'system' | 'other'
+
 export interface ConversationDriverSkill {
   readonly name: string
   readonly displayName?: string
   readonly description?: string
+  readonly source?: ConversationDriverSkillSource
 }
 
 export type ConversationDriverAction =

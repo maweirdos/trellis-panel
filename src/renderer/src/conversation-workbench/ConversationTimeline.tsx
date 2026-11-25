@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, ListChecks, LoaderCircle } from 'lucide-react'
 import { Button } from '../my/ui'
+import { useInteractionGuard } from '../utils/interaction-scope'
+import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
+import { LOCAL_ASSISTANT_CITATION_ENVIRONMENT } from '../../../shared/conversation/assistantCitationText'
+import { resolveAssistantCitationRange } from './AssistantCitationSource'
+import { AssistantSelectionToolbar } from './AssistantSelectionToolbar'
 import { ChatMarkdown } from './ChatMarkdown'
 import { ConversationTimelineRelationRow, type ConversationThreadTab } from './ConversationRelations'
 import { ConversationTurnFileChange } from './ConversationTurnFileChange'
@@ -53,6 +58,11 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
   readonly footer?: ReactNode
   readonly emptyTitle?: string
+  readonly citationRef?: RefObject<ConversationCitationNavigation | null>
+}
+
+export interface ConversationCitationNavigation {
+  readonly open: (citation: AssistantCitation) => Promise<boolean>
 }
 
 interface ReadingPosition {
@@ -146,10 +156,15 @@ export function ConversationTimeline({
   onEdit,
   onOpenRelatedThread,
   onForkFromRun,
+  sourceThreadId,
+  onCite,
+  citationRef,
   footer,
   emptyTitle,
 }: ConversationTimelineProps): JSX.Element {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
+  const canInteract = useInteractionGuard()
+  const stopCitationHighlight = useRef<() => void>()
   const [follow, setFollow] = useState(() => loadReadingPosition(threadId)?.atEnd !== false)
   const [minimapGutter, setMinimapGutter] = useState(false)
   const [minimapHitWidth, setMinimapHitWidth] = useState(0)
@@ -293,6 +308,39 @@ export function ConversationTimeline({
     onLoadEarlier()
   }
 
+  useEffect(() => () => stopCitationHighlight.current?.(), [sourceThreadId])
+
+  const openCitation = async (citation: AssistantCitation): Promise<boolean> => {
+    if (!canInteract() || !scrollElement || !sourceThreadId ||
+      citation.environmentId !== LOCAL_ASSISTANT_CITATION_ENVIRONMENT || citation.threadId !== sourceThreadId) return false
+    const index = rows.findIndex(row => row.kind === 'message' && row.message.id === citation.messageId && row.message.role === 'assistant')
+    if (index === -1) return false
+    releaseFollow()
+    try {
+      await listRef.current?.scrollToIndex({ index, viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET, animated: false })
+    } catch { return false }
+    if (!canInteract() || !scrollElement.isConnected) return false
+    const node = scrollElement.querySelector<HTMLElement>(`[data-assistant-citation-source="${CSS.escape(citation.messageId)}"]`)
+    const range = node && resolveAssistantCitationRange(node, citation)
+    if (!node || !range) return false
+    node.focus({ preventScroll: true })
+    const top = range.getBoundingClientRect().top
+    scrollElement.scrollTop += Math.max(0, top - scrollElement.getBoundingClientRect().top - scrollElement.clientHeight / 2)
+    if (typeof Highlight !== 'undefined') {
+      stopCitationHighlight.current?.()
+      const highlight = new Highlight(range)
+      const key = 'conversation-assistant-citation'
+      CSS.highlights.set(key, highlight)
+      const clear = () => {
+        if (CSS.highlights.get(key) === highlight) CSS.highlights.delete(key)
+      }
+      const timeout = window.setTimeout(clear, 5000)
+      stopCitationHighlight.current = () => { window.clearTimeout(timeout); clear() }
+    }
+    return true
+  }
+  useImperativeHandle(citationRef, () => ({ open: openCitation }))
+
   useEffect(() => {
     if (!scrollElement) return
     let frame: number | undefined
@@ -319,55 +367,59 @@ export function ConversationTimeline({
   }, [threadId, scrollElement, scheduleMinimapRefresh])
 
   return (
-    <div
-      ref={setScrollElement}
-      className="acp-transcript my-scrollbar conversation-timeline"
-      aria-label="消息记录"
-      tabIndex={0}
-      data-following-end={follow ? 'true' : 'false'}
-      onWheel={event => { if (event.deltaY < 0) releaseFollow() }}
-      onTouchMove={releaseFollow}
-      onKeyDown={event => {
-        if (event.target === event.currentTarget && ['ArrowUp', 'PageUp', 'Home'].includes(event.key)) releaseFollow()
-      }}
-    >
-      <div className="my-conversation-column acp-transcript-content conversation-timeline-content" data-timeline-root>
-        {hasOlderHistory && (
-          <div className="conversation-timeline-history">
-            <Button size="sm" variant="ghost" disabled={loadingEarlier} onClick={loadEarlier}>
-              {loadingEarlier ? '正在读取…' : '读取更早的消息'}
-            </Button>
-          </div>
-        )}
-        {!rows.length && !working && (
-          <div className="acp-conversation-start">
-            <h1>{emptyTitle ?? '开始一段对话'}</h1>
-          </div>
-        )}
-        {rows.length > 0 && <LegendList<ConversationTimelineRow>
-          key={threadId}
-          ref={listRef}
-          scrollElement={scrollElement}
-          data={rows}
-          keyExtractor={keyExtractor}
-          getItemType={getItemType}
-          estimatedItemSize={90}
-          initialScrollAtEnd={follow}
-          maintainScrollAtEnd={follow}
-          maintainScrollAtEndThreshold={1}
-          maintainVisibleContentPosition={visiblePosition}
-          onScroll={scheduleMinimapRefresh}
-          onItemSizeChanged={scheduleMinimapRefresh}
-          onReady={restoreReadingPosition}
-          renderItem={({ item }) => <div data-conversation-row-id={item.id} data-timeline-row-kind={item.kind}>
-            <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
-              onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun} />
-          </div>}
-        />}
-        {working && <WorkingTimelineRow startedAt={workingStartedAt ?? undefined}
-          label={workingStartedAt ? undefined : workingLabel} />}
-        {footer}
+    <div className="conversation-timeline-viewport">
+      <div
+        ref={setScrollElement}
+        className="acp-transcript my-scrollbar conversation-timeline"
+        aria-label="消息记录"
+        tabIndex={0}
+        data-following-end={follow ? 'true' : 'false'}
+        onWheel={event => { if (event.deltaY < 0) releaseFollow() }}
+        onTouchMove={releaseFollow}
+        onKeyDown={event => {
+          if (event.target === event.currentTarget && ['ArrowUp', 'PageUp', 'Home'].includes(event.key)) releaseFollow()
+        }}
+      >
+        <div className="my-conversation-column acp-transcript-content conversation-timeline-content" data-timeline-root>
+          {hasOlderHistory && (
+            <div className="conversation-timeline-history">
+              <Button size="sm" variant="ghost" disabled={loadingEarlier} onClick={loadEarlier}>
+                {loadingEarlier ? '正在读取…' : '读取更早的消息'}
+              </Button>
+            </div>
+          )}
+          {!rows.length && !working && (
+            <div className="acp-conversation-start">
+              <h1>{emptyTitle ?? '开始一段对话'}</h1>
+            </div>
+          )}
+          {rows.length > 0 && <LegendList<ConversationTimelineRow>
+            key={threadId}
+            ref={listRef}
+            scrollElement={scrollElement}
+            data={rows}
+            keyExtractor={keyExtractor}
+            getItemType={getItemType}
+            estimatedItemSize={90}
+            initialScrollAtEnd={follow}
+            maintainScrollAtEnd={follow}
+            maintainScrollAtEndThreshold={1}
+            maintainVisibleContentPosition={visiblePosition}
+            onScroll={scheduleMinimapRefresh}
+            onItemSizeChanged={scheduleMinimapRefresh}
+            onReady={restoreReadingPosition}
+            renderItem={({ item }) => <div data-conversation-row-id={item.id} data-timeline-row-kind={item.kind}>
+              <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
+                onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun}
+                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitation : undefined} />
+            </div>}
+          />}
+          {working && <WorkingTimelineRow startedAt={workingStartedAt ?? undefined}
+            label={workingStartedAt ? undefined : workingLabel} />}
+          {footer}
+        </div>
       </div>
+      {sourceThreadId && onCite && <AssistantSelectionToolbar viewport={scrollElement} threadId={sourceThreadId} onCite={onCite} />}
       <TimelineMinimap
         items={minimapItems}
         hasPersistentGutter={minimapGutter}
@@ -382,7 +434,7 @@ export function ConversationTimeline({
             index: item.rowIndex,
             animated: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
             viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET,
-          })
+          }).catch(() => undefined)
         }}
       />
     </div>
@@ -395,12 +447,18 @@ function ConversationRow({
   onEdit,
   onOpenRelatedThread,
   onForkFromRun,
+  onCite,
+  onOpenCitation,
+  sourceThreadId,
 }: {
   readonly row: ConversationTimelineRow
   readonly onQuote?: ConversationTimelineProps['onQuote']
   readonly onEdit?: ConversationTimelineProps['onEdit']
   readonly onOpenRelatedThread?: ConversationTimelineProps['onOpenRelatedThread']
   readonly onForkFromRun?: ConversationTimelineProps['onForkFromRun']
+  readonly onCite?: ConversationTimelineProps['onCite']
+  readonly onOpenCitation?: ConversationTimelineProps['onOpenCitation']
+  readonly sourceThreadId?: string
 }): JSX.Element {
   if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread} />
   if (row.kind === 'file-change') return <ConversationTurnFileChange item={row.item} />
@@ -448,6 +506,6 @@ function ConversationRow({
     )
   }
   return row.message.role === 'user'
-    ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} />
-    : <AssistantTimelineRow row={row} onQuote={onQuote} onForkFromRun={onForkFromRun} />
+    ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onOpenCitation={onOpenCitation} />
+    : <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId} onForkFromRun={onForkFromRun} />
 }

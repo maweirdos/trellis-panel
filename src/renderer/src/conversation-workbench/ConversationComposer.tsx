@@ -3,9 +3,11 @@ import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, ListEnd, Loa
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import type { ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
+import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
+import { ComposerPromptEditorTiptap, type ComposerPromptEditorHandle, type ComposerPromptSnapshot } from './ComposerPromptEditorTiptap'
 import { ComposerSurface } from './ComposerSurface'
-import { ConversationComposerMenu } from './ConversationComposerMenu'
+import { composerSuggestionOptionId, ConversationComposerMenu } from './ConversationComposerMenu'
 import { ConversationModelPicker } from './ConversationModelPicker'
 import { shouldAttachPastedText } from './useComposerAttachments'
 import { CONVERSATION_TEXT_LIMIT } from './useComposerDraft'
@@ -13,6 +15,8 @@ import { unavailableModelReason, type ConversationModelCatalog } from './useConv
 import { detectComposerTrigger, useComposerMenuItems, type ComposerMentionableThread, type ComposerMenuItem } from './useComposerMenuItems'
 import { conversationError, type ComposerModel, type useComposerSend } from './useComposerSend'
 import { useComposerSpeech } from './speech/useComposerSpeech'
+import { useComposerProjectPaths, type ComposerProjectPathTarget } from './useComposerProjectPaths'
+import { formatComposerFileLink } from './chatProjectFileLinks'
 
 export type { ComposerMentionableThread } from './useComposerMenuItems'
 
@@ -34,15 +38,17 @@ export interface ConversationComposerProps {
   readonly queuePaused: boolean
   readonly canSteer: boolean
   readonly disabledReason?: string | null
-  readonly textareaRef?: RefObject<HTMLTextAreaElement>
+  readonly editorRef?: RefObject<ComposerPromptEditorHandle | null>
   readonly leadingControls?: ReactNode
   readonly taskSection?: ComposerTaskSection
   readonly draftReferences?: ReactNode
-  readonly onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>
+  readonly onPaste?: React.ClipboardEventHandler<HTMLDivElement>
   readonly onDrop?: React.DragEventHandler<HTMLFormElement>
   readonly onDragOver?: React.DragEventHandler<HTMLFormElement>
   readonly previousPrompt?: string
   readonly mentionableThreads?: readonly ComposerMentionableThread[]
+  readonly onOpenCitation?: OpenAssistantCitation
+  readonly projectPaths?: ComposerProjectPathTarget
 }
 
 function resolveComposerDispatchMode(running: boolean, canSteer: boolean, alternateModifier: boolean): 'auto' | 'steer' {
@@ -52,12 +58,13 @@ function resolveComposerDispatchMode(running: boolean, canSteer: boolean, altern
 
 export function ConversationComposer({
   interactive, root, send, catalog, model, onModelChange, lockedInstanceId, running, canStop, onStop, queuePaused,
-  canSteer, disabledReason, textareaRef, leadingControls, draftReferences, onPaste, onDrop, onDragOver, previousPrompt,
-  taskSection, mentionableThreads = noThreads,
+  canSteer, disabledReason, editorRef, leadingControls, draftReferences, onPaste, onDrop, onDragOver, previousPrompt,
+  taskSection, mentionableThreads = noThreads, onOpenCitation, projectPaths,
 }: ConversationComposerProps): JSX.Element {
   const toolbar = useRef<HTMLDivElement>(null)
-  const localTextarea = useRef<HTMLTextAreaElement>(null)
-  const promptRef = textareaRef ?? localTextarea
+  const localEditor = useRef<ComposerPromptEditorHandle>(null)
+  const promptRef = editorRef ?? localEditor
+  const menuAnchorRef = useRef<HTMLDivElement>(null)
   const modelTrigger = useRef<HTMLButtonElement>(null)
   const restoredSelection = useRef<{ key: string; start: number; end: number }>()
   const speechDraftRead = useRef<{ key: string; text: string }>()
@@ -81,7 +88,8 @@ export function ConversationComposer({
       if (!input) return null
       const text = send.readDraft()
       speechDraftRead.current = { key: send.draftKey, text }
-      return { text, selection: { start: Math.min(input.selectionStart, text.length), end: Math.min(input.selectionEnd, text.length) } }
+      const { start, end } = input.readSnapshot().selection
+      return { text, selection: { start: Math.min(start, text.length), end: Math.min(end, text.length) } }
     },
     commitDraft: (text, selection) => {
       const expected = speechDraftRead.current
@@ -123,11 +131,14 @@ export function ConversationComposer({
   }, [catalogStatus, describeForSkill, ensure, refresh, selectedInstance, selectedInstanceId])
   const skills = catalog.scopeAllowsSkills && selectedInstance?.read?.status === 'ready'
     ? selectedInstance.read.descriptor.skills ?? noSkills : noSkills
+  const files = useComposerProjectPaths(projectPaths, activeTrigger)
   const menuItems = useComposerMenuItems(activeTrigger, skills, mentionableThreads, attachmentAvailable && !attachmentPending,
-    { available: interactive && send.sideChatAvailable })
-  const menuOpen = menuItems.length > 0
+    { available: interactive && send.sideChatAvailable }, files)
+  const menuOpen = activeTrigger !== null
   const activeIndex = highlight?.triggerKey === triggerKey
     ? Math.max(0, menuItems.findIndex(item => item.id === highlight.itemId)) : 0
+  const selectedMenuItem = menuItems[activeIndex]
+  const isSearchingSkills = describeForSkill && Boolean(selectedInstance) && (!selectedInstance?.read || selectedInstance.read.status === 'loading')
   const canSteerDraft = canSteer && send.attachments.length === 0 && !model?.options?.length
   const missingModel = model && lockedInstanceId && model.instanceId !== lockedInstanceId
     ? '请选择此会话所用实例中的模型。'
@@ -145,14 +156,15 @@ export function ConversationComposer({
     || (staleAttachment ? '有附件已过期，请移除后重新添加。' : undefined)
   const diagnostic = state.phase === 'unknown' || state.phase === 'rejected' ? state.reason : undefined
   const summary = diagnostic?.trim().split('\n')[0]?.slice(0, 240)
-  const trackCaret = (input: HTMLTextAreaElement): void => {
-    setCaret(input.selectionStart === input.selectionEnd ? { key: send.draftKey, position: input.selectionStart } : undefined)
+  const trackCaret = ({ selection }: ComposerPromptSnapshot): void => {
+    setCaret(selection.start === selection.end ? { key: send.draftKey, position: selection.start } : undefined)
   }
   const pickMenuItem = async (item: ComposerMenuItem): Promise<void> => {
     if (!activeTrigger || send.readDraft() !== send.draft) return
     const source = send.draft
     const { rangeStart, rangeEnd } = activeTrigger
     const replacement = item.type === 'skill' ? `$${item.name} `
+      : item.type === 'file' ? item.kind === 'directory' ? `@${item.path}/` : `${formatComposerFileLink(item.path)} `
       : item.type === 'side' ? `/${item.name} ` : ''
     const end = replacement.endsWith(' ') && source[rangeEnd] === ' ' ? rangeEnd + 1 : rangeEnd
     const next = source.slice(0, rangeStart) + replacement + source.slice(end)
@@ -167,7 +179,7 @@ export function ConversationComposer({
       try {
         if (await send.quoteThread(item.threadId, source, next)) requestAnimationFrame(() => {
           const input = promptRef.current
-          if (latestDraftKey.current === key && input?.value === next && document.activeElement === input) {
+          if (latestDraftKey.current === key && input && input.readSnapshot().value === next && document.activeElement === input.element) {
             input.setSelectionRange(position, position)
           }
         })
@@ -257,19 +269,21 @@ export function ConversationComposer({
       {referenceError?.key === send.draftKey && <div className="px-4 pt-2">
         <FeedbackNotice variant="inline" title="未能引用会话" description={referenceError.message} />
       </div>}
-      <textarea ref={promptRef} className="my-scrollbar" rows={2} style={{ fieldSizing: 'content' }}
-        value={send.draft} placeholder="想问什么都可以。@ 引用文件，$ 使用技能，/ 输入命令"
-        aria-label="消息" aria-describedby={reason ? diagnosticId : undefined} aria-invalid={overLimit || undefined}
-        aria-autocomplete={activeTrigger ? 'list' : undefined} aria-controls={menuOpen ? menuId : undefined}
-        aria-activedescendant={menuOpen ? `${menuId}-${activeIndex}` : undefined}
-        readOnly={!interactive} onChange={event => {
+      <ComposerPromptEditorTiptap editorRef={promptRef} anchorRef={menuAnchorRef} draftKey={send.draftKey}
+        value={send.draft} skills={skills} disabled={!interactive}
+        placeholder="想问什么都可以。@ 引用来源，$ 使用技能，/ 输入命令"
+        describedBy={reason ? diagnosticId : undefined} invalid={overLimit}
+        onOpenCitation={onOpenCitation}
+        suggestionListId={menuOpen && menuItems.length ? menuId : undefined}
+        activeSuggestionId={menuOpen && selectedMenuItem ? composerSuggestionOptionId(menuId, selectedMenuItem.id) : undefined}
+        onChange={(snapshot, textChanged) => {
+          if (document.activeElement === promptRef.current?.element) trackCaret(snapshot)
+          if (!textChanged) return
           setReferenceError(undefined)
-          trackCaret(event.currentTarget)
-          send.setDraft(event.target.value)
+          send.setDraft(snapshot.value)
         }}
-        onFocus={event => { dismissTrigger(''); trackCaret(event.currentTarget) }}
+        onFocus={snapshot => { dismissTrigger(''); trackCaret(snapshot) }}
         onBlur={() => setCaret(undefined)}
-        onSelect={event => { if (document.activeElement === event.currentTarget) trackCaret(event.currentTarget) }}
         onPaste={event => {
           const inline = pasteInline.current
           pasteInline.current = false
@@ -282,16 +296,16 @@ export function ConversationComposer({
             return
           }
           const text = event.clipboardData.getData('text/plain')
-          const field = event.currentTarget
-          const inlineLength = send.outgoingLength + text.length - (field.selectionEnd - field.selectionStart)
+          const selection = promptRef.current?.readSnapshot().selection
+          const inlineLength = send.outgoingLength + text.length - (selection ? selection.end - selection.start : 0)
           if (inline || !shouldAttachPastedText(text, inlineLength, CONVERSATION_TEXT_LIMIT)) return
           event.preventDefault()
           void intake.addPastedText(text)
         }}
-        onKeyDown={event => {
+        onCommandKeyDown={event => {
           pasteInline.current = Boolean(event.shiftKey && event.ctrlKey && !event.altKey && !event.metaKey &&
             (event.code === 'KeyV' || event.key.toLowerCase() === 'v'))
-          if (event.nativeEvent.isComposing || event.keyCode === 229) return
+          if (event.isComposing || event.keyCode === 229) return
           if (menuOpen && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
             if (event.key === 'Escape') {
               event.preventDefault()
@@ -299,16 +313,16 @@ export function ConversationComposer({
               dismissTrigger(triggerKey)
               return
             }
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (selectedMenuItem && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
               event.preventDefault()
               const direction = event.key === 'ArrowDown' ? 1 : -1
               const next = menuItems[(activeIndex + direction + menuItems.length) % menuItems.length]
               setHighlight({ triggerKey, itemId: next.id })
               return
             }
-            if (event.key === 'Enter' || event.key === 'Tab') {
+            if (selectedMenuItem && (event.key === 'Enter' || event.key === 'Tab')) {
               event.preventDefault()
-              void pickMenuItem(menuItems[activeIndex])
+              void pickMenuItem(selectedMenuItem)
               return
             }
           }
@@ -323,7 +337,9 @@ export function ConversationComposer({
           event.preventDefault()
           submit(event.altKey)
         }} />
-      {menuOpen && <ConversationComposerMenu id={menuId} anchor={promptRef} items={menuItems} activeIndex={activeIndex}
+      {menuOpen && <ConversationComposerMenu id={menuId} anchor={menuAnchorRef} items={menuItems} activeIndex={activeIndex}
+        triggerKind={activeTrigger.kind} isLoading={activeTrigger.kind === 'path' ? files.pending : isSearchingSkills}
+        emptyStateText={files.error ?? undefined}
         onHighlight={index => { if (index !== activeIndex) setHighlight({ triggerKey, itemId: menuItems[index].id }) }}
         onSelect={item => void pickMenuItem(item)} />}
       {reason && <div id={diagnosticId} className="px-4 pb-2 text-my-xs text-my-secondary break-words" role="status">{reason}</div>}
@@ -348,6 +364,11 @@ export function ConversationComposer({
               onClick={() => { send.restoreStash(); close() }}>取回草稿</DropdownItem>
           </>}
         </Dropdown>}
+        <div className="spacer" />
+        {canStop && <button type="button" className="my-icon-control" title="停止当前回合" aria-label="停止当前回合"
+          disabled={!interactive} onClick={onStop}><Square size={15} aria-hidden="true" /></button>}
+        <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
+          onChange={onModelChange} disabled={!interactive} />
         {speech.available && <button type="button" className="my-icon-control shrink-0"
           title={recording ? '停止录音' : '语音输入'} aria-label={recording ? '停止录音' : '语音输入'}
           aria-pressed={recording} disabled={!interactive || speechBusy}
@@ -357,11 +378,6 @@ export function ConversationComposer({
         </button>}
         {(speechBusy || recording) && <button type="button" className="my-icon-control shrink-0" aria-label="取消语音输入"
           disabled={!interactive} onClick={() => void speech.cancel()}><X size={14} aria-hidden="true" /></button>}
-        <div className="spacer" />
-        {canStop && <button type="button" className="my-icon-control" title="停止当前回合" aria-label="停止当前回合"
-          disabled={!interactive} onClick={onStop}><Square size={15} aria-hidden="true" /></button>}
-        <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
-          onChange={onModelChange} disabled={!interactive} />
         {running && canSteerDraft && <button type="button" className="my-composer-control shrink-0 px-1.5 py-1 text-my-xs"
           title="插话（Alt+Enter）" disabled={!allowSend} onClick={() => submit(true)}>插话</button>}
         <button type="submit" className="my-icon-control shrink-0" title={sendLabel} aria-label={sendLabel} disabled={!allowSend}>

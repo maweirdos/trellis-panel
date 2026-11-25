@@ -11,6 +11,12 @@ export const ChatProjectFileLinks = createContext<{
   readonly open: (file: ChatProjectFile) => void
 } | null>(null)
 
+export function formatComposerFileLink(path: string): string {
+  const name = path.slice(path.lastIndexOf('/') + 1).replace(/[\\[\]]/gu, '\\$&')
+  const href = path.split('/').map(part => encodeURIComponent(part).replace(/[()]/gu, letter => `%${letter.charCodeAt(0).toString(16)}`)).join('/')
+  return `[${name}](./${href})`
+}
+
 export function resolveChatProjectFile(href: string, root: string, inline = false): ChatProjectFile | null {
   if (!href || href.length > 8192 || /[\u0000-\u0020\u007f<>|"*?]/u.test(href)) return null
   if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^(?:file:\/\/\/|[a-z]:[/\\])/i.test(href) &&

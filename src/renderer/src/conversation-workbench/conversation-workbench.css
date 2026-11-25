@@ -43,18 +43,6 @@
   box-shadow: 0 0 0 1px var(--my-border-strong-1), 0 1px 2px rgb(0 0 0 / 5%);
 }
 
-.my-root .conversation-composer textarea {
-  min-height: calc(1.625em * 2 + 0.5rem);
-  padding: 0.875rem 1rem 0.5rem;
-  font-size: var(--my-text-chat);
-  line-height: 1.625;
-  font-family: var(--my-font-sans);
-}
-
-.my-root .conversation-composer textarea::placeholder {
-  color: var(--my-txt-placeholder);
-}
-
 .conversation-composer-toolbar {
   gap: 0.5rem;
   padding: 0 0.5rem 0.5rem;
@@ -200,12 +188,6 @@
 .my-root .conversation-composer-toolbar button[type='submit'] > svg {
   width: 0.875rem;
   height: 0.875rem;
-}
-
-.my-root .conversation-composer:has(textarea:focus-visible) {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
-  outline-offset: calc(var(--my-space-2) * -1);
-  box-shadow: none;
 }
 
 @media (max-width: 900px) {

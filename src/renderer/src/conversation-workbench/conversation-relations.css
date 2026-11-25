@@ -180,11 +180,6 @@
   flex: none;
 }
 
-.conversation-side-thread > .conversation-timeline {
-  flex: 1;
-  min-height: 0;
-}
-
 .conversation-side-thread-error {
   margin: var(--my-space-8) var(--my-space-12);
   color: var(--my-txt-danger-primary);

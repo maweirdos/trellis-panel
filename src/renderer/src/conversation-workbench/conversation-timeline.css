@@ -9,13 +9,28 @@
  * Crux semantic tokens so light/dark and the three densities still follow the host theme.
  */
 
-.conversation-timeline {
+.conversation-timeline-viewport {
   --conversation-muted: var(--my-txt-secondary);
   --conversation-message-surface: color-mix(in srgb, var(--my-txt-primary) 6%, var(--my-bg-canvas));
   --conversation-link: var(--my-txt-accent-primary);
+  display: flex;
+  position: relative;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   font-size: var(--my-text-chat);
   line-height: 1.625;
   color: var(--my-txt-chat);
+}
+
+.acp-content[data-empty] > .conversation-timeline-viewport,
+.acp-content[data-empty] > .conversation-timeline-viewport > .conversation-timeline {
+  flex: 0 0 auto;
+}
+
+.acp-content[data-empty] > .conversation-timeline-viewport > .conversation-timeline {
+  overflow: visible;
 }
 
 .conversation-timeline-content {

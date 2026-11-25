@@ -23,7 +23,7 @@ import { codexDelegationTools, CodexTurnTools } from './turn-tools'
 import { ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError } from '../registry'
 import type { ConversationDriverEventListener, ConversationDriverModel, ConversationDriverOpenInput, ConversationDriverSession, ConversationDriverTurnEvent } from '../registry'
 import type { ConversationCompactThreadInput, ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationStartTurnContext, ConversationSteerTurnInput } from '../registry'
-import type { ConversationDriverDescriptor, ConversationDriverOption, ConversationDriverSkill } from '../../../../../shared/conversation/driverCatalog'
+import type { ConversationDriverDescriptor, ConversationDriverOption, ConversationDriverSkill, ConversationDriverSkillSource } from '../../../../../shared/conversation/driverCatalog'
 import { DaemonError } from '../../../../daemon/errors'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type MutableDriverActions } from '../core/catalog'
 
@@ -251,10 +251,13 @@ export class CodexDriver implements ConversationDriverSession {
           if (!skill.enabled || !/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,127}$/u.test(skill.name) ||
             !/[a-zA-Z]/u.test(skill.name) || seen.has(skill.name)) return []
           seen.add(skill.name)
+          const source: ConversationDriverSkillSource = /\/\.(?:codex|agents)\/plugins\//u.test(skill.path.replaceAll('\\', '/'))
+            ? 'app' : skill.scope === 'user' ? 'personal' : skill.scope === 'admin' ? 'other' : skill.scope
           return [{
             name: skill.name,
             displayName: skill.interface?.displayName?.trim().slice(0, 160) || undefined,
             description: (skill.shortDescription ?? skill.interface?.shortDescription ?? skill.description)?.trim().slice(0, 240) || undefined,
+            source,
           }]
         }).slice(0, 256)
       }),

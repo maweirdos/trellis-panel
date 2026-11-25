@@ -175,7 +175,117 @@
   color: var(--my-txt-danger-primary);
 }
 
-/* Subagent / side-chat rows follow the upstream work-log line, not a bordered card. */
+.conversation-subagent-link {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--my-space-10);
+  padding: var(--my-space-6) var(--my-space-8);
+  border-radius: var(--my-control-radius);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out);
+}
+
+.conversation-subagent-link:hover {
+  background: var(--my-bg-navigation-hover);
+}
+
+.conversation-subagent-link:focus-visible {
+  outline: 2px solid var(--my-focus-ring);
+  outline-offset: -2px;
+}
+
+.conversation-subagent-avatar {
+  position: relative;
+  display: inline-flex;
+  width: var(--my-space-24);
+  height: var(--my-space-24);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-layer-3);
+  color: var(--my-txt-secondary);
+}
+
+.conversation-subagent-dot {
+  position: absolute;
+  inset-inline-end: -1px;
+  inset-block-end: -1px;
+  width: var(--my-space-8);
+  height: var(--my-space-8);
+  border-radius: var(--my-radius-full);
+  background: var(--my-txt-tertiary);
+  box-shadow: 0 0 0 2px var(--my-bg-canvas);
+}
+
+.conversation-subagent-link[data-state='completed'] .conversation-subagent-dot {
+  background: var(--my-bg-success-primary);
+}
+
+.conversation-subagent-link[data-state='running'] .conversation-subagent-dot {
+  background: var(--my-txt-info-primary);
+}
+
+.conversation-subagent-link[data-state='failed'] .conversation-subagent-dot {
+  background: var(--my-txt-danger-primary);
+}
+
+.conversation-subagent-link[data-state='waiting'] .conversation-subagent-dot {
+  background: var(--my-txt-warning-primary);
+}
+
+.conversation-subagent-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-subagent-title,
+.conversation-subagent-detail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-subagent-title {
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-xs);
+  font-weight: var(--my-weight-medium);
+  line-height: 1.333;
+}
+
+.conversation-subagent-detail,
+.conversation-subagent-status,
+.conversation-subagent-time,
+.conversation-subagent-chevron {
+  color: var(--my-txt-tertiary);
+}
+
+.conversation-subagent-detail {
+  font-size: var(--my-text-2xs);
+  line-height: 1.625;
+}
+
+.conversation-subagent-link[data-state='failed'] :is(.conversation-subagent-detail, .conversation-subagent-status) {
+  color: var(--my-txt-danger-primary);
+}
+
+.conversation-subagent-status,
+.conversation-subagent-time,
+.conversation-subagent-chevron {
+  flex: none;
+  font-size: var(--my-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-subagent-link:hover .conversation-subagent-chevron {
+  color: var(--my-txt-primary);
+}
+
 .conversation-related-row {
   padding: 0.125rem 0.25rem;
 }

@@ -9,7 +9,7 @@ function Main(props: ComponentProps<'div'>) {
 }
 
 function Host({ children, ...props }: ComponentProps<'form'>) {
-  return <form {...props} data-slot="composer-host" className="acp-composer conversation-composer"><Main>{children}</Main></form>
+  return <form {...props} data-slot="composer-host" data-chat-composer-form="true" className="acp-composer conversation-composer"><Main>{children}</Main></form>
 }
 
 export const ComposerSurface = { Shell, Host }

@@ -8,6 +8,7 @@ import { conversationAttachmentDraftScope, prepareConversationAttachmentClaim } 
 import { prepareConversationKnowledge } from '../../services/conversation/attachments/knowledge'
 import type { ConversationKnowledgeAttachment } from '../../../shared/conversation/knowledge-reference'
 import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
+import { expandAssistantCitationsForProvider } from '../../../shared/conversation/assistantCitationText'
 import { ThreadMessageIntake } from '../../services/conversation/orchestration/ThreadMessageIntake'
 import { ConversationEventSink } from '../../services/conversation/orchestration/EventSink'
 import { ThreadCommands, lifecycleEvent, type ThreadEffectRow } from '../../services/conversation/orchestration/ThreadCommands'
@@ -1020,7 +1021,7 @@ export class ConversationRuntime {
         invoke = () => interruptTurn(input)
       } else if ((command.type === 'message.dispatch' || command.type === 'queued-message.promote-to-steer') && steerRunId && turn.driver.steerTurn) {
         const steerTurn = turn.driver.steerTurn.bind(turn.driver)
-        const text = this.commands.readUserMessage(steerRunId).text
+        const text = expandAssistantCitationsForProvider(this.commands.readUserMessage(steerRunId).text)
         invoke = () => steerTurn({ ...input, text })
       } else if (command.type === 'runtime-request.respond' && turn.driver.respondToRuntimeRequest) {
         const request = this.commands.request(threadId, command.requestId)
@@ -1381,7 +1382,7 @@ export class ConversationRuntime {
         ...(run.ordinal === 1 && ordinaryTask && authority.taskContext ? [`以下是原团队任务的固定材料摘要。\n\n${authority.taskContext}`] : []),
         ...(roleInstructions?.trim() ? [`当前工程中用户选定的角色指令（Crux）\n${roleInstructions}`] : []),
         ...(goal?.status === 'active' ? [`当前会话的用户目标（Crux）\n${goal.objective}`] : []),
-        `${contextText}${message.text}`,
+        `${contextText}${expandAssistantCitationsForProvider(message.text)}`,
       ].filter(Boolean).join('\n\n')
       const startedAt = new Date().toISOString()
       const payload = { ...JSON.parse(run.payload_json), status: 'running', providerThreadId: nativeThreadId, startedAt,

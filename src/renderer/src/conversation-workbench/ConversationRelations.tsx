@@ -1,6 +1,8 @@
 import { useId, useState, type JSX } from 'react'
 import { ArrowUpRight, Bot, Check, ChevronRight, CircleAlert, CircleHelp, GitBranch, LoaderCircle, MessageSquare, Minus, X } from 'lucide-react'
 import type { ConversationThreadRelation, ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
+import { getToolBrand } from '../../../shared/tool-brands'
+import { ToolBrandIcon } from '../components/ToolBrandIcon'
 import { Button, Modal } from '../my/ui'
 import { conversationThreadSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { formatDayAwareTimestamp } from './chatTimestamp'
@@ -89,11 +91,6 @@ export function ConversationLifecycleCard({ item, onOpenRelatedThread, compact =
   </div>
 }
 
-/**
- * Upstream TimelineWorkEntryRow pattern for subagents and side chats: a plain
- * work-log line (icon, truncated title, status) whose timestamp and open action
- * appear on hover, not a bordered card. Keeps Crux's open/detail behaviour.
- */
 export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
   readonly item: ConversationThreadRelation
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
@@ -104,14 +101,36 @@ export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
   const child = item.childThreadId
   const canOpen = Boolean(child && onOpenRelatedThread)
   const elapsed = formatDayAwareTimestamp(item.updatedAt)
+  const open = (): void => {
+    if (child && onOpenRelatedThread) onOpenRelatedThread(conversationThreadSurface(child))
+    else setDetails(true)
+  }
+  if (isAgent(item)) {
+    const brand = getToolBrand(item.instanceId)
+    const detail = subagentCardDetail(item.result?.text ?? item.question?.title)
+    return <div data-related-work-id={item.id} data-v2-item-type="subagent">
+      <button type="button" className="conversation-subagent-link" data-state={item.status}
+        aria-label={`${canOpen ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`} onClick={open}>
+        <span className="conversation-subagent-avatar" aria-hidden="true">
+          {brand ? <ToolBrandIcon brand={brand.id} size={14} /> : <Bot size={14} />}
+          <span className="conversation-subagent-dot" />
+        </span>
+        <span className="conversation-subagent-copy">
+          <span className="conversation-subagent-title">{item.title}</span>
+          <span className="conversation-subagent-detail">{detail ?? label}</span>
+        </span>
+        {detail && <span className="conversation-subagent-status">{label}</span>}
+        {elapsed && <span className="conversation-subagent-time">{elapsed}</span>}
+        <ChevronRight size={14} className="conversation-subagent-chevron" aria-hidden="true" />
+      </button>
+      {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
+    </div>
+  }
   return <div className="conversation-work-row conversation-related-row" data-related-work-id={item.id}
     data-state={item.status}>
     <button type="button" className="conversation-related-row-trigger"
       aria-label={`${canOpen ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`}
-      onClick={() => {
-        if (child && onOpenRelatedThread) onOpenRelatedThread(conversationThreadSurface(child))
-        else setDetails(true)
-      }}>
+      onClick={open}>
       <span className="conversation-work-icon" aria-hidden="true"><span><Kind size={16} /></span></span>
       <span className="conversation-related-row-title">{item.title}</span>
       <span className="conversation-related-state" data-state={item.status}>
@@ -123,6 +142,16 @@ export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
     </button>
     {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
   </div>
+}
+
+function subagentCardDetail(detail: string | undefined): string | null {
+  if (!detail || /^Child task ended with status\b/i.test(detail)) return null
+  return detail.slice(0, 4096)
+    .replace(/!?\[([^\]]+)\]\((?:\\.|[^\\()]|\((?:\\.|[^\\()])*\))*\)/g, '$1')
+    .replace(/`/g, '')
+    .replace(/^[ \t]*[-*][ \t]+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim() || null
 }
 
 export function ConversationRelations({ relations, onOpenRelatedThread }: {

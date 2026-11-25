@@ -1,0 +1,84 @@
+.conversation-composer-prompt {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  font-family: var(--my-font-sans);
+  font-size: var(--my-text-chat);
+  line-height: 1.625;
+}
+
+.conversation-composer-editor,
+.conversation-composer-placeholder {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.conversation-composer .composer-tiptap,
+.conversation-composer-placeholder {
+  padding: 0.875rem 1rem 0.5rem;
+}
+
+.conversation-composer .composer-tiptap {
+  min-height: calc(2lh + 1.375rem);
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--my-txt-chat);
+  outline: none;
+  overflow-wrap: anywhere;
+  user-select: text;
+  white-space: pre-wrap;
+}
+
+.conversation-composer .composer-tiptap p {
+  margin: 0;
+}
+
+.conversation-composer-placeholder {
+  pointer-events: none;
+  color: var(--my-txt-placeholder);
+}
+
+.my-root .conversation-composer:has(.composer-tiptap:focus-visible) {
+  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline-offset: calc(var(--my-space-2) * -1);
+  box-shadow: none;
+}
+
+.composer-tiptap > p > [data-slot='context-chip'] {
+  display: inline-flex;
+  max-width: min(16em, 100%);
+  vertical-align: baseline;
+  border-radius: var(--my-radius-base);
+  font-weight: var(--my-weight-medium);
+  color: var(--my-txt-info-primary);
+}
+
+.composer-tiptap [data-slot='context-chip-label'] {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-tiptap [data-slot='context-chip'].ProseMirror-selectednode {
+  background: var(--my-selection-bg);
+  outline: none;
+}
+
+.conversation-composer-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--my-txt-info-primary);
+}
+
+.conversation-composer-file-chip:hover {
+  text-decoration: underline;
+}
+
+.conversation-composer-file-chip svg {
+  flex: none;
+}

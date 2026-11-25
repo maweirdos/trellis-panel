@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { Check, Copy, GitFork, Pencil, Reply, TriangleAlert } from 'lucide-react'
+import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
+import { collectAssistantCitations } from '../../../shared/conversation/assistantCitationText'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
+import { AssistantCitationChip, type OpenAssistantCitation } from './AssistantCitationChip'
+import { captureAssistantCitation } from './AssistantCitationSource'
 import { ChatMarkdown } from './ChatMarkdown'
 import type { ConversationMessage, ConversationTimelineRow } from './useConversationThread'
 import { formatDayAwareTimestamp } from './chatTimestamp'
@@ -10,6 +14,9 @@ export interface TimelineMessageActions {
   readonly onQuote?: (message: ConversationMessage, text: string) => void
   readonly onEdit?: (message: ConversationMessage) => void
   readonly onForkFromRun?: (runId: string) => void
+  readonly onCite?: (citation: AssistantCitation) => void
+  readonly onOpenCitation?: OpenAssistantCitation
+  readonly sourceThreadId?: string
 }
 
 type MessageRowProps = TimelineMessageActions & {
@@ -81,14 +88,31 @@ function MessageActions({ children }: { children: ReactNode }) {
   return <div className="conversation-message-actions">{children}</div>
 }
 
-export function UserMessageRow({ row, onQuote, onEdit }: MessageRowProps) {
+function UserMessageContextChips({ text, onOpenCitation }: { readonly text: string; readonly onOpenCitation?: OpenAssistantCitation }) {
+  const matches = collectAssistantCitations(text)
+  if (!matches.length) return <ChatMarkdown text={text} user />
+  let offset = 0
+  return <div className="conversation-cited-message">
+    {matches.map(match => {
+      const previous = text.slice(offset, match.start)
+      offset = match.end
+      return <div key={match.start}>
+        {previous.trim() && <ChatMarkdown text={previous} user />}
+        <AssistantCitationChip citation={match.citation} sent onOpenSource={onOpenCitation} />
+      </div>
+    })}
+    {text.slice(offset).trim() && <ChatMarkdown text={text.slice(offset)} user />}
+  </div>
+}
+
+export function UserMessageRow({ row, onQuote, onEdit, onOpenCitation }: MessageRowProps) {
   const { message } = row
   return (
     <article className="conversation-message conversation-message-user" data-user-message-row>
       <div className="conversation-message-bubble" data-user-message-bubble>
         <MessageAuthorHeading>你的消息</MessageAuthorHeading>
         <MessageBody>
-          <ChatMarkdown text={message.text} user />
+          <UserMessageContextChips text={message.text} onOpenCitation={onOpenCitation} />
         </MessageBody>
       </div>
       <MessageActions>
@@ -104,13 +128,18 @@ export function UserMessageRow({ row, onQuote, onEdit }: MessageRowProps) {
   )
 }
 
-export function AssistantTimelineRow({ row, onQuote, onForkFromRun }: MessageRowProps) {
+export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sourceThreadId }: MessageRowProps) {
   const { message, forkRunId } = row
+  const isCitationSource = message.role === 'assistant' && !message.streaming && Boolean(sourceThreadId)
+  const canCite = isCitationSource && Boolean(onCite)
   return (
     <article className="conversation-message conversation-message-assistant" data-assistant-message-row>
       <div className="conversation-message-bubble">
         <MessageAuthorHeading>{message.role === 'system' ? '系统消息' : '模型回复'}</MessageAuthorHeading>
-        <MessageBody><ChatMarkdown text={message.text} isStreaming={message.streaming} /></MessageBody>
+        <div className="conversation-message-body" tabIndex={isCitationSource ? -1 : undefined}
+          data-assistant-citation-source={isCitationSource ? message.id : undefined}>
+          <ChatMarkdown text={message.text} isStreaming={message.streaming} />
+        </div>
       </div>
       <MessageActions>
         {message.text && <MessageCopyButton message={message} user={false} />}
@@ -118,7 +147,20 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun }: MessageRow
           aria-label="从此回合创建分支" onClick={() => onForkFromRun(forkRunId)}>
           <GitFork size={12} aria-hidden="true" />
         </button>}
-        {message.text && onQuote && <MessageReplyButton message={message} onQuote={onQuote} label="引用这段回复" />}
+        {message.text && canCite && sourceThreadId && onCite ? (
+          <button type="button" className="my-icon-control" title="引用这段回复" aria-label="引用这段回复"
+            onMouseDown={event => { if (selectedTextWithin(event.currentTarget)) event.preventDefault() }}
+            onClick={event => {
+              const source = event.currentTarget.closest('article')?.querySelector<HTMLElement>('[data-assistant-citation-source]')
+              if (!source) return
+              const selection = window.getSelection()
+              const range = selection?.rangeCount && !selection.isCollapsed &&
+                source.contains(selection.anchorNode) && source.contains(selection.focusNode) ? selection.getRangeAt(0) : document.createRange()
+              if (!source.contains(range.startContainer) || range.collapsed) range.selectNodeContents(source)
+              const citation = captureAssistantCitation(source, sourceThreadId, range)
+              if (citation) { onCite(citation); selection?.removeAllRanges() }
+            }}><Reply size={13} aria-hidden="true" /></button>
+        ) : message.text && onQuote && <MessageReplyButton message={message} onQuote={onQuote} label="引用这段回复" />}
         {!message.streaming && <TimelineRowTimestamp createdAt={message.updatedAt ?? message.createdAt} />}
       </MessageActions>
     </article>
