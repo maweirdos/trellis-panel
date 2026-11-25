@@ -74,8 +74,8 @@ export function CruxApp({ host = 'desktop', webInvitation, webSpaceAction, autom
         <span className="text-my-sm font-semibold text-my-primary">团队协作</span>
         {host === 'web' && webSpaceAction}
       </header>
-      <WorkspaceNavigation key={workspaceContext.key} unread={unread} onOpenAutomations={host === 'desktop' ? () => useApp.getState().setPage('automations') : undefined} />
-      <footer className="flex flex-col gap-2 border-t border-my-line p-3 text-my-xs text-my-tertiary">{host === 'desktop' && <><button type="button" className="flex items-center gap-2 text-left hover:text-my-primary" onClick={() => useApp.getState().setPage('team')}><FlowIcon name="reports" size={16} />项目动态与报告</button><ConnectionPanel /></>}<span role="status">{busy ? '正在保存…' : workspaceContext.state === 'local' ? '本机协作数据' : workspaceContext.state === 'connected' ? `已同步 · 修订 ${workspaceContext.revision}` : workspaceContext.state === 'offline' ? '离线缓存 · 权限为上次核对' : '访问权限已失效'}</span></footer>
+      <WorkspaceNavigation key={workspaceContext.key} unread={unread} />
+      <footer className="flex flex-col gap-2 border-t border-my-line p-3 text-my-xs text-my-tertiary">{host === 'desktop' && <ConnectionPanel />}<span role="status">{busy ? '正在保存…' : workspaceContext.state === 'local' ? '本机协作数据' : workspaceContext.state === 'connected' ? `已同步 · 修订 ${workspaceContext.revision}` : workspaceContext.state === 'offline' ? '离线缓存 · 权限为上次核对' : '访问权限已失效'}</span></footer>
     </aside>
     </ContextRegion>
     <fieldset className={`collab-main border-0 ${taskWorkspace ? 'is-task-workspace' : ''}`} data-crux-module={module} key={`${workspaceContext.key}:${spaceAccess}:${currentSpaceId}:${module}`} disabled={workspaceContext.state !== 'local' && !workspaceContext.canManage && ['agents', 'crews', 'skills', 'automations'].includes(module)}>

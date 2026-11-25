@@ -26,7 +26,7 @@
 .collab-task-detail { container: collab-task-detail / inline-size; }
 .embedded-task-post { container: embedded-task-post / inline-size; display: flex; min-width: 0; flex: 1; flex-direction: column; overflow: hidden; background: var(--my-bg-canvas); }
 .team-task-reader { display: flex; min-width: 0; flex: 1; min-height: 0; }
-.team-task-layout { container: team-task-layout / inline-size; display: grid; flex: 1; min-height: 0; min-width: 0; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); overflow: hidden; }
+.team-task-layout { container: team-task-layout / inline-size; display: grid; flex: 1; min-height: 0; min-width: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; }
 .team-task-layout > * { min-width: 0; min-height: 0; }
 .team-task-list { display: flex; flex-direction: column; border-inline-start: 1px solid var(--my-border-subtle); background: var(--my-bg-panel); overflow: hidden; }
 @container team-task-layout (max-width: 760px) { .team-task-layout { grid-template-columns: minmax(0, 1fr); } .team-task-list { display: none; } }
@@ -303,4 +303,42 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .collab-task-stage-chip { transition: none; }
+}
+.collab-collapsed-columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+  flex: 0 0 var(--my-space-192);
+  padding: var(--my-space-10);
+  border: 1px dashed var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-1);
+}
+.collab-collapsed-columns-title {
+  margin: 0;
+  padding-inline: var(--my-space-4);
+  color: var(--my-txt-tertiary);
+  font-size: var(--my-text-xs);
+  font-weight: var(--my-weight-medium);
+}
+.collab-collapsed-col {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  width: 100%;
+  min-height: var(--my-control-height-sm);
+  padding: var(--my-space-4) var(--my-space-8);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
+  text-align: left;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
+}
+.collab-collapsed-col:hover,
+.collab-collapsed-col[data-drag-over='true'] {
+  background: var(--my-bg-accent-subtle);
+  border-color: var(--my-border-accent-subtle);
+  color: var(--my-txt-primary);
 }

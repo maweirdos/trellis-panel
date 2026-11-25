@@ -27,6 +27,8 @@ export function BoardPage(): JSX.Element | null {
   const [saving, setSaving] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [showTriage, setShowTriage] = useState(false)
+  const [pinnedColumns, setPinnedColumns] = useState<string[]>([])
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null)
   if (!snapshot) return null
   const readOnly = Boolean(snapshot.spaces.find((space) => space.id === spaceId)?.archived)
   const groupBy = snapshot.views.find((v) => v.id === activeViewId)?.groupBy ?? localGroup
@@ -70,28 +72,55 @@ export function BoardPage(): JSX.Element | null {
     </div>
     {saving && <div className="flex items-center gap-2"><input aria-label="视图名称" autoFocus className={`${inputClass} max-w-64`} placeholder="视图名称" value={viewName} onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveView() }} /><Button size="sm" variant="primary" disabled={!viewName.trim() || busy} onClick={() => void saveView()}>保存筛选和分组</Button><Button size="sm" onClick={() => setSaving(false)}>取消</Button></div>}
     <div className="my-scrollbar min-h-0 flex-1 overflow-x-auto">
-      {columns.length === 0 ? <EmptyState title="暂无分组" description="先在空间配置中添加任务状态" /> : <div className="flex h-full min-h-0 gap-3 pb-1">{columns.map((column) => <section key={column.key} data-column={column.key} aria-label={`${column.title}，${column.tasks.length} 条任务`} className="flex min-h-0 w-64 shrink-0 flex-col rounded-my-md border border-my-line bg-my-layer-1" onDragOver={(e) => { if (groupBy === 'status' && !busy) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (groupBy === 'status') moveTask(e.dataTransfer.getData('application/x-crux-task'), column.key) }}>
-        <header className="flex items-center gap-2 border-b border-my-line px-3 py-2"><h2 className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary">{column.title}</h2><span className="text-my-xs text-my-tertiary">{column.tasks.length}</span></header>
-        <div className="my-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2" style={{ scrollbarGutter: 'stable' }}>{column.tasks.map((task) => {
-          const allowed = allowedStatusIdsFor(snapshot, task.spaceId, task.typeId)
-          const blocking = task.relations.filter((r) => r.kind === 'blocks')
-          const resolved = blocking.filter((r) => { const related = snapshot.tasks.find((t) => t.id === r.taskId); return related && ['done', 'cancelled'].includes(statusOf(snapshot, related.statusId)?.category ?? '') }).length
-          return <article key={task.id} draggable={groupBy === 'status' && !busy && !readOnly} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-crux-task', task.id) }} className="rounded-my-md border border-my-line bg-my-canvas p-2">
-            <button type="button" onClick={() => openTask(task.id)} className="mb-2 w-full text-left text-my-xs leading-relaxed text-my-primary"><span className="mr-1 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : ''}>{task.title}</span></button>
-            <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></div>
-            <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}<TaskOutputReviewBoardBadge task={task} />{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
-            <Select
-              size="sm"
-              ariaLabel={`更改 ${task.id} 状态`}
-              className="mt-2 w-full"
-              disabled={busy || readOnly}
-              value={task.statusId}
-              onChange={(val) => moveTask(task.id, val)}
-              options={statuses.filter((s) => allowed.has(s.id)).map((s) => ({ value: s.id, label: s.name }))}
-            />
-          </article>
-        })}{column.tasks.length === 0 && <p className="py-3 text-center text-my-xs text-my-tertiary">暂无任务</p>}</div>
-      </section>)}</div>}
+      {columns.length === 0 ? <EmptyState title="暂无分组" description="先在空间配置中添加任务状态" /> : (() => {
+        const hasPopulated = columns.some((column) => column.tasks.length > 0)
+        const activeColumns = hasPopulated ? columns.filter((column) => column.tasks.length > 0 || pinnedColumns.includes(column.key)) : columns
+        const collapsedColumns = hasPopulated ? columns.filter((column) => column.tasks.length === 0 && !pinnedColumns.includes(column.key)) : []
+        return <div className="flex h-full min-h-0 gap-3 pb-1">
+          {activeColumns.map((column) => <section key={column.key} data-column={column.key} aria-label={`${column.title}，${column.tasks.length} 条任务`} className="flex min-h-0 w-64 shrink-0 flex-col rounded-my-md border border-my-line bg-my-layer-1" onDragOver={(e) => { if (groupBy === 'status' && !busy) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (groupBy === 'status') moveTask(e.dataTransfer.getData('application/x-crux-task'), column.key) }}>
+            <header className="flex items-center gap-2 border-b border-my-line px-3 py-2">
+              <h2 className="min-w-0 flex-1 truncate text-my-xs font-medium text-my-primary">{column.title}</h2>
+              <span className="text-my-xs text-my-tertiary">{column.tasks.length}</span>
+              {column.tasks.length === 0 && pinnedColumns.includes(column.key) && <button type="button" className="text-my-2xs text-my-tertiary hover:text-my-primary" title="收起空列" onClick={() => setPinnedColumns((prev) => prev.filter((id) => id !== column.key))}>收起</button>}
+            </header>
+            <div className="my-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2" style={{ scrollbarGutter: 'stable' }}>{column.tasks.map((task) => {
+              const allowed = allowedStatusIdsFor(snapshot, task.spaceId, task.typeId)
+              const blocking = task.relations.filter((r) => r.kind === 'blocks')
+              const resolved = blocking.filter((r) => { const related = snapshot.tasks.find((t) => t.id === r.taskId); return related && ['done', 'cancelled'].includes(statusOf(snapshot, related.statusId)?.category ?? '') }).length
+              return <article key={task.id} draggable={groupBy === 'status' && !busy && !readOnly} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-crux-task', task.id) }} className="rounded-my-md border border-my-line bg-my-canvas p-2">
+                <button type="button" onClick={() => openTask(task.id)} className="mb-2 w-full text-left text-my-xs leading-relaxed text-my-primary"><span className="mr-1 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : ''}>{task.title}</span></button>
+                <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></div>
+                <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}<TaskOutputReviewBoardBadge task={task} />{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
+                <Select
+                  size="sm"
+                  ariaLabel={`更改 ${task.id} 状态`}
+                  className="mt-2 w-full"
+                  disabled={busy || readOnly}
+                  value={task.statusId}
+                  onChange={(val) => moveTask(task.id, val)}
+                  options={statuses.filter((s) => allowed.has(s.id)).map((s) => ({ value: s.id, label: s.name }))}
+                />
+              </article>
+            })}{column.tasks.length === 0 && <p className="py-3 text-center text-my-xs text-my-tertiary">暂无任务</p>}</div>
+          </section>)}
+          {collapsedColumns.length > 0 && <aside className="collab-collapsed-columns" aria-label="折叠的列">
+            <h2 className="collab-collapsed-columns-title">折叠的列</h2>
+            <div className="flex flex-col gap-1.5">
+              {collapsedColumns.map((column) => (
+                <button key={column.key} type="button" data-drag-over={dragOverCol === column.key ? 'true' : undefined}
+                  onClick={() => setPinnedColumns((prev) => prev.includes(column.key) ? prev : [...prev, column.key])}
+                  onDragOver={(e) => { if (groupBy === 'status' && !busy) { e.preventDefault(); setDragOverCol(column.key) } }}
+                  onDragLeave={() => setDragOverCol((current) => current === column.key ? null : current)}
+                  onDrop={(e) => { e.preventDefault(); setDragOverCol(null); if (groupBy === 'status') moveTask(e.dataTransfer.getData('application/x-crux-task'), column.key) }}
+                  className="collab-collapsed-col" title={`展开「${column.title}」空列`}>
+                  <span className="min-w-0 flex-1 truncate">{column.title}</span>
+                  <span className="text-my-2xs text-my-tertiary">0</span>
+                </button>
+              ))}
+            </div>
+          </aside>}
+        </div>
+      })()}
     </div>
     <NewTaskModal open={createOpen} onClose={() => setCreateOpen(false)} />
   </div>

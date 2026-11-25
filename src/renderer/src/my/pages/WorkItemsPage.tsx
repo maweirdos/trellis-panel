@@ -913,10 +913,25 @@ function BoardLayout({
   const source = useWorkItemsSource()
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [pinnedEmpty, setPinnedEmpty] = useState<string[]>([])
   const canMove = (stateId: string): boolean => Boolean(dragging && canEditWorkItem(source, 'stateId', dragging) && source.presentation?.stateIds?.(dragging).includes(stateId))
-  const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0 || g.meta.kind === 'state' && canMove(g.meta.state.id))
-  if (shown.every((g) => g.issues.length === 0)) {
+  const shown = groups.filter((g) => g.meta.kind === 'none' || showEmpty || g.issues.length > 0 || pinnedEmpty.includes(g.key) || g.meta.kind === 'state' && canMove(g.meta.state.id))
+  const collapsedEmpty = !showEmpty ? groups.filter((g) => g.meta.kind !== 'none' && g.issues.length === 0 && !pinnedEmpty.includes(g.key) && !(g.meta.kind === 'state' && canMove(g.meta.state.id))) : []
+  if (shown.every((g) => g.issues.length === 0) && pinnedEmpty.length === 0) {
     return <EmptyState title="没有工作项" description="当前筛选与页签下没有匹配的工作项。" />
+  }
+  const canDropTo = (g: IssueGroup): boolean =>
+    (groupBy === 'state' && g.meta.kind === 'state' && (source.kind === 'native' || canMove(g.meta.state.id))) ||
+    (source.kind === 'native' && groupBy === 'cycle' && g.meta.kind === 'cycle' && canEditWorkItem(source, 'cycle'))
+  const handleDropTo = (g: IssueGroup, e: React.DragEvent): void => {
+    e.preventDefault()
+    setDragOver(null)
+    const issueId = e.dataTransfer.getData('text/my-issue-id')
+    if (!issueId || !source.store.data.issues.some((issue) => issue.id === issueId)) return
+    if (source.kind !== 'native' && (issueId !== dragging || e.dataTransfer.getData('application/x-crux-source') !== source.key || g.meta.kind !== 'state' || !canMove(g.meta.state.id))) return
+    setDragging(null)
+    if (groupBy === 'state' && g.meta.kind === 'state') onMoveToState(g.meta.state.id, issueId)
+    else if (groupBy === 'cycle' && g.meta.kind === 'cycle') onMoveToCycle(g.meta.cycle || '', issueId)
   }
   return (
     <div className="my-scrollbar flex h-full items-start overflow-x-auto">
@@ -926,10 +941,7 @@ function BoardLayout({
           <div
             key={g.key}
             onDragOver={(e) => {
-              const droppable =
-                (groupBy === 'state' && g.meta.kind === 'state' && (source.kind === 'native' || canMove(g.meta.state.id))) ||
-                (source.kind === 'native' && groupBy === 'cycle' && g.meta.kind === 'cycle' && canEditWorkItem(source, 'cycle'))
-              if (!droppable) return
+              if (!canDropTo(g)) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'move'
               setDragOver(g.key)
@@ -937,16 +949,7 @@ function BoardLayout({
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null)
             }}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragOver(null)
-              const issueId = e.dataTransfer.getData('text/my-issue-id')
-              if (!issueId || !source.store.data.issues.some((issue) => issue.id === issueId)) return
-              if (source.kind !== 'native' && (issueId !== dragging || e.dataTransfer.getData('application/x-crux-source') !== source.key || g.meta.kind !== 'state' || !canMove(g.meta.state.id))) return
-              setDragging(null)
-              if (groupBy === 'state' && g.meta.kind === 'state') onMoveToState(g.meta.state.id, issueId)
-              else if (groupBy === 'cycle' && g.meta.kind === 'cycle') onMoveToCycle(g.meta.cycle || '', issueId)
-            }}
+            onDrop={(e) => handleDropTo(g, e)}
             className={clsx(
               'flex w-[280px] min-w-[280px] shrink-0 flex-col',
               dragOver === g.key && 'bg-my-accent-subtle ring-1 ring-inset ring-my-line-accent'
@@ -982,6 +985,37 @@ function BoardLayout({
           </div>
         )
       })}
+      {collapsedEmpty.length > 0 && (
+        <aside className="collab-collapsed-columns m-2" aria-label="折叠的列">
+          <h2 className="collab-collapsed-columns-title">折叠的列</h2>
+          <div className="flex flex-col gap-1.5">
+            {collapsedEmpty.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                data-drag-over={dragOver === g.key ? 'true' : undefined}
+                onClick={() => setPinnedEmpty((prev) => prev.includes(g.key) ? prev : [...prev, g.key])}
+                onDragOver={(e) => {
+                  if (!canDropTo(g)) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDragOver(g.key)
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null)
+                }}
+                onDrop={(e) => handleDropTo(g, e)}
+                className="collab-collapsed-col"
+                title={`展开「${g.title}」空列`}
+              >
+                <GroupBadge meta={g.meta} />
+                <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                <span className="text-my-2xs text-my-tertiary">0</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
     </div>
   )
 }

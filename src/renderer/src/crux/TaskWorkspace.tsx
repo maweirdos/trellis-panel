@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import type { CruxSnapshot, CruxTask, CruxTaskPatchInput, CruxViewFilter } from '@shared/crux'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { api, hasIpc } from '../api'
+import { useMy } from '../my/store'
 import { useApp } from '../store'
 import { WorkItemsPage } from '../my/pages/WorkItemsPage'
 import type { WorkItemsSource, WorkItemsStore } from '../my/pages/work-items/work-items-context'
@@ -130,6 +131,29 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
     return () => { persistLocation() }
   }, [locationKey])
   useLayoutEffect(() => { persistLocation() }, [layout, groupBy, orderBy, display, tab, stateGroups, sourceFilter, favorites, relation, personalSpaceId])
+
+  const splitSidebarRestore = useRef<boolean | null>(null)
+  const taskSplitActive = Boolean(
+    snapshot && state.openTaskId && TASK_LAYOUT_SOURCE_KEYS.has(scope) &&
+    snapshot.tasks.some((task) => task.id === state.openTaskId && (scope === 'mine' || task.spaceId === currentSpaceId))
+  )
+  useEffect(() => {
+    if (taskSplitActive) {
+      if (splitSidebarRestore.current === null) splitSidebarRestore.current = useMy.getState().sidebarCollapsed
+      useMy.getState().setSidebarCollapsed(true, false)
+    } else if (splitSidebarRestore.current !== null) {
+      const restore = splitSidebarRestore.current
+      splitSidebarRestore.current = null
+      useMy.getState().setSidebarCollapsed(restore, false)
+    }
+  }, [taskSplitActive])
+  useEffect(() => () => {
+    if (splitSidebarRestore.current !== null) {
+      const restore = splitSidebarRestore.current
+      splitSidebarRestore.current = null
+      useMy.getState().setSidebarCollapsed(restore, false)
+    }
+  }, [])
 
   if (!snapshot) return <EmptyState title={state.loadError ?? '正在加载任务…'} />
   const actorId = workspaceContext.actorId ?? (workspaceContext.state === 'local' ? snapshot.members.find((member) => member.role === 'owner')?.id ?? null : null)

@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Settings2 } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, Plus, Settings2 } from 'lucide-react'
+import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { FlowIcon } from './icons'
 import { COLLABORATION_MODULES, type CollaborationModule } from './navigation'
 import { isTriagePending, useCrux } from './store'
 
 export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: number; onOpenAutomations?: () => void }): JSX.Element | null {
   const { snapshot, module, currentSpaceId, workspaceContext, setModule, setCurrentSpace, beginCreateTask } = useCrux()
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [expandedSpaceId, setExpandedSpaceId] = useState<string | null>(() => currentSpaceId)
   const [branches, setBranches] = useState<Record<string, boolean>>({})
   const active = COLLABORATION_MODULES.find((entry) => entry.id === module)
   useEffect(() => {
     if (active?.scope !== 'space' || !currentSpaceId) return
-    setExpanded((previous) => ({ ...previous, [currentSpaceId]: true }))
+    setExpandedSpaceId(currentSpaceId)
     if (active.parent) setBranches((previous) => ({ ...previous, [`${currentSpaceId}:${active.parent}`]: true }))
   }, [active, currentSpaceId])
   if (!snapshot) return null
@@ -49,15 +51,23 @@ export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: num
     <section aria-label="我的空间" className="collab-nav-section">
       <div className="collab-nav-section-heading"><h2>我的空间</h2><button type="button" aria-label="管理空间" title="管理空间" onClick={() => setModule('spaces')}><Settings2 size={14} /></button></div>
       {spaces.map((space) => {
-        const open = expanded[space.id] ?? space.id === currentSpaceId
+        const open = expandedSpaceId === space.id
         return <section key={space.id} data-nav-space={space.id} aria-label={`${space.name}空间`} className="collab-nav-space">
           <div className="collab-nav-space-heading">
-            <button type="button" className="collab-nav-space-toggle" aria-expanded={open} aria-controls={`nav-space-${space.id}`} onClick={() => setExpanded((previous) => ({ ...previous, [space.id]: !open }))}>
+            <button type="button" className="collab-nav-space-toggle" aria-expanded={open} aria-controls={`nav-space-${space.id}`} onClick={() => setExpandedSpaceId((previous) => previous === space.id ? null : space.id)}>
               {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<FlowIcon name="projects" size={17} /><span className="min-w-0 flex-1 truncate">{space.name}</span><span className="text-my-2xs font-normal text-my-tertiary">{space.key}</span>
             </button>
             <button type="button" className="collab-nav-space-create" aria-label={`在${space.name}中新建任务`} title="在此空间新建任务" onClick={() => { if (space.id !== currentSpaceId) setCurrentSpace(space.id); beginCreateTask({ spaceId: space.id }) }}><Plus size={15} /></button>
           </div>
           {open && <div id={`nav-space-${space.id}`} className="collab-nav-space-content">{roots.map((entry) => branch(entry, space.id))}
+            <button type="button" className="collab-nav-item" onClick={() => {
+              if (space.id !== currentSpaceId) setCurrentSpace(space.id)
+              useMy.getState().setKnowledgeView('team')
+              useApp.getState().setPage('knowledge')
+            }}>
+              <BookOpen size={17} className="shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">空间资料</span>
+            </button>
             <details key={`${space.id}:${active?.group === '配置'}`} open={active?.group === '配置' || undefined} className="group collab-nav-config"><summary className="collab-nav-section-heading cursor-pointer">配置<ChevronDown size={14} className="transition-transform group-open:rotate-180" /></summary>{configuration.map((entry) => item(entry, space.id))}</details>
           </div>}
         </section>
