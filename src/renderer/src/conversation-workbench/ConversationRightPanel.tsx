@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useSyncExternalStore, type JSX, type KeyboardEvent, type ReactNode } from 'react'
-import { FileCode, FolderOpen, GitCompare, ListTree, MessageSquare, PanelRightClose, Play, Plus, Terminal, X } from 'lucide-react'
+import { FileCode, FolderOpen, GitCompare, ListTree, Maximize2, MessageSquare, Minimize2, PanelRightClose, Play, Plus, Terminal, X } from 'lucide-react'
 import { Dropdown, DropdownItem, Modal } from '../my/ui'
 import type { ConversationRightPanelSurface, useConversationRightPanel } from './conversationRightPanelStore'
 import './conversation-right-panel.css'
@@ -29,10 +29,12 @@ export function useNarrowConversationPanel(): boolean {
   return useSyncExternalStore(subscribeWidth, () => window.matchMedia(narrowWindow).matches, () => false)
 }
 
-export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide, onCloseTab, threadTitle, children }: {
+export function ConversationRightPanel({ panel, narrow, projectAvailable, expanded = false, onToggleExpand, onHide, onCloseTab, threadTitle, children }: {
   panel: Panel
   narrow: boolean
   projectAvailable: boolean
+  expanded?: boolean
+  onToggleExpand?(): void
   onHide(): void
   onCloseTab?(surface: ConversationRightPanelSurface): void
   threadTitle(threadId: string): string | undefined
@@ -153,6 +155,13 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide
       <button type="button" className="my-icon-control" title="收起工作台" aria-label="收起工作台" onClick={onHide}>
         <PanelRightClose size={16} aria-hidden="true" />
       </button>
+      {onToggleExpand && !narrow && <button type="button" className="my-icon-control"
+        title={expanded ? '恢复侧栏宽度' : '扩展为全高工程审阅'}
+        aria-label={expanded ? '恢复侧栏宽度' : '扩展为全高工程审阅'}
+        aria-pressed={expanded}
+        onClick={onToggleExpand}>
+        {expanded ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+      </button>}
     </div>
     {state.surfaces.map(surface => {
       const selected = surface.id === active.id
@@ -165,5 +174,5 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide
 
   return narrow ? <Modal open onClose={onHide} ariaLabel="会话工作台" placement="center" width="min(100%, var(--my-inspector-width-wide))">
     {content}
-  </Modal> : <aside className="conversation-right-panel" aria-label="会话工作台">{content}</aside>
+  </Modal> : <aside className="conversation-right-panel" data-expanded={expanded ? 'true' : undefined} aria-label="会话工作台">{content}</aside>
 }

@@ -5,6 +5,10 @@
   min-height: 0;
   border-inline-start: 1px solid var(--my-border-subtle);
   background: var(--my-bg-panel);
+  transition: flex-basis var(--my-motion-normal) var(--my-ease-out);
+}
+.conversation-right-panel[data-expanded='true'] {
+  flex: 0 0 min(56%, 760px);
 }
 
 .conversation-right-surface {

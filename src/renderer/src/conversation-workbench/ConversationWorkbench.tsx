@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, ChevronDown, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, FolderOpen, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
@@ -10,15 +10,19 @@ import { ConversationSidebar } from '../acp/ConversationSidebar'
 import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
 import { ManagedWorkflowRecovery } from '../acp/workflow/ManagedWorkflowRecovery'
 import { api, hasIpc } from '../api'
+import { ApplicationPanel } from '../applications/ApplicationPanel'
 import { useCrux } from '../crux/store'
+import { GitBranchControl } from '../git-workspace/GitBranchControl'
+import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { ProjectConversationIntake } from '../knowledge/ProjectConversationIntake'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
-import { projectRootKey } from '../my/navigation'
+import { projectChoices, projectNameFromPath, projectRootKey } from '../my/navigation'
 import { useMy } from '../my/store'
-import { Button, Dropdown, DropdownItem, Modal, SearchInput } from '../my/ui'
+import { Button, Dropdown, DropdownHeader, DropdownItem, Modal, SearchInput, Tooltip } from '../my/ui'
+import { useApp } from '../store'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { useEscLayer } from '../utils/use-esc-layer'
 import {
@@ -207,11 +211,17 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const panelReturnFocus = useRef<HTMLElement | null>(null)
   const panelId = useId()
   const mounted = useRef(false)
+  const [panelExpanded, setPanelExpanded] = useState(false)
+  const expandedSidebarRestore = useRef<boolean | null>(null)
+  const appRoot = useApp((state) => state.snapshot?.meta.root ?? null)
+  const recentProjects = useApp((state) => state.settings?.recentProjects ?? [])
+  const canOpenLocalProject = useMy((state) => state.canOpenLocalProject)
 
   useLayoutEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
+  useEffect(() => () => { if (code) closeGitWorkspace() }, [code])
 
   const panelScopeKey = taskScope ? rootKey : JSON.stringify([
     rootKey, workspaceContext.key, workspaceContext.actorId, workspaceContext.instanceId, workspaceContext.epoch,
@@ -244,6 +254,25 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const panel = useConversationRightPanel(panelKey, hostThreadId ?? null, relatedThreads)
   const narrowWindow = useNarrowConversationPanel()
   const narrowPanel = compact || narrowWindow
+  const expandedActive = panelExpanded && Boolean(panel.active) && !narrowPanel
+  useEffect(() => {
+    if (expandedActive) {
+      if (expandedSidebarRestore.current === null) expandedSidebarRestore.current = useMy.getState().sidebarCollapsed
+      useMy.getState().setSidebarCollapsed(true, false)
+    } else if (expandedSidebarRestore.current !== null) {
+      const restore = expandedSidebarRestore.current
+      expandedSidebarRestore.current = null
+      useMy.getState().setSidebarCollapsed(restore, false)
+    }
+  }, [expandedActive])
+  useEffect(() => () => {
+    if (expandedSidebarRestore.current !== null) {
+      const restore = expandedSidebarRestore.current
+      expandedSidebarRestore.current = null
+      useMy.getState().setSidebarCollapsed(restore, false)
+    }
+  }, [])
+  useEffect(() => { if (!panel.active) setPanelExpanded(false) }, [panel.active])
   const projectAvailable = hasIpc && typeof api.conversationProjectWorkbench === 'function'
   const openPanel = panel.open
   const fileLinkRoot = projectAvailable && projection ? projection.thread.worktreePath ?? root : undefined
@@ -679,6 +708,66 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       onClick={() => void applyThreadChange(pendingChange)}>继续清理</Button>}
   </>
   const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
+  const directoryChoices = projectChoices(appRoot, recentProjects)
+  const workdirControl = (source === 'work' || source === 'code') && !taskScope && !compact ? (
+    target ? (
+      <Tooltip side="bottom" label="对话进行中，工作目录已固定。新建对话可切换其他目录。">
+        <span tabIndex={0} className="my-chip inline-flex max-w-44 shrink-0 items-center gap-1 text-my-xs text-my-secondary">
+          <Lock size={12} aria-hidden="true" />
+          <span className="truncate">{code ? projectNameFromPath(root) : '托管 workdir'}</span>
+        </span>
+      </Tooltip>
+    ) : (
+      <Dropdown width={300} trigger={({ open, toggle }) => (
+        <button type="button" className="my-control my-control-ghost inline-flex max-w-48 shrink-0 items-center gap-1.5 text-my-xs text-my-secondary hover:text-my-primary"
+          aria-label="选择工作目录" aria-expanded={open} onClick={toggle}>
+          <FolderOpen size={13} aria-hidden="true" />
+          <span className="truncate">{code ? projectNameFromPath(root) : '默认托管目录'}</span>
+          <ChevronDown size={12} aria-hidden="true" />
+        </button>
+      )}>
+        {(close) => (
+          <div className="flex flex-col gap-0.5 p-1">
+            <DropdownHeader>新建对话工作目录</DropdownHeader>
+            <button type="button" onClick={() => { useMy.getState().setChatWorkdirMode('default'); close() }}
+              className="flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary">
+              <FolderOpen size={14} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">默认托管目录（无仓库门槛）</span>
+              {!code && <Check size={14} className="shrink-0 text-my-icon-accent" />}
+            </button>
+            {directoryChoices.map((path) => {
+              const selected = code && projectRootKey(path) === projectRootKey(root)
+              return (
+                <button key={projectRootKey(path)} type="button" disabled={!canOpenLocalProject}
+                  onClick={() => {
+                    close()
+                    if (projectRootKey(path) !== projectRootKey(appRoot)) void useApp.getState().openProjectPath(path, { keepPage: true })
+                    useMy.getState().setChatWorkdirMode('directory')
+                  }}
+                  className="flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary disabled:text-my-disabled">
+                  <FolderOpen size={14} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate" title={path}>{projectNameFromPath(path)}</span>
+                  {selected && <Check size={14} className="shrink-0 text-my-icon-accent" />}
+                </button>
+              )
+            })}
+            <div className="my-menu-divider" role="separator" />
+            <button type="button" disabled={!canOpenLocalProject}
+              onClick={() => {
+                close()
+                void useApp.getState().pickAndOpen({ keepPage: true }).then(() => {
+                  if (useApp.getState().snapshot?.meta.root) useMy.getState().setChatWorkdirMode('directory')
+                })
+              }}
+              className="flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary disabled:text-my-disabled">
+              <FolderOpen size={14} className="shrink-0" />
+              <span>选择本机目录…</span>
+            </button>
+          </div>
+        )}
+      </Dropdown>
+    )
+  ) : null
   const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(sideCleanupKey)
 
   return <ChatProjectFileLinks.Provider value={fileLinks}><div className="acp-workspace conversation-workbench" style={sidebarWidth}>
@@ -736,10 +825,10 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     <ContextRegion collapsed={collapsed && !sidebarOpen}><div className="acp-navigation-host flex min-h-0 shrink-0">
     <ConversationSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} ariaLabel={`${workspaceLabel}历史`} resizable={!compact}
       title={taskScope ? <strong className="my-item-title truncate" title={taskScope.title}>{taskScope.title}</strong>
-        : <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={open} onClick={toggle}>
+        : projectIntake ? <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={open} onClick={toggle}>
         <strong>{source === 'native' ? '原生对话' : '对话'}</strong><ChevronDown size={13} aria-hidden="true" />
-      </button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={projectIntake
-        ? agentView === 'native' ? 'native' : 'conversation' : code ? undefined : 'native'} /></div>}</Dropdown>}
+      </button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={agentView === 'native' ? 'native' : 'conversation'} /></div>}</Dropdown>
+        : <strong>对话</strong>}
       primaryAction={<div className="grid gap-2">{writable && <button type="button" className="my-nav-item" onClick={() => openDraft()}><Plus size={15} aria-hidden="true" />新建对话</button>}
         <SearchInput value={query} onChange={value => setQuery(value.slice(0, 160))} size="sm" placeholder="搜索对话" /></div>}>
       {listError && <ConversationIssue title="无法读取会话列表" reason={listError}
@@ -771,8 +860,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         <button type="button" className="my-icon-control acp-mobile-only"
           aria-label="打开会话导航" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><PanelLeft size={16} aria-hidden="true" /></button>
       </>}
-        identity={<strong>{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>}
+        identity={<div className="flex min-w-0 items-center gap-2"><strong className="truncate">{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>{workdirControl}</div>}
         actions={<>
+          {interactive && code && !compact && !taskScope && <><GitBranchControl /><ApplicationPanel /></>}
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
           {projection && (projectAvailable || projection.relations.children.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
@@ -893,7 +983,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         />}
     </ChatView>
     {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
-      <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
+      <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} expanded={panelExpanded} onToggleExpand={() => setPanelExpanded((value) => !value)} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
         {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
           root={root} scopeKey={readScopeKey} hostThreadId={hostThreadId}

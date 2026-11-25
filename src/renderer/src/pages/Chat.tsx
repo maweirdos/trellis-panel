@@ -55,11 +55,16 @@ function CodeProjectPrompt(): JSX.Element {
     }
   }
 
-  return <section className="flex h-full min-h-0 flex-col items-center justify-center gap-3 overflow-auto p-4" aria-label="Code 对话">
-    <EmptyState title="选择 Code 的工作目录" />
-    <Button size="sm" variant="outline" onClick={() => void chooseProject()} disabled={!canOpen || opening} aria-busy={opening}>
-      <FolderOpen size={15} aria-hidden="true" />打开本机工程…
-    </Button>
+  return <section className="flex h-full min-h-0 flex-col items-center justify-center gap-3 overflow-auto p-4" aria-label="对话工作目录">
+    <EmptyState title="选择对话使用的本机目录" />
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      <Button size="sm" variant="outline" onClick={() => void chooseProject()} disabled={!canOpen || opening} aria-busy={opening}>
+        <FolderOpen size={15} aria-hidden="true" />打开本机工程…
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => useMy.getState().setChatWorkdirMode('default')}>
+        使用托管默认目录
+      </Button>
+    </div>
     {(issue || openError) && <FeedbackNotice variant="inline" title="工程打开失败" diagnostic={issue || openError || undefined} />}
   </section>
 }
