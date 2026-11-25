@@ -1,4 +1,6 @@
 .conversation-workbench {
+  /* Upstream index.css: --chat-content-max-width: 46rem (736px at 16px root). */
+  --my-conversation-width: 46rem;
   background: var(--my-bg-canvas);
 }
 

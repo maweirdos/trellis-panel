@@ -58,68 +58,132 @@
   margin-block-start: var(--my-space-2);
 }
 
-.conversation-turn-files {
+/*
+ * Turn file change, ported from t3code@28c58b1 apps/web/src/components/chat:
+ * a 28px header row (14px file glyph, 13px mono path, red/green counts) and
+ * 20px diff lines with right-aligned gutters and a 3px change bar. Upstream
+ * renders the body through <diffs-container>; the geometry below is measured
+ * from that component at 1x so the turn reads the same in the thread.
+ */
+.conversation-turn-file {
   min-width: 0;
+  padding: 0.5rem 1rem;
   color: var(--my-txt-secondary);
+  font-family: var(--my-font-mono);
+  font-size: var(--my-text-xs);
+  line-height: 1.25rem;
 }
 
-.conversation-turn-files > summary {
+.conversation-turn-file-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 1.75rem;
-  padding-inline: 0.375rem;
-  border-radius: var(--my-radius-base);
-  list-style: none;
-  cursor: pointer;
+  color: var(--my-txt-primary);
 }
 
-.conversation-turn-files > summary:hover,
-.conversation-turn-files > summary:focus-visible {
-  background: var(--my-bg-layer-transparent-hover);
+.conversation-turn-file-glyph {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 0.125rem solid color-mix(in srgb, var(--my-txt-info-primary) 75%, var(--my-txt-primary));
+  border-radius: var(--my-radius-full);
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, var(--my-txt-info-primary) 75%, var(--my-txt-primary)) 0 0.1875rem, transparent 0.1875rem),
+    var(--my-bg-panel);
 }
 
-.conversation-turn-files > summary > span:first-of-type {
+.conversation-turn-file-path {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.conversation-turn-files > summary > svg,
-.conversation-turn-file-stats {
-  flex-shrink: 0;
-}
-
-.conversation-turn-files[open] .conversation-timeline-plan-arrow {
-  transform: rotate(90deg);
+  font-size: 0.8125rem;
 }
 
 .conversation-turn-file-stats {
   display: inline-flex;
-  gap: 0.25rem;
-  font-family: var(--my-font-mono);
-  font-size: var(--my-text-xs);
+  flex-shrink: 0;
+  gap: 0.375rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.conversation-turn-file-stats > :first-child {
-  color: var(--my-txt-success-primary);
-}
-
-.conversation-turn-file-stats > :last-child {
+.conversation-turn-file-stats > [data-kind='remove'] {
   color: var(--my-txt-danger-primary);
 }
 
-.conversation-turn-files-content {
-  min-width: 0;
-  padding: 0.375rem 0.5rem;
+.conversation-turn-file-stats > [data-kind='add'] {
+  color: var(--my-txt-success-primary);
 }
 
-.conversation-turn-files-content > ul {
-  margin-bottom: 0.375rem;
-  overflow-wrap: anywhere;
+.conversation-turn-file-diff {
+  margin-inline: -1rem;
+  overflow: auto;
+  font-family: var(--my-font-mono);
+  font-size: var(--my-text-2xs);
+  line-height: 1.25rem;
+}
+
+.conversation-turn-file-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  min-height: 1.25rem;
+  color: var(--my-txt-primary);
+}
+
+/*
+ * Upstream change indicator (measured at 1x): a 4px bar flush with the block's
+ * inline start. Removals are a 1px-on/1px-off dashed bar; additions are solid.
+ */
+.conversation-turn-file-line[data-kind='remove']::before,
+.conversation-turn-file-line[data-kind='add']::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 0.25rem;
+}
+
+.conversation-turn-file-line[data-kind='remove']::before {
+  background: repeating-linear-gradient(to bottom, var(--my-txt-danger-primary) 0 1px, color-mix(in srgb, var(--my-txt-danger-primary) 18%, transparent) 1px 2px);
+}
+
+.conversation-turn-file-line[data-kind='add']::before {
+  background: var(--my-txt-success-primary);
+}
+
+.conversation-turn-file-line > code {
+  padding-inline-end: 0.75rem;
+  white-space: pre;
+  font: inherit;
+  tab-size: 4;
+}
+
+.conversation-turn-file-gutter {
+  padding-inline: 0.5rem 0.375rem;
+  color: var(--my-txt-tertiary);
+  text-align: end;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-turn-file-line[data-kind='remove'] {
+  background: color-mix(in srgb, var(--my-txt-danger-primary) 6%, transparent);
+}
+
+.conversation-turn-file-line[data-kind='add'] {
+  background: color-mix(in srgb, var(--my-txt-success-primary) 6%, transparent);
+}
+
+.conversation-turn-file-line[data-kind='remove'] > .conversation-turn-file-gutter {
+  color: var(--my-txt-danger-primary);
+}
+
+.conversation-turn-file-line[data-kind='add'] > .conversation-turn-file-gutter {
+  color: var(--my-txt-success-primary);
 }
 
 .conversation-work-row {
