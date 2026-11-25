@@ -188,10 +188,12 @@
   font-size: var(--my-text-sm);
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .appearance-theme:hover { background: var(--my-bg-layer-3-hover); }
+.my-root .appearance-theme:active { transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale)); }
 .my-root .appearance-theme[aria-pressed='true'] { border-color: var(--my-border-strong-1); background: var(--my-bg-layer-2-active); color: var(--my-txt-primary); }
-.my-root .appearance-theme:focus-visible { outline: var(--my-space-2) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
+.my-root .appearance-theme:focus-visible { outline: var(--my-focus-width) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .my-root .appearance-theme:disabled { cursor: wait; opacity: 0.6; }
 .my-root .appearance-theme-label { display: flex; align-items: center; justify-content: space-between; gap: var(--my-space-4); width: 100%; }
 .my-root .appearance-theme-label > svg { flex-shrink: 0; }
@@ -242,7 +244,7 @@
 .my-root .preference-disclosure { padding-block: var(--my-space-16); }
 .my-root .preference-disclosure > summary { cursor: pointer; color: var(--my-txt-secondary); font-size: var(--my-text-sm); width: fit-content; }
 .my-root :is(.preference-disclosure > summary, .preference-row-detail summary):focus-visible {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
   outline-offset: var(--my-space-4);
   border-radius: var(--my-radius-sm);
 }
@@ -262,4 +264,14 @@
   .my-root .preference-section-heading, .my-root .preference-section-body { padding-inline: var(--my-space-16); }
   .my-root .preference-section-heading { align-items: flex-start; }
   .my-root .preference-section-action { max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-root .appearance-theme {
+    transition: none;
+  }
+
+  .my-root .appearance-theme:active {
+    transform: none;
+  }
 }

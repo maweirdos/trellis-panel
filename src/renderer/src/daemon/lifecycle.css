@@ -81,7 +81,7 @@
 }
 
 .daemon-lifecycle-details summary:focus-visible {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
   outline-offset: var(--my-space-1);
 }
 

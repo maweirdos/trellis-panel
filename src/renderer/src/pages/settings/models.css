@@ -333,11 +333,17 @@
   background: var(--my-bg-input);
   font-size: var(--my-text-sm);
   color: var(--my-txt-primary);
-  transition: border-color var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out);
+  transition: border-color var(--my-motion-fast) var(--my-ease-out), background-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .model-search-input::placeholder {
+  color: var(--my-txt-secondary);
 }
 
 .my-root .model-search-input:focus {
-  border-color: var(--my-border-strong);
+  border-color: var(--my-border-strong-1);
+  background: var(--my-bg-input);
+  box-shadow: var(--my-focus-shadow);
   outline: none;
 }
 
@@ -427,8 +433,8 @@
 }
 
 .my-root .model-card-item:focus-visible {
-  outline: 2px solid var(--my-focus-ring);
-  outline-offset: 1px;
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-2);
 }
 
 .my-root .model-card-item[data-active-model='true'] {
@@ -605,6 +611,11 @@
   box-shadow: inset 0 0 0 1px var(--my-border-subtle);
 }
 
+.my-root .model-temperature-range:focus-visible {
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-2);
+}
+
 .my-root .model-temperature-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -613,7 +624,7 @@
   border-radius: var(--my-radius-full);
   background: var(--my-txt-primary);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--my-shadow-raised-100);
   transition: transform var(--my-motion-fast) var(--my-ease-out);
 }
 
@@ -629,6 +640,7 @@
   padding: 1px var(--my-space-6);
   font-size: var(--my-text-xs);
   font-family: var(--my-font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: var(--my-weight-medium);
   background: var(--my-bg-layer-2);
   border: 1px solid var(--my-border-subtle);
@@ -997,4 +1009,42 @@
 
 .my-root .model-row-switch:disabled .model-row-switch-track > span {
   background: var(--my-txt-disabled);
+}
+
+.my-root :is(.model-provider-select, .model-template-row, .model-category-tab, .model-row-switch):focus-visible {
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-2);
+}
+
+.my-root :is(.model-provider-select, .model-template-row) {
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root :is(.model-provider-select, .model-template-row):active:not(:disabled) {
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+}
+
+.my-root :is(.model-provider-count-text, .model-toolbar-counter) {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-root .model-provider-select,
+  .my-root .model-search-input,
+  .my-root .model-card-item,
+  .my-root .model-card-actions,
+  .my-root .model-temperature-range::-webkit-slider-thumb,
+  .my-root .model-template-row,
+  .my-root .model-category-tab,
+  .my-root .model-row-item,
+  .my-root .model-row-actions,
+  .my-root .model-row-switch-track,
+  .my-root .model-row-switch-track > span {
+    transition: none;
+  }
+
+  .my-root .model-temperature-range::-webkit-slider-thumb:hover,
+  .my-root :is(.model-provider-select, .model-template-row):active:not(:disabled) {
+    transform: none;
+  }
 }

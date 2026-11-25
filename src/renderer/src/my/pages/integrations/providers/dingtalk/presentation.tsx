@@ -27,5 +27,5 @@ export function DingTalkRow({ title, detail, children }: { title: string; detail
 }
 
 export function DingTalkDetails({ children, label = '查看详情' }: { children: ReactNode; label?: string }): JSX.Element {
-  return <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer rounded-my-md py-1 focus-visible:outline focus-visible:outline-2">{label}</summary><div className="mt-2 space-y-2 break-words">{children}</div></details>
+  return <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer rounded-my-md py-1 focus-visible:[outline:var(--my-focus-width)_solid_var(--my-focus-ring)] focus-visible:outline-offset-2">{label}</summary><div className="mt-2 space-y-2 break-words">{children}</div></details>
 }

@@ -38,6 +38,7 @@
   color: var(--my-txt-primary);
 }
 .my-startup-window-controls button:active:not(:disabled) { background: var(--my-bg-layer-transparent-active); }
+.my-startup-window-controls button:focus-visible { outline: var(--my-focus-width) solid var(--my-focus-ring); outline-offset: calc(-1 * var(--my-space-2)); }
 .my-startup-window-controls button:disabled { opacity: .4; }
 
 .my-startup-stage {
@@ -127,8 +128,12 @@
   font-size: var(--my-text-sm);
   line-height: var(--my-line-ui);
 }
-.my-startup-details summary { width: fit-content; cursor: pointer; }
+.my-startup-details summary { width: fit-content; cursor: pointer; border-radius: var(--my-control-radius); }
 .my-startup-details summary:hover { color: var(--my-txt-primary); }
+:is(.my-startup-warning, .my-startup-details) summary:focus-visible {
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-2);
+}
 .my-startup-diagnostics {
   display: flex;
   flex-direction: column;

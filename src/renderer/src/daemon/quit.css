@@ -98,6 +98,11 @@ body:has(.daemon-quit-window),
   background: var(--my-bg-layer-transparent-active);
 }
 
+.daemon-quit-close:focus-visible {
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
+  outline-offset: var(--my-space-1);
+}
+
 /* 内容卡片区 */
 .daemon-quit-body {
   display: flex;
@@ -116,7 +121,7 @@ body:has(.daemon-quit-window),
   background: var(--my-bg-layer-1);
   cursor: pointer;
   user-select: none;
-  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), border-color var(--my-motion-fast) var(--my-ease-out), transform var(--my-motion-fast) var(--my-ease-out);
 }
 
 .daemon-quit-card:hover:not(.is-disabled) {
@@ -124,8 +129,12 @@ body:has(.daemon-quit-window),
   border-color: var(--my-border-strong);
 }
 
+.daemon-quit-card:active:not(.is-disabled) {
+  transform: translateY(var(--my-tactile-press-y)) scale(var(--my-tactile-press-scale));
+}
+
 .daemon-quit-card:focus-visible {
-  outline: var(--my-space-2) solid var(--my-focus-ring);
+  outline: var(--my-focus-width) solid var(--my-focus-ring);
   outline-offset: var(--my-space-1);
 }
 
@@ -241,4 +250,15 @@ body:has(.daemon-quit-window),
 
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daemon-quit-close,
+  .daemon-quit-card {
+    transition: none;
+  }
+
+  .daemon-quit-card:active:not(.is-disabled) {
+    transform: none;
+  }
 }
