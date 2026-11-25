@@ -80,7 +80,7 @@ export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'defau
       await useApp.getState().openProjectPath(root)
       const opened = useApp.getState()
       if (opened.openError) setLocateError({ key, message: opened.openError })
-      else if (projectRootKey(opened.snapshot?.meta.root) === projectRootKey(root)) { useMy.getState().setShellView('development'); setOpen(false) }
+      else if (projectRootKey(opened.snapshot?.meta.root) === projectRootKey(root)) { useMy.getState().setChatWorkdirMode('directory'); setOpen(false) }
       else setLocateError({ key, message: '工程查看目标已变化，请重新定位' })
     } catch { setLocateError({ key, message: '原工程未能打开，请核对目录' }) }
     finally { setLocating(false) }

@@ -1,21 +1,14 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Minus, Square, X, Copy, PictureInPicture2, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
-import { ProjectSwitcher } from '../my/layout/ProjectSwitcher'
 import { BrandMark } from '../my/BrandMark'
-import { ApplicationPanel } from '../applications/ApplicationPanel'
 import { ApplicationRunCenter } from '../applications/ApplicationRunCenter'
-import { GitBranchControl } from '../git-workspace/GitBranchControl'
-import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { clsx } from 'clsx'
-import { getPageNavigation, hasContextNavigation, pageRequiresProject } from '../my/navigation'
+import { hasContextNavigation, pageRequiresProject } from '../my/navigation'
 import { TeamContextSwitcher } from '../crux/TeamContextSwitcher'
-import { ShellViewSwitcher } from '../my/layout/ShellViewSwitcher'
-import { DevelopmentScopeTag } from '../crux/development/DevelopmentContextBar'
 import { Tooltip } from '../my/ui'
-import { InteractionScope } from '../utils/interaction-scope'
 
 function WinButton({ onClick, children, label, danger }: {
   onClick: () => void; children: ReactNode; label: string; danger?: boolean
@@ -35,22 +28,11 @@ export function TitleBar(): JSX.Element {
   const page = useApp((s) => s.page)
   const openTaskDir = useApp((s) => s.openTaskDir)
   const teamContext = page === 'crux' && !openTaskDir
-  const development = useMy((s) => s.shellView === 'development')
-  const codeChat = development && page === 'chat'
-  const codeNeedsProject = codeChat && !snapshot?.meta.root
-  const personalTaskSource = useApp((s) => s.personalTaskSource)
-  const domain = getPageNavigation(page).domain
-  const codeTools = development && (codeChat || Boolean(openTaskDir) || (
-    domain !== 'team' && domain !== 'settings' && domain !== 'automations' && domain !== 'integrations' && page !== 'chat' && page !== 'creations' &&
-    (page !== 'tasks' || personalTaskSource !== 'team')
-  ))
-  const openError = useApp((s) => s.openError)
   const collapsed = useMy((s) => s.sidebarCollapsed)
   const toggleSidebar = useMy((s) => s.toggleSidebar)
   const setPaletteOpen = useMy((s) => s.setPaletteOpen)
   const [maximized, setMaximized] = useState(false)
   useEffect(() => hasIpc ? api.onWindowMaximized(setMaximized) : undefined, [])
-  useLayoutEffect(() => { if (!codeTools) closeGitWorkspace() }, [codeTools])
   return (
     <header className="my-window-header relative z-50 flex shrink-0 flex-col">
       <div className={clsx('my-global-header-row', hasIpc && 'drag-region')}>
@@ -58,9 +40,8 @@ export function TitleBar(): JSX.Element {
           <BrandMark size="var(--my-module-icon-size)" className="text-my-primary" />
           <span className="sr-only">Crux</span>
         </div>
-        <ShellViewSwitcher />
         <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('crux')} />
-        {hasContextNavigation(page) && !codeNeedsProject && <div className="no-drag my-header-collapse flex shrink-0 items-center">
+        {hasContextNavigation(page) && <div className="no-drag my-header-collapse flex shrink-0 items-center">
           <Tooltip side="bottom" label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}>
             <button id="shell-context-toggle" type="button" aria-label={`${collapsed ? '展开' : '收起'}上下文栏 (Ctrl+B)`}
               aria-expanded={!collapsed} onClick={toggleSidebar}
@@ -82,15 +63,6 @@ export function TitleBar(): JSX.Element {
           <WinButton label="关闭窗口" onClick={() => api.windowClose()} danger><X size={15} /></WinButton>
         </div>}
       </div>
-      {development && <InteractionScope active={codeTools}><div className="my-shell-code-tools no-drag" hidden={!codeTools} aria-hidden={!codeTools || undefined} ref={(element) => { element?.toggleAttribute('inert', !codeTools) }} role="toolbar" aria-label="Code 工程工具">
-        <div className="my-shell-project-controls">
-          <ProjectSwitcher keepPage={codeChat} />
-          <div className="my-shell-development-scope"><DevelopmentScopeTag /></div>
-          {!codeNeedsProject && <GitBranchControl />}
-          {openError && <Tooltip side="bottom" label={openError} wrap><span role="status" tabIndex={0} className="my-header-project-error text-my-xs text-my-danger-text">工程打开失败</span></Tooltip>}
-        </div>
-        {!codeNeedsProject && <ApplicationPanel />}
-      </div></InteractionScope>}
     </header>
   )
 }

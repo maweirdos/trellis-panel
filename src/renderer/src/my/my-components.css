@@ -557,7 +557,6 @@
   .acp-agent-card,
   .wf-panel,
   .wf-stage,
-  .my-shell-view-switcher .my-control[aria-pressed='true'],
   pre:has(> code)
 ) {
   box-shadow: var(--my-surface-rim);

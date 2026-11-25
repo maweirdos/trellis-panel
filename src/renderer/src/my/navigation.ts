@@ -1,13 +1,13 @@
 import type { Page } from '../store'
 
-export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'knowledge' | 'integrations' | 'automations' | 'settings'
+export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'members' | 'knowledge' | 'integrations' | 'automations' | 'settings'
 export type NavigationScope = 'project' | 'application' | 'local' | 'mixed'
 export type WorkItemsView = 'items' | 'iterations'
 export type ModuleId = NavigationDomain
 export type TeamView = 'overview' | 'members' | 'activity' | 'reports'
 export type ToolView = 'git' | 'run' | 'architecture' | 'studio'
 export type AgentView = 'conversation' | 'roles' | 'native'
-export type KnowledgeView = 'materials' | 'company'
+export type KnowledgeView = 'team' | 'personal' | 'company' | 'project'
 export const SETTINGS_VIEWS = ['preferences', 'appearance', 'engines', 'providers', 'daemon', 'network', 'storage', 'about'] as const
 export type SettingsView = typeof SETTINGS_VIEWS[number]
 export const SETTINGS_VIEW_TITLES: Record<SettingsView, string> = {
@@ -68,16 +68,14 @@ export const PAGE_NAVIGATION = {
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  home: '个人', agents: '对话', tasks: '任务', team: '团队', knowledge: '知识', integrations: '应用集成', automations: '自动化', settings: '设置'
+  home: '个人', agents: '对话', tasks: '任务', team: '团队协作', members: '组织与成员', knowledge: '资料空间', integrations: '应用集成', automations: '自动化', settings: '设置'
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
   { id: 'agents', page: 'chat', label: '对话', shortLabel: '对话' },
-  { id: 'home', page: 'tasks', label: '个人', shortLabel: '个人' },
-  { id: 'team', page: 'crux', label: '团队', shortLabel: '团队' },
-  { id: 'knowledge', page: 'knowledge', label: '知识', shortLabel: '知识' },
-  { id: 'integrations', page: 'integrations', label: '应用集成', shortLabel: '集成' },
-  { id: 'automations', page: 'automations', label: '自动化', shortLabel: '自动化' }
+  { id: 'team', page: 'crux', label: '团队协作', shortLabel: '团队' },
+  { id: 'knowledge', page: 'knowledge', label: '资料空间', shortLabel: '资料' },
+  { id: 'members', page: 'crux', label: '组织与成员', shortLabel: '组织' }
 ]
 
 export function getPageNavigation(page: Page): PageNavigation {

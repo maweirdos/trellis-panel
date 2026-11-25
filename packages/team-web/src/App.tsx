@@ -14,8 +14,6 @@ import { CruxWorkspace } from './CruxWorkspace'
 import { workspaceProjectFromLocation } from './WorkspaceTaskLocation'
 import './shell.css'
 import { Empty, ErrorLine, Modal, Notice, Pager, time } from './ui'
-import { ShellViewSwitcher } from '../../../src/renderer/src/my/layout/ShellViewSwitcher'
-import { useMy } from '../../../src/renderer/src/my/store'
 import { dispatchEscKey } from '../../../src/renderer/src/utils/esc-layer'
 
 export function App() {
@@ -89,8 +87,6 @@ type WebTab = 'collaboration' | 'documents' | 'people' | 'devices'
 const WEB_MODULES = [{ id: 'collaboration', label: '工作台', Icon: LayoutDashboard }, { id: 'documents', label: '资料', Icon: BookOpen }, { id: 'people', label: '成员与设置', Icon: Users }, { id: 'devices', label: '设备', Icon: Monitor }] as const
 const locationTab = (): WebTab => { const hash = location.hash.slice(1); return hash === 'people' || hash === 'documents' || hash === 'devices' ? hash : 'collaboration' }
 function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvitation, refreshIdentity, onLogout, onSwitchAccount, loggingOut, onTheme, error }: { session: TeamSession; theme: 'light' | 'dark'; epoch: number; invitation: InvitationIntent | null; onInvitation: (invitation: InvitationIntent) => void; onCloseInvitation: () => void; refreshIdentity: () => void; onLogout: () => void; onSwitchAccount: () => Promise<void>; loggingOut: boolean; onTheme: () => void; error: string }) {
-  const shellView = useMy((state) => state.shellView)
-  const fontSize = useMy((state) => state.fontSize)
   const [tab, setTab] = useState<WebTab>(locationTab), [projectId, setProject] = useState(workspaceProjectFromLocation)
   const [creatingOrganization, setCreatingOrganization] = useState(false), [creatingWorkspace, setCreatingWorkspace] = useState(false), [joiningWorkspace, setJoiningWorkspace] = useState(false)
   const [invitedSpace, setInvitedSpace] = useState<{ projectId: string; accountId: string; spaceId: string } | null>(null)
@@ -137,14 +133,13 @@ function SignedIn({ session, theme, epoch, invitation, onInvitation, onCloseInvi
     </aside>
     <div className="team-shell-center">
       <header className="topbar team-topbar">
-        <div className="my-root crux-host team-view-control" data-my-theme={theme} data-my-font-size={fontSize}><ShellViewSwitcher host="web" /></div>
         <div className="team-project-control"><label><span className="team-sr-only">工作区</span><select aria-label="当前工作区" title={project?.name ?? '选择工作区'} disabled={!projects.items.length} value={project?.projectId ?? ''} onChange={(event) => { setProject(event.target.value); setGap(false); setChange(false) }}><option value="" disabled>{projects.loading ? '正在读取工作区…' : projects.error ? '工作区读取失败' : projects.items.length ? '选择工作区' : '尚未加入工作区'}</option>{projects.items.map((item) => <option value={item.projectId} key={item.projectId}>{item.name}</option>)}</select></label><Pager page={projects} /></div>
         <span className="team-section-name">{WEB_MODULES.find((item) => item.id === tab)?.label}</span>
         <div className="team-workspace-actions"><button type="button" onClick={() => setCreatingWorkspace(true)}><Plus size={15} />创建工作区</button><button type="button" onClick={() => setJoiningWorkspace(true)}><LinkIcon size={15} />接受邀请</button></div>
         <div className="account"><span title={session.person.displayName}>{session.person.displayName}</span><button type="button" disabled={loggingOut} onClick={onLogout}>切换账号</button><button className="icon" type="button" aria-label="切换主题" title={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'} onClick={onTheme}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}</button><button className="icon" type="button" disabled={loggingOut} aria-label="退出登录" title="退出登录" onClick={onLogout}><LogOut size={17} /></button></div>
       </header>
     <div className="app-layout team-shell-layout">
-      <main className="workspace">{shellView === 'development' && <p role="status" className="team-development-notice">网页版可查看协作进度；本机工程、Git 与 Agent 执行请使用桌面端。</p>}<Pending accountId={session.person.userId} refresh={refreshIdentity} /><ErrorLine>{error}</ErrorLine>{events.error && <Notice>同步暂不可用。{events.at ? `上次核对 ${time(events.at)}` : '尚未完成同步核对'}。<button type="button" onClick={events.refresh}>重试</button></Notice>}{events.value?.hasMore && <Notice>还有协作记录待同步。<button type="button" onClick={events.refresh}>继续同步</button></Notice>}{(gap || change) && <Notice>{gap ? '同步游标已变化，请重新载入授权资料。' : '团队资料有更新，当前阅读版本保持不变。'}<button type="button" onClick={() => { setGap(false); setChange(false); refreshIdentity() }}>重新核对资料列表</button></Notice>}
+      <main className="workspace"><Pending accountId={session.person.userId} refresh={refreshIdentity} /><ErrorLine>{error}</ErrorLine>{events.error && <Notice>同步暂不可用。{events.at ? `上次核对 ${time(events.at)}` : '尚未完成同步核对'}。<button type="button" onClick={events.refresh}>重试</button></Notice>}{events.value?.hasMore && <Notice>还有协作记录待同步。<button type="button" onClick={events.refresh}>继续同步</button></Notice>}{(gap || change) && <Notice>{gap ? '同步游标已变化，请重新载入授权资料。' : '团队资料有更新，当前阅读版本保持不变。'}<button type="button" onClick={() => { setGap(false); setChange(false); refreshIdentity() }}>重新核对资料列表</button></Notice>}
         {content}
       </main>
     </div>

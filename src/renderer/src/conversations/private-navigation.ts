@@ -4,6 +4,6 @@ import type { ConversationKind } from './workspace'
 
 export function showPrivateConversation(kind: ConversationKind): void {
   const code = kind === 'code'
-  useMy.getState().setShellView(code ? 'development' : 'collaboration')
+  useMy.getState().setChatWorkdirMode(code ? 'directory' : 'default')
   useApp.getState().setPage('chat', { privateCodeChat: code })
 }

@@ -2,7 +2,7 @@
 // 路由唯一事实是主 store 的 useApp.page，IPC 事件联动不受换壳影响。
 import { useEffect, useLayoutEffect, lazy, Suspense, useState, useRef, type JSX, type ReactNode } from "react"
 import { clsx } from "clsx"
-import { ArrowUpRight, BookOpen, Briefcase, CircleHelp, Keyboard, ListTodo, MessageCircle, X } from 'lucide-react'
+import { ArrowUpRight, BookOpen, CircleHelp, FolderOpen, Keyboard, ListTodo, MessageCircle, X } from 'lucide-react'
 import { useApp, type Page } from '../../store'
 import { observeCollaborationWorkspace, useCrux } from '../../crux/store'
 import { observeDevelopmentNavigation } from '../../crux/local-work'
@@ -455,9 +455,9 @@ const HELP_MODULES = [
     description: "管理迭代、版本与团队待办，支持多维筛选、视图保存与看板呈现，按优先级与责任人推进项目落地。"
   },
   {
-    icon: <Briefcase size={15} className="text-my-icon-secondary shrink-0" />,
-    title: "双视图模式切换 (Work / Code)",
-    description: "点击顶栏视图切换器：Work 专注需求与协作规划，Code 直通工程分支、本地运行环境与开发控制台。"
+    icon: <FolderOpen size={15} className="text-my-icon-secondary shrink-0" />,
+    title: "对话工作目录按需绑定 (默认目录 / 本机目录)",
+    description: "新建对话默认落在托管工作目录，零门槛直接提问；若需改代码或跑服务，可在对话顶部或输入栏切换本机工程目录，自动解锁 Git 分支与终端服务。"
   },
   {
     icon: <BookOpen size={15} className="text-my-icon-secondary shrink-0" />,

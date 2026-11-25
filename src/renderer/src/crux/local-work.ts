@@ -51,7 +51,7 @@ async function enterDevelopment(origin: WorkReturnContext, owns: () => boolean, 
   app.setPage(origin.page.fromPage)
   useApp.getState().expandTaskWorkspace({ fromPage: origin.page.fromPage, taskDir: task.dirName, archived: origin.local.archived, scrollTop: 0 }, origin.developmentPosition.panel ? undefined : origin.developmentPosition.materialPath ?? undefined)
   useCrux.setState((state) => ({ developmentMode: 'task', developmentRevision: state.developmentRevision + 1 }))
-  useMy.getState().setShellView('development')
+  useMy.getState().setChatWorkdirMode('directory')
   restoreDevelopmentScroll(origin)
 }
 
@@ -106,7 +106,6 @@ export function returnToTeamWork(): void {
   if (!origin) return
   const valid = canReturnToDevelopmentSource(origin)
   useCrux.setState({ developmentMode: null, developmentRevision: state.developmentRevision + 1, ...(valid ? {} : { workReturn: null }) })
-  useMy.getState().setShellView('collaboration')
   if (valid) restoreWorkPage(origin.page, origin.taskId)
   else { useApp.getState().setPage('crux'); useCrux.setState({ module: 'my-tasks', openTaskId: null }) }
 }

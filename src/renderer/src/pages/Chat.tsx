@@ -65,10 +65,10 @@ function CodeProjectPrompt(): JSX.Element {
 }
 
 export function ChatPage({ active }: { active: boolean }): JSX.Element {
-  const development = useMy((state) => state.shellView === 'development')
+  const directoryMode = useMy((state) => state.chatWorkdirMode === 'directory')
   const root = useApp((state) => state.snapshot?.meta.root)
   let content: JSX.Element
-  if (!development) content = <WorkConversation active={active} />
+  if (!directoryMode) content = <WorkConversation active={active} />
   else if (!root) content = <CodeProjectPrompt />
   else content = <ThreadRouteView root={root} source="code" />
   return <Suspense fallback={active ? <PageLoading /> : null}>

@@ -47,7 +47,7 @@ export function CommandPalette(): JSX.Element | null {
     if (page === 'tasks') { setWorkItemsView('items'); ui.setWorkItemsTab('all') }
     if (page === 'team') ui.setTeamView('overview')
     if (page === 'settings') ui.setSettingsView('preferences')
-    if (page === 'knowledge') ui.setKnowledgeView('materials')
+    if (page === 'knowledge') ui.setKnowledgeView('team')
     if (page === 'devtools') ui.setToolView('git')
     if (page === 'acp') ui.requestAgentView('conversation')
     setPageMain(page)

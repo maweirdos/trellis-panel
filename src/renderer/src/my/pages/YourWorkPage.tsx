@@ -371,7 +371,7 @@ export function YourWorkPage(): JSX.Element {
     rememberVisit({ kind: 'task', target: task.id, title: task.title, archived: task.archived })
   }
   const startAgentConversation = (): void => {
-    useMy.getState().setShellView('collaboration')
+    useMy.getState().setChatWorkdirMode('default')
     useApp.getState().setPage('chat')
   }
   const openVisit = (entry: PersonalVisit): void => {

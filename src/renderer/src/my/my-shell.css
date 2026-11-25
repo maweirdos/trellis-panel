@@ -65,6 +65,34 @@
   color: var(--my-txt-primary);
   box-shadow: var(--my-shadow-raised-100);
 }
+.my-root .my-module-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: var(--my-space-14);
+  height: var(--my-space-14);
+  padding-inline: var(--my-space-3);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-accent-primary);
+  color: var(--my-txt-on-accent);
+  font-size: var(--my-text-2xs);
+  font-weight: var(--my-weight-semibold);
+  line-height: var(--my-space-14);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.my-root .my-module-status-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: var(--my-space-6);
+  height: var(--my-space-6);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-success-primary);
+  box-shadow: 0 0 0 1.5px var(--my-bg-shell);
+  pointer-events: none;
+}
 .my-root .my-module-icon {
   width: var(--my-module-icon-size);
   height: var(--my-module-icon-size);

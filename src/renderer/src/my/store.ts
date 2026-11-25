@@ -15,8 +15,10 @@ export type { SavedView } from './project-preferences'
 
 const STORAGE_KEY = UI_PREFERENCES_KEY
 
+export type ChatWorkdirMode = 'default' | 'directory'
+
 interface PersistedPrefs {
-  shellView: 'collaboration' | 'development'
+  chatWorkdirMode: ChatWorkdirMode
   fontSize: UiFontSize
   fontFamily: UiFontFamily
   codeFontFamily: CodeFontFamily
@@ -55,8 +57,8 @@ const projectPrefs = loadProjectPreferences(initialProjectRoot)
 export interface MyStore {
   taskConversationTarget: TaskConversationTarget | null
   setTaskConversationTarget: (target: TaskConversationTarget | null) => void
-  shellView: PersistedPrefs['shellView']
-  setShellView: (view: PersistedPrefs['shellView']) => void
+  chatWorkdirMode: ChatWorkdirMode
+  setChatWorkdirMode: (mode: ChatWorkdirMode) => void
   /** 视图模型镜像；快照更新时 syncFromSnapshot() 重建 */
   data: ReturnType<typeof deriveDataset>
   /** Normalized real snapshot root; null is an unbound browser preview. */
@@ -121,6 +123,7 @@ export interface MyStore {
   sidebarCollapsed: boolean
   sidebarWidth: number
   setSidebarWidth: (width: number) => void
+  setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void
   toggleSidebar: () => void
   favorites: string[]
   toggleFavorite: (id: string) => void
@@ -143,11 +146,11 @@ function currentDataset(): ReturnType<typeof deriveDataset> {
 export const useMy = create<MyStore>()((set, get) => ({
   taskConversationTarget: null,
   setTaskConversationTarget: (taskConversationTarget) => set({ taskConversationTarget }),
-  shellView: prefs.shellView === 'development' ? 'development' : 'collaboration',
-  setShellView: (shellView) => {
-    if (get().shellView !== shellView && useApp.getState().privateCodeChat) useApp.setState({ privateCodeChat: false })
-    set({ shellView })
-    savePrefs({ shellView })
+  chatWorkdirMode: prefs.chatWorkdirMode === 'directory' ? 'directory' : 'default',
+  setChatWorkdirMode: (chatWorkdirMode) => {
+    if (get().chatWorkdirMode !== chatWorkdirMode && useApp.getState().privateCodeChat) useApp.setState({ privateCodeChat: false })
+    set({ chatWorkdirMode })
+    savePrefs({ chatWorkdirMode })
   },
   data: currentDataset(),
   projectRoot: initialProjectRoot,
@@ -168,7 +171,7 @@ export const useMy = create<MyStore>()((set, get) => ({
         toolView: 'git' as const,
         taskConversationTarget: null,
         agentTarget: null,
-        knowledgeView: 'materials' as const,
+        knowledgeView: 'team' as const,
         settingsView: 'preferences' as const,
         modulePages: {},
         workItemsView: 'items' as const,
@@ -224,7 +227,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   },
   syncFontSizeFromStorage: () => {
     const stored = loadPrefs()
-    set({ fontSize: normalizeUiFontSize(stored.fontSize), fontFamily: normalizeUiFontFamily(stored.fontFamily), codeFontFamily: normalizeCodeFontFamily(stored.codeFontFamily), codeFontSize: normalizeCodeFontSize(stored.codeFontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true, shellView: stored.shellView === 'development' ? 'development' : 'collaboration' })
+    set({ fontSize: normalizeUiFontSize(stored.fontSize), fontFamily: normalizeUiFontFamily(stored.fontFamily), codeFontFamily: normalizeCodeFontFamily(stored.codeFontFamily), codeFontSize: normalizeCodeFontSize(stored.codeFontSize), sidebarWidth: normalizeSidebarWidth(stored.sidebarWidth), sidebarCollapsed: stored.sidebarCollapsed === true, chatWorkdirMode: stored.chatWorkdirMode === 'directory' ? 'directory' : 'default' })
   },
 
   layout: prefs.layout ?? 'list',
@@ -234,7 +237,7 @@ export const useMy = create<MyStore>()((set, get) => ({
   setToolView: (toolView) => set({ toolView }),
   agentTarget: null,
   requestAgentView: (agentTarget) => set({ agentTarget }),
-  knowledgeView: 'materials',
+  knowledgeView: 'team',
   setKnowledgeView: (knowledgeView) => set({ knowledgeView }),
   settingsView: 'preferences',
   setSettingsView: (settingsView) => set({ settingsView }),
@@ -296,6 +299,20 @@ export const useMy = create<MyStore>()((set, get) => ({
     if (get().sidebarWidth === sidebarWidth) return
     set({ sidebarWidth })
     savePrefs({ fontSize: get().fontSize, layout: get().layout, groupBy: get().groupBy, orderBy: get().orderBy, sidebarCollapsed: get().sidebarCollapsed, sidebarWidth })
+  },
+  setSidebarCollapsed: (collapsed, persist = true) => {
+    if (get().sidebarCollapsed === collapsed && !persist) return
+    set({ sidebarCollapsed: collapsed })
+    if (persist) {
+      savePrefs({
+        fontSize: get().fontSize,
+        layout: get().layout,
+        groupBy: get().groupBy,
+        orderBy: get().orderBy,
+        sidebarCollapsed: collapsed,
+        sidebarWidth: get().sidebarWidth
+      })
+    }
   },
   toggleSidebar: () => {
     const collapsed = !get().sidebarCollapsed

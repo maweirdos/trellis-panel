@@ -54,6 +54,6 @@ export async function openTaskWorkThread(task: CruxTask, threadId: string, curre
   intent = { key: crypto.randomUUID(), root: root.root, threadId, workspaceKey: context.key, actorId,
     instanceId: context.instanceId, epoch: context.epoch }
   for (const listener of listeners) listener()
-  useMy.getState().setShellView('collaboration')
+  useMy.getState().setChatWorkdirMode('default')
   useApp.getState().setPage('chat')
 }

@@ -162,7 +162,7 @@ export default function App(): JSX.Element {
   const fontFamily = useMy((s) => s.fontFamily)
   const codeFontFamily = useMy((s) => s.codeFontFamily)
   const codeFontSize = useMy((s) => s.codeFontSize)
-  const development = useMy((s) => s.shellView === 'development')
+  const hasProject = useApp((s) => Boolean(s.snapshot?.meta.root))
   const startup = useContext(StartupContext)
   const bootstrapped = useApp((s) => s.bootstrapped)
   const [onboardingOpen, setOnboardingOpen] = useState(false)
@@ -316,7 +316,7 @@ export default function App(): JSX.Element {
         <Suspense fallback={null}>
           <MyApp />
         </Suspense>
-        {development && <ApplicationDock />}
+        {hasProject && <ApplicationDock />}
       </div>
     )
   }
@@ -326,7 +326,7 @@ export default function App(): JSX.Element {
       <div data-my-theme={effectiveTheme} data-my-font-size={fontSize} data-my-font={fontFamily} data-my-code-font={codeFontFamily} data-my-code-size={codeFontSize} className="my-root my-app-window flex h-full flex-col text-my-md text-my-primary">
         <TitleBar />
         <MainApp />
-        {development && <ApplicationDock />}
+        {hasProject && <ApplicationDock />}
         <Toasts />
         <DialogHost />
         <DaemonSettingsDialog />

@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Blocks, BookOpen, ChevronRight, CircleHelp, CircleUser, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, X, Wrench, Activity, FileText } from 'lucide-react'
+import { Blocks, BookOpen, Building2, ChevronRight, CircleHelp, CircleUser, Cpu, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, X, Wrench, Activity, FileText } from 'lucide-react'
 import { useApp, type Page } from '../../store'
+import { inboxGroups, useCrux } from '../../crux/store'
 import { useMy } from '../store'
 import { NavIcon } from '../icons'
 import { SidebarResizeHandle, useSidebarWidthStyle } from './SidebarResizeHandle'
@@ -16,6 +17,7 @@ const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   agents: <MessageCircle className="my-module-icon" aria-hidden="true" />,
   tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
   team: <Users className="my-module-icon" aria-hidden="true" />,
+  members: <Building2 className="my-module-icon" aria-hidden="true" />,
   knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,
   integrations: <Blocks className="my-module-icon" aria-hidden="true" />,
   automations: <Workflow className="my-module-icon" aria-hidden="true" />,
@@ -26,23 +28,77 @@ export function WorkspaceSidebar(): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
   const collapsed = useMy((state) => state.sidebarCollapsed)
+  const settingsView = useMy((state) => state.settingsView)
   const hasProject = useApp((state) => Boolean(state.snapshot?.meta.root))
+  const cruxModule = useCrux((state) => state.module)
+  const cruxSnapshot = useCrux((state) => state.snapshot)
+  const unreadInbox = cruxSnapshot ? (() => {
+    const groups = inboxGroups(cruxSnapshot.inbox, Date.now())
+    return groups.unread.important + groups.unread.other
+  })() : 0
   const current = activeModule(page)
+  const activeRail: ModuleId = page === 'crux'
+    ? (cruxModule === 'members' ? 'members' : 'team')
+    : page === 'creations'
+      ? 'knowledge'
+      : current === 'home'
+        ? 'team'
+        : current
   const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
   return <>
     <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
       <nav aria-label="应用模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
-        {PRIMARY_NAVIGATION.map((item) => <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={current === item.id ? 'page' : undefined} onClick={() => {
-          const remembered = useMy.getState().modulePages
-          const saved = remembered[item.id] ?? (item.id === 'home' ? remembered.tasks : undefined)
-          const opensRoot = item.id === 'agents' || item.id === 'integrations'
-          const target = opensRoot || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
-          const app = useApp.getState()
-          if ((current !== item.id || opensRoot) && (app.page !== target || target === 'chat' && app.privateCodeChat)) setPage(target)
-        }} className={railClass(current === item.id)}>{MODULE_ICONS[item.id]}</button>)}
+        {PRIMARY_NAVIGATION.map((item) => {
+          const badge = item.id === 'team' ? unreadInbox : 0
+          return <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={activeRail === item.id ? 'page' : undefined} onClick={() => {
+            const app = useApp.getState()
+            if (item.id === 'members') {
+              useCrux.getState().setModule('members')
+              if (app.page !== 'crux') setPage('crux')
+              return
+            }
+            if (item.id === 'team') {
+              if (useCrux.getState().module === 'members') useCrux.getState().setModule('my-tasks')
+              if (app.page !== 'crux') setPage('crux')
+              return
+            }
+            const remembered = useMy.getState().modulePages
+            const saved = remembered[item.id]
+            const opensRoot = item.id === 'agents' || item.id === 'knowledge'
+            const target = opensRoot || !saved || pageRequiresProject(saved) && !hasProject ? item.page : saved
+            if ((activeRail !== item.id || opensRoot) && (app.page !== target || target === 'chat' && app.privateCodeChat)) setPage(target)
+          }} className={railClass(activeRail === item.id)}>
+            {MODULE_ICONS[item.id]}
+            {badge > 0 && <span className="my-module-badge" aria-label={`${badge} 条未读`}>{badge > 99 ? '99+' : badge}</span>}
+          </button>
+        })}
       </nav>
       <div className="my-module-footer mt-4 flex w-full shrink-0 flex-col items-center">
         <div className="my-module-divider" aria-hidden="true" />
+        <button
+          type="button"
+          aria-label="应用集成"
+          title="应用集成"
+          aria-current={page === 'integrations' ? 'page' : undefined}
+          onClick={() => { if (useApp.getState().page !== 'integrations') setPage('integrations') }}
+          className={railClass(page === 'integrations')}
+        >
+          {MODULE_ICONS.integrations}
+        </button>
+        <button
+          type="button"
+          aria-label="本机执行槽与引擎"
+          title="本机执行槽（Codex / Claude / Runtime）"
+          aria-current={page === 'settings' && settingsView === 'engines' ? 'page' : undefined}
+          onClick={() => {
+            useMy.getState().setSettingsView('engines')
+            if (useApp.getState().page !== 'settings') setPage('settings')
+          }}
+          className={railClass(page === 'settings' && settingsView === 'engines')}
+        >
+          <Cpu className="my-module-icon" aria-hidden="true" />
+          <span className="my-module-status-dot" aria-hidden="true" />
+        </button>
         <button
           type="button"
           aria-label="帮助与指引"
@@ -52,9 +108,10 @@ export function WorkspaceSidebar(): JSX.Element {
         >
           <CircleHelp className="my-module-icon" aria-hidden="true" />
         </button>
-        <button type="button" aria-label="设置" title="设置" aria-current={current === 'settings' ? 'page' : undefined} onClick={() => {
-          setPage(useMy.getState().modulePages.settings ?? 'settings')
-        }} className={railClass(current === 'settings')}>{MODULE_ICONS.settings}</button>
+        <button type="button" aria-label="设置" title="设置" aria-current={page === 'settings' && settingsView !== 'engines' ? 'page' : undefined} onClick={() => {
+          useMy.getState().setSettingsView('preferences')
+          if (useApp.getState().page !== 'settings') setPage('settings')
+        }} className={railClass(page === 'settings' && settingsView !== 'engines')}>{MODULE_ICONS.settings}</button>
         <AccountMenu />
       </div>
     </aside>

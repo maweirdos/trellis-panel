@@ -53,7 +53,7 @@ export function DevelopmentContextBar(): JSX.Element | null {
         void useApp.getState().openProjectPath(origin.projectRoot).then(() => {
           if (!canReturnToDevelopmentSource(origin)) return
           if (projectRootKey(useApp.getState().snapshot?.meta.root) !== projectRootKey(origin.projectRoot)) throw Error(useApp.getState().openError || '原工程尚未打开')
-          useMy.getState().setShellView('development')
+          useMy.getState().setChatWorkdirMode('directory')
         }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '原工程无法打开'))
       }}>独立查看原工程</Button>}
       <Button size="sm" variant="ghost" disabled={Boolean(opening)} onClick={returnToTeamWork}><ArrowLeft size={12} />返回团队任务</Button>

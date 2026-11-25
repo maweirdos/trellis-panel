@@ -13,7 +13,8 @@ const isOneOf = <T extends string>(value: unknown, values: readonly T[]): value 
 function parseLocation(raw: unknown, root: string | null): NavigationLocation | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const value = raw as Record<string, unknown>
-  if (!isPage(value.page) || !root && pageRequiresProject(value.page) || !isOneOf(value.workItemsView, ['items', 'iterations'] as const) || !isOneOf(value.workItemsTab, ['all', 'active', 'backlog'] as const) || !isOneOf(value.teamView, ['overview', 'members', 'activity', 'reports'] as const) || !isOneOf(value.toolView, ['git', 'run', 'architecture', 'studio'] as const) || !isOneOf(value.knowledgeView, ['materials', 'company'] as const) || !isOneOf(value.settingsView, SETTINGS_VIEWS)) return null
+  const normalizedKnowledgeView = value.knowledgeView === 'materials' ? 'team' : value.knowledgeView
+  if (!isPage(value.page) || !root && pageRequiresProject(value.page) || !isOneOf(value.workItemsView, ['items', 'iterations'] as const) || !isOneOf(value.workItemsTab, ['all', 'active', 'backlog'] as const) || !isOneOf(value.teamView, ['overview', 'members', 'activity', 'reports'] as const) || !isOneOf(value.toolView, ['git', 'run', 'architecture', 'studio'] as const) || !isOneOf(normalizedKnowledgeView, ['team', 'personal', 'company', 'project'] as const) || !isOneOf(value.settingsView, SETTINGS_VIEWS)) return null
   const personalTaskSource = isOneOf(value.personalTaskSource, ['team', 'local'] as const)
     ? value.personalTaskSource
     : value.workItemsView === 'iterations' ? 'local' : 'team'
@@ -23,7 +24,7 @@ function parseLocation(raw: unknown, root: string | null): NavigationLocation | 
       if (isPage(page) && getPageNavigation(page).domain === domain && (root || !pageRequiresProject(page))) modulePages[getPageNavigation(page).domain] = page
     }
   }
-  return { page: value.page, personalTaskSource, workItemsView: value.workItemsView, workItemsTab: value.workItemsTab, teamView: value.teamView, toolView: value.toolView, knowledgeView: value.knowledgeView, settingsView: value.settingsView, modulePages }
+  return { page: value.page, personalTaskSource, workItemsView: value.workItemsView, workItemsTab: value.workItemsTab, teamView: value.teamView, toolView: value.toolView, knowledgeView: normalizedKnowledgeView, settingsView: value.settingsView, modulePages }
 }
 
 export function loadNavigationLocation(root: string, developer?: string | null): NavigationLocation | null {
