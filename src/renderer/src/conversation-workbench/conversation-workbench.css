@@ -6,14 +6,6 @@
   min-width: 0;
 }
 
-.conversation-message-user {
-  align-self: flex-end;
-  max-width: 85%;
-  padding: var(--my-space-8) var(--my-space-14);
-  border-radius: var(--my-radius-base);
-  background: var(--my-bg-layer-3);
-}
-
 .conversation-message-body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -28,6 +20,186 @@
 
 .conversation-composer-toolbar {
   justify-content: flex-end;
+}
+
+/*
+ * Composer, ported from t3code@28c58b1 apps/web/src/components/chat:
+ * ComposerSurface.tsx (rounded-2xl, 1px outline, shadow 0 1px 2px /5%),
+ * ChatComposer.tsx (body px-4 pt-3.5 pb-2; footer px-2 pb-2, gap-2),
+ * ComposerControl.tsx (h-7, rounded-8px, text-sm font-medium /80, icon 16),
+ * ComposerPrimaryActions.tsx (32px round send, message-action fill),
+ * composerPlaceholder.ts ("Ask anything. @ files, $ skills, / commands").
+ * The host's type and control tokens drive the three interface densities.
+ */
+.my-root .conversation-composer {
+  border: 0;
+  border-radius: var(--my-radius-composer);
+  background: var(--my-bg-panel);
+  box-shadow: 0 0 0 1px var(--my-border-subtle), 0 1px 2px rgb(0 0 0 / 5%);
+  transition: background-color 200ms, box-shadow var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .conversation-composer:focus-within {
+  box-shadow: 0 0 0 1px var(--my-border-strong-1), 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.my-root .conversation-composer textarea {
+  min-height: calc(1.625em * 2 + 0.5rem);
+  padding: 0.875rem 1rem 0.5rem;
+  font-size: var(--my-text-chat);
+  line-height: 1.625;
+  font-family: var(--my-font-sans);
+}
+
+.my-root .conversation-composer textarea::placeholder {
+  color: var(--my-txt-placeholder);
+}
+
+.conversation-composer-toolbar {
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.5rem;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-ui);
+}
+
+/* Upstream ComposerControl: h-7, 8px radius, font-medium foreground/80, 16px icons. */
+.my-root .conversation-composer-toolbar .my-icon-control,
+.my-root .conversation-composer-toolbar .my-composer-control {
+  height: var(--my-icon-control-size);
+  min-height: var(--my-icon-control-size);
+  border-radius: var(--my-radius-base);
+  color: color-mix(in srgb, var(--my-txt-primary) 80%, transparent);
+  font-size: var(--my-text-ui);
+  font-weight: var(--my-weight-medium);
+}
+
+.my-root .conversation-composer-toolbar .my-icon-control {
+  width: var(--my-icon-control-size);
+  flex-basis: var(--my-icon-control-size);
+}
+
+.my-root .conversation-composer-toolbar .my-icon-control > svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.my-root .conversation-composer-toolbar .my-composer-control.acp-model-trigger {
+  gap: 0.25rem;
+  padding-inline: 0.5rem;
+}
+
+.my-root .conversation-composer-toolbar .my-composer-control.acp-model-trigger > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-inline-end: -0.25rem;
+  color: var(--my-txt-tertiary);
+}
+
+.my-root .conversation-composer-toolbar :is(.my-icon-control, .my-composer-control):hover:not(:disabled) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+
+/* Upstream attach button is the first footer control: paperclip, me-2. */
+.conversation-add-anchor {
+  margin-inline-end: 0.5rem;
+}
+
+.conversation-add-anchor .my-icon-control.conversation-add-trigger {
+  width: var(--my-icon-control-size);
+  height: var(--my-icon-control-size);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-secondary);
+}
+
+.conversation-add-anchor .my-icon-control.conversation-add-trigger > svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.conversation-add-anchor .my-icon-control.conversation-add-trigger:hover:not(:disabled) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+
+/* Upstream ContextChip: inline-flex, gap 0.2em, font-medium, accent ink, 2px radius. */
+.conversation-composer .acp-source-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.875rem 1rem 0;
+}
+
+.conversation-composer .acp-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0.125rem 0.375rem;
+  border: 0;
+  border-radius: var(--my-radius-base);
+  background: transparent;
+  color: var(--conversation-chip-accent, var(--my-txt-secondary));
+  font-size: var(--my-text-ui);
+  font-weight: var(--my-weight-medium);
+  line-height: 1.25rem;
+}
+
+.conversation-composer .acp-source-chip[data-kind='file'] {
+  --conversation-chip-accent: var(--my-txt-warning-primary);
+}
+
+.conversation-composer .acp-source-chip[data-kind='citation'] {
+  --conversation-chip-accent: var(--my-txt-accent-primary);
+}
+
+.conversation-composer .acp-source-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-composer .acp-source-chip > svg {
+  flex: none;
+}
+
+.conversation-composer .acp-source-chip > .my-icon-control {
+  width: 1rem;
+  height: 1rem;
+  flex-basis: 1rem;
+  color: inherit;
+}
+
+.conversation-composer .acp-source-chip > .my-icon-control > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* Upstream send: h-8 w-8 rounded-full bg-message-action, 14px arrow. */
+.my-root .conversation-composer-toolbar button[type='submit'] {
+  width: 2rem;
+  height: 2rem;
+  flex-basis: 2rem;
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-accent-primary);
+  color: var(--my-txt-on-accent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+
+.my-root .conversation-composer-toolbar button[type='submit']:hover:not(:disabled) {
+  background: var(--my-bg-accent-primary-hover);
+}
+
+.my-root .conversation-composer-toolbar button[type='submit']:disabled {
+  background: color-mix(in srgb, var(--my-txt-primary) 12%, transparent);
+  color: var(--my-txt-secondary);
+  box-shadow: none;
+}
+
+.my-root .conversation-composer-toolbar button[type='submit'] > svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .my-root .conversation-composer:has(textarea:focus-visible) {
@@ -47,22 +219,10 @@
   }
 }
 
-/* Timeline reading position: the scroller keeps native scroll anchoring, so a streamed
-   paragraph grows below the reader's line instead of pushing it away. */
 .acp-transcript.conversation-timeline {
   scroll-behavior: auto;
   overscroll-behavior-y: contain;
-  overflow-anchor: auto;
-}
-
-.conversation-timeline-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--my-space-16);
-}
-
-.conversation-timeline-content > .my-feedback {
-  margin: 0;
+  overflow-anchor: none;
 }
 
 .conversation-controls {
@@ -77,96 +237,6 @@
   display: flex;
   justify-content: center;
   padding-block-end: var(--my-space-4);
-}
-
-.conversation-message {
-  position: relative;
-  min-width: 0;
-}
-
-.conversation-message-actions {
-  position: absolute;
-  inset-block-start: calc(var(--my-space-4) * -1);
-  inset-inline-end: var(--my-space-4);
-  display: flex;
-  align-items: center;
-  gap: var(--my-space-2);
-  opacity: 0;
-  transition: opacity var(--my-motion-fast) var(--my-ease-out);
-}
-
-.conversation-message:hover .conversation-message-actions,
-.conversation-message:focus-within .conversation-message-actions {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .conversation-message-actions {
-    opacity: 1;
-  }
-}
-
-.conversation-message-user .conversation-message-actions {
-  inset-inline-end: var(--my-space-4);
-}
-
-.conversation-message-body .md > :last-child {
-  margin-bottom: 0;
-}
-
-.conversation-message-body .md > :first-child {
-  margin-top: 0;
-}
-
-.conversation-streaming {
-  display: inline-flex;
-  align-items: center;
-  margin-inline-start: var(--my-space-4);
-  color: var(--my-txt-tertiary);
-  vertical-align: baseline;
-}
-
-.conversation-work-row {
-  display: flex;
-  align-items: center;
-  gap: var(--my-space-8);
-  min-width: 0;
-  padding: var(--my-space-4) 0;
-  color: var(--my-txt-secondary);
-  font-size: var(--my-text-activity);
-  line-height: var(--my-line-document);
-}
-
-.conversation-work-mark {
-  flex: 0 0 var(--my-space-5);
-  width: var(--my-space-5);
-  height: var(--my-space-5);
-  border-radius: var(--my-radius-round);
-  background: var(--my-txt-tertiary);
-}
-
-.conversation-work-row[data-state='done'] .conversation-work-mark {
-  background: var(--my-txt-secondary);
-}
-
-.conversation-work-row[data-state='failed'] .conversation-work-mark,
-.conversation-work-row[data-state='failed'] .conversation-work-text {
-  background: transparent;
-  color: var(--my-txt-danger-primary);
-}
-
-.conversation-work-row[data-state='failed'] .conversation-work-mark {
-  background: var(--my-txt-danger-primary);
-}
-
-.conversation-work-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.conversation-work-row > svg {
-  flex-shrink: 0;
-  color: var(--my-txt-tertiary);
 }
 
 .conversation-notice {
@@ -187,25 +257,29 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--my-space-6);
+  gap: 0.75rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Upstream QueuedRunsControl: a queued turn is the sent form with a dashed, unfilled edge. */
 .conversation-queue-item {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--my-space-2);
-  max-width: 85%;
+  gap: 0.25rem;
+  width: 100%;
+  max-width: 80%;
 }
 
 .conversation-queue-bubble {
-  padding: var(--my-space-8) var(--my-space-14);
-  border: 1px dashed var(--my-border-strong-1);
-  border-radius: var(--my-radius-base);
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed color-mix(in srgb, var(--my-txt-secondary) 40%, transparent);
+  border-radius: var(--my-radius-composer);
   color: var(--my-txt-secondary);
+  font-size: var(--my-text-ui);
+  line-height: 1.625;
 }
 
 .conversation-queue-text {
@@ -216,7 +290,10 @@
 .conversation-queue-actions {
   display: flex;
   align-items: center;
-  gap: var(--my-space-2);
+  gap: 0.125rem;
+  padding-inline-end: 0.25rem;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
   opacity: 0;
   transition: opacity var(--my-motion-fast) var(--my-ease-out);
 }
@@ -234,8 +311,10 @@
 
 .conversation-queue-more {
   align-self: flex-end;
-  padding: var(--my-space-2) var(--my-space-6);
+  padding: 0 0.25rem;
   border-radius: var(--my-control-radius);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
 }
 
 .conversation-queue-more:hover {

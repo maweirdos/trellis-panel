@@ -1,16 +1,14 @@
-import { lazy, Suspense, useEffect, useState, type JSX } from 'react'
+import { Suspense, useEffect, useState, type JSX } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { StartupContentCommit } from '../daemon/StartupContext'
 import { PageLoading } from '../my/layout/PageLoading'
-import { projectRootKey } from '../my/navigation'
 import { useMy } from '../my/store'
 import { FeedbackNotice } from '../my/FeedbackNotice'
 import { Button, EmptyState } from '../my/ui'
 import { useApp } from '../store'
 import { useTaskWorkThread } from '../conversation-workbench/task-work-navigation'
-
-const NativeConversation = lazy(() => import('../conversation-workbench/ConversationWorkbench').then((module) => ({ default: module.ConversationWorkbench })))
+import { ThreadRouteView } from '../conversation-workbench/ThreadRouteView'
 
 function WorkConversation({ active }: { active: boolean }): JSX.Element {
   const [root, setRoot] = useState<string>()
@@ -31,7 +29,7 @@ function WorkConversation({ active }: { active: boolean }): JSX.Element {
     return () => { current = false }
   }, [active, retry])
 
-  if (root) return <NativeConversation key={taskThread?.key ?? projectRootKey(root)} root={root} source="work" initialThreadId={taskThread?.threadId} />
+  if (root) return <ThreadRouteView root={root} source="work" target={taskThread} />
   if (!hasIpc) return <EmptyState title="请在 Crux 桌面端打开对话" />
   if (issue) return <FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
     actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} />
@@ -72,7 +70,7 @@ export function ChatPage({ active }: { active: boolean }): JSX.Element {
   let content: JSX.Element
   if (!development) content = <WorkConversation active={active} />
   else if (!root) content = <CodeProjectPrompt />
-  else content = <NativeConversation key={projectRootKey(root)} root={root} source="code" />
+  else content = <ThreadRouteView root={root} source="code" />
   return <Suspense fallback={active ? <PageLoading /> : null}>
     {content}
     <StartupContentCommit active={active} />

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type JSX, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom'
+import { Bot, MessageSquare, MessagesSquare, Package, Paperclip, Sparkles } from 'lucide-react'
 import type { ComposerMenuItem } from './useComposerMenuItems'
 
 interface ComposerMenuProps {
@@ -10,6 +11,16 @@ interface ComposerMenuProps {
   readonly activeIndex: number
   readonly onHighlight: (index: number) => void
   readonly onSelect: (item: ComposerMenuItem) => void
+}
+
+/** Upstream ComposerCommandMenuItem: every row leads with the kind's icon. */
+function MenuItemIcon({ item }: { readonly item: ComposerMenuItem }): JSX.Element {
+  const Icon = item.type === 'model' ? Bot
+    : item.type === 'side' ? MessagesSquare
+      : item.type === 'thread' ? MessageSquare
+        : item.type === 'attachment' ? Paperclip
+          : item.id.startsWith('slash:') ? Sparkles : Package
+  return <Icon aria-hidden="true" />
 }
 
 export function ConversationComposerMenu({
@@ -50,8 +61,9 @@ export function ConversationComposerMenu({
       {items.map((item, index) => <button key={item.id} id={`${id}-${index}`} type="button" role="option" tabIndex={-1}
         aria-selected={index === activeIndex} className="my-menu-item"
         onMouseDown={event => event.preventDefault()} onMouseMove={() => onHighlight(index)} onClick={() => onSelect(item)}>
-        <span className="my-item-title truncate">{item.label}</span>
-        {item.type === 'skill' && item.description && <span className="my-item-description truncate">{item.description}</span>}
+        <span className="my-menu-icon"><MenuItemIcon item={item} /></span>
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {item.description && <span className="my-item-description truncate">{item.description}</span>}
       </button>)}
     </div>
   </div>, portalRoot)

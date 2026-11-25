@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ArrowLeft, ChevronDown, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
+import type { ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
 import { conversationProjectRoleSchema, type ConversationProjectRole } from '../../../shared/conversation/project-role'
 import type { ConversationTaskScope } from '../../../shared/conversation/task-scope'
@@ -27,6 +28,8 @@ import {
   type OptimisticUserMessage,
 } from './optimisticUserMessages'
 import { ConversationComposer } from './ConversationComposer'
+import { ChatView } from './ChatView'
+import { ChatProjectFileLinks, type ChatProjectFile } from './chatProjectFileLinks'
 import { ConversationActivityControls } from './ConversationActivityControls'
 import { ConversationProjectSurfaces } from './ConversationProjectSurfaces'
 import { ConversationQueue } from './ConversationQueue'
@@ -35,16 +38,17 @@ import { ConversationRightPanel, useNarrowConversationPanel } from './Conversati
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline } from './ConversationTimeline'
-import { conversationPanelKey, conversationPanelScope, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { conversationFileSurface, conversationPanelKey, conversationPanelScope, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
-import { conversationError, useComposerSend, type ComposerReceipt } from './useComposerSend'
+import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
 import { useConversationModelCatalog } from './useConversationModelCatalog'
+import { useCodeTaskActions } from './useCodeTaskActions'
 import { closeUnusedSideThread, useSideChat } from './useSideChat'
 import { useWorkTaskActions } from './useWorkTaskActions'
 import {
   isActiveRun, queuedRunsWithText, useConversationThread,
-  type ConversationApplyResult, type ConversationTimelineRow, type ThreadReadTarget,
+  type ConversationApplyResult, type ConversationRun, type ConversationTimelineRow, type ThreadReadTarget,
 } from './useConversationThread'
 import '../acp/workspace.css'
 import './conversation-workbench.css'
@@ -62,6 +66,13 @@ function rememberThread(key: string, threadId: string | null): void {
     if (threadId) localStorage.setItem(`crux.conversation.selected:${key}`, threadId)
     else localStorage.removeItem(`crux.conversation.selected:${key}`)
   } catch {}
+}
+
+function runStartIso(run: ConversationRun | undefined): string | null {
+  const startedAt = run?.startedAt ?? run?.requestedAt
+  if (!startedAt) return null
+  const date = new Date(typeof startedAt === 'string' ? startedAt : startedAt.epochMilliseconds)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null
 }
 
 function savedProjectRole(key: string): ConversationProjectRole | undefined {
@@ -212,12 +223,21 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const narrowWindow = useNarrowConversationPanel()
   const narrowPanel = compact || narrowWindow
   const projectAvailable = hasIpc && typeof api.conversationProjectWorkbench === 'function'
+  const openPanel = panel.open
+  const fileLinkRoot = projectAvailable && projection ? projection.thread.worktreePath ?? root : undefined
+  const openProjectFile = useCallback((file: ChatProjectFile): void => {
+    if (!interactive || !canInteract() || !hostThreadId || targetRef.current?.threadId !== hostThreadId) return
+    if (document.activeElement instanceof HTMLElement && !document.activeElement.closest('.conversation-right-surface')) {
+      panelReturnFocus.current = document.activeElement
+    }
+    openPanel(conversationFileSurface(file.path, file.line))
+  }, [canInteract, hostThreadId, interactive, openPanel])
+  const fileLinks = useMemo(() => fileLinkRoot ? { root: fileLinkRoot, open: openProjectFile } : null, [fileLinkRoot, openProjectFile])
   const run = target?.runId
     ? projection?.runs.find((item) => item.id === target.runId)
     : projection?.runs.at(-1)
   const selectedThread = projection?.thread ?? threads?.find((item) => item.id === target?.threadId)
-  const archivedThread = Boolean(threads?.find(thread => thread.id === hostThreadId)?.archivedAt)
-  const workTask = useWorkTaskActions({ root, threadId: selectedThread?.id ?? null, enabled: source === 'work' && writable && !archivedThread })
+  const archivedThread = Boolean(selectedThread?.archivedAt)
   const activeRun = projection?.runs.slice().reverse().find(item => item.status !== 'queued' && isActiveRun(item))
   const catalog = useConversationModelCatalog(root, writable, rootKey, task)
   const instanceId = selectedThread?.modelSelection.instanceId
@@ -389,7 +409,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     } finally { changingThread.current = false }
   }
 
-  function onAccepted(receipt: ComposerReceipt, message: OptimisticUserMessage): void {
+  function onAccepted(receipt: ComposerReceipt, message: OptimisticUserMessage, workTaskSelection?: ComposerWorkTaskSelection,
+    codeTaskSelection?: ComposerCodeTaskSelection): void {
     const openThreadId = targetRef.current?.threadId
     if (!openThreadId || openThreadId === receipt.threadId) {
       setOptimistic(current => applyOptimisticUserMessagesAction(
@@ -399,6 +420,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       ))
       if (openThreadId) reload()
       else {
+        if (source === 'work' && workTaskSelection) workTask.bindAfterSend(receipt.threadId, workTaskSelection)
+        if (code && codeTaskSelection) codeTask.bindAfterSend(receipt.threadId, codeTaskSelection)
         if (draftRole) {
           rememberProjectRole(rootKey, undefined)
           setProjectRole(undefined)
@@ -421,6 +444,25 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     running: Boolean(activeRun), canSteer, onAccepted,
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
     onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
+  })
+  const canPreselectTask = composer.state.phase === 'idle' || (composer.state.phase === 'rejected' && composer.state.restored)
+  const workTask = useWorkTaskActions({
+    root, threadId: hostThreadId, isWork: source === 'work', enabled: source === 'work' && writable && !archivedThread && (!target || Boolean(projection)),
+    draftKey: composer.draftKey, draftSelection: composer.workTask,
+    canPreselect: canPreselectTask,
+  })
+  const codeTask = useCodeTaskActions({
+    root, threadId: code ? hostThreadId : undefined,
+    enabled: code && writable && !archivedThread && (!target || Boolean(projection)),
+    draftKey: composer.draftKey,
+    draftSelection: code ? composer.codeTask : undefined,
+    canPreselect: code && canPreselectTask,
+    onPreselect: selection => updateComposerDraft(composer.draftKey, current =>
+      current.state.phase === 'idle' || current.state.phase === 'rejected' && current.state.restored
+        ? { ...current, codeTask: selection } : current),
+    onClearSelection: () => updateComposerDraft(composer.draftKey, current =>
+      current.state.phase === 'idle' || current.state.phase === 'rejected' && current.state.restored
+        ? { ...current, codeTask: undefined } : current),
   })
   const selectedModel = composer.model ?? (selectedThread ? {
     instanceId: selectedThread.modelSelection.instanceId,
@@ -520,8 +562,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
   const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(sideCleanupKey)
 
-  return <div className="acp-workspace conversation-workbench" style={sidebarWidth}>
+  return <ChatProjectFileLinks.Provider value={fileLinks}><div className="acp-workspace conversation-workbench" style={sidebarWidth}>
     {workTask.dialog}
+    {code && codeTask.dialog}
     <Modal open={Boolean(queueEdit)} onClose={() => setQueueEdit(undefined)} ariaLabel="编辑排队消息" width={500}>
       {queueEdit && <form className="space-y-4 p-4" onSubmit={event => {
         event.preventDefault()
@@ -595,18 +638,14 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         actions={writable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-recent-action-btn my-icon-control"
           aria-label={`${thread.title}的更多操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} aria-hidden="true" /></button>}>
           {close => <>
-            {workTask.available && thread.id === hostThreadId && !thread.archivedAt && <>
-              <DropdownItem onClick={() => { close(); workTask.open('create') }}>转为团队任务</DropdownItem>
-              <DropdownItem onClick={() => { close(); workTask.open('bind') }}>关联团队任务</DropdownItem>
-            </>}
             <DropdownItem icon={<Pencil size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'rename', title: thread.title }) }}>重命名</DropdownItem>
             <DropdownItem danger icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'delete', title: thread.title }) }}>删除</DropdownItem>
           </>}
         </Dropdown>} />)}
     </ConversationSidebar>
     </div></ContextRegion>
-    <section className="acp-main my-conversation-frame" aria-label={workspaceLabel}>
-      <ConversationWorkspaceHeader leading={<>
+    <ChatView label={workspaceLabel} draftHero={draftIsEmpty}
+      header={<ConversationWorkspaceHeader leading={<>
         {onBackToTask && <button type="button" className="my-icon-control" title="返回任务" aria-label="返回任务" onClick={onBackToTask}>
           <ArrowLeft size={16} aria-hidden="true" />
         </button>}
@@ -617,15 +656,15 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         actions={<>
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
-          {projection && projectAvailable && <button type="button" ref={panelTrigger} className="my-icon-control"
+          {projection && (projectAvailable || projection.relations.children.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
               if (!canInteract()) return
               if (panel.active) hidePanel()
               else { panelReturnFocus.current = panelTrigger.current; panel.show() }
             }}><PanelRight size={17} aria-hidden="true" /></button>}
-        </>} />
-      {projectIntake && <ProjectConversationIntake root={root} enabled={writable}
+        </>} />}
+      projectIntake={projectIntake && <ProjectConversationIntake root={root} enabled={writable}
         canAppend={Boolean(projection && !archivedThread)} onAppend={appendIntake}
         canAddReference={(!hostThreadId || projection?.thread.id === hostThreadId) && !archivedThread &&
           composer.attachmentIntake.available && composer.attachmentIntake.canEdit && !composer.attachmentIntake.state.pending}
@@ -635,8 +674,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             () => isCurrent() && targetRef.current?.threadId === originalThread)
           if (added) focusComposer()
           return added
-        }} />}
-      <div className="acp-content" data-empty={draftIsEmpty || undefined}>
+        }} />}>
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
           onOpenRelatedThread={openRelatedThread}
           onForkFromRun={writable && projection && !archivedThread ? runId => {
@@ -646,6 +684,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           workingLabel={loadingThread ? '正在读取会话…' : submitting && !target ? '正在发送给 Crux…'
             : run?.status === 'queued' || run?.status === 'preparing' ? '已受理，等待模型…'
               : run?.nativeTurnId || run?.engineAcceptedAt ? '模型已接收，正在回复…' : '正在连接并发送给模型…'}
+          workingStartedAt={runStartIso(activeRun)}
           hasOlderHistory={Boolean(projection?.hasOlderHistory)} loadingEarlier={loadingEarlier}
           onLoadEarlier={() => void loadEarlier()}
           onQuote={writable && projection ? (message, text) => {
@@ -699,6 +738,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           <p className="my-item-description">{taskScope.reason ?? '当前任务会话仅供阅读。'}</p>
         </div> : <ConversationComposer
           interactive={writable} send={composer} catalog={catalog} model={selectedModel}
+          root={root}
           onModelChange={composer.setModel} lockedInstanceId={instanceId}
           running={Boolean(activeRun)} canStop={Boolean(activeRun) && descriptor?.actions.cancel.state !== 'unsupported'}
           onStop={() => { if (activeRun) applyControl(stop(activeRun.id)) }}
@@ -707,13 +747,25 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           leadingControls={projection && !archivedThread && <button type="button" className="my-icon-control"
             aria-label="开启侧聊" title="开启侧聊" disabled={!writable || sideChat.pending || sideChat.failure?.uncertain}
             onClick={() => { setSideInputFailure(undefined); void sideChat.open() }}><MessageSquarePlus size={16} aria-hidden="true" /></button>}
+          taskSection={code ? codeTask.taskSection : source === 'work' ? {
+            label: workTask.linkedTask ? `查看关联任务 · ${workTask.linkedTask.title}` : '当前会话',
+            ...(workTask.linkedTask ? { onView: () => workTask.view() } : { actions: [
+              { label: '关联已有团队任务…', icon: 'link', onSelect: () => workTask.open('bind'), disabledReason: workTask.linkedReason ?? workTask.bindReason },
+              { label: '从此对话创建任务…', icon: 'create', onSelect: () => workTask.open('create'), disabledReason: workTask.linkedReason ?? workTask.createReason },
+              ...(workTask.pendingTitle ? [{
+                label: `取消待关联 · ${workTask.pendingTitle}`, icon: 'link' as const, onSelect: workTask.clearPending, disabledReason: workTask.bindReason,
+              }] : workTask.needsReselection ? [{
+                label: '清除原预选', icon: 'link' as const, onSelect: workTask.clearPending,
+                description: '团队授权或原任务有变化，需重新选择。',
+              }] : []),
+            ] }),
+          } : undefined}
           disabledReason={target && !projection ? '正在读取原会话。' : undefined}
           textareaRef={composerRef} previousPrompt={previousPrompt?.text}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
             .map(({ id, title }) => ({ id, title }))}
         />}
-      </div>
-    </section>
+    </ChatView>
     {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
       <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
@@ -735,5 +787,5 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             activeRun={Boolean(activeRun)} writable={writable && !archivedThread}>{relatedWork}</ConversationProjectSurfaces>
             : relatedWork}
       </ConversationRightPanel>}
-  </div>
+  </div></ChatProjectFileLinks.Provider>
 }

@@ -30,12 +30,17 @@ import { ModelSelection } from '../../../shared/conversation/modelSelection'
 import { api } from '../api'
 import { conversationError } from './useComposerSend'
 
-export type ConversationThread = Pick<OrchestrationV2AppThread, 'id' | 'title' | 'modelSelection'>
+export type ConversationThread = Pick<OrchestrationV2AppThread, 'id' | 'title' | 'modelSelection'> &
+  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath'>>
 export type ConversationMessage = Pick<
   OrchestrationV2ConversationMessage,
   'role' | 'text' | 'runId' | 'streaming'
-> & { readonly id: string }
-export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'status' | 'modelSelection' | 'userMessageId'> & {
+> & {
+  readonly id: string
+  readonly createdAt?: OrchestrationV2ConversationMessage['createdAt'] | string
+  readonly updatedAt?: OrchestrationV2ConversationMessage['updatedAt'] | string
+}
+export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'status' | 'modelSelection' | 'userMessageId' | 'startedAt' | 'requestedAt'> & {
   readonly failure?: string
   readonly outcomeUnknown?: boolean
   readonly engineAcceptedAt?: string | null
@@ -61,7 +66,8 @@ export type ConversationTimelineRow =
       readonly state: 'running' | 'done' | 'failed' | 'cancelled'
       readonly at?: string
     }
-  | { readonly kind: 'plan'; readonly id: string; readonly item: Exclude<ConversationProjectedWorkItem, { readonly type: 'dynamic_tool' }> }
+  | { readonly kind: 'plan'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'proposed_plan' | 'todo_list' }> }
+  | { readonly kind: 'file-change'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'file_change' }> }
   | { readonly kind: 'relation'; readonly id: string; readonly item: ConversationThreadRelations['children'][number] }
 
 export interface ConversationThreadProjection {
@@ -316,6 +322,8 @@ export function deriveTimelineRows(
         })
       } else if (item.type === 'proposed_plan' || item.type === 'todo_list') {
         place({ kind: 'plan', id: item.id, item })
+      } else if (item.type === 'file_change') {
+        place({ kind: 'file-change', id: item.id, item })
       }
     }
     for (const item of byParentRun.get(run.id) ?? []) place({ kind: 'relation', id: `relation:${item.id}`, item })
@@ -484,7 +492,7 @@ export function applyEventPage(
     }
     if (wireEvent.type === 'turn-item.updated') {
       const item = wireEvent.payload
-      if (item.type === 'dynamic_tool' || item.type === 'proposed_plan' || item.type === 'todo_list') items.set(item.id, item)
+      if (item.type === 'dynamic_tool' || item.type === 'proposed_plan' || item.type === 'todo_list' || item.type === 'file_change') items.set(item.id, item)
       continue
     }
     if ((event.type === 'run.created' || event.type === 'run.updated') && payload && typeof payload === 'object') {

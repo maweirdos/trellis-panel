@@ -140,7 +140,7 @@ export interface ConversationNativeTerminalEvidence {
 
 export type ConversationProjectedWorkItem = Extract<
   Extract<ConversationWireEvent, { readonly type: 'turn-item.updated' }>['payload'],
-  { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' }
+  { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' | 'file_change' }
 >
 
 export interface ConversationGoal {

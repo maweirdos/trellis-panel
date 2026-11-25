@@ -15,6 +15,7 @@
 
 import { JIRA_IPC } from './jira-integration'
 import { workTaskActionChannel } from './conversation/work-task-action'
+import { codeTaskActionChannel } from './conversation/code-task-action'
 import { GITLAB_IPC } from './gitlab-integration'
 import { DINGTALK_IPC } from './dingtalk-integration'
 import { FEISHU_IPC } from './feishu-integration'
@@ -520,6 +521,7 @@ export const ipcInvoke = {
     attachmentRead: 'conversation:attachment-read',
     projectWorkbench: 'conversation:projectWorkbench',
     workTaskAction: workTaskActionChannel,
+    codeTaskAction: codeTaskActionChannel,
   },
   acp: {
     agents: 'acp:agents',

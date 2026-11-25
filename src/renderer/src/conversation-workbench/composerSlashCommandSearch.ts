@@ -15,7 +15,7 @@ export function composerSearchScore(value: string, query: string, fuzzy = false)
 }
 
 export function searchSlashCommandItems<Item extends {
-  readonly type: 'model' | 'skill'
+  readonly type: 'model' | 'side' | 'skill'
   readonly name: string
   readonly label: string
   readonly description?: string

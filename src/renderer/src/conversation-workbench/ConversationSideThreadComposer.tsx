@@ -36,7 +36,7 @@ export function ConversationSideThreadComposer({ root, task, scopeKey, threadId,
       title={issue.uncertain ? '侧聊操作结果待核对' : '侧聊操作未完成'} description={issue.reason}
       actions={issue.uncertain && <Button size="sm" variant="ghost" disabled={controller.pendingCommands.has(issue.commandId)}
         onClick={() => void controller.checkCommand(issue.commandId).then(settle)}>查询回执</Button>} />}
-    <ConversationComposer interactive={writable} send={send} catalog={catalog} model={selected}
+    <ConversationComposer interactive={writable} root={root} send={send} catalog={catalog} model={selected}
       onModelChange={send.setModel} lockedInstanceId={selection?.instanceId} running={running}
       canStop={running && descriptor?.actions.cancel.state !== 'unsupported' && !issue?.uncertain}
       onStop={() => { if (activeRun) void controller.stop(activeRun.id).then(settle) }}

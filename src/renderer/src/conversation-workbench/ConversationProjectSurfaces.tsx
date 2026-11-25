@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ArrowLeft, ArrowUpRight, ChevronRight, Code, FileText, Folder, FolderOpen, GitBranch, Monitor, Play, RefreshCw, Square, Terminal } from 'lucide-react'
 import type { ProjectWorkbenchAction, ProjectWorkbenchInput, ProjectWorkbenchProject, ProjectWorkbenchResult, ProjectWorkbenchStats } from '../../../shared/conversation/project-workbench'
 import type { ApplicationProcessState } from '../../../shared/app-runtime'
@@ -127,14 +127,25 @@ function ProjectFiles({ target, open }: { target: ProjectTarget; open(surface: C
   </>
 }
 
-function ProjectFile({ target, path }: { target: ProjectTarget; path: string }): JSX.Element {
+function ProjectFile({ target, path, line, selected }: { target: ProjectTarget; path: string; line?: number; selected: boolean }): JSX.Element {
   const [refresh, reload] = useState(0)
   const read = useProjectRead(target, { kind: 'file', path }, refresh)
   const result = read.result
+  const focusedLine = useRef<HTMLSpanElement>(null)
+  const text = result?.ok && result.kind === 'file' ? result.text : undefined
+  useLayoutEffect(() => {
+    if (selected) focusedLine.current?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [line, text, selected])
+  const lines = line === undefined ? undefined : text?.split('\n')
+  const foundLine = line !== undefined && lines && line <= lines.length
   return <>
     <ProjectToolbar title={path}><button type="button" className="my-icon-control" aria-label="刷新文件"
       onClick={() => reload(value => value + 1)}><RefreshCw size={14} aria-hidden="true" /></button></ProjectToolbar>
-    {result?.ok && result.kind === 'file' ? <pre className="conversation-project-code my-scrollbar" tabIndex={0} aria-label={path}>{result.text}</pre>
+    {text !== undefined ? <pre className="conversation-project-code my-scrollbar" tabIndex={0} aria-label={foundLine ? `${path}，第 ${line} 行` : path}>
+      {foundLine ? <>{lines.slice(0, line - 1).join('\n')}{line > 1 && '\n'}
+        <span ref={focusedLine} className="conversation-project-code-line">{lines[line - 1]}</span>
+        {line < lines.length && '\n'}{lines.slice(line).join('\n')}</> : text}
+    </pre>
       : <ProjectReadStatus read={read} retry={() => reload(value => value + 1)} />}
   </>
 }
@@ -267,7 +278,7 @@ export function ConversationProjectSurfaces({ target, surface, selected, open, w
   let body: ReactNode
   switch (surface.kind) {
     case 'files': body = <ProjectFiles target={target} open={open} />; break
-    case 'file': body = <ProjectFile key={surface.path} target={target} path={surface.path} />; break
+    case 'file': body = <ProjectFile key={surface.path} target={target} path={surface.path} line={surface.line} selected={selected} />; break
     default:
       if (!project) body = <><ProjectReadStatus read={read} retry={reload} />{surface.kind === 'project' && children}</>
       else switch (surface.kind) {

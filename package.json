@@ -56,6 +56,7 @@
     "@gitbeaker/requester-utils": "43.8.0",
     "@gitbeaker/rest": "43.8.0",
     "@larksuiteoapi/node-sdk": "1.76.0",
+    "@legendapp/list": "3.7.3",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@octokit/rest": "22.0.1",
     "@opencode/client": "2.0.28",

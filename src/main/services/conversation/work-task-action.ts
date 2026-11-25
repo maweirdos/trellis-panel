@@ -115,6 +115,8 @@ export class WorkConversationTaskActions {
       const intentDigest = hash(canonical(input))
       if (record && intentDigest !== record.intentDigest) throw Error('同一命令不能更改任务或共享范围。')
       const packet = await update()
+      if (input.action === 'bind' && !record && input.expectedAuthorizationRevision !== undefined
+        && packet.authorizationRevision !== input.expectedAuthorizationRevision) throw Error('团队授权已变化，请重新选择任务。')
       findSpace(packet, input.spaceId)
       const linked = packet.snapshot.tasks.find(task => task.conversations?.some(link => link.id === input.threadId && link.actorId === owner.actorId))
       if (linked && (linked.spaceId !== input.spaceId || input.action === 'bind' &&

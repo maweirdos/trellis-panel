@@ -33,6 +33,7 @@ import {
 import { DaemonError } from '../errors'
 import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
 import type { CodexWorktreeWriter } from '../../services/conversation/providers/codex/process-owner'
+import { codexFileChangeEvidence } from '../../services/conversation/providers/codex/file-change-evidence'
 import { resolveWorkcopy } from '../../services/workcopy-use/identity'
 import { prepareDelegatedWorktree, recoverDelegatedWorktreePreparation, verifyDelegatedWorktree } from '../../services/conversation/orchestration/DelegatedWorktree'
 import { pathKey } from '../../services/task-conversations/lib/paths'
@@ -99,6 +100,7 @@ interface ActiveTurn {
   readonly attemptId: string
   readonly driver: ConversationDriverSession
   readonly nativeThreadId: string
+  readonly executionRoot: string
   readonly authority: CommandAuthority
   readonly configurationFingerprint: string
   readonly writerSlot?: string
@@ -1410,7 +1412,7 @@ export class ConversationRuntime {
       ],
       [...(relation?.hostEvents ?? []), ...(handoff ? [lifecycleEvent(threadId, { kind: 'handoff', handoff }, runId, startedAt)] : [])])
       this.loadedThreads.set(threadId, { driver, nativeThreadId })
-      const active: ActiveTurn = { row, runId, ordinal: run.ordinal, attemptId, driver, nativeThreadId, authority,
+      const active: ActiveTurn = { row, runId, ordinal: run.ordinal, attemptId, driver, nativeThreadId, executionRoot: cwd, authority,
         configurationFingerprint: expectedFingerprint, completion, writerSlot }
       active.waitForControlTurn = new Promise(resolve => { active.signalControlTurn = resolve })
       turn = active
@@ -1937,7 +1939,8 @@ export class ConversationRuntime {
     const preceding = previous?.ordinal ?? (this.database.prepare(`SELECT COALESCE(MAX(ordinal) + 1, 0) AS ordinal
       FROM conversation_v2_projection_turn_items WHERE thread_id = ?`).get(threadId) as { ordinal: number }).ordinal
     const status = item.kind === 'tool' ? item.status : 'completed'
-    if (previous?.type === 'dynamic_tool' && previous.status !== 'running' && previous.status !== status) return
+    if ((previous?.type === 'dynamic_tool' || previous?.type === 'file_change') &&
+      previous.status !== 'running' && previous.status !== status) return
     const base = {
       id, runId, threadId, nodeId: null, providerThreadId: null, providerTurnId: null, parentItemId: null,
       nativeItemRef: {
@@ -1953,7 +1956,10 @@ export class ConversationRuntime {
     if (item.kind === 'tool') {
       const label = clip(item.label, 80)
       if (!label) return
-      payload = { ...base, type: 'dynamic_tool', title: label, toolName: label, input: null }
+      const files = status === 'completed' && item.fileChanges ? codexFileChangeEvidence(turn.executionRoot, item.fileChanges) : undefined
+      if (!files && previous?.type === 'file_change') return
+      payload = files ? { ...base, type: 'file_change', title: label, ...files }
+        : { ...base, type: 'dynamic_tool', title: label, toolName: label, input: null }
     } else if (item.kind === 'proposed-plan') {
       const markdown = clip(item.markdown, 8_000)
       if (!markdown) return
@@ -1965,18 +1971,24 @@ export class ConversationRuntime {
           id: `step-${index + 1}`, text: clip(step.text, 240) || `步骤 ${index + 1}`, status: step.status,
         })) }
     }
-    if (previous && JSON.stringify({ ...payload, updatedAt: previous.updatedAt }) === existing?.payload_json) return
-    const stored = JSON.stringify(payload)
     const budget = this.database.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(length(CAST(payload_json AS BLOB))), 0) AS bytes
       FROM conversation_v2_projection_turn_items WHERE run_id = ? AND turn_item_id <> ?`)
       .get(runId, id) as { count: number; bytes: number }
+    let stored = JSON.stringify(payload)
+    if (payload.type === 'file_change' && previous?.type === 'dynamic_tool' &&
+      budget.bytes + Buffer.byteLength(stored) > MAX_WORK_ITEM_BYTES_PER_RUN) {
+      payload = { ...previous, status, updatedAt: occurredAt, completedAt: previous.completedAt ?? occurredAt }
+      stored = JSON.stringify(payload)
+    }
+    if (previous && JSON.stringify({ ...payload, updatedAt: previous.updatedAt }) === existing?.payload_json) return
     if (budget.count >= MAX_WORK_ITEMS_PER_RUN || budget.bytes + Buffer.byteLength(stored) > MAX_WORK_ITEM_BYTES_PER_RUN) return
     const event = decodeEvent({ id: randomUUID(), threadId, runId, occurredAt, type: 'turn-item.updated', payload })
     this.eventSink.commit({ events: [event] }, () => {
       this.database.prepare(`INSERT INTO conversation_v2_projection_turn_items
         (turn_item_id, thread_id, run_id, provider_turn_id, ordinal, type, status, updated_at, payload_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(turn_item_id) DO UPDATE SET
-          provider_turn_id = excluded.provider_turn_id, status = excluded.status, updated_at = excluded.updated_at, payload_json = excluded.payload_json`)
+          provider_turn_id = excluded.provider_turn_id, type = excluded.type, status = excluded.status,
+          updated_at = excluded.updated_at, payload_json = excluded.payload_json`)
         .run(id, threadId, runId, payload.providerTurnId, payload.ordinal, payload.type, status, occurredAt, stored)
     })
   }

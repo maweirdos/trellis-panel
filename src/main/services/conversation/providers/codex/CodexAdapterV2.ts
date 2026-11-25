@@ -82,8 +82,17 @@ function mapCodexWorkItem(item: CodexThreadItem, complete: boolean): Conversatio
   switch (item.type) {
     case 'commandExecution':
       return { kind: 'tool', nativeItemId, label: '运行命令', status: workStatus(item.status) }
-    case 'fileChange':
-      return { kind: 'tool', nativeItemId, label: '修改文件', status: workStatus(item.status) }
+    case 'fileChange': {
+      const retain = item.changes.length > 0 && item.changes.length <= 8 &&
+        item.changes.every(change => change.path.length <= 1024 && !(change.kind.type === 'update' && change.kind.move_path))
+      return { kind: 'tool', nativeItemId, label: '修改文件', status: workStatus(item.status),
+        ...(retain && { fileChanges: item.changes.map(change => ({
+          path: change.path, operation: change.kind.type,
+          ...(complete && item.status === 'completed' &&
+            change.diff.length <= 4_096 && { diff: change.diff }),
+        })) }),
+      }
+    }
     case 'mcpToolCall':
       return { kind: 'tool', nativeItemId, label: toolLabel(item.tool, 'MCP 工具'), status: workStatus(item.status) }
     case 'dynamicToolCall':

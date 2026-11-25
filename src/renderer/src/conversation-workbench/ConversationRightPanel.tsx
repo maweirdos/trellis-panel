@@ -41,6 +41,7 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide
   const id = useId()
   const tabs = useRef(new Map<string, HTMLButtonElement>())
   const focusTabs = useRef(true)
+  const previousActive = useRef<string>()
   const movingTab = useRef<string>()
   const body = useRef<HTMLDivElement>(null)
   const positions = useRef(new Map<string, number>())
@@ -49,7 +50,9 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide
   useLayoutEffect(() => {
     if (!active) return
     const tab = tabs.current.get(active.id)
-    if (focusTabs.current) {
+    const changed = previousActive.current !== active.id
+    previousActive.current = active.id
+    if (focusTabs.current || changed) {
       if (tab) {
         tab.focus({ preventScroll: true })
         focusTabs.current = false
@@ -108,7 +111,7 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, onHide
 
   const content = <div className="conversation-right-surface">
     <div className="conversation-right-toolbar">
-      <div className="conversation-right-tabs my-scrollbar" role="tablist" aria-label="工作台标签">
+      <div className="conversation-right-tabs" role="tablist" aria-label="工作台标签">
         {state.surfaces.map((surface, index) => {
           const { label, icon: Icon } = surfaceTypes[surface.kind]
           const title = surface.kind === 'file' ? surface.path : surface.kind === 'thread' ? threadTitle(surface.threadId) ?? label : label

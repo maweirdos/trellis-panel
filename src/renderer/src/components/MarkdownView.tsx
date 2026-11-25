@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import { FileCode2 } from 'lucide-react'
 import { MermaidBlock } from './MermaidBlock'
 import { AsciiDiagramBlock } from './AsciiDiagramBlock'
 import { GeneratedCodePreview } from './GeneratedCodePreview'
 import { ArtifactCopyButton } from './ArtifactCopyButton'
+import { ChatCodeBlock } from './ChatCodeBlock'
 import { api, hasIpc } from '../api'
 import { externalHttpUrl } from '../../../shared/external-url'
 import { localDocumentHref, localDocumentLink } from '../../../shared/local-document-link'
@@ -15,6 +17,8 @@ import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-
 import { useDocumentSource } from '../reader/document-source'
 
 const markdownUrlTransform: typeof defaultUrlTransform = (url) => localDocumentHref(url) ?? defaultUrlTransform(url)
+const transformUrl: NonNullable<React.ComponentProps<typeof ReactMarkdown>['urlTransform']> = (url, key, node) =>
+  key === 'href' && node.tagName === 'a' ? markdownUrlTransform(url) : defaultUrlTransform(url)
 
 /** Heuristic: ASCII 线框图（box-drawing / +--- 风格）加宽展示并保持可横向滚动。 */
 function looksLikeAsciiDiagram(text: string): boolean {
@@ -61,14 +65,34 @@ export interface MarkdownViewProps {
   documentAssetContext?: KnowledgeDocumentContext
   /** The conversation host alone can associate a local link with a real saved receipt. */
   onOpenDocumentLink?: (href: string) => boolean | Promise<boolean>
+  chatFileLinks?: {
+    resolve(href: string, inline?: boolean): { path: string; line?: number } | null
+    open(file: { path: string; line?: number }): void
+  }
   /**
    * S0 G2：行号 → 稳定锚点 ID（由 reader/heading-anchors.ts 的
    * headingAnchorsByLine(content) 预计算）。缺省不挂 ID，既有调用方零改动。
    */
   headingAnchorsByLine?: ReadonlyMap<number, string>
+  /** Conversation prose uses chat tables (row separators) and plain code fences. */
+  surface?: 'document' | 'chat'
+  blocks?: readonly string[]
+  /** Extra classes for the conversation host, e.g. the user-bubble modifier. */
+  className?: string
+  /** Present while the source streams so new blocks fade in once. */
+  'data-streaming'?: string
 }
 
-export const MarkdownView = React.memo(function MarkdownView({ content, headingAnchorsByLine, documentAssetContext, onOpenDocumentLink }: MarkdownViewProps): JSX.Element {
+type MarkdownComponents = NonNullable<React.ComponentProps<typeof ReactMarkdown>['components']>
+
+const MarkdownSource = React.memo(function MarkdownSource({ source, components, urlTransform }: {
+  source: string; components: MarkdownComponents; urlTransform: typeof transformUrl
+}) {
+  return <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}
+    urlTransform={urlTransform} components={components}>{source}</ReactMarkdown>
+})
+
+export const MarkdownView = React.memo(function MarkdownView({ content, headingAnchorsByLine, documentAssetContext, onOpenDocumentLink, chatFileLinks, surface = 'document', blocks, className, 'data-streaming': dataStreaming }: MarkdownViewProps): JSX.Element {
   const source = useDocumentSource()
   const canInteract = useInteractionGuard()
   const interactionSignal = useInteractionSignal()
@@ -119,11 +143,25 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
   // guarded source/link handler rather than a stale memoized authorization.
   const linkHandler = useRef(openMarkdownLink)
   linkHandler.current = openMarkdownLink
+  const openFile = useRef(chatFileLinks?.open)
+  openFile.current = chatFileLinks?.open
   const forwardMarkdownLink = useCallback<React.MouseEventHandler<HTMLAnchorElement>>((event) => linkHandler.current(event), [])
   const hasAssetContext = Boolean(documentAssetContext)
-  const markdownComponents = useMemo<NonNullable<React.ComponentProps<typeof ReactMarkdown>['components']>>(() => ({
+  const resolveChatFile = chatFileLinks?.resolve
+  const transformChatUrl = useCallback<typeof transformUrl>((url, key, node) =>
+    key === 'href' && node.tagName === 'a' && resolveChatFile?.(url) ? url : transformUrl(url, key, node),
+  [resolveChatFile])
+  const markdownComponents = useMemo<MarkdownComponents>(() => ({
     ...(hasAssetContext ? { img: ({ node: _node, ...props }: React.ComponentPropsWithoutRef<'img'> & { node?: unknown }) => <DocumentAssetImage src={props.src} alt={props.alt} title={props.title} /> } : {}),
     a({ node: _node, ...props }) {
+      const file = props.href && resolveChatFile?.(props.href)
+      if (file) return <a {...props} className="chat-project-file-link" title={file.path} onClick={event => {
+        event.preventDefault()
+        if (canInteract()) openFile.current?.(file)
+      }} onAuxClick={event => event.preventDefault()}>
+        <FileCode2 size={13} aria-hidden="true" /><span>{props.children}</span>
+        {file.line && <span className="chat-project-file-line"> · L{file.line}</span>}
+      </a>
       return <a {...props} onClick={forwardMarkdownLink} onAuxClick={forwardMarkdownLink} />
     },
     h1: headingComponent(1, headingAnchorsByLine),
@@ -144,6 +182,8 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         const codeProps = child.props as { className?: string; children?: React.ReactNode }
         const text = String(codeProps?.children ?? '').replace(/\n$/, '')
         const className = codeProps?.className
+        const fenceLanguage = /language-([\w+-]+)/.exec(className ?? '')?.[1]
+        const plainSource = String(codeProps?.children ?? '')
 
         if (className?.includes('language-mermaid')) {
           return <div><div className="flex justify-end"><ArtifactCopyButton text={text} ownerKey={text} label="复制图表源码" /></div><MermaidBlock chart={text} /></div>
@@ -154,11 +194,15 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         if (!className && looksLikeAsciiDiagram(text)) {
           return <AsciiDiagramBlock chart={text} />
         }
+        if (surface === 'chat') {
+          return <ChatCodeBlock code={plainSource} language={fenceLanguage}>{children}</ChatCodeBlock>
+        }
       }
       const source = child ? String((child.props as { children?: React.ReactNode }).children ?? '') : undefined
       return <div>{source !== undefined && <div className="flex justify-end"><ArtifactCopyButton text={source} ownerKey={source} label="复制代码" /></div>}<pre {...props}>{children}</pre></div>
     },
     table({ children, ...props }) {
+      if (surface === 'chat') return <div className="my-scrollbar md-chat-table"><table {...props}>{children}</table></div>
       return (
         <div className="my-4 overflow-x-auto rounded-my-lg border border-my-line bg-my-surface-1 shadow-xs">
           <table className="min-w-full w-max border-collapse text-left text-my-sm" {...props}>
@@ -168,6 +212,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
       )
     },
     thead({ children, ...props }) {
+      if (surface === 'chat') return <thead {...props}>{children}</thead>
       return (
         <thead className="border-b border-my-line bg-my-layer-2 text-my-primary font-semibold" {...props}>
           {children}
@@ -175,6 +220,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
       )
     },
     th({ children, ...props }) {
+      if (surface === 'chat') return <th {...props}>{children}</th>
       return (
         <th
           className="border-r border-my-line last:border-r-0 px-4 py-2.5 text-left font-semibold tracking-wide text-my-primary break-keep"
@@ -185,6 +231,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
       )
     },
     tr({ children, ...props }) {
+      if (surface === 'chat') return <tr {...props}>{children}</tr>
       return (
         <tr className="border-b border-my-line last:border-b-0 even:bg-my-layer-1-hover hover:bg-my-layer-1-hover transition-colors" {...props}>
           {children}
@@ -192,6 +239,7 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
       )
     },
     td({ children, ...props }) {
+      if (surface === 'chat') return <td {...props}>{children}</td>
       return (
         <td
           className="border-r border-my-line last:border-r-0 px-4 py-2.5 leading-relaxed text-my-secondary align-top break-keep break-words"
@@ -201,8 +249,15 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         </td>
       )
     },
-    code({ className, children, ...props }) {
-      const text = String(children ?? '').replace(/\n$/, '')
+    code({ className, children, node: _node, ...props }) {
+      const source = String(children ?? '')
+      const text = source.replace(/\n$/, '')
+      const file = !className && !source.includes('\n') ? resolveChatFile?.(text, true) : null
+      if (file) return <button type="button" className="chat-project-file-link" title={file.path} onClick={() => {
+        if (canInteract()) openFile.current?.(file)
+      }}><FileCode2 size={13} aria-hidden="true" /><span>{file.path.split('/').at(-1)}</span>
+        {file.line && <span className="chat-project-file-line"> · L{file.line}</span>}
+      </button>
       if (className?.includes('language-mermaid')) {
         return <MermaidBlock chart={text} />
       }
@@ -215,19 +270,14 @@ export const MarkdownView = React.memo(function MarkdownView({ content, headingA
         </code>
       )
     }
-  }), [headingAnchorsByLine, hasAssetContext, forwardMarkdownLink])
+  }), [headingAnchorsByLine, hasAssetContext, forwardMarkdownLink, surface, resolveChatFile, canInteract])
 
   return (
-    <div className="md">
+    <div className={[surface === 'chat' ? 'chat-markdown' : 'md', className].filter(Boolean).join(' ')}
+      {...(dataStreaming !== undefined ? { 'data-streaming': dataStreaming } : {})}>
       <DocumentAssetScope context={documentAssetContext} contentKey={content}>
-      <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
-        urlTransform={(url, key, node) => key === 'href' && node.tagName === 'a' ? markdownUrlTransform(url) : defaultUrlTransform(url)}
-        components={markdownComponents}
-      >
-        {content}
-      </ReactMarkdown>
+        {(blocks ?? [content]).map((source, index) => <MarkdownSource key={index} source={source} components={markdownComponents}
+          urlTransform={resolveChatFile ? transformChatUrl : transformUrl} />)}
       </DocumentAssetScope>
       {linkError && <p role="alert" className="mt-3 rounded-my-md bg-my-danger-subtle p-3 text-my-sm text-my-danger-text">{linkError}</p>}
     </div>

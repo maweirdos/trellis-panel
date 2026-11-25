@@ -575,6 +575,8 @@ const api = {
     ipcRenderer.invoke(ipcInvoke.conversation.projectWorkbench, input),
   conversationWorkTaskAction: (input: Parameters<TrellisApi['conversationWorkTaskAction']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.workTaskAction, input),
+  conversationCodeTaskAction: (input: Parameters<NonNullable<TrellisApi['conversationCodeTaskAction']>>[0]) =>
+    ipcRenderer.invoke(ipcInvoke.conversation.codeTaskAction, input),
   conversationTaskScope: (task: Parameters<TrellisApi['conversationTaskScope']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.taskScope, task),
   conversationModels: (cwd: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.models, cwd, ...(task === undefined ? [] : [task])),

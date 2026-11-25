@@ -1,7 +1,9 @@
-import { useMemo, type JSX, type ReactNode } from 'react'
+import { useContext, useMemo, type JSX, type ReactNode } from 'react'
 import { ArrowUpLeft, Link2, Square } from 'lucide-react'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { Button } from '../my/ui'
+import { projectRootKey } from '../my/navigation'
+import { ChatProjectFileLinks } from './chatProjectFileLinks'
 import { ConversationTimeline } from './ConversationTimeline'
 import { ConversationQueue } from './ConversationQueue'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
@@ -34,12 +36,15 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const controller = useConversationThread(root, target, interactive, hostScope, task)
   const result = controller.active
   const projection = result?.projection
+  const parentFileLinks = useContext(ChatProjectFileLinks)
   const relation = projection?.relations.parent
   const belongsToHost = relation?.parentThreadId === hostThreadId
   const nativeChild = relation?.kind === 'native-activity'
   const delegated = relation?.kind === 'delegated'
   const childrenReady = projection && belongsToHost
-  const canOperate = writable && interactive && Boolean(childrenReady && !nativeChild && !result?.error)
+  const fileLinks = childrenReady && !result?.error && parentFileLinks &&
+    projectRootKey(projection.thread.worktreePath ?? root) === projectRootKey(parentFileLinks.root) ? parentFileLinks : null
+  const canOperate = writable && interactive && Boolean(childrenReady && !nativeChild && !projection.thread.archivedAt && !result?.error)
   const canCompose = canOperate && !delegated
   const title = childrenReady ? projection.thread.title : '侧边会话'
   const queued = childrenReady ? queuedRunsWithText(projection.queuedRuns, projection.messages) : []
@@ -48,6 +53,7 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const canReference = canOperate && projection?.messages.some(message => message.role === 'user')
   const activeRun = projection?.activeRun
   const stopRunId = activeRun && relation?.childRunId === activeRun.id && isActiveRun(activeRun) ? activeRun.id : undefined
+  const timelineKey = JSON.stringify([controller.scope, projection?.cursor?.storageId])
 
   return <section className="my-conversation-frame conversation-side-thread" aria-label={title}>
     <header className="conversation-side-thread-heading">
@@ -63,7 +69,8 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
     </header>
     {result?.error && <p className="my-item-description conversation-side-thread-error" role="alert">{result.error}</p>}
     {projection && !belongsToHost && <p className="my-item-description conversation-side-thread-error" role="status">此会话与当前父会话无关联。</p>}
-    <ConversationTimeline threadId={JSON.stringify([controller.scope, projection?.cursor?.storageId])} rows={rows}
+    <ChatProjectFileLinks.Provider value={fileLinks}>
+    <ConversationTimeline key={timelineKey} threadId={timelineKey} rows={rows}
       working={!result || Boolean(childrenReady && activeRun && isActiveRun(activeRun) && !result?.error)}
       workingLabel={!result ? '正在读取会话…' : undefined}
       hasOlderHistory={Boolean(childrenReady && projection.hasOlderHistory)} loadingEarlier={controller.loadingEarlier}
@@ -75,6 +82,7 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
           ? projection.runtimeRequests.filter(request => request.runId === relation.childRunId) : projection.runtimeRequests} disabled={!canOperate}
           cwd={root} threadId={threadId} task={task} />}
       </>} />
+    </ChatProjectFileLinks.Provider>
     {childrenReady && nativeChild && <p className="my-item-description conversation-side-thread-bar">{projection.thread.modelSelection.model} · 引擎子会话仅供阅读</p>}
     {childrenReady && delegated && <div className="conversation-side-thread-bar">
       <span className="my-item-description">委派子会话</span>

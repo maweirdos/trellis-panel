@@ -57,6 +57,11 @@ export type ConversationDriverWorkItem =
       readonly nativeItemId: string
       readonly label: string
       readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
+      readonly fileChanges?: readonly {
+        readonly path: string
+        readonly operation: 'add' | 'delete' | 'update'
+        readonly diff?: string
+      }[]
     }
   | {
       readonly kind: 'proposed-plan'

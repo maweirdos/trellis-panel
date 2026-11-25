@@ -1,8 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
-import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, ListEnd, LoaderCircle, Mic, MicOff, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, ListEnd, LoaderCircle, Mic, MicOff, Quote, Square, X } from 'lucide-react'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import type { ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
+import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
+import { ComposerSurface } from './ComposerSurface'
 import { ConversationComposerMenu } from './ConversationComposerMenu'
 import { ConversationModelPicker } from './ConversationModelPicker'
 import { shouldAttachPastedText } from './useComposerAttachments'
@@ -19,6 +21,8 @@ const noSkills: readonly ConversationDriverSkill[] = []
 
 export interface ConversationComposerProps {
   readonly interactive: boolean
+  /** Project root scoping the model picker's favorites and recents. */
+  readonly root: string
   readonly send: ReturnType<typeof useComposerSend>
   readonly catalog: ConversationModelCatalog
   readonly model: ComposerModel | null
@@ -32,6 +36,7 @@ export interface ConversationComposerProps {
   readonly disabledReason?: string | null
   readonly textareaRef?: RefObject<HTMLTextAreaElement>
   readonly leadingControls?: ReactNode
+  readonly taskSection?: ComposerTaskSection
   readonly draftReferences?: ReactNode
   readonly onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>
   readonly onDrop?: React.DragEventHandler<HTMLFormElement>
@@ -46,9 +51,9 @@ function resolveComposerDispatchMode(running: boolean, canSteer: boolean, altern
 }
 
 export function ConversationComposer({
-  interactive, send, catalog, model, onModelChange, lockedInstanceId, running, canStop, onStop, queuePaused,
+  interactive, root, send, catalog, model, onModelChange, lockedInstanceId, running, canStop, onStop, queuePaused,
   canSteer, disabledReason, textareaRef, leadingControls, draftReferences, onPaste, onDrop, onDragOver, previousPrompt,
-  mentionableThreads = noThreads,
+  taskSection, mentionableThreads = noThreads,
 }: ConversationComposerProps): JSX.Element {
   const toolbar = useRef<HTMLDivElement>(null)
   const localTextarea = useRef<HTMLTextAreaElement>(null)
@@ -118,7 +123,8 @@ export function ConversationComposer({
   }, [catalogStatus, describeForSkill, ensure, refresh, selectedInstance, selectedInstanceId])
   const skills = catalog.scopeAllowsSkills && selectedInstance?.read?.status === 'ready'
     ? selectedInstance.read.descriptor.skills ?? noSkills : noSkills
-  const menuItems = useComposerMenuItems(activeTrigger, skills, mentionableThreads, attachmentAvailable && !attachmentPending)
+  const menuItems = useComposerMenuItems(activeTrigger, skills, mentionableThreads, attachmentAvailable && !attachmentPending,
+    { available: interactive && send.sideChatAvailable })
   const menuOpen = menuItems.length > 0
   const activeIndex = highlight?.triggerKey === triggerKey
     ? Math.max(0, menuItems.findIndex(item => item.id === highlight.itemId)) : 0
@@ -146,7 +152,8 @@ export function ConversationComposer({
     if (!activeTrigger || send.readDraft() !== send.draft) return
     const source = send.draft
     const { rangeStart, rangeEnd } = activeTrigger
-    const replacement = item.type === 'skill' ? `$${item.name} ` : ''
+    const replacement = item.type === 'skill' ? `$${item.name} `
+      : item.type === 'side' ? `/${item.name} ` : ''
     const end = replacement.endsWith(' ') && source[rangeEnd] === ' ' ? rangeEnd + 1 : rangeEnd
     const next = source.slice(0, rangeStart) + replacement + source.slice(end)
     const position = rangeStart + replacement.length
@@ -181,7 +188,7 @@ export function ConversationComposer({
     })
     if (item.type === 'model') modelTrigger.current?.click()
   }
-  return <div className="my-conversation-column acp-composer-region">
+  return <ComposerSurface.Shell>
     {state.phase === 'unknown' && <FeedbackNotice variant="inline" tone="warning" title="发送结果待核对" description={summary}
       diagnostic={summary !== diagnostic ? diagnostic : undefined}
       actions={<Button size="sm" variant="ghost" disabled={!interactive || state.checking} onClick={() => void send.checkReceipt()}>
@@ -209,7 +216,7 @@ export function ConversationComposer({
         </Button>
         <Button type="button" variant="ghost" size="sm" disabled={!interactive} onClick={() => void speech.importModel()}>导入转写模型</Button>
       </>} />}
-    <form className="acp-composer conversation-composer" onSubmit={event => { event.preventDefault(); submit() }}
+    <ComposerSurface.Host onSubmit={event => { event.preventDefault(); submit() }}
       onDragOver={event => {
         onDragOver?.(event)
         if (event.dataTransfer.types.includes('Files')) {
@@ -225,14 +232,15 @@ export function ConversationComposer({
       }}>
       {draftReferences}
       {(send.references.length > 0 || send.attachments.length > 0) && <div className="acp-source-references">
-        {send.attachments.map(attachment => <div className="acp-source-chip" key={attachment.id}>
+        {send.attachments.map(attachment => <div className="acp-source-chip conversation-context-chip" data-kind="file" key={attachment.id}>
           {attachment.type === 'image' ? <Image size={14} aria-hidden="true" /> : <FileIcon size={14} aria-hidden="true" />}
           <span title={attachment.name}>{attachment.name}</span>
           <button type="button" className="my-icon-control" aria-label={`移除附件 ${attachment.name}`}
             disabled={!attachmentAvailable || attachmentPending}
             onClick={() => void intake.remove(attachment.id)}><X size={13} aria-hidden="true" /></button>
         </div>)}
-        {send.references.map(reference => <div className="acp-source-chip" key={reference.id}>
+        {send.references.map(reference => <div className="acp-source-chip conversation-context-chip" data-kind="citation" key={reference.id}>
+          <Quote size={14} aria-hidden="true" />
           <span title={reference.text}>{reference.label}</span>
           <button type="button" className="my-icon-control" aria-label={`移除${reference.label}`} disabled={!interactive}
             onClick={() => send.removeReference(reference.id)}><X size={13} aria-hidden="true" /></button>
@@ -250,7 +258,7 @@ export function ConversationComposer({
         <FeedbackNotice variant="inline" title="未能引用会话" description={referenceError.message} />
       </div>}
       <textarea ref={promptRef} className="my-scrollbar" rows={2} style={{ fieldSizing: 'content' }}
-        value={send.draft} placeholder="说说你的想法…"
+        value={send.draft} placeholder="想问什么都可以。@ 引用文件，$ 使用技能，/ 输入命令"
         aria-label="消息" aria-describedby={reason ? diagnosticId : undefined} aria-invalid={overLimit || undefined}
         aria-autocomplete={activeTrigger ? 'list' : undefined} aria-controls={menuOpen ? menuId : undefined}
         aria-activedescendant={menuOpen ? `${menuId}-${activeIndex}` : undefined}
@@ -320,10 +328,14 @@ export function ConversationComposer({
         onSelect={item => void pickMenuItem(item)} />}
       {reason && <div id={diagnosticId} className="px-4 pb-2 text-my-xs text-my-secondary break-words" role="status">{reason}</div>}
       <div className="acp-composer-toolbar conversation-composer-toolbar" ref={toolbar}>
+        <ComposerAddMenu interactive={interactive}
+          attachment={{
+            available: attachmentAvailable && !attachmentPending,
+            disabledReason: attachmentPending ? '正在准备附件…' : intake.state.error ?? (attachmentAvailable ? undefined : '当前会话无法添加附件。'),
+            pick: () => void intake.pick(),
+          }}
+          taskSection={taskSection} />
         {leadingControls}
-        {intake.available && <button type="button" className="my-icon-control shrink-0"
-          title="添加附件" aria-label="添加附件" disabled={!attachmentAvailable || attachmentPending}
-          onClick={() => void intake.pick()}><Paperclip size={15} aria-hidden="true" /></button>}
         {(send.hasContent || send.stash) && <Dropdown disabled={!interactive} placement="top"
           trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="草稿暂存"
             aria-expanded={open} onClick={toggle} disabled={!interactive}>
@@ -348,7 +360,7 @@ export function ConversationComposer({
         <div className="spacer" />
         {canStop && <button type="button" className="my-icon-control" title="停止当前回合" aria-label="停止当前回合"
           disabled={!interactive} onClick={onStop}><Square size={15} aria-hidden="true" /></button>}
-        <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId}
+        <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
           onChange={onModelChange} disabled={!interactive} />
         {running && canSteerDraft && <button type="button" className="my-composer-control shrink-0 px-1.5 py-1 text-my-xs"
           title="插话（Alt+Enter）" disabled={!allowSend} onClick={() => submit(true)}>插话</button>}
@@ -356,9 +368,9 @@ export function ConversationComposer({
           {sendLabel === '加入队列' ? <ListEnd size={16} aria-hidden="true" /> : <ArrowUp size={16} aria-hidden="true" />}
         </button>
       </div>
-    </form>
+    </ComposerSurface.Host>
     <span className="sr-only" role="status">{state.phase === 'submitting' ? '正在提交消息' : findingReference ? '正在读取所选会话' :
       recording ? '正在录音' : speechPhase === 'transcribing' ? '正在转写' : speechPhase === 'preparing' ? '正在准备录音'
         : speechPhase === 'installing' ? '正在安装转写模型' : ''}</span>
-  </div>
+  </ComposerSurface.Shell>
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type SetStateAction } from 'react'
 import type { ConversationThreadCommandState } from '../../../shared/conversation/command-runtime'
+import { isComposerCodeTaskSelection, type ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { ConversationCommandState } from '../../../shared/conversation/desktop'
 import type { ProviderOptionSelections } from '../../../shared/conversation/model'
 import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
@@ -29,6 +30,15 @@ export type ComposerReceipt = (ConversationCommandState | ConversationThreadComm
   readonly messageId: string
 }
 
+export interface ComposerWorkTaskSelection {
+  readonly authority: string
+  readonly commandId: string
+  readonly authorizationRevision: number
+  readonly spaceId: string
+  readonly taskId: string
+  readonly taskCreatedAt: string
+}
+
 interface Submission {
   readonly commandId: string
   readonly root: string
@@ -41,6 +51,8 @@ interface Submission {
   readonly source?: ComposerDraftContent
   readonly draftId?: string
   readonly wireText?: string
+  readonly workTask?: ComposerWorkTaskSelection
+  readonly codeTask?: ComposerCodeTaskSelection
 }
 
 export type ComposerSendState =
@@ -55,6 +67,8 @@ export interface ComposerDraft extends ComposerDraftContent {
   readonly model: ComposerModel | null
   readonly stash: ComposerDraftContent | null
   readonly state: ComposerSendState
+  readonly workTask?: ComposerWorkTaskSelection
+  readonly codeTask?: ComposerCodeTaskSelection
 }
 
 export interface ComposerSendInput {
@@ -66,7 +80,8 @@ export interface ComposerSendInput {
   readonly interactive: boolean
   readonly running: boolean
   readonly canSteer: boolean
-  readonly onAccepted: (receipt: ComposerReceipt, message: OptimisticUserMessage) => void
+  readonly onAccepted: (receipt: ComposerReceipt, message: OptimisticUserMessage, workTask?: ComposerWorkTaskSelection,
+    codeTask?: ComposerCodeTaskSelection) => void
   readonly onSideChat?: (input: SideChatInput) => Promise<boolean>
   readonly onSideChatError?: (message: string) => void
 }
@@ -163,11 +178,15 @@ export function useComposerSend({
       const promotedKey = composerDraftKey(root, receipt.threadId, scopeKey)
       if (!remaining.attachments.length && hasComposerDraftContent(remaining) && !hasComposerDraftContent(readComposerDraft(promotedKey))) {
         updateComposerDraft(promotedKey, (current) => ({ ...current, ...draftContent(remaining) }))
-        withSubmission(key, state, (current) => ({ ...current, ...emptyDraftContent, state: { phase: 'idle' } }))
+        withSubmission(key, state, (current) => ({ ...current, ...emptyDraftContent }))
       }
     }
-    withSubmission(key, state, (current) => ({ ...current, state: { phase: 'idle' } }))
-    onAccepted(receipt, submission.message)
+    withSubmission(key, state, (current) => ({
+      ...current, state: { phase: 'idle' },
+      workTask: submission.workTask?.commandId === current.workTask?.commandId ? undefined : current.workTask,
+      codeTask: submission.codeTask?.commandId === current.codeTask?.commandId ? undefined : current.codeTask,
+    }))
+    onAccepted(receipt, submission.message, submission.workTask, submission.codeTask)
   }, [canInteract, interactive, key, onAccepted, root, scopeKey, state, threadId])
 
   const checkReceipt = useCallback(async (): Promise<void> => {
@@ -236,6 +255,8 @@ export function useComposerSend({
       ...(!threadId && role ? { role: { id: role.id, revision: role.revision } } : {}),
       model: selection, sourceText: current.text, source: draftContent(current),
       draftId: current.draftId ?? undefined,
+      ...(!threadId && current.workTask ? { workTask: current.workTask } : {}),
+      ...(!threadId && isComposerCodeTaskSelection(current.codeTask) ? { codeTask: current.codeTask } : {}),
       wireText: text || (references.length ? '请结合引用的会话内容回复。' : attachmentOnlyPrompt),
       message: { id: crypto.randomUUID(), role: 'user',
         text: text || [...current.attachments.map(item => item.name), ...current.references.map(item => item.label)].join('、'),
@@ -277,6 +298,7 @@ export function useComposerSend({
 
   return {
     draft, state, model, stash, attachments, references, hasContent, outgoingLength, draftKey: key, attachmentIntake,
+    workTask: activeDraft.workTask, codeTask: activeDraft.codeTask,
     hasSendableContent: Boolean(draft.trim() || attachments.length || references.length),
     readDraft: () => readComposerDraft(key).text,
     async quoteThread(sourceId: string, expectedDraft: string, replacement: string): Promise<boolean> {
@@ -359,5 +381,7 @@ export function useComposerSend({
     },
     send,
     checkReceipt,
+    /** The /side and /btw commands only exist where the host can open a side chat. */
+    sideChatAvailable: Boolean(onSideChat),
   }
 }

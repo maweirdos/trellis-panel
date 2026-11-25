@@ -17,9 +17,11 @@ export interface ComposerTrigger {
 }
 
 export type ComposerMenuItem =
-  | { type: 'model' | 'attachment'; id: string; name: string; label: string }
+  | { type: 'model'; id: string; name: string; label: string; description?: string }
+  | { type: 'side'; id: string; name: string; label: string; description?: string }
+  | { type: 'attachment'; id: string; name: string; label: string; description?: string }
   | { type: 'skill'; id: string; name: string; label: string; description?: string }
-  | { type: 'thread'; id: string; threadId: string; label: string }
+  | { type: 'thread'; id: string; threadId: string; label: string; description?: string }
 
 export function detectComposerTrigger(text: string, caret: number): ComposerTrigger | null {
   const rangeEnd = Math.min(text.length, Math.max(0, caret))
@@ -45,6 +47,7 @@ export function useComposerMenuItems(
   skills: readonly ConversationDriverSkill[],
   threads: readonly ComposerMentionableThread[],
   canAttach: boolean,
+  sideChat: { readonly available: boolean; readonly disabledReason?: string } = { available: false },
 ): readonly ComposerMenuItem[] {
   return useMemo(() => {
     if (!trigger) return []
@@ -55,16 +58,23 @@ export function useComposerMenuItems(
         .filter(match => Number.isFinite(match.score))
         .sort((left, right) => left.score - right.score || (right.thread.updatedAt ?? '').localeCompare(left.thread.updatedAt ?? ''))
         .slice(0, attach ? MAX_MENU_ITEMS - 1 : MAX_MENU_ITEMS)
-        .map(({ thread }) => ({ type: 'thread' as const, id: `thread:${thread.id}`, threadId: thread.id, label: thread.title }))
-      return attach ? [...matches, { type: 'attachment', id: 'attachment', name: 'attachment', label: '添加附件' }] : matches
+        .map(({ thread }) => ({ type: 'thread' as const, id: `thread:${thread.id}`, threadId: thread.id, label: thread.title, description: '引用此会话' }))
+      return attach ? [...matches, { type: 'attachment', id: 'attachment', name: 'attachment', label: '添加附件', description: '添加文件或图片' }] : matches
     }
     const skillItems = skills.map(skill => ({
       type: 'skill' as const, id: `skill:${skill.name}`, name: skill.name,
       label: trigger.kind === 'slash-command' ? `/skill:${skill.name}` : formatProviderSkillDisplayName(skill),
       description: skill.description,
     }))
-    const model = { type: 'model' as const, id: 'slash:model', name: 'model', label: '/model', description: '选择模型' }
-    return searchSlashCommandItems(trigger.kind === 'slash-command' ? [model, ...skillItems] : skillItems, trigger.query)
+    const builtIn = [
+      { type: 'model' as const, id: 'slash:model', name: 'model', label: '/model', description: '切换本会话的回复模型' },
+      ...(sideChat.available ? [
+        { type: 'side' as const, id: 'slash:side', name: 'side', label: '/side', description: sideChat.disabledReason ?? '在新的侧聊里问一个旁支问题' },
+        { type: 'side' as const, id: 'slash:btw', name: 'btw', label: '/btw', description: sideChat.disabledReason ?? '同 /side' },
+      ] : []),
+    ] satisfies readonly ComposerMenuItem[]
+    return searchSlashCommandItems(
+      trigger.kind === 'slash-command' ? [...builtIn, ...skillItems] : skillItems, trigger.query)
       .slice(0, MAX_MENU_ITEMS)
-  }, [canAttach, skills, threads, trigger])
+  }, [canAttach, skills, threads, trigger, sideChat.available, sideChat.disabledReason])
 }

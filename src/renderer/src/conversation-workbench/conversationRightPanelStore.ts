@@ -5,7 +5,7 @@ export type ConversationThreadSurface = { readonly id: `thread:${string}`; reado
 export type ConversationRightPanelSurface =
   | ConversationThreadSurface
   | { readonly id: 'project' | 'files' | 'diff' | 'scripts' | 'terminal' | 'changes'; readonly kind: 'project' | 'files' | 'diff' | 'scripts' | 'terminal' | 'changes' }
-  | { readonly id: `file:${string}`; readonly kind: 'file'; readonly path: string }
+  | { readonly id: `file:${string}`; readonly kind: 'file'; readonly path: string; readonly line?: number }
 
 export interface ConversationRightPanelState {
   readonly isOpen: boolean
@@ -36,8 +36,8 @@ export function conversationThreadSurface(threadId: string): ConversationThreadS
   return { id: `thread:${threadId}`, kind: 'thread', threadId }
 }
 
-export function conversationFileSurface(path: string): Extract<ConversationRightPanelSurface, { kind: 'file' }> {
-  return { id: `file:${path}`, kind: 'file', path }
+export function conversationFileSurface(path: string, line?: number): Extract<ConversationRightPanelSurface, { kind: 'file' }> {
+  return { id: `file:${path}`, kind: 'file', path, ...(line !== undefined && { line }) }
 }
 
 function decodeSurface(value: unknown): ConversationRightPanelSurface | undefined {
@@ -51,7 +51,8 @@ function decodeSurface(value: unknown): ConversationRightPanelSurface | undefine
     case 'file':
       return 'path' in value && typeof value.path === 'string' && value.path.length <= 8192 &&
         !/[\0:]/u.test(value.path) && value.path.split(/[\\/]/u).every(part => part && part !== '.' && part !== '..')
-        ? conversationFileSurface(value.path) : undefined
+        ? conversationFileSurface(value.path, 'line' in value && typeof value.line === 'number' &&
+          Number.isSafeInteger(value.line) && value.line > 0 ? value.line : undefined) : undefined
   }
 }
 
@@ -85,7 +86,10 @@ function write(ownerKey: string, update: (state: ConversationRightPanelState) =>
 
 export function openConversationSurface(state: ConversationRightPanelState, surface: ConversationRightPanelSurface): ConversationRightPanelState {
   const existing = state.surfaces.find(item => item.id === surface.id)
-  const surfaces = existing ? state.surfaces : [...state.surfaces.slice(-(MAX_SURFACES - 1)), surface]
+  const surfaces = !existing ? [...state.surfaces.slice(-(MAX_SURFACES - 1)), surface]
+    : surface.kind === 'file' && existing.kind === 'file' && existing.line !== surface.line
+      ? state.surfaces.map(item => item.id === surface.id ? surface : item)
+      : state.surfaces
   return { surfaces, activeSurfaceId: surface.id, isOpen: true }
 }
 

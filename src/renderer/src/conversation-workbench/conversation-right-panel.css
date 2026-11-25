@@ -45,7 +45,7 @@
   min-width: 0;
   padding: var(--my-space-4);
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
 .conversation-right-tab {
@@ -73,7 +73,7 @@
   min-height: var(--my-control-height-sm);
   padding-inline: var(--my-space-8) var(--my-space-4);
   border-radius: var(--my-radius-base);
-  font-size: var(--my-text-ui);
+  font-size: var(--my-text-sm);
 }
 
 .conversation-right-tab [role='tab'] > span,
@@ -123,6 +123,11 @@
 
 .conversation-right-body[hidden] {
   display: none;
+}
+
+.conversation-project-code-line {
+  background: var(--my-bg-navigation-selected);
+  box-shadow: 0 0 0 2px var(--my-bg-navigation-selected);
 }
 
 .conversation-project-content,

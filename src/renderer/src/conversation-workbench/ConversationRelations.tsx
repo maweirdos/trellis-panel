@@ -3,6 +3,7 @@ import { ArrowUpRight, Bot, Check, ChevronRight, CircleAlert, CircleHelp, GitBra
 import type { ConversationThreadRelation, ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
 import { Button, Modal } from '../my/ui'
 import { conversationThreadSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { formatDayAwareTimestamp } from './chatTimestamp'
 import './conversation-relations.css'
 
 export type ConversationThreadTab = ConversationThreadSurface
@@ -84,6 +85,42 @@ export function ConversationLifecycleCard({ item, onOpenRelatedThread, compact =
       {contents}
     </Button>
     {!compact && note && <p className="my-item-description conversation-related-note">{note}</p>}
+    {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
+  </div>
+}
+
+/**
+ * Upstream TimelineWorkEntryRow pattern for subagents and side chats: a plain
+ * work-log line (icon, truncated title, status) whose timestamp and open action
+ * appear on hover, not a bordered card. Keeps Crux's open/detail behaviour.
+ */
+export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
+  readonly item: ConversationThreadRelation
+  readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
+}): JSX.Element {
+  const [details, setDetails] = useState(false)
+  const { label, icon: Status } = workStatus[item.status]
+  const Kind = item.kind === 'side-chat' ? MessageSquare : item.kind === 'fork' ? GitBranch : Bot
+  const child = item.childThreadId
+  const canOpen = Boolean(child && onOpenRelatedThread)
+  const elapsed = formatDayAwareTimestamp(item.updatedAt)
+  return <div className="conversation-work-row conversation-related-row" data-related-work-id={item.id}
+    data-state={item.status}>
+    <button type="button" className="conversation-related-row-trigger"
+      aria-label={`${canOpen ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`}
+      onClick={() => {
+        if (child && onOpenRelatedThread) onOpenRelatedThread(conversationThreadSurface(child))
+        else setDetails(true)
+      }}>
+      <span className="conversation-work-icon" aria-hidden="true"><span><Kind size={16} /></span></span>
+      <span className="conversation-related-row-title">{item.title}</span>
+      <span className="conversation-related-state" data-state={item.status}>
+        <Status size={13} aria-hidden="true" className={item.status === 'running' ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        {label}
+      </span>
+      {elapsed && <span className="conversation-message-time conversation-related-row-time">{elapsed}</span>}
+      {canOpen ? <ArrowUpRight size={14} className="conversation-related-row-open" aria-hidden="true" /> : null}
+    </button>
     {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
   </div>
 }

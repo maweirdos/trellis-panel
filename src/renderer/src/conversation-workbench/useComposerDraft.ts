@@ -1,12 +1,23 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { projectRootKey } from '../my/navigation'
 import type { StagedConversationAttachment } from '../../../shared/conversation/attachments'
+import { isComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { ComposerDraft } from './useComposerSend'
 
 export const CONVERSATION_TEXT_LIMIT = 120_000
 
 const storagePrefix = 'crux.conversation-draft.v1:'
 const maxStoredDrafts = 32
+
+/** A persisted task preselect is only reused when every field the main process re-checks is intact. */
+function isWorkTaskSelection(value: unknown): value is ComposerDraft['workTask'] & object {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Record<string, unknown>
+  return typeof item.authority === 'string' && typeof item.commandId === 'string' &&
+    typeof item.authorizationRevision === 'number' && Number.isFinite(item.authorizationRevision) &&
+    typeof item.spaceId === 'string' && typeof item.taskId === 'string' && typeof item.taskCreatedAt === 'string'
+}
+
 interface ComposerReferenceBase {
   readonly id: string
   readonly label: string
@@ -50,8 +61,20 @@ function readStoredDraft(serialized: string | null): ComposerDraft {
   try {
     const value = JSON.parse(serialized) as ComposerDraft
     if (typeof value.text !== 'string' || !value.state || !('model' in value) || !('stash' in value)) return emptyDraft
+    const state = value.state
+    if (state.phase !== 'idle' && (!state.submission || typeof state.submission !== 'object')) return emptyDraft
     const draft: ComposerDraft = {
       ...emptyDraft, ...value,
+      ...(value.workTask !== undefined && !isWorkTaskSelection(value.workTask) ? { workTask: undefined } : {}),
+      ...(value.codeTask !== undefined && !isComposerCodeTaskSelection(value.codeTask) ? { codeTask: undefined } : {}),
+      state: state.phase === 'idle' ? state : {
+        ...state,
+        submission: {
+          ...state.submission,
+          workTask: isWorkTaskSelection(state.submission.workTask) ? state.submission.workTask : undefined,
+          codeTask: isComposerCodeTaskSelection(state.submission.codeTask) ? state.submission.codeTask : undefined,
+        },
+      },
       stash: typeof value.stash === 'string' ? { ...emptyDraftContent, text: value.stash } : value.stash,
     }
     if (draft.state.phase === 'submitting') {
@@ -96,7 +119,7 @@ function persistDraft(key: string, serialized: string | null): boolean {
       if (excess <= 0) break
       if (candidate === key || listeners.has(candidate)) continue
       const draft = readStoredDraft(storage.getItem(candidate))
-      if (hasComposerDraftContent(draft) || draft.stash || draft.state.phase !== 'idle') continue
+      if (hasComposerDraftContent(draft) || draft.workTask || draft.codeTask || draft.stash || draft.state.phase !== 'idle') continue
       storage.removeItem(candidate)
       entries.delete(candidate)
       excess--
@@ -129,7 +152,7 @@ export function updateComposerDraft(key: string, update: (current: ComposerDraft
     if (cached && cached !== current) notify(key)
     return current
   }
-  const serialized = hasComposerDraftContent(draft) || draft.draftId || draft.model || draft.stash || draft.state.phase !== 'idle'
+  const serialized = hasComposerDraftContent(draft) || draft.workTask || draft.codeTask || draft.draftId || draft.model || draft.stash || draft.state.phase !== 'idle'
     ? JSON.stringify(draft)
     : null
   if (serialized === null) entries.delete(key)
