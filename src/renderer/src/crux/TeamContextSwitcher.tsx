@@ -34,11 +34,11 @@ export function TeamContextSwitcher({ variant = 'default', selectOpensTasks = tr
     }}>
       {(close) => <><DropdownHeader>{global ? '团队空间' : workspaceContext.projectName ?? '团队协作'}</DropdownHeader>
         {global && <>
-          {reading && <p role="status" className="my-item-description px-3 py-2">正在读取团队空间…</p>}
-          {!hasIpc && <p className="my-item-description px-3 py-2">桌面端可查看团队空间</p>}
-          {hasIpc && status && <p role="status" className="my-item-description px-3 py-2">{status}</p>}
-          {hasIpc && loadError && <p role="alert" className="px-3 py-2 text-my-xs text-my-danger-text">{loadError}</p>}
-          {hasIpc && !reading && !loadError && !status && (!snapshot ? <p className="my-item-description px-3 py-2">团队空间尚未取得</p> : !actor ? <p className="my-item-description px-3 py-2">成员身份待核对</p> : joined.length === 0 ? <p className="my-item-description px-3 py-2">暂无已加入的团队空间</p> : null)}
+          {reading && <p role="status" className="my-item-description px-2.5 py-1">正在读取团队空间…</p>}
+          {!hasIpc && <p className="my-item-description px-2.5 py-1">桌面端可查看团队空间</p>}
+          {hasIpc && status && <p role="status" className="my-item-description px-2.5 py-1">{status}</p>}
+          {hasIpc && loadError && <p role="alert" className="px-2.5 py-1 text-my-xs text-my-danger-text">{loadError}</p>}
+          {hasIpc && !reading && !loadError && !status && (!snapshot ? <p className="my-item-description px-2.5 py-1">团队空间尚未取得</p> : !actor ? <p className="my-item-description px-2.5 py-1">成员身份待核对</p> : joined.length === 0 ? <p className="my-item-description px-2.5 py-1">暂无已加入的团队空间</p> : null)}
         </>}
         {joined.map((space) => <DropdownItem key={space.id} selected={space.id === currentSpaceId} disabled={global && reading} onClick={() => {
           if (global) {

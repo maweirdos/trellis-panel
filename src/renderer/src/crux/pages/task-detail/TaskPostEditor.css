@@ -25,7 +25,7 @@
 
 .task-post-title-input::placeholder { color: var(--my-txt-placeholder); }
 .task-post-title-input:disabled { color: var(--my-txt-disabled); }
-.task-post-title-input:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 5px; }
+.task-post-title-input:focus-visible { outline: none; }
 
 .task-post-body {
   position: relative;
@@ -132,7 +132,7 @@ button.task-post-path-label {
   text-underline-offset: var(--my-space-2);
   cursor: pointer;
 }
-button.task-post-path-label:focus-visible { outline: 2px solid var(--my-focus-ring); }
+button.task-post-path-label:focus-visible { outline: var(--my-focus-width) solid var(--my-focus-ring); outline-offset: var(--my-space-2); }
 .task-post-content .tableWrapper { margin-block: var(--my-space-12); overflow-x: auto; }
 .task-post-content table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .task-post-content :is(th, td) {

@@ -134,7 +134,7 @@ function InboxContents({ owner }: { owner: string }): JSX.Element {
                         <span className="rounded-my-sm bg-my-layer-1 px-1 py-0.5 text-my-2xs">{KIND_LABEL[first.kind]}</span>
                         {first.taskId && <span className="font-mono text-my-2xs">{first.taskId}</span>}
                         {first.body && <span className="min-w-0 flex-1 truncate">{first.body}</span>}
-                        <span className="shrink-0">{formatCollaborationTime(first.at)}</span>
+                        <span className="shrink-0 tabular-nums">{formatCollaborationTime(first.at)}</span>
                       </p>
                     </button>
                     <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">

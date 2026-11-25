@@ -384,17 +384,17 @@ export function TeamEfficiency(): JSX.Element {
       <div className="grid grid-cols-3 gap-3">
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">记录到的状态流转</div>
-          <div className="mt-1 text-my-xl font-semibold text-my-primary">{data.totalTransitions}</div>
+          <div className="mt-1 text-my-xl font-semibold tabular-nums text-my-primary">{data.totalTransitions}</div>
         </div>
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">平均交付周期（创建→完成）</div>
-          <div className="mt-1 text-my-xl font-semibold text-my-primary">
+          <div className="mt-1 text-my-xl font-semibold tabular-nums text-my-primary">
             {data.avgCycleDays !== null ? `${data.avgCycleDays} 天` : '—'}
           </div>
         </div>
         <div className="my-card px-4 py-3">
           <div className="text-my-xs text-my-tertiary">停滞任务（&gt;3 天无动静）</div>
-          <div className={clsx('mt-1 text-my-xl font-semibold', data.aging.length > 0 ? 'text-my-warning-text' : 'text-my-primary')}>
+          <div className={clsx('mt-1 text-my-xl font-semibold tabular-nums', data.aging.length > 0 ? 'text-my-warning-text' : 'text-my-primary')}>
             {data.aging.length}
           </div>
         </div>
@@ -410,7 +410,7 @@ export function TeamEfficiency(): JSX.Element {
                 style={{ height: `calc(var(--my-space-96) * ${d.count / maxDaily})`, minHeight: d.count ? 'var(--my-space-4)' : 'var(--my-space-2)' }}
                 title={`${d.date}: ${d.count} 次`}
               />
-              <div className="mt-1 truncate text-center text-my-2xs text-my-placeholder">{d.date.slice(5)}</div>
+              <div className="mt-1 truncate text-center text-my-2xs tabular-nums text-my-placeholder">{d.date.slice(5)}</div>
             </div>
           ))}
         </div>

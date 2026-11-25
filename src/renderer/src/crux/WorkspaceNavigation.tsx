@@ -44,7 +44,7 @@ export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: num
       {children.length > 0 && open && <div id={`nav-${spaceId}-${entry.id}`} className="collab-nav-children">{children.map((child) => item(child, spaceId))}</div>}
     </div>
   }
-  return <nav aria-label="协作模块" className="collab-navigation my-scrollbar">
+  return <nav aria-label="协作模块" className="collab-navigation my-scrollbar my-fade-scroll">
     <section aria-label="工作台" className="collab-nav-section">{globals.map((entry) => item(entry))}</section>
     <section aria-label="我的空间" className="collab-nav-section">
       <div className="collab-nav-section-heading"><h2>我的空间</h2><button type="button" aria-label="管理空间" title="管理空间" onClick={() => setModule('spaces')}><Settings2 size={14} /></button></div>

@@ -44,6 +44,7 @@
   padding: 0 var(--my-space-8);
   color: var(--my-txt-secondary);
   font-size: var(--my-text-sm);
+  transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 
 .organization-create-back:hover:not(:disabled) {
@@ -85,6 +86,7 @@
   font-size: var(--my-text-title);
   font-weight: var(--my-weight-semibold);
   line-height: var(--my-line-heading);
+  text-wrap: balance;
   outline: none;
 }
 

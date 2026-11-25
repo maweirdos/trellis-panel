@@ -228,7 +228,7 @@ function MyNextStepsSource({ spaceId, iterationId }: { spaceId?: string; iterati
         {/* 待办事项展开列表：高密度单行卡片，最大高度限制，杜绝无限延展挤爆页面 */}
         {!collapsed && (
           <div className="mt-1 pb-1">
-            <div className="my-scrollbar max-h-[220px] overflow-y-auto pr-0.5" style={{ scrollbarGutter: 'stable' }}>
+            <div className="my-scrollbar max-h-[220px] overflow-y-auto pr-0.5" style={{ scrollbarGutter: 'auto' }}>
               <ul className="flex flex-col gap-1">
                 {visibleItems.map((item) => {
                   const desktopRequired = item.action === 'begin_development' && !hasLocalWorkBridge()

@@ -98,6 +98,7 @@
   font-size: var(--my-text-display);
   line-height: var(--my-line-heading);
   font-weight: var(--my-weight-strong);
+  text-wrap: balance;
 }
 
 .intake-empty p {
@@ -139,7 +140,7 @@
   box-shadow: var(--my-shadow-composer);
 }
 
-.intake-composer:focus-within { border-color: var(--my-border-strong); }
+.intake-composer:focus-within { border-color: var(--my-border-strong-1); box-shadow: var(--my-shadow-composer), var(--my-focus-shadow); }
 .intake-compose-field { min-width: 0; }
 .intake-compose-field textarea,
 textarea.intake-compose-field {
@@ -158,7 +159,7 @@ textarea.intake-compose-field {
 .intake-compose-field textarea::placeholder,
 textarea.intake-compose-field::placeholder { color: var(--my-txt-placeholder); }
 .intake-compose-field textarea:focus-visible,
-textarea.intake-compose-field:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 2px; }
+textarea.intake-compose-field:focus-visible { outline: none; }
 .intake-compose-controls, .intake-utilities { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--my-space-8); }
 .intake-compose-controls { justify-content: space-between; }
 .intake-utilities { color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
@@ -195,8 +196,8 @@ textarea.intake-compose-field:focus-visible { outline: 2px solid var(--my-focus-
 .intake-markdown h1 { font-size: var(--my-text-title); line-height: var(--my-line-heading); }
 .intake-markdown h2 { font-size: var(--my-text-lg); line-height: var(--my-line-heading); }
 .intake-markdown pre, .intake-markdown table { max-width: 100%; overflow: auto; }
-.intake-editor { width: 100%; min-width: 0; min-height: var(--my-space-320); flex: 1 0 auto; resize: vertical; margin-top: var(--my-space-16); padding: var(--my-space-12); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-layer-1); color: var(--my-txt-primary); font: inherit; line-height: var(--my-line-document); }
-.intake-editor:focus-visible { outline: 2px solid var(--my-focus-ring); outline-offset: 2px; }
+.intake-editor { width: 100%; min-width: 0; min-height: var(--my-space-320); flex: 1 0 auto; resize: vertical; margin-top: var(--my-space-16); padding: var(--my-space-12); border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-layer-1); color: var(--my-txt-primary); font: inherit; line-height: var(--my-line-document); outline: none; transition: border-color var(--my-motion-fast) var(--my-ease-out), box-shadow var(--my-motion-fast) var(--my-ease-out); }
+.intake-editor:focus { border-color: var(--my-border-strong-1); outline: none; box-shadow: var(--my-focus-shadow); }
 
 .intake-references { min-width: 0; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-md); font-size: var(--my-text-sm); }
 .intake-references > summary { display: flex; align-items: center; gap: var(--my-space-8); padding: var(--my-space-10) var(--my-space-12); cursor: pointer; list-style: none; }
