@@ -9,6 +9,7 @@ Work, Code and authorized ordinary tasks use `ConversationWorkbench`. The host s
 - The renderer and IPC use `CONVERSATION_READ_PAGE_LIMIT`. A reset within the same storage and thread must preserve valid paged history and the visible anchor. A scope or storage change invalidates the old projection.
 - The side panel persists order, selected surface and visibility by authorized scope, canonical project path, parent thread and v2 storage ID. Equivalent Windows path spelling and the initial local workspace identity use the same key. Restore child and BTW tabs only from the current authorized parent's relationship projection. A missing selection falls back to an authorized surface. Restoration reads conversation v2 and leaves engine lifecycle unchanged.
 - Attachments for a user input request use the request ID, generation and question draft. The answer UI exposes file selection only when the native request authorizes text attachments.
+- Conversation file-change rows render stored patches with Pierre Diffs in unified mode. The renderer accepts both single-file hunk-only history and full multi-file patches. Keep recorded file names and a readable fallback when the patch parser cannot render the data. Run Shiki through its JavaScript backend under the existing renderer content security policy, and verify both syntax tokens and intra-line changes in the conversation route.
 
 ## Named roles and execution engines
 

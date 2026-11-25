@@ -63,6 +63,7 @@
     "@opencode/client": "2.0.28",
     "@opencode/protocol": "2.0.28",
     "@opencode/schema": "2.0.28",
+    "@pierre/diffs": "1.7.0-beta.4",
     "@tiptap/core": "3.32.2",
     "@tiptap/extension-list": "3.32.2",
     "@tiptap/extension-table": "3.32.2",
@@ -107,6 +108,7 @@
   "overrides": {
     "@opencode/client@2.0.28": { "effect": "$effect" },
     "@opencode/protocol@2.0.28": { "effect": "$effect" },
-    "@opencode/schema@2.0.28": { "effect": "$effect" }
+    "@opencode/schema@2.0.28": { "effect": "$effect" },
+    "shiki": "4.2.0"
   }
 }
