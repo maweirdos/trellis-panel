@@ -17,8 +17,12 @@
 .my-root .my-git-workspace-file-button { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: var(--my-space-6); padding: var(--my-space-6); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); text-align: left; transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
 .my-root .my-git-workspace-file-button:hover { background: var(--my-bg-layer-transparent-hover); color: var(--my-txt-primary); }
 .my-root .my-git-workspace-diff { margin: var(--my-space-6) var(--my-space-12) var(--my-space-12); overflow: hidden; border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-md); background: var(--my-bg-canvas); }
-.my-root .my-git-workspace-diff-lines { max-height: var(--my-space-256); margin: 0; padding: var(--my-space-8); overflow: auto; scrollbar-gutter: auto; font-family: var(--my-font-mono); font-size: var(--my-text-xs); line-height: var(--my-line-document); color: var(--my-txt-secondary); }
-.my-root .my-git-workspace-diff-lines > span { display: block; min-width: max-content; }
+.my-root .my-git-workspace-diff-header { display: flex; align-items: center; gap: var(--my-space-8); padding: var(--my-space-6) var(--my-space-10); border-bottom: var(--my-space-1) solid var(--my-border-subtle); background: var(--my-bg-layer-1); }
+.my-root .my-git-workspace-diff-lines { max-height: var(--my-space-256); margin: 0; padding: var(--my-space-4) 0; overflow: auto; scrollbar-gutter: auto; font-family: var(--my-font-mono); font-size: var(--my-text-xs); line-height: var(--my-line-document); color: var(--my-txt-secondary); }
+.my-root .my-git-workspace-diff-row { display: grid; grid-template-columns: 4ch 4ch minmax(0, 1fr); min-width: max-content; min-height: 1lh; }
+.my-root .my-git-workspace-diff-row code { padding-inline: var(--my-space-8); white-space: pre; font: inherit; tab-size: 4; }
+.my-root .my-git-workspace-diff-num { padding-inline: var(--my-space-4); text-align: right; font-variant-numeric: tabular-nums; color: var(--my-txt-tertiary); user-select: none; border-right: var(--my-space-1) solid var(--my-border-subtle); }
+.my-root .my-git-workspace-diff-hunk { background: var(--my-bg-info-subtle); color: var(--my-txt-info-primary); }
 .my-root .my-git-workspace-diff-add { color: var(--my-txt-success-primary); background: var(--my-bg-success-subtle); }
 .my-root .my-git-workspace-diff-remove { color: var(--my-txt-danger-primary); background: var(--my-bg-danger-subtle); }
 .my-root .my-git-workspace-diff-meta { color: var(--my-txt-tertiary); }

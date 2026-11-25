@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
-import { Button, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
+import { Button, Dropdown, DropdownItem, Modal, SignalMeter, Tooltip } from '../my/ui'
 import type { ModelItem, ModelProvider, ModelTestResult, AiApiFormat, AiConfig } from '../../../shared/types'
 import { errorMessage } from '../../../shared/errors'
 import { CopyableError } from '../components/CopyableError'
@@ -1081,7 +1081,14 @@ export function ModelsPage(): JSX.Element {
                                               </span>
                                             ) : result?.ok ? (
                                               <span role="status" className="model-test-pill bg-my-success-subtle text-my-success-text" title={timing || '测试通过'}>
-                                                <CheckCircle2 size={11} aria-hidden="true" />
+                                                {typeof result.latencyMs === 'number' && Number.isFinite(result.latencyMs) ? (
+                                                  <SignalMeter
+                                                    level={result.latencyMs <= 1200 ? 3 : result.latencyMs <= 3500 ? 2 : 1}
+                                                    tone={result.latencyMs <= 1200 ? 'success' : 'warning'}
+                                                  />
+                                                ) : (
+                                                  <CheckCircle2 size={11} aria-hidden="true" />
+                                                )}
                                                 {timing || '测试通过'}
                                               </span>
                                             ) : result ? (

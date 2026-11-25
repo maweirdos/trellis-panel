@@ -103,7 +103,7 @@
 .my-root .my-git-diff-content { width: max-content; min-width: 100%; }
 .my-root .my-git-diff-row { display: grid; grid-template-columns: 6ch 6ch minmax(0, 1fr); min-height: 1lh; }
 .my-root .my-git-diff-row code { padding-inline: var(--my-space-8); white-space: pre; font: inherit; tab-size: 4; }
-.my-root .my-git-line-number { padding-inline: var(--my-space-8); text-align: right; color: var(--my-txt-tertiary); user-select: none; }
+.my-root .my-git-line-number { padding-inline: var(--my-space-8); text-align: right; font-variant-numeric: tabular-nums; color: var(--my-txt-tertiary); user-select: none; border-right: 1px solid var(--my-border-subtle); }
 .my-root .my-git-diff-add { background: var(--my-bg-success-subtle); color: var(--my-txt-success-primary); }
 .my-root .my-git-diff-remove { background: var(--my-bg-danger-subtle); color: var(--my-txt-danger-primary); }
 .my-root .my-git-diff-hunk { background: var(--my-bg-info-subtle); color: var(--my-txt-info-primary); }

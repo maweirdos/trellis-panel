@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Search, X } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -173,7 +173,7 @@ export function Dropdown({
   const interactive = useInteractionActive() && !disabled
   const canInteract = useInteractionGuard()
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; minWidth: number } | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; minWidth: number; above: boolean } | null>(null)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const escId = useId()
@@ -262,7 +262,8 @@ export function Dropdown({
         top: Math.max(8, Math.min(above ? topEdge - h - gap : bottomEdge + gap, innerHeight - h - 8)),
         left: Math.max(8, Math.min(align === 'right' ? alignment.right - w : alignment.left, innerWidth - w - 8)),
         maxHeight,
-        minWidth: width === undefined ? Math.min(r.width, innerWidth - 16) : 0
+        minWidth: width === undefined ? Math.min(r.width, innerWidth - 16) : 0,
+        above
       }
       setPos((old) => old && Object.keys(next).every((key) => old[key as keyof typeof next] === next[key as keyof typeof next]) ? old : next)
     }
@@ -351,6 +352,8 @@ export function Dropdown({
         <div
           ref={menuRef}
           data-my-layer={[...parentScope.ids, escId].join(' ')}
+          data-placement={pos ? (pos.above ? 'top' : 'bottom') : undefined}
+          data-align={align}
           style={{
             top: pos?.top ?? -9999,
             left: pos?.left ?? -9999,
@@ -359,7 +362,7 @@ export function Dropdown({
             minWidth: pos?.minWidth,
             visibility: pos ? 'visible' : 'hidden'
           }}
-          className="my-pop my-menu my-scrollbar no-drag fixed"
+          className={clsx(pos && 'my-pop', 'my-menu my-scrollbar no-drag fixed')}
           onFocusCapture={(event) => { if (event.target instanceof HTMLElement) lastMenuFocusRef.current = event.target }}
           onKeyDown={(event) => {
             guardComposingEscape(event)
@@ -859,17 +862,32 @@ export function SearchInput({
   className?: string
   size?: 'sm' | 'md'
 }): JSX.Element {
+  const inputRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className={clsx('relative', className)}>
       <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--my-txt-tertiary)]" />
       <input
+        ref={inputRef}
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder ?? '搜索'}
-        className={clsx('my-input my-search-input', size === 'sm' && 'my-search-input-sm')}
+        className={clsx('my-input my-search-input', size === 'sm' && 'my-search-input-sm', value && 'pr-7')}
       />
+      {value && (
+        <button
+          type="button"
+          aria-label="清除搜索"
+          onClick={() => {
+            onChange('')
+            inputRef.current?.focus({ preventScroll: true })
+          }}
+          className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-my-md text-[var(--my-txt-tertiary)] transition-colors hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]"
+        >
+          <X size={12} aria-hidden="true" />
+        </button>
+      )}
     </div>
   )
 }
@@ -915,17 +933,33 @@ export function Tabs<T extends string>({
 
 /* ---------------- 空状态 ---------------- */
 
-export function EmptyState({ title, description }: { title: string; description?: string }): JSX.Element {
+export function EmptyState({
+  title,
+  description,
+  icon,
+  action
+}: {
+  title: string
+  description?: string
+  icon?: ReactNode
+  action?: ReactNode
+}): JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 px-6 py-14 text-center">
-      <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-my-lg bg-[var(--my-bg-layer-2)] text-[var(--my-txt-tertiary)]">
-        <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M2.5 6h11M6 6v7.5" stroke="currentColor" strokeWidth="1.2" />
-        </svg>
+    <div className="flex flex-col items-center justify-center gap-1.5 px-6 py-14 text-center">
+      <div
+        className="mb-1 flex h-10 w-10 items-center justify-center rounded-my-lg border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] text-[var(--my-txt-tertiary)]"
+        style={{ boxShadow: 'var(--my-surface-rim), var(--my-shadow-raised-100)' }}
+      >
+        {icon ?? (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M2.5 6h11M6 6v7.5" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        )}
       </div>
       <div className="my-item-title">{title}</div>
       {description && <div className="my-item-description max-w-[320px]">{description}</div>}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   )
 }
@@ -1145,6 +1179,48 @@ export function KnockIndicator({
     <span className={clsx('my-knock-wrap', className)}>
       {active && <span className="my-knock-wave" aria-hidden="true" />}
       {children ?? <span className="my-knock-dot" aria-hidden="true" />}
+    </span>
+  )
+}
+
+/* ---------------- 三段信号 / 质量指示微条 (Signal Meter) ---------------- */
+
+export function SignalMeter({
+  level,
+  tone = 'success',
+  label,
+  className
+}: {
+  level: 0 | 1 | 2 | 3
+  tone?: 'success' | 'warning' | 'danger' | 'neutral'
+  label?: string
+  className?: string
+}): JSX.Element {
+  const activeColor =
+    tone === 'success'
+      ? 'bg-[var(--my-txt-success-primary)]'
+      : tone === 'warning'
+        ? 'bg-[var(--my-txt-warning-primary)]'
+        : tone === 'danger'
+          ? 'bg-[var(--my-txt-danger-primary)]'
+          : 'bg-[var(--my-txt-secondary)]'
+  return (
+    <span
+      className={clsx('inline-flex items-end gap-0.5', className)}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      role={label ? 'img' : undefined}
+    >
+      {(['h-1.5', 'h-2', 'h-2.5'] as const).map((heightClass, index) => (
+        <span
+          key={index}
+          className={clsx(
+            'w-0.5 rounded-full transition-colors',
+            heightClass,
+            index < level ? activeColor : 'bg-[var(--my-border-strong)]'
+          )}
+        />
+      ))}
     </span>
   )
 }

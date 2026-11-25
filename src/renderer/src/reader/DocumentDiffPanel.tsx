@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import type { JSX, RefObject } from 'react'
 import { X, GitCommitHorizontal, ArrowRight, Loader2, CircleAlert, Info } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -7,6 +7,7 @@ import type {
   DocumentDiffResult
 } from '../../../shared/documents'
 import { useEscLayer } from '../utils/use-esc-layer'
+import { computeInlineLineDiffs, InlineDiffText } from '../my/git/inline-diff'
 import type { ReaderDiffState } from './use-document-reader'
 
 /**
@@ -40,48 +41,74 @@ function DiffDiagnostics({ diagnostics }: { diagnostics: DocumentDiffDiagnostic[
 }
 
 function DiffBody({ result }: { result: DocumentDiffResult }): JSX.Element {
+  const inlineByHunk = useMemo(
+    () =>
+      result.hunks.map((hunk) =>
+        computeInlineLineDiffs(
+          hunk.lines.map((line) => ({
+            kind: line.type === 'added' ? 'add' : line.type === 'removed' ? 'remove' : 'other',
+            text: line.text
+          }))
+        )
+      ),
+    [result.hunks]
+  )
+
   if (result.identical) {
     return <p className="py-6 text-center text-my-sm text-my-secondary">两侧内容一致，没有差异行。</p>
   }
   return (
     <div className="space-y-4">
-      <p className="text-my-xs text-my-secondary">
-        +{result.stats.added} 行新增 · -{result.stats.removed} 行删除 · 计算耗时 {result.elapsedMs}ms
-      </p>
+      <div className="flex flex-wrap items-center gap-2 font-mono text-my-2xs tabular-nums">
+        <span className="rounded-my-full bg-my-success-subtle px-2 py-0.5 text-my-success-text">+{result.stats.added}</span>
+        <span className="rounded-my-full bg-my-danger-subtle px-2 py-0.5 text-my-danger-text">−{result.stats.removed}</span>
+        <span className="font-sans text-my-xs text-my-tertiary">耗时 {result.elapsedMs}ms</span>
+      </div>
       <div className="overflow-x-auto rounded-my-lg border border-my-line">
-        {result.hunks.map((hunk, hi) => (
-          <div key={hi} className={clsx('border-my-line', hi > 0 && 'border-t')}>
-            <div className="select-none bg-my-layer-1 px-3 py-1 font-mono text-my-2xs text-my-secondary">
-              @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
-            </div>
-            {hunk.lines.map((line, li) => (
-              <div
-                key={li}
-                className={clsx(
-                  'flex items-start gap-2 px-3 py-0.5 font-mono text-my-xs leading-5',
-                  line.type === 'added' && 'bg-my-success-subtle',
-                  line.type === 'removed' && 'bg-my-danger-subtle'
-                )}
-              >
-                <span className="w-10 shrink-0 select-none text-right text-my-secondary">{line.oldLine ?? ''}</span>
-                <span className="w-10 shrink-0 select-none text-right text-my-secondary">{line.newLine ?? ''}</span>
-                <span
+        {result.hunks.map((hunk, hi) => {
+          const inlineSegments = inlineByHunk[hi]
+          return (
+            <div key={hi} className={clsx('border-my-line', hi > 0 && 'border-t')}>
+              <div className="select-none bg-my-layer-1 px-3 py-1 font-mono text-my-2xs text-my-secondary">
+                @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
+              </div>
+              {hunk.lines.map((line, li) => (
+                <div
+                  key={li}
                   className={clsx(
-                    'w-3 shrink-0 select-none',
-                    line.type === 'added' && 'text-my-success-text',
-                    line.type === 'removed' && 'text-my-danger-text',
-                    line.type === 'context' && 'text-my-secondary'
+                    'flex items-start gap-2 px-3 py-0.5 font-mono text-my-xs leading-5',
+                    line.type === 'added' && 'bg-my-success-subtle',
+                    line.type === 'removed' && 'bg-my-danger-subtle'
                   )}
                 >
-                  {line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}
-                </span>
-                <span className="min-w-0 flex-1 break-all whitespace-pre-wrap text-my-primary">
-                  {line.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
+                  <span className="w-10 shrink-0 select-none text-right tabular-nums text-my-secondary">{line.oldLine ?? ''}</span>
+                  <span className="w-10 shrink-0 select-none text-right tabular-nums text-my-secondary">{line.newLine ?? ''}</span>
+                  <span
+                    className={clsx(
+                      'w-3 shrink-0 select-none',
+                      line.type === 'added' && 'text-my-success-text',
+                      line.type === 'removed' && 'text-my-danger-text',
+                      line.type === 'context' && 'text-my-secondary'
+                    )}
+                  >
+                    {line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}
+                  </span>
+                  <span className="min-w-0 flex-1 break-all whitespace-pre-wrap text-my-primary">
+                    {line.type === 'added' || line.type === 'removed' ? (
+                      <InlineDiffText
+                        segments={inlineSegments[li]}
+                        fallback={line.text}
+                        tone={line.type === 'added' ? 'add' : 'remove'}
+                      />
+                    ) : (
+                      line.text
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

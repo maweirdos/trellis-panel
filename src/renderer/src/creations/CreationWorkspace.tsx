@@ -65,15 +65,15 @@ function CandidateComparison({ view, onClose }: { view: CreationView; onClose: (
   const query = useCreationView(view.summary.creationId, revisionId)
   const content = query.view?.selected
   return <section className="creation-comparison">
-    <div className="creation-row creation-comparison-toolbar"><Tabs tabs={[{ id: 'original', label: '当前草稿' }, { id: 'candidate', label: 'AI 候选' }]} active={side} onChange={setSide} /><span className="creation-grow" /><Button variant="ghost" size="sm" onClick={onClose}><X size={14} />收起比较</Button></div>
+    <div className="creation-row creation-comparison-toolbar"><span className="my-item-title">修订对比 · {side === 'candidate' ? 'AI 候选' : '当前草稿'}</span><span className="creation-grow" /><Button variant="ghost" size="sm" onClick={onClose}><X size={14} />收起比较</Button></div>
     {view.candidate && view.draft && view.candidate.baseDraftRevision !== view.draft.serial && <div className="creation-notice">候选生成后草稿已变化，请核对后重新生成</div>}
     {query.error && <div className="creation-error" role="alert"><span className="creation-grow">{query.error.error}</span><Button size="sm" onClick={() => void query.refresh()}>重试</Button></div>}
-    {query.busy && !content ? <Loading>正在读取{side === 'candidate' ? '候选' : '草稿'}…</Loading> : content && <div className="creation-preview-frame">{view.summary.kind === 'prototype' ? <PrototypePreview body={content.body} mode="browse" selectedTarget={null} markers={[]} onSelect={() => undefined} /> : <TextPreview body={content.body} />}</div>}
+    {query.busy && !content ? <Loading>正在读取{side === 'candidate' ? '候选' : '草稿'}…</Loading> : content && <div className="creation-comparison-stage"><div className="creation-preview-frame">{view.summary.kind === 'prototype' ? <PrototypePreview body={content.body} mode="browse" selectedTarget={null} markers={[]} onSelect={() => undefined} /> : <TextPreview body={content.body} />}</div><div className="my-floating-stage-bar" role="group" aria-label="比较版本切换"><button type="button" aria-pressed={side === 'original'} onClick={() => setSide('original')}>当前草稿</button><button type="button" aria-pressed={side === 'candidate'} onClick={() => setSide('candidate')}>AI 候选</button></div></div>}
   </section>
 }
 
 function Loading({ children }: { children: ReactNode }): JSX.Element {
-  return <div className="creation-loading" role="status"><Loader2 size={18} className="creation-spinner" />{children}</div>
+  return <div className="creation-loading" role="status"><Loader2 size={18} className="creation-spinner" /><span className="my-shimmer-text">{children}</span></div>
 }
 
 function CreationDetail({ location, onBack, onRevision }: { location: CreationLocation; onBack: () => void; onRevision: (revisionId?: string) => void }): JSX.Element {

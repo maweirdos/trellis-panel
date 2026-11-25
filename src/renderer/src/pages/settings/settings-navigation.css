@@ -35,7 +35,7 @@
 .my-root .my-settings-navigation-search-input:focus {
   border-color: var(--my-border-strong-1);
   background: var(--my-bg-input);
-  box-shadow: var(--my-focus-shadow);
+  box-shadow: var(--my-shadow-inset-field), var(--my-focus-shadow);
 }
 .my-root .my-settings-navigation-search-input::placeholder { color: var(--my-txt-secondary); }
 

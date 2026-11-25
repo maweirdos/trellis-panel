@@ -198,7 +198,7 @@
   display: flex; flex-direction: column; gap: var(--my-space-2);
 }
 .my-root .my-shell-view-menu .my-menu-header {
-  padding: var(--my-space-6) var(--my-space-10) var(--my-space-4);
+  padding: var(--my-space-6) var(--my-space-8) var(--my-space-4);
   font-size: var(--my-text-xs); color: var(--my-txt-tertiary); letter-spacing: 0.02em;
 }
 .my-root .my-global-header-row > .my-tooltip-anchor { flex-shrink: 0; }

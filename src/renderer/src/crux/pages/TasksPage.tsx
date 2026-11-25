@@ -115,21 +115,37 @@ export function TasksPage(): JSX.Element | null {
   if (!snapshot) return null
   const tasks = applyTaskFilter(spaceTasks(snapshot, currentSpaceId), snapshot, filter)
     .filter((t) => showTriage || !isTriagePending(snapshot, t))
+  const doneCount = tasks.filter((t) => statusOf(snapshot, t.statusId)?.category === 'done').length
+  const activeCount = tasks.filter((t) => {
+    const category = statusOf(snapshot, t.statusId)?.category
+    return category === 'in_progress' || category === 'in_review'
+  }).length
   return <div className="relative flex min-h-0 flex-1 flex-col gap-3">
     <PageHeader title="任务" description={`共 ${tasks.length} 条任务${showTriage ? '（含待分拣）' : ''}`} actions={<div className="flex items-center gap-2"><label className="flex items-center gap-2 text-my-xs text-my-tertiary"><input type="checkbox" checked={showTriage} onChange={(e) => setShowTriage(e.target.checked)} />显示待分拣</label><Button variant="primary" size="sm" disabled={!currentSpaceId || Boolean(snapshot.spaces.find((space) => space.id === currentSpaceId)?.archived)} onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button></div>} />
     <TaskFilters />
-    <div className="my-scrollbar min-h-0 flex-1 overflow-auto rounded-my-md border border-my-line" style={{ scrollbarGutter: 'stable' }}>
-      {tasks.length === 0 ? <EmptyState title="暂无匹配任务" description="调整筛选条件，或新建一条任务" /> : <table className="w-full border-collapse text-left text-my-sm">
-        <thead className="sticky top-0 z-10 bg-my-canvas"><tr className="border-b border-my-line text-my-xs text-my-tertiary">{['任务', '状态', '优先级', '处理人', '标签', '版本', '更新'].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
-        <tbody>{tasks.map((task) => <tr key={task.id} className={`border-b border-my-line ${openTaskId === task.id ? 'bg-my-layer-1-active' : 'hover:bg-my-layer-1'}`}>
-          <td className="min-w-48 px-3 py-2"><button type="button" onClick={() => openTask(task.id)} className="flex w-full items-center gap-2 text-left"><span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : 'text-my-primary'}>{task.title}</span>{task.parentTaskId && <span className="shrink-0 text-my-2xs text-my-tertiary">子任务</span>}</button><ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></td>
-          <td className="px-3 py-2"><StatusBadge status={statusOf(snapshot, task.statusId)} /></td><td className="px-3 py-2"><PriorityBadge priority={task.priority} /></td>
-          <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}{task.assigneeIds.length === 0 && <span className="text-my-xs text-my-tertiary">未分配</span>}</div></td>
-          <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{task.labelIds.map((id) => { const label = snapshot.taskLabels.find((l) => l.id === id); return label ? <LabelChip key={id} label={label} /> : null })}</div></td>
-          <td className="px-3 py-2 text-my-xs text-my-secondary">{task.iterationIds.map((id) => snapshot.iterations.find((it) => it.id === id)?.name).filter(Boolean).join('、') || '未排期'}</td>
-          <td className="whitespace-nowrap px-3 py-2 text-my-xs text-my-tertiary">{task.updatedAt.slice(5, 10)}</td>
-        </tr>)}</tbody>
-      </table>}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-my-md border border-my-line">
+      <div className="my-scrollbar min-h-0 flex-1 overflow-auto" style={{ scrollbarGutter: 'stable' }}>
+        {tasks.length === 0 ? <EmptyState title="暂无匹配任务" description="调整筛选条件，或新建一条任务" /> : <table className="w-full border-collapse text-left text-my-sm">
+          <thead className="sticky top-0 z-10 bg-my-canvas"><tr className="border-b border-my-line text-my-xs text-my-tertiary">{['任务', '状态', '优先级', '处理人', '标签', '版本', '更新'].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
+          <tbody>{tasks.map((task) => <tr key={task.id} className={`border-b border-my-line ${openTaskId === task.id ? 'bg-my-layer-1-active' : 'hover:bg-my-layer-1'}`}>
+            <td className="min-w-48 px-3 py-2"><button type="button" onClick={() => openTask(task.id)} className="flex w-full items-center gap-2 text-left"><span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : 'text-my-primary'}>{task.title}</span>{task.parentTaskId && <span className="shrink-0 text-my-2xs text-my-tertiary">子任务</span>}</button><ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></td>
+            <td className="px-3 py-2"><StatusBadge status={statusOf(snapshot, task.statusId)} /></td><td className="px-3 py-2"><PriorityBadge priority={task.priority} /></td>
+            <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}{task.assigneeIds.length === 0 && <span className="text-my-xs text-my-tertiary">未分配</span>}</div></td>
+            <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{task.labelIds.map((id) => { const label = snapshot.taskLabels.find((l) => l.id === id); return label ? <LabelChip key={id} label={label} /> : null })}</div></td>
+            <td className="px-3 py-2 text-my-xs text-my-secondary">{task.iterationIds.map((id) => snapshot.iterations.find((it) => it.id === id)?.name).filter(Boolean).join('、') || '未排期'}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-my-xs text-my-tertiary">{task.updatedAt.slice(5, 10)}</td>
+          </tr>)}</tbody>
+        </table>}
+      </div>
+      {tasks.length > 0 && (
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-my-line bg-my-layer-1 px-3 py-1.5 text-my-xs tabular-nums text-my-tertiary">
+          <span>共 {tasks.length} 项</span>
+          <span className="flex items-center gap-3">
+            <span>进行中 {activeCount}</span>
+            <span>已完成 {doneCount}</span>
+          </span>
+        </footer>
+      )}
     </div>
     <NewTaskModal open={createOpen} onClose={() => setCreateOpen(false)} />
   </div>

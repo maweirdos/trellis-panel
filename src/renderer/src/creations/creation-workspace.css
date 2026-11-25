@@ -394,7 +394,8 @@
 .creation-plan { display: grid; gap: var(--my-space-8); padding: var(--my-space-12); border: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-lg); }
 .creation-plan p { margin: 0; }
 .creation-comparison-toolbar { flex-wrap: wrap; padding-bottom: var(--my-space-12); }
-.creation-comparison .creation-preview-frame { border-top: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-lg); }
+.creation-comparison-stage { position: relative; }
+.creation-comparison .creation-preview-frame { border-top: var(--my-space-1) solid var(--my-border-subtle); border-radius: var(--my-radius-lg); padding-bottom: var(--my-space-48); }
 .creation-adoptions { margin-top: var(--my-space-24); color: var(--my-txt-secondary); font-size: var(--my-text-sm); }
 .creation-task-references { display: grid; gap: var(--my-space-8); padding-top: var(--my-space-16); }
 .creation-task-reference { width: 100%; justify-content: flex-start; }

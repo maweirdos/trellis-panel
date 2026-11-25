@@ -141,7 +141,7 @@ export function DesignWorkspace(props: Props): JSX.Element {
     } catch (cause) { fail(cause) }
   }
   const libraryContext = useCrux(state => state.workspaceContext)
-  if (!document || !buffer) return <section className="design-workspace" aria-label="设计工作台">{!props.embedded && <div className="design-toolbar"><Button size="sm" variant="ghost" onClick={props.onClose}><ArrowLeft size={14} />返回</Button></div>}<div className="design-loading" role={query.error ? 'alert' : 'status'}>{query.error || <><Loader2 size={18} className="design-spinner" />正在读取设计…</>}{query.error && <Button size="sm" onClick={() => void refresh()}>重试</Button>}</div></section>
+  if (!document || !buffer) return <section className="design-workspace" aria-label="设计工作台">{!props.embedded && <div className="design-toolbar"><Button size="sm" variant="ghost" onClick={props.onClose}><ArrowLeft size={14} />返回</Button></div>}<div className="design-loading" role={query.error ? 'alert' : 'status'}>{query.error || <><Loader2 size={18} className="design-spinner" /><span className="my-shimmer-text">正在读取设计…</span></>}{query.error && <Button size="sm" onClick={() => void refresh()}>重试</Button>}</div></section>
   const canModify = !readOnly && !conflict && version === 'current'
   const changeFrames = (next: DesignFrame[]): void => {
     if (readOnly || !canInteract()) return

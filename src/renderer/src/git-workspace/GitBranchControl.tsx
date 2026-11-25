@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type RefObject } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, Check, ChevronDown, FileDiff, GitBranch, GitCommitHorizontal, History, Loader2, Minus, Plus, RefreshCw, Upload, X } from 'lucide-react'
 import type { GitWorkspaceBranch, GitWorkspaceChange, GitWorkspaceSnapshot } from '@shared/git-workspace'
@@ -7,6 +7,8 @@ import { api, hasIpc } from '../api'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { projectRootKey } from '../my/navigation'
+import { computeInlineLineDiffs, InlineDiffText } from '../my/git/inline-diff'
+import { patchRows } from '../my/git/patch'
 import { Button, Dropdown, Modal, Tooltip } from '../my/ui'
 import { Select } from '../components/Select'
 import { useEscLayer } from '../utils/use-esc-layer'
@@ -130,14 +132,70 @@ function WorkspaceDiff({ file, generation, root }: { file: SelectedFile; generat
       .finally(() => { if (sequence === request.current && generation === gitWorkspaceGeneration()) setLoading(false) })
     return () => { request.current += 1 }
   }, [file.path, file.staged, file.untracked, generation, root])
+  const parsed = useMemo(() => {
+    if (!result || result.binary || !result.diff) return null
+    const rows = patchRows(result.diff)
+    let added = 0
+    let removed = 0
+    for (const row of rows) {
+      if (row.kind === 'add') added += 1
+      else if (row.kind === 'remove') removed += 1
+    }
+    const inlineSegments = computeInlineLineDiffs(
+      rows.map((row) => ({
+        kind: row.kind === 'add' ? 'add' : row.kind === 'remove' ? 'remove' : 'other',
+        text: row.kind === 'add' || row.kind === 'remove' ? row.text.slice(1) : row.text
+      }))
+    )
+    return { rows, added, removed, inlineSegments }
+  }, [result])
   return <section ref={section} className="my-git-workspace-diff" aria-label={`差异 ${file.path}`}>
-    <header className="break-words px-3 py-2 font-mono text-my-xs text-my-secondary">{file.path}</header>
-    {loading && <p role="status" className="px-3 py-2 text-my-xs text-my-tertiary">正在读取差异…</p>}
+    <header className="my-git-workspace-diff-header">
+      <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary" title={file.path}>{file.path}</span>
+      {parsed && (parsed.added > 0 || parsed.removed > 0) && (
+        <span className="flex shrink-0 items-center gap-1 font-mono text-my-2xs tabular-nums">
+          {parsed.added > 0 && <span className="rounded-my-full bg-my-success-subtle px-1.5 py-0.5 text-my-success-text">+{parsed.added}</span>}
+          {parsed.removed > 0 && <span className="rounded-my-full bg-my-danger-subtle px-1.5 py-0.5 text-my-danger-text">−{parsed.removed}</span>}
+        </span>
+      )}
+    </header>
+    {loading && <p role="status" className="px-3 py-2 text-my-xs text-my-tertiary"><span className="my-shimmer-text">正在读取差异…</span></p>}
     {error && <p role="alert" className="px-3 py-2 text-my-xs text-my-danger-text">{error}</p>}
     {file.untracked && <p className="px-3 py-2 text-my-xs text-my-tertiary">新文件尚无 Git 基线，暂存后可查看添加内容。</p>}
     {result?.binary && <p className="px-3 py-2 text-my-xs text-my-secondary">二进制文件，未显示文本差异。</p>}
     {result?.truncated && <p role="status" className="px-3 py-2 text-my-xs text-my-warning-text">差异过长，已截断。</p>}
-    {result && !result.binary && <pre className="my-git-workspace-diff-lines my-scrollbar" tabIndex={0} aria-label="文件文本差异">{result.diff ? result.diff.split('\n').map((line, index) => <span key={index} className={line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@') ? 'my-git-workspace-diff-meta' : line.startsWith('+') ? 'my-git-workspace-diff-add' : line.startsWith('-') ? 'my-git-workspace-diff-remove' : undefined}>{line || ' '}</span>) : '无文本差异。'}</pre>}
+    {result && !result.binary && (parsed && parsed.rows.length > 0 ? (
+      <div className="my-git-workspace-diff-lines my-scrollbar" tabIndex={0} aria-label="文件文本差异">
+        {parsed.rows.map((row, index) => {
+          const prefix = row.kind === 'add' || row.kind === 'remove' ? row.text.slice(0, 1) : ''
+          const content = prefix ? row.text.slice(1) : row.text
+          const rowClass =
+            row.kind === 'add'
+              ? 'my-git-workspace-diff-add'
+              : row.kind === 'remove'
+                ? 'my-git-workspace-diff-remove'
+                : row.kind === 'hunk'
+                  ? 'my-git-workspace-diff-hunk'
+                  : row.kind === 'meta'
+                    ? 'my-git-workspace-diff-meta'
+                    : undefined
+          return (
+            <div key={index} className={rowClass ? `my-git-workspace-diff-row ${rowClass}` : 'my-git-workspace-diff-row'}>
+              <span className="my-git-workspace-diff-num" aria-hidden="true">{row.a}</span>
+              <span className="my-git-workspace-diff-num" aria-hidden="true">{row.b}</span>
+              <code>
+                {prefix}
+                {row.kind === 'add' || row.kind === 'remove' ? (
+                  <InlineDiffText segments={parsed.inlineSegments[index]} fallback={content || ' '} tone={row.kind} />
+                ) : (
+                  row.text || ' '
+                )}
+              </code>
+            </div>
+          )
+        })}
+      </div>
+    ) : <p className="px-3 py-2 text-my-xs text-my-tertiary">无文本差异。</p>)}
   </section>
 }
 
