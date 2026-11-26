@@ -62,8 +62,8 @@ export function AgentDirectoryPage(): JSX.Element | null {
             所有共享岗位 Agent 默认继承此本机槽位{overrideCount > 0 ? `；当前已为 ${overrideCount} 个岗位单独覆盖` : ''}。
           </p>
         </div>
-        <Button size="sm" variant="ghost" onClick={() => { useMy.getState().setSettingsView('engines'); useApp.getState().setPage('settings') }}>
-          <Settings2 size={13} aria-hidden="true" />管理本机引擎
+        <Button size="sm" variant="ghost" onClick={() => useApp.getState().setPage('machines')}>
+          <Settings2 size={13} aria-hidden="true" />打开机器与 Runtime 中心
         </Button>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">

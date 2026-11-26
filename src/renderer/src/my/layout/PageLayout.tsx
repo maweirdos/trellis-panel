@@ -24,6 +24,7 @@ export const PAGE_LAYOUTS = {
   architecture: 'full',
   studio: 'full',
   models: 'centered',
+  machines: 'centered',
   settings: 'centered',
   integrations: 'centered',
   gateway: 'centered',

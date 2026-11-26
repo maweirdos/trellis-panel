@@ -1,6 +1,8 @@
-import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Blocks, BookOpen, Building2, ChevronRight, CircleHelp, CircleUser, Cpu, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, X, Wrench, Activity, FileText } from 'lucide-react'
+import { Activity, Blocks, BookOpen, ChevronRight, CircleHelp, CircleUser, Cpu, FileText, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, Wrench, X } from 'lucide-react'
+import { api, hasIpc } from '../../api'
+import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { useApp, type Page } from '../../store'
 import { inboxGroups, useCrux } from '../../crux/store'
 import { useMy } from '../store'
@@ -11,40 +13,54 @@ import { SettingsNavigation } from './SettingsNavigation'
 import { AccountMenu } from './AccountMenu'
 import { ContextRegion } from './ContextRegion'
 import { activeModule, DOMAIN_LABELS, getPageNavigation, hasShellContext, pageRequiresProject, PRIMARY_NAVIGATION, type ModuleId, type TeamView } from '../navigation'
+import type { AcpAgentStatus } from '../../../../shared/types'
 
 const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   home: <CircleUser className="my-module-icon" aria-hidden="true" />,
   agents: <MessageCircle className="my-module-icon" aria-hidden="true" />,
   tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
-  team: <Users className="my-module-icon" aria-hidden="true" />,
-  members: <Building2 className="my-module-icon" aria-hidden="true" />,
+  team: <House className="my-module-icon" aria-hidden="true" />,
   knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,
+  machines: <Cpu className="my-module-icon" aria-hidden="true" />,
   integrations: <Blocks className="my-module-icon" aria-hidden="true" />,
   automations: <Workflow className="my-module-icon" aria-hidden="true" />,
   settings: <Settings2 className="my-module-icon" aria-hidden="true" />
+}
+
+function countReadyRuntimes(agents: readonly AcpAgentStatus[]): number {
+  return agents.filter((agent) => agent.launchKind !== 'custom' && agent.id !== 'opencode' && agent.available && !agent.setupRequired).length
 }
 
 export function WorkspaceSidebar(): JSX.Element {
   const page = useApp((state) => state.page)
   const setPage = useApp((state) => state.setPage)
   const collapsed = useMy((state) => state.sidebarCollapsed)
-  const settingsView = useMy((state) => state.settingsView)
   const hasProject = useApp((state) => Boolean(state.snapshot?.meta.root))
-  const cruxModule = useCrux((state) => state.module)
   const cruxSnapshot = useCrux((state) => state.snapshot)
+  const [readyRuntimeCount, setReadyRuntimeCount] = useState<number>(() => countReadyRuntimes(getRuntimeInventorySnapshot()))
+
+  useEffect(() => {
+    const unsubscribe = subscribeRuntimeInventory((agents) => setReadyRuntimeCount(countReadyRuntimes(agents)))
+    if (hasIpc && getRuntimeInventorySnapshot().length === 0) {
+      void api.acpAgents().then((reply) => {
+        if (reply.ok && reply.agents) setReadyRuntimeCount(countReadyRuntimes(reply.agents))
+      }).catch(() => undefined)
+    }
+    return unsubscribe
+  }, [])
+
   const unreadInbox = cruxSnapshot ? (() => {
     const groups = inboxGroups(cruxSnapshot.inbox, Date.now())
     return groups.unread.important + groups.unread.other
   })() : 0
   const current = activeModule(page)
-  const activeRail: ModuleId = page === 'crux'
-    ? (cruxModule === 'members' ? 'members' : 'team')
-    : page === 'creations'
-      ? 'knowledge'
-      : current === 'home'
-        ? 'team'
-        : current
+  const activeRail: ModuleId = page === 'creations'
+    ? 'knowledge'
+    : current === 'home'
+      ? 'team'
+      : current
   const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
+
   return <>
     <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">
       <nav aria-label="应用模块" className="my-scrollbar flex min-h-0 w-full flex-1 flex-col items-center">
@@ -52,13 +68,7 @@ export function WorkspaceSidebar(): JSX.Element {
           const badge = item.id === 'team' ? unreadInbox : 0
           return <button key={item.id} type="button" aria-label={item.label} title={item.label} aria-current={activeRail === item.id ? 'page' : undefined} onClick={() => {
             const app = useApp.getState()
-            if (item.id === 'members') {
-              useCrux.getState().setModule('members')
-              if (app.page !== 'crux') setPage('crux')
-              return
-            }
             if (item.id === 'team') {
-              if (useCrux.getState().module === 'members') useCrux.getState().setModule('my-tasks')
               if (app.page !== 'crux') setPage('crux')
               return
             }
@@ -77,6 +87,21 @@ export function WorkspaceSidebar(): JSX.Element {
         <div className="my-module-divider" aria-hidden="true" />
         <button
           type="button"
+          aria-label="机器与 Runtime 中心"
+          title={readyRuntimeCount > 0 ? `机器与 Runtime 中心（${readyRuntimeCount} 个本机引擎就绪）` : '机器与 Runtime 中心（待探测或配置引擎）'}
+          aria-current={page === 'machines' ? 'page' : undefined}
+          onClick={() => { if (useApp.getState().page !== 'machines') setPage('machines') }}
+          className={railClass(page === 'machines')}
+        >
+          {MODULE_ICONS.machines}
+          <span
+            className="my-module-status-dot"
+            data-status={readyRuntimeCount > 0 ? 'ready' : 'warn'}
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          type="button"
           aria-label="应用集成"
           title="应用集成"
           aria-current={page === 'integrations' ? 'page' : undefined}
@@ -87,20 +112,6 @@ export function WorkspaceSidebar(): JSX.Element {
         </button>
         <button
           type="button"
-          aria-label="本机执行槽与引擎"
-          title="本机执行槽（Codex / Claude / Runtime）"
-          aria-current={page === 'settings' && settingsView === 'engines' ? 'page' : undefined}
-          onClick={() => {
-            useMy.getState().setSettingsView('engines')
-            if (useApp.getState().page !== 'settings') setPage('settings')
-          }}
-          className={railClass(page === 'settings' && settingsView === 'engines')}
-        >
-          <Cpu className="my-module-icon" aria-hidden="true" />
-          <span className="my-module-status-dot" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
           aria-label="帮助与指引"
           title="帮助与指引 (?)"
           onClick={() => useMy.getState().setHelpOpen(true)}
@@ -108,10 +119,19 @@ export function WorkspaceSidebar(): JSX.Element {
         >
           <CircleHelp className="my-module-icon" aria-hidden="true" />
         </button>
-        <button type="button" aria-label="设置" title="设置" aria-current={page === 'settings' && settingsView !== 'engines' ? 'page' : undefined} onClick={() => {
-          useMy.getState().setSettingsView('preferences')
-          if (useApp.getState().page !== 'settings') setPage('settings')
-        }} className={railClass(page === 'settings' && settingsView !== 'engines')}>{MODULE_ICONS.settings}</button>
+        <button
+          type="button"
+          aria-label="设置"
+          title="设置"
+          aria-current={page === 'settings' || page === 'models' || page === 'gateway' ? 'page' : undefined}
+          onClick={() => {
+            useMy.getState().setSettingsView('preferences')
+            if (useApp.getState().page !== 'settings') setPage('settings')
+          }}
+          className={railClass(page === 'settings' || page === 'models' || page === 'gateway')}
+        >
+          {MODULE_ICONS.settings}
+        </button>
         <AccountMenu />
       </div>
     </aside>

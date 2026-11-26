@@ -49,13 +49,12 @@ export const SETTINGS_DESTINATIONS: readonly SettingsDestination[] = [
   },
   {
     id: 'engines',
-    title: '执行引擎',
-    description: '管理本机执行引擎的安装与连接。',
+    title: '机器与 Runtime',
+    description: '在独立机器中心管理本机执行引擎、算力可见性与默认执行槽。',
     icon: Bot,
-    page: 'settings',
-    view: 'engines',
+    page: 'machines',
     group: '智能与连接',
-    keywords: ['Agent', 'ACP', 'acpx', 'CLI', '安装', '运行时', 'runtime', 'engine']
+    keywords: ['Agent', 'ACP', 'acpx', 'CLI', '安装', '运行时', 'runtime', 'engine', '机器']
   },
   {
     id: 'providers',

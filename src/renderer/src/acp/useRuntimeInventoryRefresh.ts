@@ -6,10 +6,23 @@ import type { AcpAgentStatus } from '../../../shared/types'
 const INVENTORY_INTERVAL_MS = 30_000
 const FOCUS_BURST_MS = 1_000
 let inventorySnapshot: AcpAgentStatus[] = []
+const inventoryListeners = new Set<(agents: AcpAgentStatus[]) => void>()
+
+function emitInventorySnapshot(agents: AcpAgentStatus[]): void {
+  inventorySnapshot = agents
+  for (const listener of inventoryListeners) {
+    try { listener(agents) } catch { /* 订阅方异常不影响其他监听者 */ }
+  }
+}
 
 /** Last displayed local inventory; the visible panel still revalidates it on entry. */
 export function getRuntimeInventorySnapshot(): AcpAgentStatus[] {
   return inventorySnapshot
+}
+
+export function subscribeRuntimeInventory(listener: (agents: AcpAgentStatus[]) => void): () => void {
+  inventoryListeners.add(listener)
+  return () => { inventoryListeners.delete(listener) }
 }
 
 /** Show discovery first, then verify installed engines without blocking the list. */
@@ -31,7 +44,7 @@ export function useRuntimeInventoryRefresh(options: {
   const [reading, setReading] = useState(options.enabled && hasIpc && active)
   const [checkingRuntimeId, setCheckingRuntimeId] = useState<string | null>(null)
   useEffect(() => {
-    if (options.enabled) inventorySnapshot = options.agents
+    if (options.enabled) emitInventorySnapshot(options.agents)
     setError(null)
   }, [options.agents, options.enabled])
   const invalidate = useCallback(() => { request.current.revision++ }, [])
@@ -65,7 +78,7 @@ export function useRuntimeInventoryRefresh(options: {
         && latest.current.isCurrent() && sources.has(latest.current.agents)
       const publish = (agents: AcpAgentStatus[]): void => {
         sources.add(agents)
-        inventorySnapshot = agents
+        emitInventorySnapshot(agents)
         latest.current.onChange(agents)
       }
       request.current.pending = true

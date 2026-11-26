@@ -44,6 +44,7 @@ const ChannelsPage = lazy(() => import('../../pages/Channels').then((m) => ({ de
 const TeamPage = lazy(() => import('../../pages/Team').then((m) => ({ default: m.TeamPage })))
 const JiraPage = lazy(() => import('../../pages/Jira').then((m) => ({ default: m.JiraPage })))
 const SettingsPage = lazy(() => import('../../pages/Settings').then((m) => ({ default: m.SettingsPage })))
+const MachinesPage = lazy(() => import('../../pages/MachinesPage').then((m) => ({ default: m.MachinesPage })))
 const IntegrationsPage = lazy(() => import('../pages/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })))
 const StudioPage = lazy(() => import('../../pages/Studio').then((m) => ({ default: m.StudioPage })))
 const ArchitecturePage = lazy(() => import('../../pages/Architecture').then((m) => ({ default: m.ArchitecturePage })))
@@ -82,6 +83,7 @@ const FRAMED_PAGES: Partial<Record<Page, ReactNode>> = {
   models: <ModelsPage />,
   gateway: <GatewayPage />,
   devtools: <DevToolsPage />,
+  machines: <MachinesPage />,
   settings: <SettingsPage />,
   integrations: <IntegrationsPage />
 }

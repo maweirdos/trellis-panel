@@ -93,6 +93,9 @@
   box-shadow: 0 0 0 1.5px var(--my-bg-shell);
   pointer-events: none;
 }
+.my-root .my-module-status-dot[data-status='warn'] {
+  background: var(--my-bg-warning-primary);
+}
 .my-root .my-module-icon {
   width: var(--my-module-icon-size);
   height: var(--my-module-icon-size);

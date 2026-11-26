@@ -88,7 +88,7 @@ export function CommandPalette(): JSX.Element | null {
       })),
       { id: 'n-roles', section: '导航 · 对话', label: '角色', icon: <NavIcon name="inbox" size={14} />, hint: '当前项目', keywords: 'Agent 我的角色', run: () => { useMy.getState().requestAgentView('roles'); setPageMain('acp'); setOpen(false) } },
       { id: 'n-company', section: '导航 · 知识', label: '知识库', icon: <NavIcon name="pages" size={14} />, hint: '跨项目资料', run: () => { useMy.getState().setKnowledgeView('company'); setPageMain('knowledge'); setOpen(false) } },
-      { id: 'n-engines', section: '导航 · 设置', label: '引擎', icon: <NavIcon name="modules" size={14} />, hint: '本机', keywords: 'Runtime ACP Codex Claude 环境', run: () => { useMy.getState().setSettingsView('engines'); setPageMain('settings'); setOpen(false) } },
+      { id: 'n-engines', section: '导航 · 机器与 Runtime', label: '机器与 Runtime 中心', icon: <NavIcon name="modules" size={14} />, hint: '本机', keywords: 'Runtime ACP Codex Claude 环境 机器', run: () => { setPageMain('machines'); setOpen(false) } },
       { id: 'n-run', section: '导航 · 任务', label: '运行', icon: <NavIcon name="views" size={14} />, hint: '本机项目工具', run: () => { useMy.getState().setToolView('run'); setPageMain('devtools'); setOpen(false) } },
       { id: 'n-git', section: '导航 · 任务', label: 'Git', icon: <NavIcon name="views" size={14} />, hint: '当前项目 · 只读', run: () => { useMy.getState().setToolView('git'); setPageMain('devtools'); setOpen(false) } }
     ]

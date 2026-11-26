@@ -36,6 +36,7 @@ export type Page =
   | 'chat'
   | 'acp'
   | 'gateway'
+  | 'machines'
   | 'settings'
   | 'integrations'
   | 'analytics'

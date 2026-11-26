@@ -1,6 +1,6 @@
 import type { Page } from '../store'
 
-export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'members' | 'knowledge' | 'integrations' | 'automations' | 'settings'
+export type NavigationDomain = 'home' | 'agents' | 'tasks' | 'team' | 'knowledge' | 'machines' | 'integrations' | 'automations' | 'settings'
 export type NavigationScope = 'project' | 'application' | 'local' | 'mixed'
 export type WorkItemsView = 'items' | 'iterations'
 export type ModuleId = NavigationDomain
@@ -57,6 +57,10 @@ export const PAGE_NAVIGATION = {
   architecture: { title: '架构', domain: 'tasks', scope: 'project', icon: 'views' },
   studio: { title: '定制', domain: 'tasks', scope: 'project', icon: 'modules' },
   models: { title: '模型供应商', domain: 'settings', scope: 'application', icon: 'models' },
+  machines: {
+    title: '机器与 Runtime', domain: 'machines', scope: 'application', icon: 'modules',
+    keywords: '本机 机器 执行槽 Runtime 引擎 Codex Claude Pi 后台服务 守护进程 算力 可见范围'
+  },
   settings: { title: '设置', domain: 'settings', scope: 'application', icon: 'work-items' },
   integrations: { title: '应用集成', domain: 'integrations', scope: 'mixed', icon: 'integrations', keywords: 'Jira GitHub GitLab Issues Gitee 钉钉 飞书 WeKnora 连接 账号 同步 导入 仓库 通知' },
   automations: { title: '自动化', domain: 'automations', scope: 'local', icon: 'automations', keywords: '团队 空间 规则 触发器 定时 运行历史', commandHint: '当前团队空间' },
@@ -68,14 +72,13 @@ export const PAGE_NAVIGATION = {
 } satisfies Record<Page, PageNavigation>
 
 export const DOMAIN_LABELS: Record<NavigationDomain, string> = {
-  home: '个人', agents: '对话', tasks: '任务', team: '团队协作', members: '组织与成员', knowledge: '资料空间', integrations: '应用集成', automations: '自动化', settings: '设置'
+  home: '个人', agents: '对话', tasks: '任务', team: '工作台', knowledge: '资料空间', machines: '机器与 Runtime', integrations: '应用集成', automations: '自动化', settings: '设置'
 }
 
 export const PRIMARY_NAVIGATION: ReadonlyArray<{ id: ModuleId; page: Page; label: string; shortLabel: string }> = [
+  { id: 'team', page: 'crux', label: '工作台', shortLabel: '工作台' },
   { id: 'agents', page: 'chat', label: '对话', shortLabel: '对话' },
-  { id: 'team', page: 'crux', label: '团队协作', shortLabel: '团队' },
-  { id: 'knowledge', page: 'knowledge', label: '资料空间', shortLabel: '资料' },
-  { id: 'members', page: 'crux', label: '组织与成员', shortLabel: '组织' }
+  { id: 'knowledge', page: 'knowledge', label: '资料空间', shortLabel: '资料' }
 ]
 
 export function getPageNavigation(page: Page): PageNavigation {
@@ -88,7 +91,7 @@ export function pageRequiresProject(page: Page): boolean {
 }
 
 export function hasContextNavigation(page: Page): boolean {
-  return page !== 'automations' && activeModule(page) !== 'integrations'
+  return page !== 'automations' && page !== 'machines' && activeModule(page) !== 'integrations'
 }
 
 export function usesSettingsLayout(page: Page): boolean {
