@@ -43,13 +43,13 @@ export function ModuleLinks({ domain, agentView }: {
       {route('channels', '频道', <Hash size={16} />)}
       </>}
     </> : <>
-      {row('team', '团队与空间资料', page === 'knowledge' && knowledgeView === 'team', <FileText size={16} />, () => knowledge('team'))}
+      {row('team', '空间文档库', page === 'knowledge' && knowledgeView === 'team', <FileText size={16} />, () => knowledge('team'))}
       {row('personal', '我的文档与产物', page === 'knowledge' && knowledgeView === 'personal', <PanelsTopLeft size={16} />, () => knowledge('personal'))}
       {row('company', '企业知识库', page === 'knowledge' && knowledgeView === 'company', <Cloud size={16} />, () => knowledge('company'))}
-      {hasProject && <>
+      {hasProject ? <>
         {row('project', '当前目录资料', page === 'knowledge' && knowledgeView === 'project', <FolderOpen size={16} />, () => knowledge('project'))}
-        {route('spec', '规范', <BookOpen size={16} />)}
-      </>}
+        {route('spec', '项目规范', <BookOpen size={16} />)}
+      </> : row('project', '本机目录资料', page === 'knowledge' && knowledgeView === 'project', <FolderOpen size={16} />, () => knowledge('project'))}
     </>}
   </nav>
 }

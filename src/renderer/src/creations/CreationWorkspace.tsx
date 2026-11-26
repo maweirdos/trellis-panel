@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Code2, FileText, Grid2X2, LineChart, Link2, List, Loader2, LockKeyhole, MessageSquare, Monitor, MousePointer2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Code2, FileText, Grid2X2, LineChart, Link2, List, Loader2, LockKeyhole, MessageSquare, Monitor, MousePointer2, Pencil, Plus, RefreshCw, Save, Search, X } from 'lucide-react'
 import { creationTargetSchema, type CreationComment, type CreationSummary, type CreationView } from '@shared/creations'
 import { WHITEBOARD_V2_CAPABILITIES } from '@shared/creation-whiteboard-v2'
 import { creationTargetToPreviewTarget, previewTargetToCreationTarget, type PreviewAnchorStatus, type PreviewTarget } from '@shared/creation-preview'
@@ -346,12 +346,19 @@ function CreationListRow({
   )
 }
 
-export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' | 'team' }): JSX.Element {
+export function CreationWorkspace({
+  scope = 'personal',
+  embedded = false
+}: {
+  scope?: 'personal' | 'team'
+  embedded?: boolean
+}): JSX.Element {
   const context = useCrux((state) => state.workspaceContext)
   const snapshot = useCrux((state) => state.snapshot)
   const bootstrap = useCrux((state) => state.bootstrap)
   const loadError = useCrux((state) => state.loadError)
   const currentSpaceId = useCrux((state) => state.currentSpaceId)
+  const setCurrentSpace = useCrux((state) => state.setCurrentSpace)
   const target = useCreationNavigation((state) => state.target)
   const matching = target && target.workspaceKey === context.key && target.actorId === context.actorId && target.scope === scope && (scope === 'personal' || target.spaceId === currentSpaceId) ? target : null
   const activeScope = matching?.scope ?? scope
@@ -420,44 +427,65 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
     return false
   })
 
-  // Dynamic counts for category pills
+  // Dynamic counts for real category pills (only show categories backed by real data)
   const countAll = loaded.length + designItems.length
   const countDesign = designItems.length
-  const countDoc = loaded.filter(i => i.kind === 'document').length
-  const countChart = loaded.filter(i => i.kind === 'prototype').length
+  const countDoc = loaded.filter((i) => i.kind === 'document').length
+  const countChart = loaded.filter((i) => i.kind === 'prototype').length
+  const hasDesignSupport = activeScope === 'personal' && Boolean(designClient())
 
   const categoryTabs: { id: CreationCategory; label: string; count: number }[] = [
     { id: 'all', label: '全部', count: countAll },
-    { id: 'design', label: '设计稿', count: countDesign },
     { id: 'document', label: '文档', count: countDoc },
-    { id: 'slides', label: '幻灯片', count: 0 },
-    { id: 'chart', label: '图表', count: countChart },
-    { id: 'whiteboard', label: '白板', count: 0 },
-    { id: 'table', label: '表格', count: 0 },
-    { id: 'image', label: '图片', count: 0 }
+    { id: 'chart', label: '交互原型', count: countChart },
+    ...(hasDesignSupport ? [{ id: 'design' as const, label: '设计稿', count: countDesign }] : [])
   ]
 
   const initiallyLoading = pendingSearch || (!combined.length && ((query.busy && !data) || (activeScope === 'personal' && designs.busy && !designs.items.length)))
-  const workspaceName = context.key || 'local'
+  const accessibleSpaces = snapshot?.spaces.filter(
+    (space) => !space.archived && (!context.actorId || space.memberIds.includes(context.actorId))
+  ) ?? []
+  const workspaceName =
+    activeScope === 'team'
+      ? selectedSpace?.name ?? '空间文档'
+      : '个人草稿'
+  const pageTitle =
+    activeScope === 'team'
+      ? selectedSpace
+        ? `${selectedSpace.name} · 文档与产物`
+        : '空间文档与产物'
+      : '我的文档与产物'
+  const pageDescription =
+    activeScope === 'team'
+      ? '当前空间成员共享的文档、方案与交互原型，支持评审修订并直接采纳到空间任务。'
+      : '个人私密草稿、设计稿与交互原型；整理就绪后可一键发布评审版到任意空间。'
 
   return (
     <PageLayout variant="full" className="creation-workspace">
-      <PageHeader>
-        <span className="my-item-title">产物</span>
-        <span className="creation-grow" />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="刷新产物列表"
-          disabled={query.busy || designs.busy}
-          onClick={() => {
-            void query.refresh()
-            void designs.refresh()
-          }}
-        >
-          <RefreshCw size={14} />
-        </Button>
-      </PageHeader>
+      {!embedded && (
+        <PageHeader>
+          <span className="my-item-title">{pageTitle}</span>
+          <span className="creation-grow" />
+          {canCreate && (
+            <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+              <Plus size={14} />
+              {activeScope === 'team' ? '新建空间文档' : '新建文档'}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="刷新产物列表"
+            disabled={query.busy || designs.busy}
+            onClick={() => {
+              void query.refresh()
+              void designs.refresh()
+            }}
+          >
+            <RefreshCw size={14} />
+          </Button>
+        </PageHeader>
+      )}
 
       <PageBody
         className="creation-list-body"
@@ -468,13 +496,11 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
         <div ref={listMarker} hidden />
         <div className="creation-container">
           <div className="creation-hero">
-            <h1 className="creation-hero-title">产物</h1>
-            <p className="creation-hero-description">
-              在各个项目和会话里做出的设计稿、文档、幻灯片和白板，点开即可查看、修改或回到会话继续。
-            </p>
+            <h1 className="creation-hero-title">{pageTitle}</h1>
+            <p className="creation-hero-description">{pageDescription}</p>
           </div>
 
-          {/* Single-line compact toolbar matching Fig 2 benchmark */}
+          {/* Single-line compact toolbar */}
           <div className="creation-list-toolbar">
             <label className="creation-search">
               <Search size={14} aria-hidden="true" />
@@ -482,25 +508,26 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
                 className="my-input"
                 type="search"
                 maxLength={200}
-                aria-label="搜索产物名称"
-                placeholder="搜索产物"
+                aria-label="搜索文档或产物名称"
+                placeholder={activeScope === 'team' ? '搜索空间文档与产物' : '搜索个人文档与产物'}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
+            {activeScope === 'team' && !embedded && accessibleSpaces.length > 0 && (
+              <Select
+                size="sm"
+                ariaLabel="切换空间"
+                value={spaceId ?? ''}
+                onChange={(nextSpaceId) => {
+                  if (nextSpaceId) setCurrentSpace(nextSpaceId)
+                }}
+                options={accessibleSpaces.map((s) => ({ value: s.id, label: `${s.name} (${s.key})` }))}
+              />
+            )}
             <Select
               size="sm"
-              ariaLabel="项目筛选"
-              value={activeScope}
-              onChange={() => {}}
-              options={[
-                { value: 'personal', label: '全部项目' },
-                ...(snapshot?.spaces.map((s) => ({ value: s.id, label: s.name })) ?? [])
-              ]}
-            />
-            <Select
-              size="sm"
-              ariaLabel="产物排序"
+              ariaLabel="排序方式"
               value={sort}
               onChange={setSort}
               options={[
@@ -508,7 +535,7 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
                 { value: 'name', label: '名称' }
               ]}
             />
-            <div className="creation-view-switch" role="group" aria-label="产物视图">
+            <div className="creation-view-switch" role="group" aria-label="视图切换">
               <button
                 type="button"
                 aria-label="网格视图"
@@ -526,6 +553,29 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
                 <List size={14} />
               </button>
             </div>
+            <span className="creation-grow" />
+            {embedded && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="刷新列表"
+                  disabled={query.busy || designs.busy}
+                  onClick={() => {
+                    void query.refresh()
+                    void designs.refresh()
+                  }}
+                >
+                  <RefreshCw size={14} />
+                </Button>
+                {canCreate && (
+                  <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+                    <Plus size={14} />
+                    新建空间文档
+                  </Button>
+                )}
+              </>
+            )}
           </div>
 
           {/* New types 5-card row */}
@@ -621,8 +671,28 @@ export function CreationWorkspace({ scope = 'personal' }: { scope?: 'personal' |
               <>
                 {displayedCombined.length === 0 && !designs.error && (
                   <EmptyState
-                    title={filtered ? '没有找到匹配的产物' : '还没有产物'}
-                    description={filtered ? '试试其他筛选条件' : '从新建设计开始，或导入文档与 HTML'}
+                    title={
+                      filtered
+                        ? '没有找到匹配的文档或产物'
+                        : activeScope === 'team'
+                          ? '当前空间还没有文档与产物'
+                          : '还没有个人文档与产物'
+                    }
+                    description={
+                      filtered
+                        ? '试试调整关键词或切换分类筛选'
+                        : activeScope === 'team'
+                          ? '新建或导入 Markdown 文档与交互原型，供空间成员和 Agent 共同评审与采纳到任务。'
+                          : '从新建文档、交互原型或设计稿开始，整理就绪后可随时发布到任意空间。'
+                    }
+                    action={
+                      !filtered && canCreate ? (
+                        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+                          <Plus size={14} />
+                          {activeScope === 'team' ? '新建空间文档' : '新建文档'}
+                        </Button>
+                      ) : undefined
+                    }
                   />
                 )}
                 {displayedCombined.length > 0 && (

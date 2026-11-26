@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { useCrux } from '../crux/store'
 
 export type CreationLocation = {
@@ -33,9 +34,15 @@ export function openCreation(target: CreationLocation): void {
   if (navigate) navigate(target)
   else if (target.scope === 'team') {
     if (target.spaceId && useCrux.getState().currentSpaceId !== target.spaceId) useCrux.getState().setCurrentSpace(target.spaceId)
-    useCrux.getState().setModule('creations')
-    useApp.getState().setPage('crux')
-  } else useApp.getState().setPage('creations')
+    const inKnowledgeSpaceDocs = useApp.getState().page === 'knowledge' && useMy.getState().knowledgeView === 'team'
+    if (!inKnowledgeSpaceDocs) {
+      useCrux.getState().setModule('creations')
+      useApp.getState().setPage('crux')
+    }
+  } else {
+    const inKnowledgePersonal = useApp.getState().page === 'knowledge' && useMy.getState().knowledgeView === 'personal'
+    if (!inKnowledgePersonal) useApp.getState().setPage('creations')
+  }
 }
 
 export function clearCreationTarget(): void {

@@ -41,7 +41,7 @@ import { useKnowledgeDiscussion } from '../knowledge/discussion-panel'
 import { KnowledgeScopeControl } from '../knowledge/KnowledgeScopeControl'
 import { KnowledgeSourceView } from '../knowledge/KnowledgeSourceView'
 import { KnowledgeBrowser } from '../knowledge/KnowledgeBrowser'
-import { TeamPublishedKnowledge } from '../knowledge/TeamPublishedKnowledge'
+import { SpaceKnowledgeHub } from '../knowledge/SpaceKnowledgeHub'
 import '../knowledge/KnowledgeBrowser.css'
 import { knowledgeBridge, knowledgeError, knowledgeStatusLabel, requireKnowledge, useProjectKnowledge } from '../knowledge/bridge'
 import type { KnowledgeCollection, KnowledgeDocument, KnowledgeFolderTree, KnowledgeSource } from '../../../shared/knowledge-access'
@@ -115,7 +115,7 @@ export function KnowledgePage(): JSX.Element {
       <ModuleLinks domain="knowledge" />
     </div></ContextRegion>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
-      {knowledgeView === 'team' ? <TeamPublishedKnowledge /> : knowledgeView === 'personal' ? (
+      {knowledgeView === 'team' ? <SpaceKnowledgeHub host="desktop" showSpaceSwitcher /> : knowledgeView === 'personal' ? (
         <Suspense fallback={<PageLoading />}><CreationWorkspace scope="personal" /></Suspense>
       ) : knowledgeView === 'company' ? (
         <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="企业知识库">
@@ -128,12 +128,12 @@ export function KnowledgePage(): JSX.Element {
           {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
         </section>
       ) : (
-        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="当前目录资料">
-          <h2 className="my-item-title">打开本机目录以读取项目资料</h2>
-          <p className="my-item-description">当前未打开本地项目目录；你仍可随时查看团队固定版资料或我的个人产物。</p>
+        <section className="m-auto flex max-w-md flex-col items-center gap-3 p-6 text-center" aria-label="本机目录资料">
+          <h2 className="my-item-title">打开本机目录以读取仓库资料与规范</h2>
+          <p className="my-item-description">当前未挂载本地代码目录；你仍可随时在「空间文档库」协作空间文档，或在「我的文档与产物」整理个人草稿。</p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button variant="outline" onClick={() => void pickAndOpen({ keepPage: true })}>打开本机项目目录…</Button>
-            <Button variant="ghost" onClick={() => useMy.getState().setKnowledgeView('team')}>查看团队与空间资料</Button>
+            <Button variant="ghost" onClick={() => useMy.getState().setKnowledgeView('team')}>查看空间文档库</Button>
           </div>
           {openError && <p role="alert" className="text-my-sm text-my-danger-text">{openError}</p>}
         </section>

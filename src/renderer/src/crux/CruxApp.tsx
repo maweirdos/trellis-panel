@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { resolveSpaceModules } from '@shared/crux-space-presets'
 import { inboxGroups, observeCollaborationWorkspace, useCrux } from './store'
 import { WorkspaceNavigation } from './WorkspaceNavigation'
@@ -25,10 +25,9 @@ import { ViewsPage } from './pages/ViewsPage'
 import { ConfigurationPage } from './pages/ConfigurationPage'
 import { EmbeddedTaskPost, NewTaskModal } from './pages/TaskDetailDrawer'
 import { SpaceSetupWizard } from './account/SpaceSetupWizard'
+import { SpaceKnowledgeHub } from '../knowledge/SpaceKnowledgeHub'
 import './collaboration.css'
 import { ConnectionPanel } from './ConnectionPanel'
-
-const CreationWorkspace = lazy(() => import('../creations/CreationWorkspace').then((module) => ({ default: module.CreationWorkspace })))
 
 /** Both personal and team task surfaces follow the same collaboration source. */
 export function useCollaborationWorkspace(): number {
@@ -105,7 +104,7 @@ export function CruxApp({ host = 'desktop', webInvitation, webSpaceAction, autom
       <div hidden={separateReader} className={separateReader ? undefined : 'contents'}>
       {module === 'overview' && <OverviewPage />}{module === 'my-tasks' && <TaskWorkspace scope="mine" />}{module === 'all-agents' && <AgentDirectoryPage />}{module === 'views' && <ViewsPage />}{module === 'tasks' && <TaskWorkspace scope="space" />}{module === 'board' && <TaskWorkspace scope="space" layout="board" />}{module === 'inbox' && <InboxPage />}{module === 'triage' && <TaskWorkspace scope="triage" />}{module === 'projects' && <ProjectsPage />}{module === 'iterations' && <IterationsPage renderTasks={(tasks, iteration) => <TaskWorkspace scope="space" iterationId={iteration.id} taskIds={tasks.map((task) => task.id)} />} />}{module === 'members' && <MembersPage webInvitation={webInvitation} />}{module === 'spaces' && <SpacesPage />}{module === 'agents' && <AgentsPage />}{module === 'skills' && <SkillsPage />}{module === 'crews' && <CrewsPage />}{module === 'automations' && <AutomationsPage />}
       {module === 'task-types' && <ConfigurationPage kind="types" />}{module === 'task-statuses' && <ConfigurationPage kind="statuses" />}{module === 'task-labels' && <ConfigurationPage kind="labels" />}
-      {module === 'creations' && <Suspense fallback={<div role="status" className="grid h-full place-items-center text-my-sm text-my-tertiary">正在加载产物…</div>}><CreationWorkspace scope="team" /></Suspense>}
+      {module === 'creations' && <SpaceKnowledgeHub host={host} showSpaceSwitcher={false} />}
       </div></div><NewTaskModal {...createTaskContext} open={createTaskOpen} onClose={() => setCreateTaskOpen(false)} />
     </fieldset>
     <Modal open={needsSpaceInit} onClose={() => {}} width={760} ariaLabel="初始化默认空间">

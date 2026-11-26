@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, ChevronDown, ChevronRight, Plus, Settings2, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Settings2, Sparkles } from 'lucide-react'
 import type { CruxSpaceModules } from '@shared/crux'
 import { resolveSpaceModules } from '@shared/crux-space-presets'
-import { useApp } from '../store'
-import { useMy } from '../my/store'
 import { Modal } from '../my/ui'
 import { useAgentChatBridge } from './agent-chat-bridge'
 import { FlowIcon } from './icons'
@@ -99,16 +97,6 @@ export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: num
             </div>
             {open && <div id={`nav-space-${space.id}`} className="collab-nav-space-content">
               {roots.map((entry) => branch(entry, space.id, enabledModules))}
-              {enabledModules.docs && (
-                <button type="button" className="collab-nav-item" onClick={() => {
-                  if (space.id !== currentSpaceId) setCurrentSpace(space.id)
-                  useMy.getState().setKnowledgeView('team')
-                  useApp.getState().setPage('knowledge')
-                }}>
-                  <BookOpen size={17} className="shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">文档库</span>
-                </button>
-              )}
               <details key={`${space.id}:${active?.group === '配置'}`} open={active?.group === '配置' || undefined} className="group collab-nav-config"><summary className="collab-nav-section-heading cursor-pointer">配置<ChevronDown size={14} className="transition-transform group-open:rotate-180" /></summary>{configuration.map((entry) => item(entry, space.id))}</details>
             </div>}
           </section>
