@@ -3,7 +3,7 @@ import { ArrowUpRight, Cpu, MessageCircle, Settings2 } from 'lucide-react'
 import type { CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
 import type { AcpAgentStatus } from '../../../../shared/types'
 import { runtimeHealthLabel } from '../../acp/runtime-status'
-import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
+import { ensureRuntimeInventoryLoaded, getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { useApp } from '../../store'
 import { Button, EmptyState, SearchInput } from '../../my/ui'
 import { FlowIcon } from '../icons'
@@ -30,7 +30,11 @@ export function AgentDirectoryPage(): JSX.Element | null {
   const [keyword, setKeyword] = useState('')
   const [spaceFilter, setSpaceFilter] = useState('')
   const [detectedRuntimes, setDetectedRuntimes] = useState<AcpAgentStatus[]>(getRuntimeInventorySnapshot)
-  useEffect(() => subscribeRuntimeInventory(setDetectedRuntimes), [])
+  useEffect(() => {
+    const unsubscribe = subscribeRuntimeInventory(setDetectedRuntimes)
+    void ensureRuntimeInventoryLoaded()
+    return unsubscribe
+  }, [])
   if (!snapshot) return null
   // The authoritative snapshot supplies accessible entities. Keep their owning
   // space even in the global directory; exclusive agents belong to crew settings.

@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { Activity, Blocks, BookOpen, ChevronRight, CircleHelp, CircleUser, Cpu, FileText, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, Wrench, X } from 'lucide-react'
-import { api, hasIpc } from '../../api'
-import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
+import { ensureRuntimeInventoryLoaded, getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { useApp, type Page } from '../../store'
 import { inboxGroups, useCrux } from '../../crux/store'
 import { useMy } from '../store'
@@ -41,11 +40,7 @@ export function WorkspaceSidebar(): JSX.Element {
 
   useEffect(() => {
     const unsubscribe = subscribeRuntimeInventory((agents) => setReadyRuntimeCount(countReadyRuntimes(agents)))
-    if (hasIpc && getRuntimeInventorySnapshot().length === 0) {
-      void api.acpAgents().then((reply) => {
-        if (reply.ok && reply.agents) setReadyRuntimeCount(countReadyRuntimes(reply.agents))
-      }).catch(() => undefined)
-    }
+    void ensureRuntimeInventoryLoaded()
     return unsubscribe
   }, [])
 

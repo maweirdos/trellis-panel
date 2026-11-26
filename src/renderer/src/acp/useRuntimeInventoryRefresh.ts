@@ -6,13 +6,27 @@ import type { AcpAgentStatus } from '../../../shared/types'
 const INVENTORY_INTERVAL_MS = 30_000
 const FOCUS_BURST_MS = 1_000
 let inventorySnapshot: AcpAgentStatus[] = []
+let inventoryWarmup: Promise<void> | null = null
 const inventoryListeners = new Set<(agents: AcpAgentStatus[]) => void>()
 
-function emitInventorySnapshot(agents: AcpAgentStatus[]): void {
+export function publishRuntimeInventorySnapshot(agents: AcpAgentStatus[]): void {
   inventorySnapshot = agents
   for (const listener of inventoryListeners) {
     try { listener(agents) } catch { /* 订阅方异常不影响其他监听者 */ }
   }
+}
+
+/** 首次未探测过本机 Runtime 时，静默拉取一次并向侧栏、Agent 目录与机器页广播。 */
+export function ensureRuntimeInventoryLoaded(): Promise<void> {
+  if (!hasIpc || inventorySnapshot.length > 0) return Promise.resolve()
+  if (inventoryWarmup) return inventoryWarmup
+  inventoryWarmup = api.acpAgents()
+    .then((reply) => {
+      if (reply.ok && reply.agents) publishRuntimeInventorySnapshot(reply.agents)
+    })
+    .catch(() => undefined)
+    .finally(() => { inventoryWarmup = null })
+  return inventoryWarmup
 }
 
 /** Last displayed local inventory; the visible panel still revalidates it on entry. */
@@ -44,7 +58,7 @@ export function useRuntimeInventoryRefresh(options: {
   const [reading, setReading] = useState(options.enabled && hasIpc && active)
   const [checkingRuntimeId, setCheckingRuntimeId] = useState<string | null>(null)
   useEffect(() => {
-    if (options.enabled) emitInventorySnapshot(options.agents)
+    if (options.enabled) publishRuntimeInventorySnapshot(options.agents)
     setError(null)
   }, [options.agents, options.enabled])
   const invalidate = useCallback(() => { request.current.revision++ }, [])
@@ -78,7 +92,7 @@ export function useRuntimeInventoryRefresh(options: {
         && latest.current.isCurrent() && sources.has(latest.current.agents)
       const publish = (agents: AcpAgentStatus[]): void => {
         sources.add(agents)
-        emitInventorySnapshot(agents)
+        publishRuntimeInventorySnapshot(agents)
         latest.current.onChange(agents)
       }
       request.current.pending = true

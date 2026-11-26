@@ -5,7 +5,7 @@ import type { CruxAgent, CruxAgentInput, CruxRuntimeKind, CruxWorkingDirectoryMo
 import type { AcpAgentStatus } from '../../../../shared/types'
 import { api } from '../../api'
 import { runtimeHealthLabel } from '../../acp/runtime-status'
-import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
+import { ensureRuntimeInventoryLoaded, getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import { FlowIcon } from '../icons'
 import { useAgentChatBridge } from '../agent-chat-bridge'
@@ -43,7 +43,11 @@ export function AgentsPage(): JSX.Element | null {
   const [editing, setEditing] = useState<CruxAgent | 'new' | null>(null)
   const [view, setView] = useState<AgentView>('active')
   const [keyword, setKeyword] = useState('')
-  useEffect(() => subscribeRuntimeInventory(setDetectedRuntimes), [])
+  useEffect(() => {
+    const unsubscribe = subscribeRuntimeInventory(setDetectedRuntimes)
+    void ensureRuntimeInventoryLoaded()
+    return unsubscribe
+  }, [])
   if (!snapshot) return null
   const agents = snapshot.agents.filter((agent) => agent.spaceId === currentSpaceId &&
     `${agent.name} ${agent.description ?? ''}`.toLowerCase().includes(keyword.toLowerCase()) &&
