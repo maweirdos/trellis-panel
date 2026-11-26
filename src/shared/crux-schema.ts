@@ -8,6 +8,20 @@ import { adoptTaskDeliveryProtocolSchema, taskDeliveryEventLinksSchema, taskDeli
 export const cruxInitialTaskTypeSchema = z.enum(['需求', 'Bug', '任务', '内容'])
 export const cruxInitialTaskTypesSchema = z.array(cruxInitialTaskTypeSchema).min(1).max(4)
   .refine((types) => new Set(types).size === types.length, '任务类型不能重复')
+export const cruxSpaceTemplateSchema = z.enum([
+  'software', 'product', 'marketing', 'design', 'project', 'operations', 'it', 'hr', 'support', 'legal', 'finance', 'sales', 'data', 'other'
+])
+export const cruxSpaceModulesSchema = z.object({
+  views: z.boolean(),
+  iterations: z.boolean(),
+  projects: z.boolean(),
+  triage: z.boolean(),
+  docs: z.boolean(),
+  automations: z.boolean(),
+  agents: z.boolean(),
+  skills: z.boolean()
+}).strict()
+export const cruxSpaceModulesPatchSchema = cruxSpaceModulesSchema.partial().strict()
 
 // Validate persisted data before exposing it to services. Additive fields are retained.
 const id = z.string().min(1)
@@ -169,7 +183,21 @@ export const cruxCrewInputSchema = z.object({
   exclusiveAgentIds: ids.max(2000).optional(), archived: z.boolean().optional()
 }).strict().refine((input) => Number(input.captainAgentId !== undefined) + Number(input.captainMemberId !== undefined) === 1, '请选择且仅选择一名人员或 Agent 队长')
 export const cruxSnapshotSchema = z.object({
-  spaces: z.array(record.extend({ name: z.string(), key: id, description: z.string().optional(), visibility: z.enum(['public', 'private']).optional(), ownerId: id.optional(), archived: z.boolean().optional(), memberIds: ids, multiAssignee: z.boolean(), taskSeq: z.number().int().nonnegative(), createdAt: z.string() })),
+  spaces: z.array(record.extend({
+    name: z.string(),
+    key: id,
+    description: z.string().optional(),
+    visibility: z.enum(['public', 'private']).optional(),
+    ownerId: id.optional(),
+    archived: z.boolean().optional(),
+    template: cruxSpaceTemplateSchema.optional(),
+    enabledModules: cruxSpaceModulesSchema.optional(),
+    initialized: z.boolean().optional(),
+    memberIds: ids,
+    multiAssignee: z.boolean(),
+    taskSeq: z.number().int().nonnegative(),
+    createdAt: z.string()
+  })),
   members: z.array(record.extend({ name: z.string(), email: z.string().optional(), title: z.string().optional(), role: z.enum(['owner', 'admin', 'member']), projectRoles: z.array(teamRoleSchema).min(1).max(5).optional(), avatarHue: z.number(), joinedAt: z.string() })),
   taskTypes: z.array(record.extend({ spaceId: id, name: z.string(), requiredHints: z.array(z.string()).optional(), statusIds: ids.optional(), isDefault: z.boolean().optional() })),
   taskStatuses: z.array(record.extend({ spaceId: id, name: z.string(), category: z.enum(['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled']), order: z.number() })),

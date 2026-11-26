@@ -11,9 +11,10 @@ export interface ConnectionPanelProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   hideTrigger?: boolean
-  initialStep?: 'entry' | 'accounts' | 'auth'
+  initialStep?: 'entry' | 'accounts' | 'auth' | 'organizations' | 'create-organization'
   returnToOnboarding?: boolean
 }
+
 export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onOpenChange, hideTrigger = false, initialStep, returnToOnboarding = false }: ConnectionPanelProps = {}): JSX.Element {
   const workspaceContext = useCrux((state) => state.workspaceContext)
   const selectWorkspace = useCrux((state) => state.selectWorkspace)
@@ -27,12 +28,12 @@ export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onO
     onOpenChange?.(value)
   }
   const label = workspaceContext.state === 'local'
-    ? '登录 / 注册'
+    ? '登录 / 切换组织'
     : workspaceContext.state === 'connected'
-      ? workspaceContext.projectName ?? '团队工作区'
+      ? workspaceContext.projectName ?? '团队组织'
       : workspaceContext.state === 'offline'
-        ? `${workspaceContext.projectName ?? '团队工作区'} · 离线`
-        : '团队工作区 · 访问失效'
+        ? `${workspaceContext.projectName ?? '团队组织'} · 离线`
+        : '登录已过期 · 点击恢复'
 
   return <>
     {!hideTrigger && <button
@@ -40,16 +41,16 @@ export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onO
       disabled={!hasIpc}
       onClick={() => setOpen(true)}
       className="flex min-h-8 w-full items-center gap-2 rounded-my-md py-1 text-left text-my-xs text-my-secondary hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
-      aria-label={workspaceContext.state === 'local' ? '登录 / 注册' : trigger === 'connect' ? '打开账号与工作区' : '选择本机或团队工作区'}
+      aria-label={workspaceContext.state === 'local' ? '登录团队账号或创建组织' : trigger === 'connect' ? '管理账号与组织' : '切换组织或本机模式'}
     >
       <Globe size={15} />
-      <span className="min-w-0 flex-1 truncate">{trigger === 'connect' && workspaceContext.state !== 'local' ? '账号与工作区' : label}</span>
+      <span className="min-w-0 flex-1 truncate">{trigger === 'connect' && workspaceContext.state !== 'local' ? '切换组织' : label}</span>
       {workspaceContext.pendingCount > 0 && <span>{workspaceContext.pendingCount} 待核对</span>}
     </button>}
-    <Modal open={open} onClose={() => requestCloseRef.current?.()} fullScreen ariaLabel="账号、组织与工作区">
+    <Modal open={open} onClose={() => requestCloseRef.current?.()} fullScreen ariaLabel="账号与组织">
       <AccountFlow
         open={open}
-        initialStep={initialStep ?? (workspaceContext.state === 'local' ? 'auth' : 'entry')}
+        initialStep={initialStep ?? (workspaceContext.state === 'local' ? 'organizations' : 'organizations')}
         returnToOnboarding={returnToOnboarding}
         currentConnectionId={workspaceContext.connectionId}
         currentIsLocal={workspaceContext.state === 'local'}

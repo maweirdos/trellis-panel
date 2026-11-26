@@ -9,7 +9,7 @@ import * as agents from './agents'
 import * as workflow from './workflow'
 import { recordTaskDelivery } from './task-delivery'
 import { recordTaskDeliveryInputSchema, type TaskDeliveryDependencies } from '../task-delivery'
-import { cruxTaskHandoffSchema, cruxCrewInputSchema, cruxTaskWorkKindSchema, cruxTransitionTaskInputSchema, cruxRecordVersionDeliveryInputSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypesSchema } from '../crux-schema'
+import { cruxTaskHandoffSchema, cruxCrewInputSchema, cruxTaskWorkKindSchema, cruxTransitionTaskInputSchema, cruxRecordVersionDeliveryInputSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypesSchema, cruxSpaceTemplateSchema, cruxSpaceModulesPatchSchema } from '../crux-schema'
 
 const id = z.string().min(1).max(256)
 const ids = z.array(id).max(2000)
@@ -29,8 +29,8 @@ const agentFields = { spaceId: id, name, description: text.optional(), instructi
 const inboxSelection = { ids: ids.optional(), all: z.boolean().optional(), section: z.enum(['important', 'other']).optional() }
 
 export const cruxMutationInputSchemas = {
-  createSpace: z.object({ name, key: name, description: text.optional(), visibility: z.enum(['public', 'private']).optional(), initialTaskTypes: cruxInitialTaskTypesSchema.optional() }).strict(),
-  updateSpace: z.object({ id, name: name.optional(), description: text.optional(), multiAssignee: z.boolean().optional(), visibility: z.enum(['public', 'private']).optional(), archived: z.boolean().optional() }).strict(),
+  createSpace: z.object({ name, key: name, description: text.optional(), visibility: z.enum(['public', 'private']).optional(), initialTaskTypes: cruxInitialTaskTypesSchema.optional(), template: cruxSpaceTemplateSchema.optional(), enabledModules: cruxSpaceModulesPatchSchema.optional(), initialized: z.boolean().optional(), seedStarterTask: z.boolean().optional() }).strict(),
+  updateSpace: z.object({ id, name: name.optional(), description: text.optional(), multiAssignee: z.boolean().optional(), visibility: z.enum(['public', 'private']).optional(), archived: z.boolean().optional(), template: cruxSpaceTemplateSchema.optional(), enabledModules: cruxSpaceModulesPatchSchema.optional(), initialized: z.boolean().optional(), initialTaskTypes: cruxInitialTaskTypesSchema.optional(), seedStarterTask: z.boolean().optional() }).strict(),
   joinSpace: z.object({ spaceId: id, memberId: id.optional() }).strict(),
   inviteMember: z.object({ name, email: z.string().max(320).optional(), title: text.optional(), role: role.optional(), spaceId: id.optional() }).strict(),
   updateMember: z.object({ id, name: name.optional(), email: z.string().max(320).optional(), title: text.optional(), role: role.optional() }).strict(),

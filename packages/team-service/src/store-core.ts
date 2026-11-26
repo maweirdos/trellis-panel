@@ -441,8 +441,13 @@ export class TeamStoreCore {
   }
   private authenticate(actor: StoreActor): StorePrincipal {
     if (actor.kind === 'session') {
-      const row = this.get('SELECT p.*,s.csrfToken FROM sessions s JOIN people p ON p.userId=s.userId WHERE s.sessionHash=? AND s.expiresAt>? AND p.active=1', actor.credentialHash, now())
+      const currentTime = now()
+      const row = this.get('SELECT p.*,s.csrfToken,s.expiresAt FROM sessions s JOIN people p ON p.userId=s.userId WHERE s.sessionHash=? AND s.expiresAt>? AND p.active=1', actor.credentialHash, currentTime)
       if (!row) throw new TeamServiceError('UNAUTHORIZED', 'Authentication is required', 401)
+      const remaining = integer(row, 'expiresAt') - currentTime
+      if (remaining < Math.floor(this.options.sessionTtlMs / 2)) {
+        this.run('UPDATE sessions SET expiresAt=? WHERE sessionHash=?', currentTime + this.options.sessionTtlMs, actor.credentialHash)
+      }
       return { person: this.person(row), actor, deviceId: null, projectId: null, csrfToken: text(row, 'csrfToken') }
     }
     const row = this.get('SELECT p.*,d.deviceId,d.projectId FROM devices d JOIN people p ON p.userId=d.ownerId WHERE d.credentialHash=? AND d.status=? AND p.active=1', actor.credentialHash, 'active')
@@ -905,7 +910,7 @@ export class TeamStoreCore {
         this.run('INSERT INTO team_members(teamId,userId,rolesJson,active,revision) VALUES(?,?,?,1,1)', teamId, p.person.userId, JSON.stringify(['owner']))
         this.run('INSERT INTO projects(projectId,teamId,name,createdAt) VALUES(?,?,?,?)', projectId, teamId, input.name, timestamp)
         this.run('INSERT INTO project_members(projectId,userId,rolesJson,active,revision) VALUES(?,?,?,1,1)', projectId, p.person.userId, JSON.stringify(['admin']))
-        const spaceId = this.crux.bootstrapDefaultSpace(p, projectId, input.commandId)
+        const spaceId = this.crux.bootstrapDefaultSpace(p, projectId, input.commandId, { key: input.spaceKey, initialized: false })
         this.bumpAuthorization()
         this.event('team.created', 'team', teamId, null, { teamId, name: input.name })
         this.event('project.created', 'project', projectId, projectId, { projectId, teamId, name: input.name })

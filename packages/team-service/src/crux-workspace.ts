@@ -462,10 +462,11 @@ export class TeamCruxWorkspace {
     return { instanceId: result.instanceId, projectId, spaceId, taskId: task.id, taskCreatedAt: task.createdAt }
   }
 
-  bootstrapDefaultSpace(principal: StorePrincipal, projectId: string, commandId: string): string {
+  bootstrapDefaultSpace(principal: StorePrincipal, projectId: string, commandId: string, options?: { key?: string; initialized?: boolean }): string {
+    const key = options?.key && /^[A-Z0-9]{2,7}$/.test(options.key) ? options.key : 'MAIN'
     const result = this.applyBusinessCommand(principal, projectId, {
       commandId, expectedEpoch: this.host.identity().epoch, expectedRevision: 0,
-      operation: 'createSpace', input: { name: '默认空间', key: 'MAIN', visibility: 'public' }
+      operation: 'createSpace', input: { name: '默认空间', key, visibility: 'public', initialized: options?.initialized ?? false }
     })
     const [space] = result.snapshot.spaces
     if (!space || result.snapshot.spaces.length !== 1 || space.ownerId !== principal.person.userId) throw new TeamServiceError('CORRUPT_STORE', 'Default space was not initialized', 503)

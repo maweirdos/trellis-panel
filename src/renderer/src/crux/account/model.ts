@@ -4,11 +4,11 @@ import type { TeamAuthFeedback } from '@shared/team-auth-feedback'
 import type { TeamRole } from '@shared/team-platform'
 import { DEFAULT_TEAM_ORIGIN } from '../../team-service-origin'
 
-export type AccountFlowStep = 'entry' | 'accounts' | 'auth' | 'scope' | 'create-organization' | 'create-workspace' | 'accept-invitation' | 'device' | 'space' | 'confirm-switch'
+export type AccountFlowStep = 'auth' | 'organizations' | 'create-organization' | 'accept-invitation' | 'space-setup'
 export type AccountAuthMode = 'login' | 'register'
 export type AccountAuthProvider = 'local' | 'gitlab' | 'oidc'
 export type OrganizationMembershipRole = 'owner' | 'admin' | 'member'
-export type AccountOperation = 'load' | 'authenticate' | 'scope' | 'connect' | 'switch' | 'logout' | 'disconnect' | 'pending'
+export type AccountOperation = 'load' | 'authenticate' | 'organization' | 'switch' | 'logout' | 'pending'
 
 export interface DesktopWorkspaceChoice {
   connectionId: string | null
@@ -48,10 +48,6 @@ export interface DesktopAccountSession {
   provider: AccountAuthProvider
   origin: string
 }
-
-export type AccountSwitchTarget =
-  | { kind: 'local' }
-  | { kind: 'workspace'; workspace: DesktopWorkspaceChoice }
 
 export interface DesktopScopeWorkspace {
   workspaceId: string
@@ -105,228 +101,28 @@ export interface AccountDraft {
   confirmPassword: string
   invitationToken: string
   organizationName: string
-  workspaceName: string
-  spaceName: string
-  spaceKey: string
-  deviceName: string
+  organizationSpaceKey: string
+  spaceKeyEdited: boolean
 }
 
-export interface AccountFlowState {
-  step: AccountFlowStep
-  previousStep: Exclude<AccountFlowStep, 'confirm-switch'>
-  authMode: AccountAuthMode
-  authProvider: AccountAuthProvider
-  draft: AccountDraft
-  originEdited: boolean
-  snapshot: DesktopConnectedAccountSnapshot
-  session: DesktopAccountSession | null
-  scopeDraftAccountId: string | null
-  scope: DesktopScopeSnapshot
-  inspectedInvitation: DesktopScopeInvitation | null
-  selectedOrganizationId: string | null
-  selectedWorkspaceId: string | null
-  connectedConnectionId: string | null
-  switchTarget: AccountSwitchTarget | null
-  logoutTarget: DesktopAccountGroup | null
-  disconnectTarget: DesktopWorkspaceChoice | null
-  operation: { id: number; kind: AccountOperation } | null
-  error: TeamAuthFeedback | null
-  status: string | null
-}
-
-const emptyConnectedSnapshot: DesktopConnectedAccountSnapshot = {
+export const emptyConnectedSnapshot: DesktopConnectedAccountSnapshot = {
   accounts: [],
   pendingCommands: [],
   suggestedOrigin: null
 }
 
-const emptyScope: DesktopScopeSnapshot = { organizations: [] }
-
-export function createAccountFlowState(): AccountFlowState {
+export function createInitialDraft(): AccountDraft {
   return {
-    step: 'entry',
-    previousStep: 'entry',
-    authMode: 'login',
-    authProvider: 'local',
-    draft: {
-      origin: DEFAULT_TEAM_ORIGIN,
-      username: '',
-      displayName: '',
-      password: '',
-      confirmPassword: '',
-      invitationToken: '',
-      organizationName: '',
-      workspaceName: '',
-      spaceName: '',
-      spaceKey: '',
-      deviceName: '我的工作电脑'
-    },
-    originEdited: false,
-    snapshot: emptyConnectedSnapshot,
-    session: null,
-    scopeDraftAccountId: null,
-    scope: emptyScope,
-    inspectedInvitation: null,
-    selectedOrganizationId: null,
-    selectedWorkspaceId: null,
-    connectedConnectionId: null,
-    switchTarget: null,
-    logoutTarget: null,
-    disconnectTarget: null,
-    operation: null,
-    error: null,
-    status: null
+    origin: DEFAULT_TEAM_ORIGIN,
+    username: '',
+    displayName: '',
+    password: '',
+    confirmPassword: '',
+    invitationToken: '',
+    organizationName: '',
+    organizationSpaceKey: 'MAIN',
+    spaceKeyEdited: false
   }
 }
 
-export type AccountFlowAction =
-  | { type: 'opened' }
-  | { type: 'closed' }
-  | { type: 'go'; step: Exclude<AccountFlowStep, 'confirm-switch'> }
-  | { type: 'back' }
-  | { type: 'set-auth-mode'; mode: AccountAuthMode }
-  | { type: 'set-auth-provider'; provider: AccountAuthProvider }
-  | { type: 'set-draft'; field: keyof AccountDraft; value: string }
-  | { type: 'loaded'; snapshot: DesktopConnectedAccountSnapshot }
-  | { type: 'authenticated'; session: DesktopAccountSession; scope: DesktopScopeSnapshot }
-  | { type: 'scope-updated'; scope: DesktopScopeSnapshot }
-  | { type: 'invitation-inspected'; invitation: DesktopScopeInvitation }
-  | { type: 'invitation-cleared' }
-  | { type: 'select-scope'; organizationId: string; workspaceId: string }
-  | { type: 'device-connected'; connectionId: string }
-  | { type: 'request-switch'; target: AccountSwitchTarget; from: Exclude<AccountFlowStep, 'confirm-switch'> }
-  | { type: 'cancel-switch' }
-  | { type: 'request-logout'; target: DesktopAccountGroup | null }
-  | { type: 'request-disconnect'; target: DesktopWorkspaceChoice | null }
-  | { type: 'operation-started'; id: number; kind: AccountOperation }
-  | { type: 'operation-succeeded'; id: number; status?: string | null }
-  | { type: 'operation-failed'; id: number; error: TeamAuthFeedback }
-  | { type: 'set-error'; error: string }
-  | { type: 'set-status'; status: string }
-  | { type: 'clear-feedback' }
-
-export function previousAccountStep(step: AccountFlowStep): Exclude<AccountFlowStep, 'confirm-switch'> {
-  switch (step) {
-    case 'accounts': return 'entry'
-    case 'auth': return 'accounts'
-    case 'scope': return 'auth'
-    case 'create-organization':
-    case 'create-workspace':
-    case 'accept-invitation': return 'scope'
-    case 'device': return 'scope'
-    case 'space': return 'entry'
-    case 'confirm-switch': return 'accounts'
-    default: return 'entry'
-  }
-}
-
-export function accountFlowReducer(state: AccountFlowState, action: AccountFlowAction): AccountFlowState {
-  switch (action.type) {
-    case 'opened':
-      return {
-        ...state,
-        step: 'entry',
-        previousStep: 'entry',
-        draft: { ...state.draft, password: '', confirmPassword: '' },
-        session: null,
-        scope: emptyScope,
-        inspectedInvitation: null,
-        selectedOrganizationId: null,
-        selectedWorkspaceId: null,
-        connectedConnectionId: null,
-        switchTarget: null,
-        logoutTarget: null,
-        disconnectTarget: null,
-        operation: null,
-        error: null,
-        status: null
-      }
-    case 'closed':
-      return { ...state, draft: { ...state.draft, password: '', confirmPassword: '' }, operation: null }
-    case 'go':
-      return { ...state, step: action.step, previousStep: previousAccountStep(action.step), draft: action.step === 'entry' || action.step === 'accounts' ? { ...state.draft, password: '', confirmPassword: '' } : state.draft, switchTarget: null, logoutTarget: null, disconnectTarget: null, error: null, status: null }
-    case 'back': {
-      const target = state.step === 'confirm-switch' ? state.previousStep : previousAccountStep(state.step)
-      return { ...state, step: target, draft: target === 'entry' || target === 'accounts' ? { ...state.draft, password: '', confirmPassword: '' } : state.draft, switchTarget: null, logoutTarget: null, disconnectTarget: null, error: null, status: null }
-    }
-    case 'set-auth-mode':
-      return { ...state, authMode: action.mode, draft: { ...state.draft, password: '', confirmPassword: '' }, error: null, status: null }
-    case 'set-auth-provider':
-      return { ...state, authProvider: action.provider, error: null, status: null }
-    case 'set-draft':
-      return {
-        ...state,
-        draft: {
-          ...state.draft,
-          ...(action.field === 'origin' && action.value !== state.draft.origin ? { password: '', confirmPassword: '' } : {}),
-          [action.field]: action.value
-        },
-        originEdited: action.field === 'origin' ? true : state.originEdited,
-        error: null,
-        status: null
-      }
-    case 'loaded':
-      return {
-        ...state,
-        snapshot: action.snapshot,
-        draft: !state.originEdited && (state.step === 'entry' || state.step === 'accounts' || state.step === 'auth' && !state.draft.origin) && action.snapshot.suggestedOrigin
-          ? { ...state.draft, origin: action.snapshot.suggestedOrigin }
-          : state.draft
-      }
-    case 'authenticated':
-      return {
-        ...state,
-        session: action.session,
-        scope: action.scope,
-        inspectedInvitation: null,
-        scopeDraftAccountId: action.session.accountId,
-        draft: { ...state.draft, password: '', confirmPassword: '', ...(state.scopeDraftAccountId && state.scopeDraftAccountId !== action.session.accountId ? { invitationToken: '', organizationName: '', workspaceName: '', spaceName: '', spaceKey: '' } : {}) },
-        step: 'scope',
-        previousStep: 'auth',
-        selectedOrganizationId: null,
-        selectedWorkspaceId: null,
-        connectedConnectionId: null,
-        error: null,
-        status: null
-      }
-    case 'scope-updated':
-      return { ...state, scope: action.scope, error: null, status: null }
-    case 'invitation-inspected':
-      return { ...state, inspectedInvitation: action.invitation, error: null, status: null }
-    case 'invitation-cleared':
-      return { ...state, inspectedInvitation: null, error: null, status: null }
-    case 'select-scope':
-      return { ...state, selectedOrganizationId: action.organizationId, selectedWorkspaceId: action.workspaceId, connectedConnectionId: null, error: null, status: null }
-    case 'device-connected':
-      return { ...state, connectedConnectionId: action.connectionId }
-    case 'request-switch':
-      return { ...state, step: 'confirm-switch', previousStep: action.from, switchTarget: action.target, disconnectTarget: null, error: null, status: null }
-    case 'cancel-switch':
-      return { ...state, step: state.previousStep, switchTarget: null, error: null, status: null }
-    case 'request-logout':
-      return { ...state, logoutTarget: action.target, disconnectTarget: null, error: null, status: null }
-    case 'request-disconnect':
-      return { ...state, disconnectTarget: action.target, error: null, status: null }
-    case 'operation-started':
-      return { ...state, operation: { id: action.id, kind: action.kind }, error: null, status: null }
-    case 'operation-succeeded':
-      return state.operation?.id === action.id ? { ...state, operation: null, error: null, status: action.status ?? null } : state
-    case 'operation-failed':
-      return state.operation?.id === action.id ? { ...state, operation: null, error: action.error, status: null } : state
-    case 'set-error':
-      return { ...state, error: { message: action.error }, status: null }
-    case 'set-status':
-      return { ...state, error: null, status: action.status }
-    case 'clear-feedback':
-      return { ...state, error: null, status: null }
-  }
-}
-
-export function findScopeWorkspace(scope: DesktopScopeSnapshot, workspaceId: string | null): { organization: DesktopScopeOrganization; workspace: DesktopScopeWorkspace } | null {
-  if (!workspaceId) return null
-  for (const organization of scope.organizations) {
-    const workspace = organization.workspaces.find((item) => item.workspaceId === workspaceId)
-    if (workspace) return { organization, workspace }
-  }
-  return null
-}
+export type AccountFeedback = TeamAuthFeedback

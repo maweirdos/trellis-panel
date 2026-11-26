@@ -133,6 +133,7 @@ export class TeamHttp {
       // bounded code and local explanation, never an untrusted credential echo.
       const code = /^[A-Z0-9_:-]{1,100}$/.test(reply.data.code) ? reply.data.code : 'REMOTE_FAILURE'
       if (this.isRouteUnavailable(path, code, exchange.response.status)) throw new DesktopTeamError('DESKTOP_API_UNAVAILABLE', '当前团队服务版本缺少桌面端必需接口，请先升级团队服务；不会自动改用其他创建方式', outcomeUnknown)
+      if (code === 'UNAUTHORIZED') throw new DesktopTeamError(code, '登录状态已过期，请重新登录。', outcomeUnknown && exchange.response.status >= 500)
       throw new DesktopTeamError(code, `团队服务未完成操作（${code}）`, outcomeUnknown && (exchange.response.status >= 500 || code === 'ACKNOWLEDGEMENT_UNKNOWN'))
     }
     if (!exchange.response.ok) throw new DesktopTeamError('INVALID_RESPONSE', '团队 HTTP 状态与业务回执不一致', outcomeUnknown)

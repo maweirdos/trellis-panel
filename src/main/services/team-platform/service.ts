@@ -304,9 +304,36 @@ export class DesktopTeamService implements DesktopTeamApi {
       return value
     } catch { throw new DesktopTeamError('CREDENTIAL_UNAVAILABLE', '原桌面账号会话无法由系统凭据库解密，请重新登录') }
   }
+  private async markAccountExpired(account: AccountRecord, code: string): Promise<void> {
+    try {
+      const latest = await this.account(account.accountId)
+      if (latest.state !== 'active' || latest.revision !== account.revision) return
+      const now = Date.now()
+      const record = accountRecordSchema.parse({
+        ...latest,
+        state: 'reauthentication-required',
+        encryptedSession: null,
+        revision: latest.revision + 1,
+        updatedAt: now,
+        lastErrorCode: code
+      })
+      await this.store.call({ op: 'save-account', input: { record, expectedRevision: latest.revision } })
+    } catch {
+      // 并发更新或存储瞬时不可用时不掩盖原始 401 错误。
+    }
+  }
   private async accountRequest<T extends z.ZodType>(account: AccountRecord, path: string, schema: T, body?: unknown, outcomeUnknown = body !== undefined): Promise<z.output<T>> {
     const secret = this.accountSession(account), credentials: TeamBrowserCredentials = { cookie: secret.cookie, csrfToken: secret.csrfToken }
-    const value = await this.http.browserRequest(account.origin, path, schema, credentials, body, outcomeUnknown)
+    let value: z.output<T>
+    try {
+      value = await this.http.browserRequest(account.origin, path, schema, credentials, body, outcomeUnknown)
+    } catch (error) {
+      if (error instanceof DesktopTeamError && error.code === 'UNAUTHORIZED') {
+        await this.markAccountExpired(account, 'UNAUTHORIZED')
+        throw new DesktopTeamError('UNAUTHORIZED', '账号登录状态已过期，请重新登录。', error.outcomeUnknown)
+      }
+      throw error
+    }
     let current: AccountRecord
     try { current = await this.account(account.accountId) }
     catch (error) {
@@ -391,10 +418,40 @@ export class DesktopTeamService implements DesktopTeamApi {
   }
   async logout(accountId: string): Promise<DesktopTeamAccount> {
     return this.serial(`account:${desktopTeamAccountIdSchema.parse(accountId)}`, async () => {
-      const account = await this.account(accountId, true)
-      await this.accountRequest(account, '/auth/logout', logoutReplySchema, {}, true)
-      const now = Date.now(), record = accountRecordSchema.parse({ ...account, state: 'signed-out', encryptedSession: null, revision: account.revision + 1, updatedAt: now, lastVerifiedAt: now, lastErrorCode: null })
-      return publicAccount(accountRecordSchema.parse(await this.store.call({ op: 'save-account', input: { record, expectedRevision: account.revision } })))
+      const account = await this.account(accountId)
+      if (account.state === 'active' && account.encryptedSession !== null) {
+        try {
+          await this.accountRequest(account, '/auth/logout', logoutReplySchema, {}, false)
+        } catch (error) {
+          // 远端会话已过期或服务离线时，仍允许彻底完成本地退出并清理本机设备绑定。
+          if (!(error instanceof DesktopTeamError && ['UNAUTHORIZED', 'ACCOUNT_SESSION_UNAVAILABLE', 'CREDENTIAL_UNAVAILABLE', 'NETWORK_UNAVAILABLE', 'SESSION_UNVERIFIED'].includes(error.code))) {
+            throw error
+          }
+        }
+      }
+      // 同步断开该账号在这台电脑上绑定的所有连接，杜绝退出后残留“已连接设备”僵尸态。
+      const allConnections = await this.store.call<ConnectionRecord[]>({ op: 'connections' })
+      for (const connection of allConnections) {
+        const belongsToAccount = connection.accountId === account.accountId
+          || (connection.origin === account.origin && connection.ownerId === account.person.userId)
+        if (belongsToAccount && connection.state !== 'disconnected') {
+          writeTaskProgressCredential(this.options.dataDir, connection, null, this.protection)
+          writeBusinessHookCredential(this.options.dataDir, connection, null, this.protection)
+          await this.store.call({ op: 'update-connection', input: { connectionId: connection.connectionId, disconnect: true, errorCode: 'LOCAL_DISCONNECTED' } })
+        }
+      }
+      const latest = await this.account(accountId)
+      const now = Date.now()
+      const record = accountRecordSchema.parse({
+        ...latest,
+        state: 'signed-out',
+        encryptedSession: null,
+        revision: latest.revision + 1,
+        updatedAt: now,
+        lastVerifiedAt: now,
+        lastErrorCode: null
+      })
+      return publicAccount(accountRecordSchema.parse(await this.store.call({ op: 'save-account', input: { record, expectedRevision: latest.revision } })))
     })
   }
   private pagePath(path: string, raw: DesktopTeamPageOptions | undefined): string {
@@ -411,10 +468,12 @@ export class DesktopTeamService implements DesktopTeamApi {
   async createOrganization(raw: DesktopTeamCreateOrganizationInput): Promise<TeamCommandReply<DesktopTeamCreatedOrganization>> {
     return this.tracked(async () => {
       const input = desktopTeamCreateOrganizationSchema.parse(raw), account = await this.account(input.accountId, true)
-      const normalizedName = input.name.trim(), intentKey = hash(canonicalTeamJson([account.accountId, account.origin, normalizedName]))
+      const normalizedName = input.name.trim(), spaceKey = input.spaceKey?.trim().toUpperCase() || undefined
+      const intentKey = hash(canonicalTeamJson([account.accountId, account.origin, normalizedName, spaceKey ?? null]))
       const intent = organizationIntentRecordSchema.nullable().parse(await this.store.call<OrganizationIntentRecord | null>({ op: 'organization-intent', input: { intentKey } }))
-      if (intent && (intent.accountId !== account.accountId || intent.origin !== account.origin || intent.payloadDigest !== hash(canonicalTeamJson({ commandId: intent.commandId, name: normalizedName })))) throw new DesktopTeamError('COMMAND_CONFLICT', '组织创建名称摘要与原命令不一致；请使用原名称重试核对')
-      const body = createTeamSchema.parse({ commandId: intent?.commandId ?? input.commandId, name: normalizedName })
+      const expectedPayload = { commandId: intent?.commandId ?? input.commandId, name: normalizedName, ...(spaceKey ? { spaceKey } : {}) }
+      if (intent && (intent.accountId !== account.accountId || intent.origin !== account.origin || intent.payloadDigest !== hash(canonicalTeamJson(expectedPayload)))) throw new DesktopTeamError('COMMAND_CONFLICT', '组织创建名称摘要与原命令不一致；请使用原名称重试核对')
+      const body = createTeamSchema.parse(expectedPayload)
       const commandId = intent?.commandId ?? input.commandId
       const nextIntent = organizationIntentRecordSchema.parse({
         intentKey, accountId: account.accountId, origin: account.origin, commandId,

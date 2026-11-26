@@ -17,7 +17,7 @@ export const teamServiceConfigSchema = z.object({
   bootstrapSubject: z.string().max(512).default(''),
   allowLoopbackHttp: z.boolean().default(false),
   allowedIntranetHttpOrigins: z.array(privateHttpOriginSchema).max(8).default([]),
-  sessionTtlMs: z.number().int().min(60_000).max(24 * 60 * 60_000).default(8 * 60 * 60_000),
+  sessionTtlMs: z.number().int().min(60_000).max(90 * 24 * 60 * 60_000).default(30 * 24 * 60 * 60_000),
   pairingTtlMs: z.number().int().min(1000).max(10 * 60_000).default(5 * 60_000),
   onlineTtlMs: z.number().int().min(1000).max(5 * 60_000).default(45_000),
   webDir: z.string().min(1).optional(), logger: z.boolean().default(false)

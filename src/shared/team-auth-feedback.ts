@@ -12,8 +12,11 @@ export function teamAuthFailure(code: string, register: boolean, uncertain: bool
       return { message: '此服务未开放自主注册。已有账号可以登录，新用户请联系管理员。', offerLogin: true }
     case 'INVALID_CREDENTIALS':
       return { message: '用户名或密码不正确，请重新输入。' }
+    case 'UNAUTHORIZED':
+    case 'ACCOUNT_SESSION_UNAVAILABLE':
+      return { message: '登录状态已过期，请重新输入密码验证。', offerLogin: true }
     case 'NETWORK_UNAVAILABLE':
-      return { message: '无法连接团队服务，请检查服务是否已启动。' }
+      return { message: '无法连接团队服务，请检查服务地址或确认服务已启动。' }
     case 'AUTHENTICATION_BUSY':
     case 'RATE_LIMITED':
     case 'FST_ERR_RATE_LIMIT':

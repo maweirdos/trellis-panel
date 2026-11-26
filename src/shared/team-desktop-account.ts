@@ -40,7 +40,8 @@ export const desktopTeamPageOptionsSchema = z.object({
 export const desktopTeamCreateOrganizationSchema = z.object({
   accountId: desktopTeamAccountIdSchema,
   commandId: teamCommandIdSchema,
-  name: z.string().trim().min(1).max(200)
+  name: z.string().trim().min(1).max(200),
+  spaceKey: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,7}$/).optional()
 }).strict()
 export const desktopTeamCreateWorkspaceSchema = z.object({
   accountId: desktopTeamAccountIdSchema,

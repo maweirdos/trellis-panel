@@ -13,13 +13,16 @@ import type {
   CruxRole,
   CruxSnapshot,
   CruxSpace,
+  CruxSpaceModules,
+  CruxSpaceTemplate,
   CruxStatusCategory,
   CruxTask,
   CruxTaskInput,
   CruxTaskPatchInput,
   CruxTaskRelation
 } from '../crux'
-import { cruxInitialTaskTypesSchema } from '../crux-schema'
+import { cruxInitialTaskTypesSchema, cruxSpaceModulesPatchSchema, cruxSpaceTemplateSchema } from '../crux-schema'
+import { DEFAULT_SPACE_MODULES, getSpaceTemplatePreset } from '../crux-space-presets'
 import { canConfirmTaskClarification } from '../crux'
 import { mutate, nextId, nowIso } from './store'
 import { evaluateAutomationsForComment, evaluateAutomationsForStatus, evaluateAutomationsForTaskCreated, refreshTaskDispatch as refreshDispatch, setTaskIterations } from './planning'
@@ -61,8 +64,68 @@ function memberName(draft: CruxSnapshot, id: CruxID): string {
 
 /* ---------------- 空间 ---------------- */
 
-export function createSpace(input: { name: string; key: string; description?: string; visibility?: CruxSpace['visibility']; initialTaskTypes?: CruxInitialTaskType[]; actorId?: CruxID }): CruxSnapshot {
-  const selectedTypes = cruxInitialTaskTypesSchema.parse(input.initialTaskTypes === undefined ? ['需求', 'Bug', '任务', '内容'] : input.initialTaskTypes)
+function requiredHintsForTaskType(name: CruxInitialTaskType): string[] | undefined {
+  if (name === '需求') return ['背景与目标', '验收标准']
+  if (name === 'Bug') return ['复现步骤', '影响范围']
+  return undefined
+}
+
+function seedSpaceStarterTask(draft: CruxSnapshot, space: CruxSpace): void {
+  if (draft.tasks.some((task) => task.spaceId === space.id)) return
+  const preset = getSpaceTemplatePreset(space.template)
+  const todoStatus = draft.taskStatuses.find((status) => status.spaceId === space.id && status.category === 'todo')
+    ?? draft.taskStatuses.find((status) => status.spaceId === space.id && !['done', 'cancelled'].includes(status.category))
+  if (!todoStatus) return
+  const defaultType = draft.taskTypes.find((type) => type.spaceId === space.id && type.isDefault)
+    ?? draft.taskTypes.find((type) => type.spaceId === space.id)
+  const creatorId = space.ownerId && space.memberIds.includes(space.ownerId)
+    ? space.ownerId
+    : space.memberIds[0] ?? draft.members[0]?.id
+  if (!creatorId) return
+  space.taskSeq += 1
+  const now = nowIso()
+  const taskId = `${space.key}-${space.taskSeq}`
+  draft.tasks.unshift({
+    id: taskId,
+    spaceId: space.id,
+    title: preset.starterTask.title,
+    description: preset.starterTask.description,
+    typeId: defaultType?.id,
+    statusId: todoStatus.id,
+    priority: 'medium',
+    assigneeIds: [],
+    creatorId,
+    labelIds: [],
+    iterationIds: [],
+    relations: [],
+    followerIds: [creatorId],
+    createdAt: now,
+    updatedAt: now
+  })
+  pushActivity(draft, taskId, 'created', `初始化空间时创建了示例任务「${preset.starterTask.title}」`)
+}
+
+export function createSpace(input: {
+  name: string
+  key: string
+  description?: string
+  visibility?: CruxSpace['visibility']
+  initialTaskTypes?: CruxInitialTaskType[]
+  template?: CruxSpaceTemplate
+  enabledModules?: Partial<CruxSpaceModules>
+  initialized?: boolean
+  seedStarterTask?: boolean
+  actorId?: CruxID
+}): CruxSnapshot {
+  const template = input.template !== undefined ? cruxSpaceTemplateSchema.parse(input.template) : undefined
+  const preset = template ? getSpaceTemplatePreset(template) : undefined
+  const selectedTypes = cruxInitialTaskTypesSchema.parse(
+    input.initialTaskTypes === undefined ? (preset?.defaultTaskTypes ?? ['需求', 'Bug', '任务', '内容']) : input.initialTaskTypes
+  )
+  const modulesPatch = input.enabledModules !== undefined ? cruxSpaceModulesPatchSchema.parse(input.enabledModules) : undefined
+  const enabledModules = template || modulesPatch
+    ? { ...(preset?.defaultModules ?? DEFAULT_SPACE_MODULES), ...(modulesPatch ?? {}) }
+    : undefined
   return mutate((draft) => {
     const key = input.key.trim().toUpperCase()
     if (!input.name.trim()) fail('空间名称不能为空')
@@ -80,6 +143,9 @@ export function createSpace(input: { name: string; key: string; description?: st
       description: input.description?.trim() || undefined,
       visibility: input.visibility ?? 'public',
       ownerId: owner.id,
+      ...(template ? { template } : {}),
+      ...(enabledModules ? { enabledModules } : {}),
+      ...(input.initialized !== undefined ? { initialized: input.initialized } : {}),
       multiAssignee: false,
       memberIds: [owner.id],
       taskSeq: 0,
@@ -89,8 +155,7 @@ export function createSpace(input: { name: string; key: string; description?: st
     // 每个新空间自带默认类型与七类状态（PRD 3.2 / 4.4）
     const defaultType = selectedTypes.includes('需求') ? '需求' : selectedTypes[0]
     for (const name of selectedTypes) {
-      const requiredHints = name === '需求' ? ['背景与目标', '验收标准'] : name === 'Bug' ? ['复现步骤', '影响范围'] : undefined
-      draft.taskTypes.push({ id: nextId('tt'), spaceId: space.id, name, requiredHints, isDefault: name === defaultType ? true : undefined })
+      draft.taskTypes.push({ id: nextId('tt'), spaceId: space.id, name, requiredHints: requiredHintsForTaskType(name), isDefault: name === defaultType ? true : undefined })
     }
     const statuses: Array<[string, CruxStatusCategory]> = [
       ['Backlog', 'backlog'], ['Todo', 'todo'], ['In Progress', 'in_progress'],
@@ -99,11 +164,27 @@ export function createSpace(input: { name: string; key: string; description?: st
     statuses.forEach(([name, category], index) => {
       draft.taskStatuses.push({ id: nextId('st'), spaceId: space.id, name, category, order: index + 1 })
     })
+    if (input.seedStarterTask) seedSpaceStarterTask(draft, space)
     return space.id
   }).snapshot
 }
 
-export function updateSpace(input: { id: CruxID; name?: string; description?: string; multiAssignee?: boolean; visibility?: CruxSpace['visibility']; archived?: boolean }): CruxSnapshot {
+export function updateSpace(input: {
+  id: CruxID
+  name?: string
+  description?: string
+  multiAssignee?: boolean
+  visibility?: CruxSpace['visibility']
+  archived?: boolean
+  template?: CruxSpaceTemplate
+  enabledModules?: Partial<CruxSpaceModules>
+  initialized?: boolean
+  initialTaskTypes?: CruxInitialTaskType[]
+  seedStarterTask?: boolean
+}): CruxSnapshot {
+  const template = input.template !== undefined ? cruxSpaceTemplateSchema.parse(input.template) : undefined
+  const modulesPatch = input.enabledModules !== undefined ? cruxSpaceModulesPatchSchema.parse(input.enabledModules) : undefined
+  const selectedTypes = input.initialTaskTypes !== undefined ? cruxInitialTaskTypesSchema.parse(input.initialTaskTypes) : undefined
   return mutate((draft) => {
     const space = spaceOf(draft, input.id)
     if (space.archived && (input.archived !== false || Object.keys(input).some((key) => key !== 'id' && key !== 'archived'))) fail('空间已停用，只能先恢复空间')
@@ -127,6 +208,33 @@ export function updateSpace(input: { id: CruxID; name?: string; description?: st
       space.multiAssignee = input.multiAssignee
       // The setting governs new assignments; historical sets remain editable.
     }
+    if (template !== undefined) space.template = template
+    if (modulesPatch !== undefined) {
+      space.enabledModules = { ...(space.enabledModules ?? DEFAULT_SPACE_MODULES), ...modulesPatch }
+    }
+    if (input.initialized !== undefined) space.initialized = input.initialized
+    if (selectedTypes !== undefined) {
+      const existing = draft.taskTypes.filter((type) => type.spaceId === space.id)
+      const desired = new Set<string>(selectedTypes)
+      // 移除未被任务引用的多余预置类型，新增缺失的预置类型，并保证始终有一个默认类型
+      draft.taskTypes = draft.taskTypes.filter((type) => {
+        if (type.spaceId !== space.id) return true
+        if (desired.has(type.name)) return true
+        return draft.tasks.some((task) => task.typeId === type.id)
+      })
+      for (const name of selectedTypes) {
+        if (!existing.some((type) => type.name === name)) {
+          draft.taskTypes.push({ id: nextId('tt'), spaceId: space.id, name, requiredHints: requiredHintsForTaskType(name) })
+        }
+      }
+      const spaceTypes = draft.taskTypes.filter((type) => type.spaceId === space.id)
+      const defaultName = selectedTypes.includes('需求') ? '需求' : selectedTypes[0]
+      for (const type of spaceTypes) {
+        type.isDefault = type.name === defaultName ? true : undefined
+      }
+      if (!spaceTypes.some((type) => type.isDefault) && spaceTypes[0]) spaceTypes[0].isDefault = true
+    }
+    if (input.seedStarterTask) seedSpaceStarterTask(draft, space)
     return undefined
   }).snapshot
 }

@@ -3,9 +3,9 @@ import type { DesktopTeamAccount, DesktopTeamAuthOptions } from '@shared/team-de
 import type { TeamInvitation } from '@shared/team-invitations'
 import type { TeamPage, TeamProject, TeamTeam } from '@shared/team-platform'
 import { api, hasIpc } from '../../api'
+import { retainCommandId, releaseCommandId } from './command-identity'
 import type {
   AccountAuthMode,
-  AccountAuthProvider,
   DesktopAccountGroup,
   DesktopAccountSession,
   DesktopConnectedAccountSnapshot,
@@ -33,13 +33,11 @@ export interface DesktopAccountAdapter {
   authenticateLocal(input: { mode: AccountAuthMode; origin: string; username: string; displayName?: string; password: string }): Promise<DesktopAccountSession>
   openAccount(accountId: string): Promise<{ session: DesktopAccountSession; scope: DesktopScopeSnapshot }>
   logoutAccount(accountId: string): Promise<void>
-  createOrganization(session: DesktopAccountSession, commandId: string, name: string): Promise<{ scope: DesktopScopeSnapshot; organizationId: string; workspaceId: string }>
-  createWorkspace(session: DesktopAccountSession, commandId: string, organizationId: string, name: string): Promise<{ scope: DesktopScopeSnapshot; workspaceId: string }>
+  createOrganization(session: DesktopAccountSession, commandId: string, name: string, spaceKey?: string): Promise<{ scope: DesktopScopeSnapshot; organizationId: string; workspaceId: string; spaceId: string }>
   inspectInvitation(session: DesktopAccountSession, url: string): Promise<DesktopScopeInvitation>
   acceptInvitation(session: DesktopAccountSession, commandId: string, invitation: DesktopScopeInvitation): Promise<DesktopScopeSnapshot>
-  connectDevice(input: { session: DesktopAccountSession; commandId: string; organizationId: string; workspaceId: string; deviceName: string }): Promise<{ connectionId: string }>
+  ensureDeviceConnection(input: { session: DesktopAccountSession; organizationId: string; workspaceId: string; currentConnectionId: string | null }): Promise<{ connectionId: string }>
   createMemberInvitation(input: DesktopMemberInvitationInput & { commandId: string }): Promise<DesktopMemberInvitationResult>
-  pollConnection(connectionId: string): Promise<void>
   disconnect(connectionId: string): Promise<void>
   retryPending(commandId: string): Promise<void>
   discardPending(commandId: string): Promise<void>
@@ -47,7 +45,7 @@ export interface DesktopAccountAdapter {
 
 export class DesktopAccountCapabilityError extends Error {
   constructor(capability: string) {
-    super(`当前桌面版本尚未提供${capability}能力。请更新完整应用后重试。`)
+    super(`当前桌面版本尚未提供${capability}能力，请更新完整应用后重试。`)
     this.name = 'DesktopAccountCapabilityError'
   }
 }
@@ -86,6 +84,16 @@ function sessionOf(account: DesktopTeamAccount): DesktopAccountSession {
     provider: provider === 'unknown' ? 'local' : provider,
     origin: account.origin
   }
+}
+
+function defaultDesktopDeviceName(): string {
+  if (typeof navigator !== 'undefined') {
+    const ua = navigator.userAgent
+    if (ua.includes('Windows')) return 'Windows 桌面端'
+    if (ua.includes('Macintosh')) return 'macOS 桌面端'
+    if (ua.includes('Linux')) return 'Linux 桌面端'
+  }
+  return 'Crux 桌面端'
 }
 
 async function collectPages<T>(load: (cursor?: string) => Promise<{ ok: true; value: TeamPage<T> } | { ok: false; code: string; error: string; outcomeUnknown: boolean }>): Promise<T[]> {
@@ -143,9 +151,9 @@ function legacyChoice(connection: DesktopTeamConnection, context: DesktopTeamCon
   return {
     connectionId: connection.connectionId,
     workspaceId: context?.project.projectId ?? connection.projectId,
-    workspaceName: context?.project.name ?? (connection.state === 'pending' ? '等待完成连接' : '工作区待核对'),
+    workspaceName: context?.project.name ?? (connection.state === 'pending' ? '等待完成连接' : '已绑定组织'),
     organizationId: context?.project.teamId ?? null,
-    organizationName: null,
+    organizationName: context?.project.name ?? null,
     origin: connection.origin,
     deviceName: connection.deviceName,
     state: connection.state,
@@ -192,25 +200,37 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
 
   async loadConnectedAccounts(currentConnectionId) {
     const bridge = requireBridge()
-    const [accounts, connections] = await Promise.all([
+    let [accounts, connections] = await Promise.all([
       bridge.accounts().then(replyValue),
       bridge.connections().then(replyValue)
     ])
     const activeAccounts = accounts.filter((account) => account.state === 'active')
     const scopes = new Map<string, DesktopScopeSnapshot>()
     const scopeErrors = new Map<string, string>()
+    let sawExpiredSession = false
     await Promise.all(activeAccounts.map(async (account) => {
-      try { scopes.set(account.accountId, await loadScopeForAccount(account)) }
-      catch (cause) { scopeErrors.set(account.accountId, cause instanceof Error ? cause.message : String(cause)) }
+      try {
+        scopes.set(account.accountId, await loadScopeForAccount(account))
+      } catch (cause) {
+        if (cause instanceof DesktopAccountReplyError && cause.code === 'UNAUTHORIZED') {
+          sawExpiredSession = true
+        } else {
+          scopeErrors.set(account.accountId, cause instanceof Error ? cause.message : String(cause))
+        }
+      }
     }))
+    // 主进程在 401 时已自动降级账号状态，这里重新拉一次账号清单以呈现真实的过期态。
+    if (sawExpiredSession) {
+      accounts = await bridge.accounts().then(replyValue)
+    }
     const representedConnections = new Set<string>()
     const groups: DesktopAccountGroup[] = accounts.map((account) => {
       const scope = scopes.get(account.accountId) ?? { organizations: [] }
       const workspaces = scope.organizations.flatMap((organization) => organization.workspaces.map((workspace) => {
-        const candidates = connections.filter((connection) => connection.accountId === account.accountId && connection.projectId === workspace.workspaceId)
+        const candidates = connections.filter((connection) => connection.accountId === account.accountId && connection.projectId === workspace.workspaceId && connection.state !== 'disconnected')
         const connection = chooseConnection(candidates, currentConnectionId)
         for (const candidate of candidates) representedConnections.add(candidate.connectionId)
-        return workspaceChoice({ projectId: workspace.workspaceId, teamId: organization.organizationId, name: workspace.name }, { name: organization.name }, connection, currentConnectionId)
+        return workspaceChoice({ projectId: workspace.workspaceId, teamId: organization.organizationId, name: organization.name }, { name: organization.name }, connection, currentConnectionId)
       }))
       return {
         accountId: account.accountId,
@@ -219,11 +239,12 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
         origin: account.origin,
         state: account.state,
         verified: account.state === 'active',
-        scopeError: scopeErrors.get(account.accountId) ?? null,
+        scopeError: account.state === 'active' ? (scopeErrors.get(account.accountId) ?? null) : null,
         workspaces
       }
     })
-    const legacyConnections = connections.filter((connection) => !representedConnections.has(connection.connectionId))
+    // 忽略已经干净断开的历史旧设备连接，只保留依然活跃的外部/旧配对连接
+    const legacyConnections = connections.filter((connection) => !representedConnections.has(connection.connectionId) && connection.state !== 'disconnected')
     const contextEntries = await Promise.all(legacyConnections.filter((connection) => connection.state === 'active' && !connection.accessLocked).map(async (connection): Promise<readonly [string, DesktopTeamConnectionContext] | null> => {
       try {
         const reply = await bridge.connectionContext(connection.connectionId)
@@ -235,27 +256,36 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
       const context = contexts.get(connection.connectionId)
       const accountId = connection.accountId ?? context?.person.userId ?? connection.ownerId ?? `connection:${connection.connectionId}`
       const existing = groups.find((group) => group.accountId === accountId)
-      if (existing) existing.workspaces.push(legacyChoice(connection, context, currentConnectionId))
-      else groups.push({
-        accountId,
-        displayName: context?.person.displayName ?? (connection.state === 'pending' ? '待完成登录' : '账号待核对'),
-        provider: providerOf(context?.person.provider),
-        origin: connection.origin,
-        state: 'connection-only',
-        verified: Boolean(context),
-        scopeError: null,
-        workspaces: [legacyChoice(connection, context, currentConnectionId)]
-      })
+      if (existing) {
+        if (!existing.workspaces.some((item) => item.connectionId === connection.connectionId)) {
+          existing.workspaces.push(legacyChoice(connection, context, currentConnectionId))
+        }
+      } else {
+        groups.push({
+          accountId,
+          displayName: context?.person.displayName ?? '历史设备连接',
+          provider: providerOf(context?.person.provider),
+          origin: connection.origin,
+          state: 'connection-only',
+          verified: Boolean(context),
+          scopeError: null,
+          workspaces: [legacyChoice(connection, context, currentConnectionId)]
+        })
+      }
     }
     let pendingCommands: DesktopConnectedAccountSnapshot['pendingCommands'] = []
     try {
       const pending = await api.crux.workspacePending()
       if (pending.ok) pendingCommands = pending.data
     } catch {
-      // Account and workspace choices remain usable when the optional queue read fails.
+      // 可选待核对队列读取失败不影响组织切换。
     }
-    for (const group of groups) group.workspaces.sort((left, right) => Number(right.current) - Number(left.current) || left.workspaceName.localeCompare(right.workspaceName, 'zh-CN'))
-    groups.sort((left, right) => Number(right.workspaces.some((item) => item.current)) - Number(left.workspaces.some((item) => item.current)) || left.displayName.localeCompare(right.displayName, 'zh-CN'))
+    for (const group of groups) {
+      group.workspaces.sort((left, right) => Number(right.current) - Number(left.current) || left.workspaceName.localeCompare(right.workspaceName, 'zh-CN'))
+    }
+    groups.sort((left, right) => Number(right.workspaces.some((item) => item.current)) - Number(left.workspaces.some((item) => item.current))
+      || Number(right.state === 'active') - Number(left.state === 'active')
+      || left.displayName.localeCompare(right.displayName, 'zh-CN'))
     const currentOrigin = connections.find((connection) => connection.connectionId === currentConnectionId)?.origin
     return { accounts: groups, pendingCommands, suggestedOrigin: currentOrigin ?? accounts[0]?.origin ?? connections[0]?.origin ?? null }
   },
@@ -275,7 +305,7 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
 
   async openAccount(accountId) {
     const account = replyValue(await requireBridge().accounts()).find((item) => item.accountId === accountId)
-    if (!account || account.state !== 'active') throw new Error('该桌面账号需要重新登录。')
+    if (!account || account.state !== 'active') throw new DesktopAccountReplyError({ code: 'UNAUTHORIZED', error: '该桌面账号登录已过期，请重新登录。', outcomeUnknown: false })
     return { session: sessionOf(account), scope: await loadScopeForAccount(account) }
   },
 
@@ -283,24 +313,20 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
     replyValue(await requireBridge().logout(accountId))
   },
 
-  async createOrganization(session, commandId, name) {
-    const receipt = replyValue(await requireBridge().createOrganization({ accountId: session.accountId, commandId, name }))
+  async createOrganization(session, commandId, name, spaceKey) {
+    const receipt = replyValue(await requireBridge().createOrganization({
+      accountId: session.accountId,
+      commandId,
+      name,
+      ...(spaceKey ? { spaceKey } : {})
+    }))
     const account = replyValue(await requireBridge().accounts()).find((item) => item.accountId === session.accountId)
     if (!account) throw new Error('组织已创建，但原桌面账号不再可用；请重新登录后核对。')
     const scope = await loadScopeForAccount(account)
     const organization = scope.organizations.find((item) => item.organizationId === receipt.result.teamId)
     const workspace = organization?.workspaces.find((item) => item.workspaceId === receipt.result.projectId)
-    if (!organization || !workspace) throw new Error('组织已创建，但当前账号尚未读到该工作区，请重试核对。')
-    return { scope, organizationId: receipt.result.teamId, workspaceId: receipt.result.projectId }
-  },
-
-  async createWorkspace(session, commandId, organizationId, name) {
-    const receipt = replyValue(await requireBridge().createWorkspace({ accountId: session.accountId, commandId, organizationId, name }))
-    const account = replyValue(await requireBridge().accounts()).find((item) => item.accountId === session.accountId)
-    if (!account) throw new Error('工作区已创建，但原桌面账号不再可用；请重新登录后核对。')
-    const scope = await loadScopeForAccount(account)
-    if (!scope.organizations.some((organization) => organization.organizationId === organizationId && organization.workspaces.some((workspace) => workspace.workspaceId === receipt.result.projectId))) throw new Error('工作区已创建，但当前账号尚未读到该工作区，请重试核对。')
-    return { scope, workspaceId: receipt.result.projectId }
+    if (!organization || !workspace) throw new Error('组织已创建，但当前账号尚未读到该组织，请重试。')
+    return { scope, organizationId: receipt.result.teamId, workspaceId: receipt.result.projectId, spaceId: receipt.result.spaceId }
   },
 
   async inspectInvitation(session, url) {
@@ -314,14 +340,25 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
     return loadScopeForAccount(account)
   },
 
-  async connectDevice(input) {
-    const connection = replyValue(await requireBridge().connectWorkspace({
-      accountId: input.session.accountId,
-      commandId: input.commandId,
-      workspaceId: input.workspaceId,
-      deviceName: input.deviceName,
+  async ensureDeviceConnection({ session, workspaceId, currentConnectionId }) {
+    const bridge = requireBridge()
+    const connections = replyValue(await bridge.connections())
+    const active = chooseConnection(
+      connections.filter((connection) => connection.accountId === session.accountId && connection.projectId === workspaceId && connection.state === 'active' && !connection.accessLocked),
+      currentConnectionId
+    )
+    if (active) return { connectionId: active.connectionId }
+    const deviceName = defaultDesktopDeviceName()
+    const commandKey = `auto-connect:${session.accountId}:${workspaceId}:${deviceName}`
+    const commandId = retainCommandId(commandKey)
+    const connection = replyValue(await bridge.connectWorkspace({
+      accountId: session.accountId,
+      commandId,
+      workspaceId,
+      deviceName,
       capabilityClaims: []
     }))
+    releaseCommandId(commandKey, commandId)
     return { connectionId: connection.connectionId }
   },
 
@@ -340,10 +377,6 @@ export const desktopAccountAdapter: DesktopAccountAdapter = {
       throw new DesktopAccountReplyError({ code: 'RECEIPT_MISMATCH', error: '邀请已返回，但组织或工作区职责与原提交不一致；不能声明创建成功。', outcomeUnknown: true })
     }
     return { invitationId: created.invitation.invitationId, url: created.url, expiresAt: created.invitation.expiresAt }
-  },
-
-  async pollConnection(connectionId) {
-    replyValue(await requireBridge().pollPairing(connectionId))
   },
 
   async disconnect(connectionId) {

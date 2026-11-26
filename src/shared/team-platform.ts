@@ -22,7 +22,7 @@ export const teamSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('external-reference'), instanceId: teamOpaqueIdSchema, objectId: teamOpaqueIdSchema, version: teamOpaqueIdSchema.nullable(), verified: z.literal(false) }).strict()
 ])
 
-export const createTeamSchema = z.object({ commandId: teamCommandIdSchema, name: z.string().trim().min(1).max(200) }).strict()
+export const createTeamSchema = z.object({ commandId: teamCommandIdSchema, name: z.string().trim().min(1).max(200), spaceKey: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,7}$/).optional() }).strict()
 export const teamMemberInputSchema = z.object({ commandId: teamCommandIdSchema, userId: teamIdSchema, roles: z.array(teamMembershipRoleSchema).min(1).max(3), active: z.boolean(), expectedRevision: z.number().int().positive().nullable() }).strict()
 export const createTeamProjectSchema = z.object({ commandId: teamCommandIdSchema, teamId: teamIdSchema, name: z.string().trim().min(1).max(200) }).strict()
 export const projectMemberInputSchema = z.object({ commandId: teamCommandIdSchema, userId: teamIdSchema, roles: z.array(teamRoleSchema).min(1).max(5), active: z.boolean(), expectedRevision: z.number().int().positive().nullable() }).strict()

@@ -7,10 +7,13 @@ import type {
   cruxTaskWorkflowArtifactSchema, cruxTaskWorkflowEventSchema, cruxTaskWorkflowSchema,
   cruxTransitionTaskInputSchema, cruxVersionDeliverySchema, cruxRecordVersionDeliveryInputSchema,
   cruxMilestoneSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypeSchema,
+  cruxSpaceTemplateSchema, cruxSpaceModulesSchema,
   cruxTaskOutputReviewSchema, cruxTaskOutputReviewPatchSchema, cruxTaskOutputReviewOutputSchema, cruxTaskOutputReviewRecordSchema, cruxTaskOutputReviewStatusSchema
 } from './crux-schema'
 
 export type CruxInitialTaskType = z.infer<typeof cruxInitialTaskTypeSchema>
+export type CruxSpaceTemplate = z.infer<typeof cruxSpaceTemplateSchema>
+export type CruxSpaceModules = z.infer<typeof cruxSpaceModulesSchema>
 export type CruxTaskWorkKind = z.infer<typeof cruxTaskWorkKindSchema>
 export type CruxTaskStage = z.infer<typeof cruxTaskStageSchema>
 export type CruxTaskAction = z.infer<typeof cruxTaskActionSchema>
@@ -82,6 +85,12 @@ export interface CruxSpace {
   visibility?: 'public' | 'private'
   ownerId?: CruxID
   archived?: boolean
+  /** 空间工作模板（如软件研发、产品管理、市场营销等） */
+  template?: CruxSpaceTemplate
+  /** 空间启用的功能模块开关 */
+  enabledModules?: CruxSpaceModules
+  /** 是否已完成首次空间初始化向导（false 时自动引导两步空间设置） */
+  initialized?: boolean
   /** 多人处理人开关（PRD 3.2：开启后一条任务可有多名人员处理人） */
   multiAssignee: boolean
   memberIds: CruxID[]
@@ -591,8 +600,8 @@ export interface CruxApi {
   /** 分拣台待办队列（含优先级建议） */
   triageQueue: (spaceId: CruxID) => Promise<{ ok: true; data: Array<{ task: CruxTask; suggested: 'urgent' | 'high' | 'medium' | 'low'; reason: string }> } | CruxFailure>
 
-  createSpace: (input: { name: string; key: string; description?: string; visibility?: 'public' | 'private'; initialTaskTypes?: CruxInitialTaskType[] }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
-  updateSpace: (input: { id: CruxID; name?: string; description?: string; multiAssignee?: boolean; visibility?: 'public' | 'private'; archived?: boolean }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  createSpace: (input: { name: string; key: string; description?: string; visibility?: 'public' | 'private'; initialTaskTypes?: CruxInitialTaskType[]; template?: CruxSpaceTemplate; enabledModules?: Partial<CruxSpaceModules>; initialized?: boolean; seedStarterTask?: boolean }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  updateSpace: (input: { id: CruxID; name?: string; description?: string; multiAssignee?: boolean; visibility?: 'public' | 'private'; archived?: boolean; template?: CruxSpaceTemplate; enabledModules?: Partial<CruxSpaceModules>; initialized?: boolean; initialTaskTypes?: CruxInitialTaskType[]; seedStarterTask?: boolean }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   joinSpace: (input: { spaceId: CruxID; memberId?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
   inviteMember: (input: { name: string; email?: string; title?: string; role?: CruxRole; spaceId?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>

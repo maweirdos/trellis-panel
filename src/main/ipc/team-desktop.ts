@@ -7,6 +7,7 @@ import type { DesktopTeamApi } from '../../shared/team-desktop'
 import { getProjectRoot, getProjectGeneration } from '../state'
 import { resolveTeamPublicationSource } from '../services/team-publication-source'
 import { withDesktopTeamService, notifyDesktopTeamChanged } from '../services/team-desktop'
+import { cruxWorkspaceStatus, selectCruxWorkspace } from '../services/crux/connection-service'
 import { handle } from './registry'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
 import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
@@ -21,8 +22,13 @@ async function reply<T>(work: () => Promise<T>): Promise<TeamDesktopReply<T>> {
 }
 export function registerTeamDesktopIpc(getMain: () => BrowserWindow | null): void {
   const call = <T>(action: (service: DesktopTeamApi) => Promise<T>, mutation = false) => reply(async () => {
+    let failedUnauthorized = false
     try { return await withDesktopTeamService(action) }
-    finally { if (mutation) notifyDesktopTeamChanged() }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'UNAUTHORIZED') failedUnauthorized = true
+      throw error
+    }
+    finally { if (mutation || failedUnauthorized) notifyDesktopTeamChanged() }
   })
   const execution = (event: IpcMainInvokeEvent, action: (service: DesktopTeamApi) => Promise<unknown>, mutation = false) => {
     const window = getMain()
@@ -38,7 +44,21 @@ export function registerTeamDesktopIpc(getMain: () => BrowserWindow | null): voi
   handle(ipcInvoke.teamDesktop.accounts, () => call((service) => service.accounts()))
   handle(ipcInvoke.teamDesktop.login, (_event, input) => call((service) => service.login(input), true))
   handle(ipcInvoke.teamDesktop.register, (_event, input) => call((service) => service.register(input), true))
-  handle(ipcInvoke.teamDesktop.logout, (_event, id) => call((service) => service.logout(id), true))
+  handle(ipcInvoke.teamDesktop.logout, (_event, id) => call(async (service) => {
+    const account = await service.logout(id)
+    // 如果当前协作上下文所绑定的设备连接已被本次退出断开，自动切回本机模式
+    try {
+      const current = await cruxWorkspaceStatus()
+      if (current.connectionId) {
+        const connections = await service.connections()
+        const active = connections.find((item) => item.connectionId === current.connectionId)
+        if (!active || active.state === 'disconnected') await selectCruxWorkspace(null)
+      }
+    } catch {
+      // 协作工作区切回失败不阻塞账号退出结果
+    }
+    return account
+  }, true))
   handle(ipcInvoke.teamDesktop.organizations, (_event, id, options) => call((service) => service.organizations(id, options)))
   handle(ipcInvoke.teamDesktop.createOrganization, (_event, input) => call((service) => service.createOrganization(input), true))
   handle(ipcInvoke.teamDesktop.workspaces, (_event, id, options) => call((service) => service.workspaces(id, options)))
