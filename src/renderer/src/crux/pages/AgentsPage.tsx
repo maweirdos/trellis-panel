@@ -1,12 +1,17 @@
 /** Agent 职责、技能和生命周期配置。 */
-import { useState } from 'react'
-import { Archive, Cpu, Plus, RotateCcw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Archive, Cpu, MessageCircle, Plus, RotateCcw } from 'lucide-react'
 import type { CruxAgent, CruxAgentInput, CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
+import type { AcpAgentStatus } from '../../../../shared/types'
 import { api } from '../../api'
+import { runtimeHealthLabel } from '../../acp/runtime-status'
+import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import { FlowIcon } from '../icons'
+import { useAgentChatBridge } from '../agent-chat-bridge'
 import {
   APPROVAL_OPTIONS_BY_RUNTIME,
+  matchDetectedRuntime,
   MODEL_PRESET_OPTIONS,
   RUNTIME_KIND_OPTIONS,
   WORKDIR_MODE_OPTIONS,
@@ -34,9 +39,11 @@ export function AgentsPage(): JSX.Element | null {
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
   const resolveAgentSlot = useLocalExecutionSlot((state) => state.resolveAgentSlot)
+  const [detectedRuntimes, setDetectedRuntimes] = useState<AcpAgentStatus[]>(getRuntimeInventorySnapshot)
   const [editing, setEditing] = useState<CruxAgent | 'new' | null>(null)
   const [view, setView] = useState<AgentView>('active')
   const [keyword, setKeyword] = useState('')
+  useEffect(() => subscribeRuntimeInventory(setDetectedRuntimes), [])
   if (!snapshot) return null
   const agents = snapshot.agents.filter((agent) => agent.spaceId === currentSpaceId &&
     `${agent.name} ${agent.description ?? ''}`.toLowerCase().includes(keyword.toLowerCase()) &&
@@ -68,7 +75,9 @@ export function AgentsPage(): JSX.Element | null {
           const tasks = snapshot.tasks.filter((task) => task.executor?.kind === 'agent' && task.executor.id === agent.id)
           const crews = snapshot.crews.filter((crew) => crew.captain.id === agent.id || crew.members.some((ref) => ref.kind === 'agent' && ref.id === agent.id))
           const captainOf = crews.find((crew) => !crew.archived && crew.captain.id === agent.id)
-          const localSlot = resolveAgentSlot(agent.id)
+          const localSlot = resolveAgentSlot(agent.id, { runtimeKind: agent.runtimeKind, workingDirectory: agent.workingDirectory })
+          const matchedRuntime = matchDetectedRuntime(detectedRuntimes, localSlot.slot.runtimeKind)
+          const runtimeStatusText = matchedRuntime ? runtimeHealthLabel(matchedRuntime) : '待探测'
           return <section key={agent.id} className="flex flex-col gap-3 rounded-my-md border border-my-line bg-my-layer-1 p-3">
             <header className="flex items-start gap-2">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-md bg-my-layer-2 text-my-secondary"><FlowIcon name="agents" size={20} /></span>
@@ -77,7 +86,7 @@ export function AgentsPage(): JSX.Element | null {
             </header>
             <div className="flex flex-wrap items-center gap-2 text-my-2xs text-my-tertiary">
               <span>{agent.archived ? '已归档' : agent.enabled ? '已启用' : '已停用'}</span>
-              <span className="inline-flex items-center gap-1 text-my-secondary"><Cpu size={11} aria-hidden="true" />本机槽位：{localSlot.overridden ? '单独覆盖' : '跟随默认'} · {runtimeKindLabel(localSlot.slot.runtimeKind)}</span>
+              <span className="inline-flex items-center gap-1 text-my-secondary"><Cpu size={11} aria-hidden="true" />本机：{runtimeKindLabel(localSlot.slot.runtimeKind)} · {runtimeStatusText}</span>
               {agent.exclusiveCrewId && <span>小队专属 · {snapshot.crews.find((crew) => crew.id === agent.exclusiveCrewId)?.name ?? '所属小队'}</span>}
               {captainOf && <span>队长 · {captainOf.name}</span>}
             </div>
@@ -92,6 +101,11 @@ export function AgentsPage(): JSX.Element | null {
             <footer className="mt-auto flex flex-wrap items-center gap-2">
               <span className="text-my-2xs text-my-tertiary">关联任务 {tasks.length} · 小队 {crews.length}</span>
               <div className="ml-auto flex gap-1">
+                {agent.enabled && !agent.archived && !agent.exclusiveCrewId && (
+                  <Button variant="primary" size="sm" disabled={busy} onClick={() => useAgentChatBridge.getState().startAgentChat(agent.id, { runtimeKind: agent.runtimeKind, workingDirectory: agent.workingDirectory })}>
+                    <MessageCircle size={13} />发起对话
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(agent)}>{agent.archived ? '查看配置' : '编辑'}</Button>
                 {agent.archived
                   ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run('恢复 Agent', () => api.crux.saveAgent({ ...agentInput(agent), archived: false }))}><RotateCcw size={13} />恢复</Button>

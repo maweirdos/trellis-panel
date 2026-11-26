@@ -1,12 +1,16 @@
-import { useState } from 'react'
-import { ArrowUpRight, Cpu, Settings2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowUpRight, Cpu, MessageCircle, Settings2 } from 'lucide-react'
 import type { CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
+import type { AcpAgentStatus } from '../../../../shared/types'
+import { runtimeHealthLabel } from '../../acp/runtime-status'
+import { getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { useApp } from '../../store'
-import { useMy } from '../../my/store'
 import { Button, EmptyState, SearchInput } from '../../my/ui'
 import { FlowIcon } from '../icons'
+import { useAgentChatBridge } from '../agent-chat-bridge'
 import {
   APPROVAL_OPTIONS_BY_RUNTIME,
+  matchDetectedRuntime,
   MODEL_PRESET_OPTIONS,
   RUNTIME_KIND_OPTIONS,
   WORKDIR_MODE_OPTIONS,
@@ -25,6 +29,8 @@ export function AgentDirectoryPage(): JSX.Element | null {
   const [tab, setTab] = useState<DirectoryTab>('all')
   const [keyword, setKeyword] = useState('')
   const [spaceFilter, setSpaceFilter] = useState('')
+  const [detectedRuntimes, setDetectedRuntimes] = useState<AcpAgentStatus[]>(getRuntimeInventorySnapshot)
+  useEffect(() => subscribeRuntimeInventory(setDetectedRuntimes), [])
   if (!snapshot) return null
   // The authoritative snapshot supplies accessible entities. Keep their owning
   // space even in the global directory; exclusive agents belong to crew settings.
@@ -39,8 +45,8 @@ export function AgentDirectoryPage(): JSX.Element | null {
   const groups = snapshot.spaces.filter((space) => !spaceFilter || space.id === spaceFilter).map((space) => ({
     space,
     entries: [
-      ...(tab !== 'crew' ? agents.filter((agent) => agent.spaceId === space.id).map((agent) => ({ id: agent.id, kind: 'agent' as const, name: agent.name, description: agent.description, enabled: agent.enabled, detail: `${agent.skillIds.length} 项技能` })) : []),
-      ...(tab !== 'agent' ? crews.filter((crew) => crew.spaceId === space.id).map((crew) => ({ id: crew.id, kind: 'crew' as const, name: crew.name, description: crew.description, enabled: true, detail: `队长 ${crew.captain.name} · ${crew.members.length} 位协作者` })) : [])
+      ...(tab !== 'crew' ? agents.filter((agent) => agent.spaceId === space.id).map((agent) => ({ id: agent.id, kind: 'agent' as const, name: agent.name, description: agent.description, enabled: agent.enabled, runtimeKind: agent.runtimeKind, workingDirectory: agent.workingDirectory, detail: `${agent.skillIds.length} 项技能` })) : []),
+      ...(tab !== 'agent' ? crews.filter((crew) => crew.spaceId === space.id).map((crew) => ({ id: crew.id, kind: 'crew' as const, name: crew.name, description: crew.description, enabled: true, runtimeKind: undefined, workingDirectory: undefined, detail: `队长 ${crew.captain.name} · ${crew.members.length} 位协作者` })) : [])
     ].filter((entry) => `${entry.name} ${entry.description ?? ''} ${space.name} ${space.key}`.toLowerCase().includes(search))
   })).filter((group) => group.entries.length > 0)
   const tabs: Array<{ id: DirectoryTab; label: string; count: number }> = [
@@ -105,15 +111,24 @@ export function AgentDirectoryPage(): JSX.Element | null {
       {groups.length === 0 ? <EmptyState title="没有匹配的 Agent 或小队" description="调整搜索或空间筛选，也可进入空间创建 Agent。" /> : groups.map(({ space, entries }) => <section key={space.id} data-directory-space={space.id} className="space-y-2">
         <header className="flex min-w-0 items-center gap-2"><FlowIcon name="projects" size={16} /><h2 className="truncate text-my-sm font-medium text-my-primary">{space.name}</h2><span className="text-my-2xs text-my-tertiary">{space.key} · {entries.length}</span></header>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => {
-          const slotInfo = entry.kind === 'agent' ? resolveAgentSlot(entry.id) : null
+          const slotInfo = entry.kind === 'agent' ? resolveAgentSlot(entry.id, { runtimeKind: entry.runtimeKind, workingDirectory: entry.workingDirectory }) : null
+          const matchedRuntime = slotInfo ? matchDetectedRuntime(detectedRuntimes, slotInfo.slot.runtimeKind) : undefined
+          const statusLabel = matchedRuntime ? runtimeHealthLabel(matchedRuntime) : '待探测'
           return <article key={`${entry.kind}:${entry.id}`} data-directory-kind={entry.kind} className="flex min-w-0 flex-col gap-3 rounded-my-md border border-my-line p-3">
           <div className="flex items-start gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-md bg-my-layer-1 text-my-secondary"><FlowIcon name={entry.kind === 'agent' ? 'agents' : 'crews'} size={19} /></span>
             <div className="min-w-0 flex-1"><h3 className="my-item-title truncate">{entry.name}</h3><p className="mt-0.5 text-my-2xs text-my-tertiary">{entry.kind === 'agent' ? '共享岗位 Agent' : '小队'}{!entry.enabled && ' · 已停用'}</p></div>
           </div>
           <p className="my-item-description line-clamp-2 leading-relaxed">{entry.description || '暂无职责描述'}</p>
           <footer className="mt-auto flex flex-wrap items-center justify-between gap-2">
-            <span className="text-my-2xs text-my-tertiary">{entry.detail}{slotInfo ? ` · 本机${slotInfo.overridden ? '单独覆盖' : '跟随默认'}(${runtimeKindLabel(slotInfo.slot.runtimeKind)})` : ''}</span>
-            <Button size="sm" variant="ghost" aria-label={`打开 ${space.name} 的${entry.kind === 'agent' ? ' Agent' : '小队'} ${entry.name}`} onClick={() => openSpace(space.id, entry.kind)}>进入空间<ArrowUpRight size={13} /></Button>
+            <span className="text-my-2xs text-my-tertiary">{entry.detail}{slotInfo ? ` · ${runtimeKindLabel(slotInfo.slot.runtimeKind)}(${statusLabel})` : ''}</span>
+            <div className="flex items-center gap-1">
+              {entry.kind === 'agent' && entry.enabled && (
+                <Button size="sm" variant="primary" onClick={() => useAgentChatBridge.getState().startAgentChat(entry.id, { runtimeKind: entry.runtimeKind, workingDirectory: entry.workingDirectory })}>
+                  <MessageCircle size={13} />对话
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" aria-label={`打开 ${space.name} 的${entry.kind === 'agent' ? ' Agent' : '小队'} ${entry.name}`} onClick={() => openSpace(space.id, entry.kind)}>配置<ArrowUpRight size={13} /></Button>
+            </div>
           </footer>
         </article>
         })}</div>

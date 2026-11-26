@@ -10,6 +10,7 @@ import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { api } from '../api'
 import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { useInteractionGuard } from '../utils/interaction-scope'
+import { formatAgentWirePrefix, type ConversationAgentContext } from '../crux/agent-chat-bridge'
 import type { OptimisticUserMessage } from './optimisticUserMessages'
 import type { SideChatInput } from './useSideChat'
 import { useComposerAttachments } from './useComposerAttachments'
@@ -45,6 +46,7 @@ interface Submission {
   readonly threadId: string | null
   readonly task?: ConversationTaskLocator
   readonly role?: ConversationProjectRoleSelection
+  readonly agentTitlePrefix?: string
   readonly model: ComposerModel
   readonly message: OptimisticUserMessage
   readonly sourceText: string
@@ -77,6 +79,7 @@ export interface ComposerSendInput {
   readonly scopeKey?: string
   readonly task?: ConversationTaskLocator
   readonly role?: ConversationProjectRoleSelection
+  readonly agentContext?: ConversationAgentContext | null
   readonly interactive: boolean
   readonly running: boolean
   readonly canSteer: boolean
@@ -108,7 +111,8 @@ async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 
   const options = model.options?.length ? [...model.options] : undefined
   const text = submission.wireText ?? message.text
   if (!threadId) {
-    const titleSeed = submission.sourceText.trim() || submittedContent(submission).attachments[0]?.name || message.text
+    const rawSeed = submission.sourceText.trim() || submittedContent(submission).attachments[0]?.name || message.text
+    const titleSeed = submission.agentTitlePrefix ? `[${submission.agentTitlePrefix}] ${rawSeed}` : rawSeed
     const title = Array.from(titleSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
     return api.conversationCreate({ cwd: root, commandId, messageId: message.id, text,
       title, instanceId: model.instanceId, model: model.id, ...(options ? { options } : {}),
@@ -158,7 +162,7 @@ export function parseSideChatCommand(text: string): { readonly prompt: string } 
 }
 
 export function useComposerSend({
-  root, threadId, scopeKey, task, role, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
+  root, threadId, scopeKey, task, role, agentContext, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
 }: ComposerSendInput) {
   const key = composerDraftKey(root, threadId, !threadId && role ? JSON.stringify([scopeKey, 'project-role', role.id]) : scopeKey)
   const currentKey = useRef(key)
@@ -168,7 +172,8 @@ export function useComposerSend({
   const attachmentIntake = useComposerAttachments(root, threadId, key, interactive, task)
   const { text: draft, state, model, stash, attachments, references } = activeDraft
   const hasContent = hasComposerDraftContent(activeDraft)
-  const outgoingLength = references.length ? outgoingText(activeDraft).length : draft.length
+  const agentPrefix = !threadId && agentContext ? formatAgentWirePrefix(agentContext) : ''
+  const outgoingLength = (references.length ? outgoingText(activeDraft).length : draft.length) + agentPrefix.length
 
   useLayoutEffect(() => {
     if (!interactive || !canInteract() || state.phase !== 'accepted' || readComposerDraft(key).state !== state) return
@@ -249,15 +254,18 @@ export function useComposerSend({
     }
     if (deliveryIntent === 'steer' && (!threadId || !running || !canSteer || hasAttachments || references.length || selection.options?.length)) return
     const attachmentOnlyPrompt = '[User attached one or more files without additional text. Respond using the conversation context and the attached files.]'
+    const baseWire = text || (references.length ? '请结合引用的会话内容回复。' : attachmentOnlyPrompt)
+    const wireText = agentPrefix ? `${agentPrefix}${baseWire}` : baseWire
     const submission: Submission = {
       commandId: crypto.randomUUID(),
       root, threadId, ...(task ? { task: { ...task } } : {}),
       ...(!threadId && role ? { role: { id: role.id, revision: role.revision } } : {}),
+      ...(!threadId && agentContext ? { agentTitlePrefix: agentContext.name } : {}),
       model: selection, sourceText: current.text, source: draftContent(current),
       draftId: current.draftId ?? undefined,
       ...(!threadId && current.workTask ? { workTask: current.workTask } : {}),
       ...(!threadId && isComposerCodeTaskSelection(current.codeTask) ? { codeTask: current.codeTask } : {}),
-      wireText: text || (references.length ? '请结合引用的会话内容回复。' : attachmentOnlyPrompt),
+      wireText,
       message: { id: crypto.randomUUID(), role: 'user',
         text: text || [...current.attachments.map(item => item.name), ...current.references.map(item => item.label)].join('、'),
         createdAt: new Date().toISOString() },

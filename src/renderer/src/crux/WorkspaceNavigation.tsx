@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, ChevronDown, ChevronRight, Plus, Settings2 } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, Plus, Settings2, Sparkles } from 'lucide-react'
 import type { CruxSpaceModules } from '@shared/crux'
 import { resolveSpaceModules } from '@shared/crux-space-presets'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { Modal } from '../my/ui'
+import { useAgentChatBridge } from './agent-chat-bridge'
 import { FlowIcon } from './icons'
 import { COLLABORATION_MODULES, type CollaborationModule } from './navigation'
 import { SpaceSetupWizard } from './account/SpaceSetupWizard'
@@ -69,7 +70,13 @@ export function WorkspaceNavigation({ unread, onOpenAutomations }: { unread: num
   }
   return <>
     <nav aria-label="协作模块" className="collab-navigation my-scrollbar my-fade-scroll">
-      <section aria-label="工作台" className="collab-nav-section">{globals.map((entry) => item(entry))}</section>
+      <section aria-label="工作台" className="collab-nav-section">
+        {globals.map((entry) => item(entry))}
+        <button type="button" className="collab-nav-item" onClick={() => useAgentChatBridge.getState().startAgentChat(null)}>
+          <Sparkles size={17} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">小助手</span>
+        </button>
+      </section>
       <section aria-label="我的空间" className="collab-nav-section">
         <div className="collab-nav-section-heading">
           <h2>我的空间</h2>

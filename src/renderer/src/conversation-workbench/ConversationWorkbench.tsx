@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, Check, ChevronDown, FolderOpen, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Bot, Check, ChevronDown, Cpu, FolderOpen, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
@@ -12,6 +12,8 @@ import { ManagedWorkflowRecovery } from '../acp/workflow/ManagedWorkflowRecovery
 import { api, hasIpc } from '../api'
 import { ApplicationPanel } from '../applications/ApplicationPanel'
 import { useCrux } from '../crux/store'
+import { buildCruxAgentContext, listChatEligibleAgents, matchCatalogModelForRuntime, useAgentChatBridge } from '../crux/agent-chat-bridge'
+import { runtimeKindLabel } from '../crux/local-execution-slot'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { ProjectConversationIntake } from '../knowledge/ProjectConversationIntake'
@@ -169,6 +171,16 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const collapsed = useMy((state) => state.sidebarCollapsed)
   const agentView = useMy((state) => state.agentTarget)
   const workspaceContext = useCrux(state => state.workspaceContext)
+  const cruxSnapshot = useCrux(state => state.snapshot)
+  const selectedAgentId = useAgentChatBridge(state => state.selectedAgentId)
+  const selectChatAgent = useAgentChatBridge(state => state.selectAgent)
+  const startChatNonce = useAgentChatBridge(state => state.startNonce)
+  const lastHandledStartNonce = useRef(startChatNonce)
+  const chatEligibleAgents = useMemo(() => listChatEligibleAgents(cruxSnapshot), [cruxSnapshot])
+  const activeAgentContext = useMemo(
+    () => (source === 'work' || source === 'code') && !taskScope && !compact ? buildCruxAgentContext(cruxSnapshot, selectedAgentId) : null,
+    [source, taskScope, compact, cruxSnapshot, selectedAgentId]
+  )
   const task = taskScope?.locator
   const rootKey = taskScope ? JSON.stringify([
     source, taskScope.actorId, taskScope.spaceId, taskScope.locator, taskScope.binding.assigneeGeneration,
@@ -581,10 +593,35 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const composer = useComposerSend({
     root, threadId: target?.threadId ?? null, scopeKey: rootKey, interactive: writable, task,
     role: draftRole,
+    agentContext: activeAgentContext,
     running: Boolean(activeRun), canSteer, onAccepted,
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
     onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
   })
+  // 当从工作台点「小助手」或从 Agent 卡片点「发起对话」进入时，自动清草稿开新会话
+  useEffect(() => {
+    if (startChatNonce === lastHandledStartNonce.current) return
+    lastHandledStartNonce.current = startChatNonce
+    if ((source === 'work' || source === 'code') && !taskScope && !compact) {
+      select(null)
+      requestAnimationFrame(() => {
+        if (!targetRef.current && canInteract()) composerRef.current?.focus()
+      })
+    }
+  }, [startChatNonce, source, taskScope, compact, canInteract])
+
+  // 选定空间 Agent 后，自动根据其本机执行槽偏好匹配对应真实 Runtime 实例模型
+  const appliedAgentModelRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeAgentContext || target || catalog.models.length === 0) return
+    const key = `${activeAgentContext.id}:${activeAgentContext.runtimeKind}:${activeAgentContext.preferredModel}`
+    if (appliedAgentModelRef.current === key) return
+    const matched = matchCatalogModelForRuntime(catalog, activeAgentContext.runtimeKind, activeAgentContext.preferredModel)
+    if (matched) {
+      appliedAgentModelRef.current = key
+      composer.setModel(matched)
+    }
+  }, [activeAgentContext, target, catalog, composer])
   const canPreselectTask = composer.state.phase === 'idle' || (composer.state.phase === 'rejected' && composer.state.restored)
   const workTask = useWorkTaskActions({
     root, threadId: hostThreadId, isWork: source === 'work', enabled: source === 'work' && writable && !archivedThread && (!target || Boolean(projection)),
@@ -708,6 +745,48 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       onClick={() => void applyThreadChange(pendingChange)}>继续清理</Button>}
   </>
   const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
+  const agentPickerControl = (source === 'work' || source === 'code') && !taskScope && !compact && !target ? (
+    <Dropdown width={300} trigger={({ open, toggle }) => (
+      <button type="button" className="my-control my-control-ghost inline-flex max-w-52 shrink-0 items-center gap-1.5 text-my-xs text-my-primary"
+        aria-label="选择对话对象" aria-expanded={open} onClick={toggle}>
+        {activeAgentContext ? <Bot size={14} aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+        <span className="truncate font-medium">{activeAgentContext ? activeAgentContext.name : '小助手'}</span>
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+    )}>
+      {(close) => (
+        <div className="flex flex-col gap-0.5 p-1">
+          <DropdownHeader>选择对话对象</DropdownHeader>
+          <button type="button" onClick={() => { selectChatAgent(null); appliedAgentModelRef.current = null; close() }}
+            className="flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary">
+            <Sparkles size={14} className="shrink-0" />
+            <span className="min-w-0 flex-1 truncate">小助手（通用自由对话）</span>
+            {!activeAgentContext && <Check size={14} className="shrink-0 text-my-icon-accent" />}
+          </button>
+          {chatEligibleAgents.length > 0 && <div className="my-menu-divider" role="separator" />}
+          {chatEligibleAgents.length > 0 && <DropdownHeader>空间 Agent（自动注入指令与技能）</DropdownHeader>}
+          {chatEligibleAgents.map(({ agent, spaceName }) => {
+            const selected = activeAgentContext?.id === agent.id
+            return (
+              <button key={agent.id} type="button" onClick={() => { selectChatAgent(agent.id); appliedAgentModelRef.current = null; close() }}
+                className="flex min-h-9 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary">
+                <Bot size={14} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-my-primary">{agent.name}</span>
+                  <span className="block truncate text-my-2xs text-my-tertiary">{spaceName} · {agent.skillIds.length} 项技能</span>
+                </span>
+                {selected && <Check size={14} className="shrink-0 text-my-icon-accent" />}
+              </button>
+            )
+          })}
+          {chatEligibleAgents.length === 0 && (
+            <p className="px-2.5 py-1.5 text-my-xs text-my-tertiary">尚未创建空间 Agent，可前往工作台创建专属岗位。</p>
+          )}
+        </div>
+      )}
+    </Dropdown>
+  ) : null
+
   const directoryChoices = projectChoices(appRoot, recentProjects)
   const workdirControl = (source === 'work' || source === 'code') && !taskScope && !compact ? (
     target ? (
@@ -860,7 +939,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         <button type="button" className="my-icon-control acp-mobile-only"
           aria-label="打开会话导航" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><PanelLeft size={16} aria-hidden="true" /></button>
       </>}
-        identity={<div className="flex min-w-0 items-center gap-2"><strong className="truncate">{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>{workdirControl}</div>}
+        identity={<div className="flex min-w-0 items-center gap-2">{agentPickerControl ?? <strong className="truncate">{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>}{workdirControl}</div>}
         actions={<>
           {interactive && code && !compact && !taskScope && <><GitBranchControl /><ApplicationPanel /></>}
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
@@ -915,7 +994,26 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             } else composer.setDraft(message.text)
             focusComposer()
           } : undefined}
-          emptyTitle={target ? '暂无消息' : undefined} footer={<>
+          emptyTitle={target ? '暂无消息' : activeAgentContext ? `与 ${activeAgentContext.name} 开始对话` : undefined}
+          footer={<>
+            {draftIsEmpty && activeAgentContext && (
+              <div className="mx-auto mb-3 flex w-full max-w-xl flex-col gap-2 rounded-my-base border border-my-line bg-my-panel p-3 text-my-xs text-my-secondary">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-my-primary">
+                    <Bot size={14} aria-hidden="true" />
+                    {activeAgentContext.name} · {activeAgentContext.spaceName}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-my-2xs text-my-tertiary">
+                    <Cpu size={12} aria-hidden="true" />本机偏好：{runtimeKindLabel(activeAgentContext.runtimeKind)}
+                  </span>
+                </div>
+                {activeAgentContext.description && <p className="m-0 text-my-xs text-my-secondary">{activeAgentContext.description}</p>}
+                <div className="flex flex-wrap items-center gap-1.5 text-my-2xs text-my-tertiary">
+                  <span>首轮发送将自动携带岗位指令</span>
+                  {activeAgentContext.skills.length > 0 && <span>· 附带 {activeAgentContext.skills.length} 项绑定技能（{activeAgentContext.skills.map((s) => s.name).join('、')}）</span>}
+                </div>
+              </div>
+            )}
             {!hasIpc && <ConversationIssue title="请在 Crux 桌面端使用原生对话" />}
             {read?.error && <ConversationIssue title="无法读取会话" reason={read.error}
               actions={<Button size="sm" variant="ghost" onClick={reload}>重新读取</Button>} />}
