@@ -301,5 +301,23 @@ export function createDaemonApplication(input: DaemonApplicationInput) {
       if (results.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '后台部分清理未确认；原命令和实际执行结果已保留。', 'unknown')
     }
   }
-  return { registry: integrationRegistry, admission, domains, async start(value: IntegrationScheduler) { scheduler = value; if (settings.authority() === 'daemon') await initialize() } }
+  return {
+    registry: integrationRegistry,
+    admission,
+    domains,
+    prewarm() {
+      if (!initialized || closed) return
+      let recentRoots: string[] | undefined
+      try {
+        if (settings.authority() === 'daemon') {
+          const rawRecent = settings.read().snapshot.settings?.recentProjects
+          if (Array.isArray(rawRecent)) {
+            recentRoots = rawRecent.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 2)
+          }
+        }
+      } catch { /* ignore */ }
+      runtime?.prewarm(recentRoots)
+    },
+    async start(value: IntegrationScheduler) { scheduler = value; if (settings.authority() === 'daemon') await initialize() }
+  }
 }

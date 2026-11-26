@@ -1,11 +1,14 @@
-param([Parameter(Mandatory=$true)][ValidatePattern('^(trellis-daemon-v1-[a-f0-9]{64}|crux-gui-lifecycle-[a-f0-9]{64}-[a-f0-9]{16})$')][string]$Name)
+param(
+  [Parameter(Mandatory=$true)][ValidatePattern('^(trellis-daemon-v1-[a-f0-9]{64}|crux-gui-lifecycle-[a-f0-9]{64}-[a-f0-9]{16})$')][string]$Name,
+  [string]$CacheDir = ''
+)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 # The DACL and local-only flag are installed at creation, before any connection.
 # This helper transports bounded opaque frames only; Electron owns authentication/dispatch.
-Add-Type -ReferencedAssemblies System.dll,System.Core.dll,System.Web.Extensions.dll -TypeDefinition @'
+$pipeSource = @'
 using System;
 using System.IO;
 using System.IO.Pipes;
@@ -36,6 +39,12 @@ public static class TrellisPrivatePipe {
   static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
   [DllImport("kernel32.dll", SetLastError=true)]
   static extern bool CloseHandle(IntPtr handle);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern bool CancelIoEx(IntPtr handle, IntPtr lpOverlapped);
+  [DllImport("kernel32.dll")]
+  static extern IntPtr GetCurrentProcess();
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern bool TerminateProcess(IntPtr handle, uint exitCode);
   [DllImport("kernel32.dll", SetLastError=true)]
   static extern bool GetProcessTimes(IntPtr handle, out long creation, out long exit, out long kernel, out long user);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
@@ -113,7 +122,9 @@ public static class TrellisPrivatePipe {
     public void Dispose() {
       if (Interlocked.Exchange(ref disposed,1)!=0) return;
       if (ExitWatch != null) ExitWatch.Unregister(null);
-      Pipe.Dispose(); Process.Dispose();
+      try { if (!Pipe.SafePipeHandle.IsClosed) CancelIoEx(Pipe.SafePipeHandle.DangerousGetHandle(), IntPtr.Zero); } catch { }
+      try { Pipe.Dispose(); } catch { }
+      try { Process.Dispose(); } catch { }
       lock(queueLock) {
         while (outgoing.Count > 0) { byte[] frame=outgoing.Dequeue(); queuedBytes-=frame.Length; queuedFrames--; Interlocked.Add(ref TotalQueuedBytes,-frame.Length); }
       }
@@ -213,9 +224,45 @@ public static class TrellisPrivatePipe {
         if (!peer.Enqueue(frame)) peer.Dispose();
       }
     } catch { Emit("{\"type\":\"fatal\"}"); } finally {
-      Closing=true; if (Waiting != null) Waiting.Dispose(); foreach (var peer in Clients.Values) peer.Dispose();
+      Closing=true;
+      try { var w=Waiting; if (w != null && !w.SafePipeHandle.IsClosed) CancelIoEx(w.SafePipeHandle.DangerousGetHandle(), IntPtr.Zero); } catch { }
+      foreach (var peer in Clients.Values) {
+        try { if (!peer.Pipe.SafePipeHandle.IsClosed) CancelIoEx(peer.Pipe.SafePipeHandle.DangerousGetHandle(), IntPtr.Zero); } catch { }
+      }
+      try { TerminateProcess(GetCurrentProcess(), 0u); } catch { }
+      Environment.Exit(0);
     }
   }
 }
 '@
+$pipeLoaded = $false
+if ($CacheDir) {
+  try {
+    if (-not [IO.Directory]::Exists($CacheDir)) { [void][IO.Directory]::CreateDirectory($CacheDir) }
+    if (([IO.File]::GetAttributes($CacheDir) -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+      $sha = [Security.Cryptography.SHA256]::Create()
+      try {
+        $pipeBytes = [Text.Encoding]::UTF8.GetBytes($pipeSource + '|' + [Environment]::Version.ToString() + '|' + [IntPtr]::Size)
+        $pipeHash = ([BitConverter]::ToString($sha.ComputeHash($pipeBytes))).Replace('-', '').ToLowerInvariant()
+      } finally { $sha.Dispose() }
+      $pipeDll = [IO.Path]::Combine($CacheDir, 'trellis-pipe-' + $pipeHash + '.dll')
+      if (-not [IO.File]::Exists($pipeDll)) {
+        $tmpDll = $pipeDll + '.' + [Guid]::NewGuid().ToString('N') + '.tmp.dll'
+        try {
+          Add-Type -ReferencedAssemblies System.dll,System.Core.dll,System.Web.Extensions.dll -TypeDefinition $pipeSource -OutputAssembly $tmpDll -OutputType Library
+          try { [IO.File]::Move($tmpDll, $pipeDll) } catch { if ([IO.File]::Exists($tmpDll)) { [IO.File]::Delete($tmpDll) } }
+        } catch {
+          if ([IO.File]::Exists($tmpDll)) { try { [IO.File]::Delete($tmpDll) } catch {} }
+        }
+      }
+      if ([IO.File]::Exists($pipeDll) -and (([IO.File]::GetAttributes($pipeDll) -band [IO.FileAttributes]::ReparsePoint) -eq 0)) {
+        [void][Reflection.Assembly]::LoadFrom($pipeDll)
+        $pipeLoaded = $true
+      }
+    }
+  } catch {}
+}
+if (-not $pipeLoaded) {
+  Add-Type -ReferencedAssemblies System.dll,System.Core.dll,System.Web.Extensions.dll -TypeDefinition $pipeSource
+}
 [TrellisPrivatePipe]::Run($Name)

@@ -1,3 +1,4 @@
+import '@shared/csp-validation'
 import { useEffect, useLayoutEffect, useState, type JSX } from 'react'
 import { X } from 'lucide-react'
 import { clsx } from 'clsx'

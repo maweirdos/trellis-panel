@@ -13,10 +13,25 @@ async function valid(directory) {
   try {
     const physical = await realpath(directory)
     if (physical !== directory) return false
+    const stampParts = []
+    for (const [name] of Object.entries(PI_FIND_RELEASE.files)) {
+      const file = join(directory, name)
+      if (await realpath(file) !== file) return false
+      const st = await lstat(file, { bigint: true })
+      if (!st.isFile()) return false
+      stampParts.push(`${name}:${st.size}:${st.mtimeNs}`)
+    }
+    const stampFile = join(directory, '.pi-verified.json')
+    const expectedStamp = stampParts.join('|') + '|' + JSON.stringify(PI_FIND_RELEASE.files)
+    try {
+      const saved = JSON.parse(await readFile(stampFile, 'utf8'))
+      if (saved && saved.stamp === expectedStamp) return true
+    } catch { /* verify full sha256 below */ }
     for (const [name, digest] of Object.entries(PI_FIND_RELEASE.files)) {
       const file = join(directory, name)
-      if (await realpath(file) !== file || !(await lstat(file)).isFile() || createHash('sha256').update(await readFile(file)).digest('hex') !== digest) return false
+      if (createHash('sha256').update(await readFile(file)).digest('hex') !== digest) return false
     }
+    try { await writeFile(stampFile, JSON.stringify({ stamp: expectedStamp })) } catch { /* ignore */ }
     return true
   } catch { return false }
 }

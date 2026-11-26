@@ -263,7 +263,7 @@ function ModelPickerContent({ catalog, value, onChange, lockedInstanceId, root, 
     <div className="conversation-model-footer">
         <span className="conversation-model-footer-note">{heading}</span>
         <Button type="button" size="sm" variant="ghost" disabled={loading}
-          onClick={() => { void refresh(); if (instanceId) void ensure(instanceId, true) }}>
+          onClick={() => { void refresh(true); if (instanceId) void ensure(instanceId, true) }}>
           <RotateCw size={13} aria-hidden="true" />重新读取
         </Button>
     </div>

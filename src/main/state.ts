@@ -18,7 +18,7 @@ import { recordActivity } from './services/activity'
 import { broadcastToWindows } from './services/bridge'
 import { deliverToast } from './services/notifications'
 import { eventTaskMaterial, verifyMaterialChange } from './services/acp/materials'
-import { selectRuntimeObservationRoot } from './services/daemon-client/runtime'
+import { prewarmConversationWorkspace, selectRuntimeObservationRoot } from './services/daemon-client/runtime'
 import { createTaskRecordAt } from './services/task-record'
 import { closeObservationForProject, initObservationForRoot } from './services/observability'
 import { startHttpApi, stopHttpApi } from './services/httpapi'
@@ -301,6 +301,8 @@ export function openProjectAt(root: string): { ok: true; snapshot: ProjectSnapsh
     void initObservationForRoot(projectRoot).catch(() => {
       /* 观测初始化失败不影响阅读；下次打开/显式绑定重试 */
     })
+    const warmRoot = projectRoot
+    setImmediate(() => { void prewarmConversationWorkspace(warmRoot) })
     return { ok: true, snapshot: snap }
   } catch (e) {
     return ipcFail(IpcErrorCode.Io, errorText(e, '打开项目失败'))

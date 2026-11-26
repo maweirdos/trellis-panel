@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname, join, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
+import * as nodeModule from 'node:module'
 import { daemonStartupFailure, recordDaemonStartupFailure } from './daemon/startup-failure'
 import { captureOnboarding } from './onboarding'
 
@@ -25,6 +26,11 @@ if (roles.length > 1 || !['gui', 'gui-launcher', 'daemon', 'control', 'maintenan
   }
   // Preserve the existing canonical userData, name and dev/prod behavior. Role paths are additive.
   const userData = app.getPath('userData')
+  // 启用 Node/V8 字节码编译缓存（借鉴 t3code），显著缩短主进程与后台守护进程冷启动加载时间。
+  try {
+    const mod = nodeModule as typeof nodeModule & { enableCompileCache?: (dir?: string) => unknown }
+    mod.enableCompileCache?.(join(userData, 'v8-compile-cache'))
+  } catch { /* 编译缓存不可用时静默回退 */ }
   const containedGui = role === 'gui' && process.argv.some(value => value.startsWith('--trellis-gui-contained='))
   if (containedGui) captureOnboarding(userData)
   const guiRole = role === 'gui' || role === 'gui-launcher'

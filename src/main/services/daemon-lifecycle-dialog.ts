@@ -240,27 +240,58 @@ function createDialog(input: DaemonLifecycleConfirmation & Pick<DaemonLifecycleD
  * confirmation or command itself. Cleanup completes before retry becomes usable. */
 export async function runDaemonLifecycleWithDialog(context: DaemonContext, options: LifecycleOptions): Promise<LifecycleAttempt> {
   let latest: LifecycleAttempt | undefined
+  let pendingProgressState: DaemonLifecycleDialogState | null = null
+  let progressDelayTimer: ReturnType<typeof setTimeout> | null = null
+  const clearProgressDelay = (): void => {
+    if (progressDelayTimer) {
+      clearTimeout(progressDelayTimer)
+      progressDelayTimer = null
+    }
+    pendingProgressState = null
+  }
   const progress = (attempt: LifecycleAttempt): void => {
     latest = attempt
     options.progress?.(attempt)
-    if (!['stopping', 'terminating', 'verifying'].includes(attempt.phase)) return
+    if (!['stopping', 'terminating', 'verifying'].includes(attempt.phase)) {
+      clearProgressDelay()
+      return
+    }
+    if (options.silentProgress) return
     const state: DaemonLifecycleDialogState = {
       attemptId: attempt.attemptId, reason: attempt.reason, sessions: [], sessionCount: 0,
       uncertain: false, phase: attempt.phase as 'stopping' | 'terminating' | 'verifying',
       commandId: attempt.commandId
     }
     if (pending?.state.attemptId === attempt.attemptId) {
+      clearProgressDelay()
       pending.state = state
       pending.window.setTitle(state.reason === 'upgrade' ? '正在准备更新…' : '正在重启…')
+      return
     }
-    else if (!pending) createDialog(state)
+    if (pending) return
+    // 空闲交接通常在数百毫秒内完成；延后 1.2s 再展示纯进度窗，避免每次重启闪烁多余小窗。
+    // 需用户交互确认（confirmation）与失败恢复（failed）不受此延迟影响，仍立即展示。
+    pendingProgressState = state
+    if (!progressDelayTimer) {
+      progressDelayTimer = setTimeout(() => {
+        progressDelayTimer = null
+        if (!pending && pendingProgressState && pendingProgressState.attemptId === latest?.attemptId &&
+          ['stopping', 'terminating', 'verifying'].includes(latest.phase)) {
+          createDialog(pendingProgressState)
+        }
+        pendingProgressState = null
+      }, 1200)
+      progressDelayTimer.unref()
+    }
   }
   while (true) {
     try {
       const result = await runDaemonLifecycle(context, { ...options, progress })
+      clearProgressDelay()
       if (pending?.state.attemptId === result.attemptId) closeDialog(pending)
       return result
     } catch (error) {
+      clearProgressDelay()
       if (error instanceof LifecycleCancelled || !latest) {
         if (pending && latest && pending.state.attemptId === latest.attemptId) closeDialog(pending)
         throw error

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { constants, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { constants, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,15 +32,31 @@ export async function prepareDevHost() {
   const brand = JSON.parse(readFileSync(join(root, 'resources/brand/identity.json'), 'utf8'))
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   const icon = readFileSync(join(root, 'resources/brand/icon.ico'))
+  const binStat = statSync(original, { bigint: true })
+  const binStamp = `${binStat.size}:${binStat.mtimeNs}`
+  const fastKey = createHash('sha256')
+    .update(binStamp).update(icon).update(JSON.stringify(brand)).update(pkg.version)
+    .update(readFileSync(fileURLToPath(import.meta.url))).digest('hex')
+  const cacheRoot = join(root, 'node_modules/.cache/trellis-panel/electron-host')
+  const fastPointer = join(cacheRoot, `fast-${fastKey.slice(0, 24)}.json`)
+  if (existsSync(fastPointer)) {
+    try {
+      const cached = JSON.parse(readFileSync(fastPointer, 'utf8'))
+      if (cached && cached.fastKey === fastKey && typeof cached.executablePath === 'string' && existsSync(cached.executablePath)) {
+        return cached.executablePath
+      }
+    } catch { /* ignore stale pointer */ }
+  }
   const binary = readFileSync(original)
   const fingerprint = createHash('sha256')
     .update(binary).update(icon).update(JSON.stringify(brand)).update(pkg.version)
     .update(readFileSync(fileURLToPath(import.meta.url))).digest('hex')
-  const cacheRoot = join(root, 'node_modules/.cache/trellis-panel/electron-host')
   const destination = join(cacheRoot, fingerprint.slice(0, 24))
   const executablePath = join(destination, 'electron.exe')
   const marker = join(destination, 'brand.json')
   if (existsSync(executablePath) && existsSync(marker) && JSON.parse(readFileSync(marker, 'utf8')).fingerprint === fingerprint) {
+    mkdirSync(cacheRoot, { recursive: true })
+    try { writeFileSync(fastPointer, JSON.stringify({ fastKey, executablePath })) } catch { /* ignore */ }
     return executablePath
   }
 
@@ -82,5 +98,6 @@ export async function prepareDevHost() {
     // A concurrent launcher may have published the same immutable runtime first.
     if (!existsSync(marker) || JSON.parse(readFileSync(marker, 'utf8')).fingerprint !== fingerprint) throw error
   }
+  try { writeFileSync(fastPointer, JSON.stringify({ fastKey, executablePath })) } catch { /* ignore */ }
   return executablePath
 }

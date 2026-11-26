@@ -46,6 +46,30 @@ const definitiveStartRejection = (error: unknown): error is CodexAppServerReques
 const pipeError = (method: 'read' | 'write', cause: unknown): PlatformError =>
   systemError({ _tag: 'Unknown', module: 'CodexAppServer', method, cause })
 
+function resolveCodexBinaryStamp(environment: NodeJS.ProcessEnv): unknown {
+  const executable = environment.CODEX_EXECUTABLE
+  if (executable && isAbsolute(executable)) {
+    try {
+      const info = statSync(executable)
+      return [realpathSync.native(executable).toLowerCase(), info.size, info.mtimeMs]
+    } catch { /* fall through */ }
+  }
+  const directories = (environment.PATH ?? environment.Path ?? '').split(delimiter).filter(isAbsolute)
+  const suffixes = process.platform === 'win32' ? ['.exe', '.cmd'] : ['']
+  for (const directory of directories) {
+    for (const suffix of suffixes) {
+      const candidate = join(directory, `codex${suffix}`)
+      try { accessSync(candidate, constants.X_OK) } catch { continue }
+      const target = suffix === '.cmd' ? join(directory, 'node_modules', '@openai', 'codex', 'bin', 'codex.js') : candidate
+      try {
+        const info = statSync(target)
+        return [realpathSync.native(target).toLowerCase(), info.size, info.mtimeMs]
+      } catch { continue }
+    }
+  }
+  return null
+}
+
 export function codexConfigurationKey(environment: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
   const home = environment.CODEX_HOME || join(homedir(), '.codex')
   const artifacts = ['config.toml', 'auth.json'].map(file => {
@@ -54,7 +78,8 @@ export function codexConfigurationKey(environment: NodeJS.ProcessEnv = process.e
       return [info.ino, info.mtimeMs, info.size]
     } catch { return null }
   })
-  return driverConfigurationKey([home, artifacts, environment.CODEX_EXECUTABLE, environment.PATH ?? environment.Path,
+  // 使用解析后的实际 Codex 二进制身份代替整串易变 PATH（避免 npm run dev / IDE 注入 node_modules/.bin 击穿缓存）。
+  return driverConfigurationKey([home, artifacts, environment.CODEX_EXECUTABLE ?? null, resolveCodexBinaryStamp(environment),
     environment.OPENAI_BASE_URL, environment.OPENAI_API_KEY, environment.CODEX_API_KEY], fingerprintKey)
 }
 

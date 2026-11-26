@@ -37,6 +37,8 @@ export interface LifecycleOptions {
   /** Must fence GUI admission synchronously before returning its cleanup work. */
   stopAdditional?(attempt: LifecycleAttempt): Promise<void>
   progress?(attempt: LifecycleAttempt): void
+  /** 用户已在独立退出确认窗完成授权时静默推进后台停止，不再二次弹出“正在重启…”进度窗。 */
+  silentProgress?: boolean
 }
 export class LifecycleCancelled extends DaemonError {
   constructor() { super('E_UNAVAILABLE', '已取消重启。原会话继续运行；可选择重试或退出。') }
@@ -55,7 +57,7 @@ export function lifecycleDeadline<T>(work: Promise<T>, deadline: number, descrip
     work.then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })
   })
 }
-const pause = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 100))
+const pause = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 15))
 const sameLease = (a: DaemonLease | null, b: DaemonLease | null): boolean => JSON.stringify(a) === JSON.stringify(b)
 const active = new Map<string, Promise<LifecycleAttempt>>()
 
@@ -345,7 +347,11 @@ async function run(context: DaemonContext, options: LifecycleOptions): Promise<L
       }
       await Promise.all(scopes.map(scope => scope.verify(nativeBudget(grace))))
     })()
-    try { await lifecycleDeadline(stopping, grace, '正常退出达到截止时间。') }
+    let verifiedGraceful = false
+    try {
+      await lifecycleDeadline(stopping, grace, '正常退出达到截止时间。')
+      verifiedGraceful = true
+    }
     catch (error) {
       if (error instanceof DaemonError && ['E_DENIED', 'E_CONFLICT'].includes(error.code)) throw error
       client?.close(); client = undefined
@@ -354,7 +360,9 @@ async function run(context: DaemonContext, options: LifecycleOptions): Promise<L
       await lifecycleDeadline(Promise.all(scopes.map(scope => scope.terminate(nativeBudget(nativeDeadline)))), nativeDeadline, '原生终止未能在截止时间内完成。')
     }
     attempt.phase = 'verifying'; save(context, attempt, options)
-    await lifecycleDeadline(Promise.all(scopes.map(scope => scope.verify(nativeBudget(nativeDeadline)))), nativeDeadline, '原生退出范围核验失败。')
+    if (!verifiedGraceful) {
+      await lifecycleDeadline(Promise.all(scopes.map(scope => scope.verify(nativeBudget(nativeDeadline)))), nativeDeadline, '原生退出范围核验失败。')
+    }
     if (attempt.legacyGuiRecovery) attempt.legacyGuiRecovery.managedCleanup = 'verified'
     if (original) {
       const current = readLease(context)

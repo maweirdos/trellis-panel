@@ -45,7 +45,7 @@ function status(): Promise<DaemonResult<DaemonStatus>> {
   void pending.finally(() => { if (statusPromise === pending) statusPromise = undefined })
   return pending
 }
-const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200))
+const pause = (ms = 80): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 const failure = (error: unknown): ReturnType<typeof daemonFailure> => daemonFailure(error,
   error instanceof Error && 'commandId' in error && typeof error.commandId === 'string' ? error.commandId : undefined)
 let confirmLifecycle: (input: LifecycleConfirmation) => Promise<boolean> = async () => {
@@ -108,9 +108,23 @@ async function startOwned(): Promise<DaemonResult<DaemonStatus>> {
       const child = await launchDaemonProcess(args, env)
       const deadline = Date.now() + 12_000
       let lastFailure: import('../../../shared/daemon').DaemonFailure | undefined
+      let pollCount = 0
+      let incompleteLeaseSince: number | undefined
       while (Date.now() < deadline) {
-        await pause()
-        const lease = readLease(native)
+        await pause(pollCount++ < 15 ? 25 : 60)
+        let lease: ReturnType<typeof readLease>
+        try {
+          lease = readLease(native)
+          incompleteLeaseSince = undefined
+        } catch (error) {
+          // 新 Daemon 执行 mkdirSync('owner') 到 writeAtomic('lease.json') 之间存在极短空窗；
+          // 按“首次观察到空窗”计时最多宽限 800ms，而非绑定 launchedAt（避免冷起超 2s 时误触发 E_UNAVAILABLE）。
+          if (error instanceof DaemonError && error.code === 'E_UNAVAILABLE') {
+            incompleteLeaseSince ??= Date.now()
+            if (Date.now() - incompleteLeaseSince < 800) continue
+          }
+          throw error
+        }
         if (lease) {
           const result = await status()
           if (result.ok) {
@@ -135,7 +149,7 @@ async function startOwned(): Promise<DaemonResult<DaemonStatus>> {
 async function stopOwned(): Promise<DaemonResult<null>> {
   try {
     // This explicit Stop is already authorized by its quit/settings/CLI caller.
-    await stopDaemonForLifecycle({ reason: 'restart', confirm: async () => true })
+    await stopDaemonForLifecycle({ reason: 'restart', silentProgress: true, confirm: async () => true })
     return { ok: true, data: null }
   } catch (error) { return failure(error) }
 }

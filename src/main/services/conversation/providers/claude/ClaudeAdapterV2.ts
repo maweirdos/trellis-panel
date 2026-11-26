@@ -37,7 +37,14 @@ export function claudeConfigurationKey(env: NodeJS.ProcessEnv = process.env, fin
   const files = ['settings.json', '.credentials.json'].map(file => {
     try { const info = statSync(join(home, file)); return [info.ino, info.size, info.mtimeMs] } catch { return null }
   })
-  return driverConfigurationKey([home, files, env.CLAUDE_EXECUTABLE, env.PATH ?? env.Path, env.ANTHROPIC_BASE_URL,
+  let resolvedBinary: unknown = null
+  try {
+    const exe = realpathSync.native(resolveClaudeSdkExecutablePath(env))
+    const info = statSync(exe)
+    resolvedBinary = [comparePath(exe), info.size, info.mtimeMs]
+  } catch { /* unavailable */ }
+  // 使用实际解析出的 Claude 可执行文件元数据替代整串易变 PATH，防止 IDE/npm 环境变量微调击穿缓存。
+  return driverConfigurationKey([home, files, env.CLAUDE_EXECUTABLE ?? null, resolvedBinary, env.ANTHROPIC_BASE_URL,
     env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN, env.ANTHROPIC_AUTH_TOKEN, env.CLAUDE_CODE_USE_BEDROCK, env.CLAUDE_CODE_USE_VERTEX], fingerprintKey)
 }
 

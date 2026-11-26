@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { join } from 'node:path'
 import { z } from 'zod'
 import { authenticateSchema, daemonPayloads, daemonRequestSchema, daemonResults, DAEMON_CONTROL_METHODS, DAEMON_LIMITS, type DaemonResult, type ProcessOwner, type WorkspaceGrant, type DaemonNotification } from '../../shared/daemon'
 import type { DaemonContext } from './context'
@@ -15,7 +16,13 @@ import type { DaemonDispatcher } from './dispatcher'
 import { authenticateNativeGuiGrant, releaseNativeGuiGrant, type NativeGuiAuthority } from './native-gui-grant'
 import { isBoundedNativeTaskControl } from '../../shared/native-task-execution'
 
-export async function startDaemonServer(context: DaemonContext, lease: DaemonLease, dispatcher: DaemonDispatcher, fatal: () => void): Promise<NativeServer> {
+export async function startDaemonServer(
+  context: DaemonContext,
+  lease: DaemonLease,
+  dispatcher: DaemonDispatcher,
+  fatal: () => void,
+  readyGate?: Promise<void>
+): Promise<NativeServer> {
   const admission = { ordinary: { calls: 0, bytes: 0 }, control: { calls: 0, bytes: 0 }, authentication: { calls: 0, bytes: 0 } }
   return listenNativePipe(context.pipeName, (peer) => {
     const challenge = { type: 'challenge' as const, version: 1 as const, epoch: lease.epoch, nonce: randomBytes(32).toString('hex'), identity: context.identity, owner: context.owner }
@@ -86,6 +93,7 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
       budget.calls++; budget.bytes += bytes
       const finish = (): void => { budget.calls--; budget.bytes -= bytes }
       const authenticate = async (): Promise<void> => {
+        if (readyGate) await readyGate
         if (closed) return
         if (client || !peer.isAlive()) throw new DaemonError('E_DENIED', 'The original native peer is no longer available for authentication.')
         const auth = authenticateSchema.parse(raw)
@@ -142,5 +150,5 @@ export async function startDaemonServer(context: DaemonContext, lease: DaemonLea
         void dispatch().catch(close).finally(finish)
       }
     }
-  }, fatal)
+  }, fatal, join(context.directory, 'native-cache'))
 }

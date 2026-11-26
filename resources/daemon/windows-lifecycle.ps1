@@ -1,11 +1,57 @@
-param([ValidateSet('guardian','gui-guardian','gui-wait','controller','discover-gui','inspect')][string]$Mode, [string]$SpecPath)
+param(
+  [ValidateSet('guardian','gui-guardian','gui-wait','controller','discover-gui','inspect')][string]$Mode,
+  [string]$SpecPath,
+  [string]$CacheDir = ''
+)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
 if ($Mode -ne 'gui-guardian') {
   [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
   [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 }
-Add-Type -Path ([IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle-native.cs'))
+$nativeSourceFile = [IO.Path]::Combine($PSScriptRoot, 'windows-lifecycle-native.cs')
+$nativeCacheRoot = $CacheDir
+if (-not $nativeCacheRoot -and $SpecPath) {
+  try {
+    $specDir = [IO.Path]::GetDirectoryName($SpecPath)
+    $jobsDir = if ($specDir) { [IO.Path]::GetDirectoryName($specDir) } else { $null }
+    $modeDir = if ($jobsDir) { [IO.Path]::GetDirectoryName($jobsDir) } else { $null }
+    if ($modeDir -and [IO.Directory]::Exists($modeDir)) { $nativeCacheRoot = [IO.Path]::Combine($modeDir, 'native-cache') }
+  } catch {}
+}
+$nativeLoaded = $false
+if ($nativeCacheRoot) {
+  try {
+    if (-not [IO.Directory]::Exists($nativeCacheRoot)) { [void][IO.Directory]::CreateDirectory($nativeCacheRoot) }
+    $dirAttrs = [IO.File]::GetAttributes($nativeCacheRoot)
+    if (($dirAttrs -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+      $sha = [Security.Cryptography.SHA256]::Create()
+      try {
+        $rawBytes = [IO.File]::ReadAllBytes($nativeSourceFile)
+        $metaBytes = [Text.Encoding]::UTF8.GetBytes('|' + [Environment]::Version.ToString() + '|' + [IntPtr]::Size)
+        $allBytes = New-Object byte[] ($rawBytes.Length + $metaBytes.Length)
+        [Buffer]::BlockCopy($rawBytes, 0, $allBytes, 0, $rawBytes.Length)
+        [Buffer]::BlockCopy($metaBytes, 0, $allBytes, $rawBytes.Length, $metaBytes.Length)
+        $nativeHash = ([BitConverter]::ToString($sha.ComputeHash($allBytes))).Replace('-', '').ToLowerInvariant()
+      } finally { $sha.Dispose() }
+      $nativeDll = [IO.Path]::Combine($nativeCacheRoot, 'crux-lifecycle-' + $nativeHash + '.dll')
+      if (-not [IO.File]::Exists($nativeDll)) {
+        $tmpDll = $nativeDll + '.' + [Guid]::NewGuid().ToString('N') + '.tmp.dll'
+        try {
+          Add-Type -Path $nativeSourceFile -OutputAssembly $tmpDll -OutputType Library
+          try { [IO.File]::Move($tmpDll, $nativeDll) } catch { if ([IO.File]::Exists($tmpDll)) { [IO.File]::Delete($tmpDll) } }
+        } catch {
+          if ([IO.File]::Exists($tmpDll)) { try { [IO.File]::Delete($tmpDll) } catch {} }
+        }
+      }
+      if ([IO.File]::Exists($nativeDll) -and (([IO.File]::GetAttributes($nativeDll) -band [IO.FileAttributes]::ReparsePoint) -eq 0)) {
+        [void][Reflection.Assembly]::LoadFrom($nativeDll)
+        $nativeLoaded = $true
+      }
+    }
+  } catch {}
+}
+if (-not $nativeLoaded) { Add-Type -Path $nativeSourceFile }
 function Read-Record([string]$file, [int]$limit = 1048576) {
   $item = Get-Item -LiteralPath $file -Force
   if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt $limit) { throw 'invalid-record' }
@@ -77,15 +123,60 @@ if ($Mode -in @('guardian','gui-guardian')) {
     if ($Mode -eq 'gui-guardian') { $proof.controller=$guiController.owner }
     Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'proof.json')) $proof
     $guardian.Resume()
-    while (-not $guardian.root.Exited -and (-not $spec.watchController -or -not $guiController.Exited)) { [Threading.Thread]::Sleep(50) }
+    if ($nativeCacheRoot) {
+      try {
+        $guardianMainFile = [IO.Path]::Combine($PSScriptRoot, 'windows-guardian-main.cs')
+        if ([IO.File]::Exists($guardianMainFile) -and [IO.Directory]::Exists($nativeCacheRoot) -and (([IO.File]::GetAttributes($nativeCacheRoot) -band [IO.FileAttributes]::ReparsePoint) -eq 0)) {
+          $shaExe = [Security.Cryptography.SHA256]::Create()
+          try {
+            $b1 = [IO.File]::ReadAllBytes($nativeSourceFile)
+            $b2 = [IO.File]::ReadAllBytes($guardianMainFile)
+            $archTag = if ([IntPtr]::Size -eq 8) { 'x64' } else { 'x86' }
+            $b3 = [Text.Encoding]::UTF8.GetBytes('|guardian-v1|' + $archTag)
+            $comb = New-Object byte[] ($b1.Length + $b2.Length + $b3.Length)
+            [Buffer]::BlockCopy($b1, 0, $comb, 0, $b1.Length)
+            [Buffer]::BlockCopy($b2, 0, $comb, $b1.Length, $b2.Length)
+            [Buffer]::BlockCopy($b3, 0, $comb, $b1.Length + $b2.Length, $b3.Length)
+            $exeHash = ([BitConverter]::ToString($shaExe.ComputeHash($comb))).Replace('-', '').ToLowerInvariant()
+          } finally { $shaExe.Dispose() }
+          $guardianExe = [IO.Path]::Combine($nativeCacheRoot, 'crux-guardian-' + $exeHash + '.exe')
+          if (-not [IO.File]::Exists($guardianExe)) {
+            $tmpExe = $guardianExe + '.' + [Guid]::NewGuid().ToString('N') + '.tmp.exe'
+            try {
+              $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
+              try {
+                $params = New-Object System.CodeDom.Compiler.CompilerParameters
+                $params.GenerateExecutable = $true
+                $params.GenerateInMemory = $false
+                $params.OutputAssembly = $tmpExe
+                $params.TreatWarningsAsErrors = $false
+                [void]$params.ReferencedAssemblies.Add('System.dll')
+                [void]$params.ReferencedAssemblies.Add('System.Core.dll')
+                [void]$params.ReferencedAssemblies.Add('System.Web.Extensions.dll')
+                $compiled = $provider.CompileAssemblyFromFile($params, [string[]]@($nativeSourceFile, $guardianMainFile))
+                if (-not $compiled.Errors.HasErrors -and [IO.File]::Exists($tmpExe)) {
+                  try { [IO.File]::Move($tmpExe, $guardianExe) } catch { if ([IO.File]::Exists($tmpExe)) { [IO.File]::Delete($tmpExe) } }
+                } elseif ([IO.File]::Exists($tmpExe)) {
+                  [IO.File]::Delete($tmpExe)
+                }
+              } finally { $provider.Dispose() }
+            } catch {
+              if ([IO.File]::Exists($tmpExe)) { try { [IO.File]::Delete($tmpExe) } catch {} }
+            }
+          }
+        }
+      } catch {}
+    }
+    while (-not $guardian.root.Exited -and (-not $spec.watchController -or -not $guiController.Exited)) { [Threading.Thread]::Sleep(15) }
     $guardian.job.Terminate()
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $guardian.job.Empty -and $clock.ElapsedMilliseconds -lt 10000) { [Threading.Thread]::Sleep(20) }
+    while (-not $guardian.job.Empty -and $clock.ElapsedMilliseconds -lt 10000) { [Threading.Thread]::Sleep(10) }
     Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'exit.json')) @{version=1; nonce=$nonce; root=$proof.root; cleaned=$guardian.job.Empty}
   } catch {
     if ($SpecPath) { try { Save-Record ([IO.Path]::Combine([IO.Path]::GetDirectoryName($SpecPath), 'failure.json')) @{version=1; code='native-launch-failed'; diagnostic=(Failure-Facts $_ 'capture')} } catch {} }
     exit 71
   } finally { if ($guardian) { $guardian.Dispose() }; if ($guiController) { $guiController.Dispose() } }
+  try { [CruxLifecycleNative]::FastExit(0) } catch {}
   exit 0
 }
 if ($Mode -eq 'gui-wait') {
@@ -96,14 +187,19 @@ if ($Mode -eq 'gui-wait') {
     if ($proof.nonce -cne $spec.nonce -or $proof.jobName -cne ('Global\CruxGui-' + $spec.nonce)) { throw 'launch-scope' }
     $waitingRoot=[CruxLifecycleNative]::CaptureOriginal((Owner $proof.root),$true)
     $waitingGuardian=[CruxLifecycleNative]::CaptureOriginal((Owner $proof.guardian),$true)
-    while ($waitingRoot -and -not $waitingRoot.Exited -and $waitingGuardian -and -not $waitingGuardian.Exited) { [Threading.Thread]::Sleep(100) }
+    while ($waitingRoot -and -not $waitingRoot.Exited -and $waitingGuardian -and -not $waitingGuardian.Exited) { [Threading.Thread]::Sleep(20) }
     $waitingJob=[CruxLifecycleNative]::OpenJob([string]$proof.jobName)
     if ($waitingJob) { $waitingJob.Terminate() }
     $waiting=[Diagnostics.Stopwatch]::StartNew()
     while (($waitingRoot -and -not $waitingRoot.Exited) -or ($waitingJob -and -not $waitingJob.Empty)) {
-      if ($waiting.ElapsedMilliseconds -gt 10000) { throw 'exit-deadline' }; [Threading.Thread]::Sleep(25)
+      if ($waiting.ElapsedMilliseconds -gt 10000) { throw 'exit-deadline' }; [Threading.Thread]::Sleep(10)
     }
-    Emit @{nonce=$spec.nonce; cleaned=$true}; exit 0
+    Emit @{nonce=$spec.nonce; cleaned=$true}
+    if ($waitingRoot) {$waitingRoot.Dispose(); $waitingRoot=$null}
+    if ($waitingGuardian) {$waitingGuardian.Dispose(); $waitingGuardian=$null}
+    if ($waitingJob) {$waitingJob.Dispose(); $waitingJob=$null}
+    try { [CruxLifecycleNative]::FastExit(0) } catch {}
+    exit 0
   } catch { Emit @{cleaned=$false}; exit 71 }
   finally { if ($waitingRoot) {$waitingRoot.Dispose()}; if ($waitingGuardian) {$waitingGuardian.Dispose()}; if ($waitingJob) {$waitingJob.Dispose()} }
 }

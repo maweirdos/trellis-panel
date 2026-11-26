@@ -106,16 +106,21 @@ export function useRuntimeInventoryRefresh(options: {
         publish(agents)
         setError(null)
         setReading(false)
-        for (const candidate of response.agents) {
-          if (!current()) return
+        const pendingTargets = response.agents.filter(candidate => {
           const agent = agents.find(item => item.id === candidate.id)
-          if (!agent?.enabled || !agent.available || agent.setupRequired || agent.health !== 'not_checked'
-            || !['managed', 'native', 'bundled'].includes(agent.launchKind ?? '')) continue
-          const id = agent.runtimeId ?? agent.id
-          setCheckingRuntimeId(id)
-          const checked = await api.acpRuntimeTestConnection(id)
+          return Boolean(agent?.enabled && agent.available && !agent.setupRequired && agent.health === 'not_checked'
+            && ['managed', 'native', 'bundled'].includes(agent.launchKind ?? ''))
+        })
+        for (const agent of pendingTargets) {
           if (!current()) return
-          if (!checked.ok || !checked.agents) { setError(`${agent.name}：${checked.error ?? '连接检测未完成，请重试。'}`); return }
+          const runtimeId = agent.runtimeId ?? agent.id
+          setCheckingRuntimeId(runtimeId)
+          const checked = await api.acpRuntimeTestConnection(runtimeId)
+          if (!current()) return
+          if (!checked.ok || !checked.agents) {
+            setError(`${agent.name}：${checked.error ?? '连接检测未完成，请重试。'}`)
+            continue
+          }
           agents = checked.agents
           publish(agents)
           const verified = agents.find(item => item.id === agent.id)

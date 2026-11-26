@@ -1,6 +1,6 @@
-const TRAVEL_MS = 420
-const DOCK_MS = 140
-const FALLBACK_MS = 200
+const TRAVEL_MS = 220
+const DOCK_MS = 90
+const FALLBACK_MS = 120
 
 type Rect = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>
 interface StyleValue { value: string; priority: string }

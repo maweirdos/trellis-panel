@@ -52,7 +52,7 @@ export function captureDaemonBuild(): DaemonBuild {
   try {
     const before = fstatSync(fd, { bigint: true })
     if (!before.isFile() || fingerprint(before) !== fingerprint(entry)) throw new DaemonError('E_VERSION', 'The daemon output bundle changed identity while opening it.')
-    const hash = createHash('sha256'), buffer = Buffer.alloc(64 * 1024)
+    const hash = createHash('sha256'), buffer = Buffer.allocUnsafe(1024 * 1024)
     let bytes = 0
     while (true) {
       const size = readSync(fd, buffer, 0, buffer.length, null)

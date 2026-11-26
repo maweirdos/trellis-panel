@@ -59,7 +59,7 @@ export async function installGuiLifecycleEndpoint(stop: () => Promise<void>): Pr
         try { peer.send({ accepted: true }) } catch { /* Scope verification remains authoritative. */ }
       } catch { peer.close() }
     }
-  }, () => { /* Missing channel is not exit; the native controller verifies it. */ })
+  }, () => { /* Missing channel is not exit; the native controller verifies it. */ }, join(context.directory, 'native-cache'))
   writeAtomic(ownerFile(context), JSON.stringify(record))
   return dispose
 }
@@ -97,7 +97,7 @@ export async function developmentLifecycle(confirm: (input: LifecycleConfirmatio
   const launcher = await processIdentity(Number(process.env.CRUX_DEV_LAUNCH_PID))
   const context = await createLifecycleControlContext()
   if (!launcher || launcher.userId !== context.owner.userId) throw new DaemonError('E_DENIED', '原开发启动器身份已失效。')
-  await verifyDevelopmentLauncher(launcher, app.getAppPath())
+  await verifyDevelopmentLauncher(launcher, app.getAppPath(), join(context.directory, 'native-cache'))
   let guiOwner: ProcessOwner | null = null
   await runDaemonLifecycleWithDialog(context, {
     reason: 'development', targetBuild: currentDaemonBuild().sha256, launch: { id, owner: launcher }, confirm,

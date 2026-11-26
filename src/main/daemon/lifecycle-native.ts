@@ -10,6 +10,7 @@ import { type DaemonLease, daemonLeaseSchema, readLease } from './lease'
 import { DaemonError } from './errors'
 import { readBounded, writeAtomic } from './files'
 import { nativeResource, powershellPath, sameOwner } from './native'
+import { fastContainedController, fastDiscoverGui, fastInspectProcess, fastVerifyCurrentGuiJob } from './win32-fast'
 import { WINDOWS_WORKCOPY_COMMAND } from '../services/workcopy-use/windows-command'
 import { nativeJobProofSchema } from './job-proof'
 
@@ -86,10 +87,35 @@ function sameGeneration(a: ProcessOwner, b: ProcessOwner): boolean {
   if (first.pid !== second.pid || first.startedAt !== second.startedAt || first.userId !== second.userId) return false
   return realpathSync.native(a.executable).toLowerCase() === realpathSync.native(b.executable).toLowerCase()
 }
-async function query(mode: 'inspect' | 'discover-gui', input: unknown): Promise<unknown> {
+async function query(mode: 'inspect' | 'discover-gui', input: unknown, cacheDir?: string): Promise<unknown> {
+  if (mode === 'inspect' && input && typeof input === 'object' && 'root' in input) {
+    const parsed = z.object({ root: processOwnerSchema, children: z.boolean().optional(), recovering: z.boolean().optional() }).safeParse(input)
+    if (parsed.success) {
+      const fast = fastInspectProcess(parsed.data)
+      if (fast !== undefined) return fast
+    }
+  } else if (mode === 'discover-gui' && input && typeof input === 'object') {
+    const parsed = z.object({
+      executables: z.array(z.string()).min(1).max(3),
+      appPath: z.string().nullable(),
+      excludePid: z.number().int(),
+      excludeOwner: processOwnerSchema.optional(),
+      userId: z.string(),
+      userData: z.string(),
+      guiOwner: processOwnerSchema.optional(),
+      daemonOwner: processOwnerSchema.optional(),
+      allowDefaultProfile: z.boolean()
+    }).safeParse(input)
+    if (parsed.success) {
+      const fast = fastDiscoverGui(parsed.data)
+      if (fast !== undefined) return fast
+    }
+  }
   return new Promise((accept, reject) => {
-    const child = spawn(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
-      nativeResource('windows-lifecycle.ps1'), '-Mode', mode], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+      nativeResource('windows-lifecycle.ps1'), '-Mode', mode]
+    if (cacheDir) args.push('-CacheDir', cacheDir)
+    const child = spawn(powershellPath(), args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     let output = '', failed = false
     const timer = setTimeout(() => {
       failed = true; child.stdin.destroy(); child.kill()
@@ -118,8 +144,38 @@ async function query(mode: 'inspect' | 'discover-gui', input: unknown): Promise<
   })
 }
 async function controller(scope: Scope): Promise<DaemonTermination> {
-  const child = spawn(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
-    nativeResource('windows-lifecycle.ps1'), '-Mode', 'controller'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+  if (scope.contained && scope.jobs.length === 1 && scope.jobs[0].processes.length === 0 &&
+    !scope.jobs[0].roots?.length && scope.inventory.length === 0 && !scope.bootStartedAt) {
+    const fast = fastContainedController({
+      root: scope.root,
+      jobName: scope.jobs[0].name,
+      helpers: scope.helpers,
+      recovering: scope.recovering
+    })
+    if (fast) {
+      const budget = (value: number): number => z.number().int().min(1).max(10000).parse(value)
+      const wrap = (phase: 'arm' | 'disarm' | 'terminate' | 'verify' | 'dispose', work: Promise<void>): Promise<void> =>
+        work.catch(error => {
+          const reason = error instanceof Error && nativeReasonSchema.safeParse(error.message).success
+            ? error.message as z.infer<typeof nativeReasonSchema>
+            : 'native-failure'
+          throw nativeFailure({ phase, reason })
+        })
+      return {
+        ...(fast.exitedBeforeBoot ? { exitedBeforeBoot: true as const } : {}),
+        arm: (graceMs, timeoutMs) => wrap('arm', fast.arm(z.number().int().min(0).max(15000).parse(graceMs), budget(timeoutMs))),
+        disarm: () => wrap('disarm', fast.disarm()),
+        terminate: timeoutMs => wrap('terminate', fast.terminate(budget(timeoutMs))),
+        verify: timeoutMs => wrap('verify', fast.verify(z.number().int().min(1).max(30000).parse(timeoutMs))),
+        dispose: () => wrap('dispose', fast.dispose())
+      }
+    }
+  }
+  const cacheDir = scope.directory ? join(scope.directory, 'native-cache') : undefined
+  const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+    nativeResource('windows-lifecycle.ps1'), '-Mode', 'controller']
+  if (cacheDir) args.push('-CacheDir', cacheDir)
+  const child = spawn(powershellPath(), args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
   let sequence = 0, buffer = '', closed = false, disposed = false, exitedBeforeBoot = false
   const pending = new Map<number, { accept(): void; reject(error: Error): void; timer: NodeJS.Timeout }>()
   let readyAccept: () => void = () => {}, readyReject: (error: Error) => void = () => {}
@@ -236,6 +292,7 @@ async function prepareScope(context: DaemonContext, owner: ProcessOwner, argv: s
   return controller({ root: owner, argv, contained, directory: context.directory, jobs, helpers, inventory, recovering: contained })
 }
 export async function verifyGuiJobRoot(directory: string, proof: z.infer<typeof nativeJobProofSchema>): Promise<void> {
+  if (fastVerifyCurrentGuiJob(proof.jobName, proof.guardian)) return
   const scope = await controller({ root: proof.root, argv: [], contained: true, directory,
     jobs: [{ name: proof.jobName, processes: [] }], helpers: [proof.guardian], inventory: [] })
   await scope.dispose()
@@ -303,7 +360,9 @@ async function legacyScope(context: DaemonContext, owner: ProcessOwner, inspecti
     const args = child.argv.slice(1)
     const target = context.lifecycleInstallation
     const pipePath = target ? join(dirname(target.appPath), 'daemon', 'windows-pipe.ps1') : nativeResource('windows-pipe.ps1')
-    const pipe = args.length === 9 && child.owner.executable.toLowerCase() === powershellPath().toLowerCase()
+    const pipeCacheDir = join(context.directory, 'native-cache')
+    const pipe = (args.length === 9 || (args.length === 11 && args[9] === '-CacheDir' && args[10].toLowerCase() === pipeCacheDir.toLowerCase()))
+      && child.owner.executable.toLowerCase() === powershellPath().toLowerCase()
       && args[0] === '-NoLogo' && args[1] === '-NoProfile' && args[2] === '-NonInteractive'
       && args[3] === '-ExecutionPolicy' && args[4] === 'Bypass' && args[5] === '-File'
       && args[6].toLowerCase() === pipePath.toLowerCase() && args[7] === '-Name'
@@ -342,7 +401,7 @@ export async function prepareDaemonTermination(context: DaemonContext, lease: Da
     return prepareScope(context, lease.owner, [], true,
       [{ name: proof.jobName, processes: [] }], [proof.guardian], [])
   }
-  const inspection = inspectionSchema.parse(await query('inspect', { root: lease.owner }))
+  const inspection = inspectionSchema.parse(await query('inspect', { root: lease.owner }, join(context.directory, 'native-cache')))
   return legacyScope(context, lease.owner, inspection)
 }
 /** Main-owned installation discovery only; no renderer paths/PIDs are accepted. */
@@ -379,12 +438,13 @@ export async function prepareGuiTermination(context: DaemonContext, options?: { 
     }
     ownLauncher = proof.controller
   }
+  const cacheDir = join(context.directory, 'native-cache')
   const discovered = z.object({ candidates: z.array(processDetailsSchema).max(8) }).parse(await query('discover-gui', {
     executables, appPath: target || app.isPackaged ? null : appPath, excludePid: process.pid,
     excludeOwner: ownLauncher,
     userId: context.identity.userId, userData: context.userData, guiOwner, daemonOwner: lease?.owner,
     allowDefaultProfile: existsSync(defaultProfile) && realpathSync.native(defaultProfile).toLowerCase() === realpathSync.native(context.userData).toLowerCase()
-  }))
+  }, cacheDir))
   const captureFile = join(context.directory, 'gui-lifecycle-capture.json')
   const captureSchema = z.object({ version: z.literal(1), identity: daemonIdentitySchema, owner: processOwnerSchema, state: z.enum(['captured', 'exited']) }).strict()
   const previous = existsSync(captureFile) ? captureSchema.parse(record(captureFile)) : null
@@ -393,13 +453,13 @@ export async function prepareGuiTermination(context: DaemonContext, options?: { 
   if (discovered.candidates.length > 1) throw new DaemonError('E_CONFLICT', 'Multiple exact GUI owners require explicit reconciliation.')
   const targetGui: ProcessDetails | undefined = discovered.candidates[0]
   if (guiOwner && targetGui && !sameGeneration(guiOwner, targetGui.owner) && (!previous || !sameGeneration(guiOwner, previous.owner))) {
-    const registered = inspectionSchema.parse(await query('inspect', { root: guiOwner, recovering: true }))
+    const registered = inspectionSchema.parse(await query('inspect', { root: guiOwner, recovering: true }, cacheDir))
     if (registered.root) throw new DaemonError('E_CONFLICT', '原登记桌面仍在运行，不能跳过它接管另一个桌面。')
     const registeredScope = await guiScope(context, guiOwner, registered, options?.recoverExitedLegacy === true)
     try { await registeredScope.verify(1000) } finally { await registeredScope.dispose() }
   }
   if (previous?.state === 'captured' && targetGui && !sameGeneration(previous.owner, targetGui.owner)) {
-    const oldInspection = inspectionSchema.parse(await query('inspect', { root: previous.owner, recovering: true }))
+    const oldInspection = inspectionSchema.parse(await query('inspect', { root: previous.owner, recovering: true }, cacheDir))
     if (oldInspection.root) throw new DaemonError('E_CONFLICT', 'The original GUI scope is still active alongside another GUI.')
     const oldScope = await guiScope(context, previous.owner, oldInspection, options?.recoverExitedLegacy === true)
     try { await oldScope.verify(1000) } finally { await oldScope.dispose() }
@@ -409,7 +469,7 @@ export async function prepareGuiTermination(context: DaemonContext, options?: { 
   }
   const owner = previous?.state === 'captured' ? previous.owner : targetGui?.owner ?? guiOwner
   if (!owner) return null
-  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, recovering: true }))
+  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, recovering: true }, cacheDir))
   if (targetGui && inspection.root && JSON.stringify(inspection.root.argv) !== JSON.stringify(targetGui.argv)) throw new DaemonError('E_CONFLICT', 'Original GUI changed during capture.')
   // A dead GUI root does not erase its previously captured renderer/transport
   // obligation. Reopen the original durable scope before permitting release.
@@ -432,8 +492,8 @@ export async function prepareGuiTermination(context: DaemonContext, options?: { 
 
 /** The dev wrapper must re-exec with an absolute script argument before issuing
  * an intent. Environment-supplied cwd/root and a UUID are not launch evidence. */
-export async function verifyDevelopmentLauncher(owner: ProcessOwner, appPath: string): Promise<void> {
-  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, children: false }))
+export async function verifyDevelopmentLauncher(owner: ProcessOwner, appPath: string, cacheDir?: string): Promise<void> {
+  const inspection = inspectionSchema.parse(await query('inspect', { root: owner, children: false }, cacheDir))
   const script = inspection.root?.argv[1]
   if (!inspection.root || !sameGeneration(inspection.root.owner, owner) || !script || !isAbsolute(script)
     || realpathSync(script).toLowerCase() !== realpathSync(join(appPath, 'scripts', 'dev.mjs')).toLowerCase()) {

@@ -163,6 +163,14 @@ async function download(client: DaemonClient, workspace: WorkspaceGrant | undefi
 export async function runtimeCall<T, M extends RuntimeBodyMethod = RuntimeBodyMethod>(root: string, method: M, body: RuntimeBody<M>, commandId?: string, isCurrent?: () => boolean): Promise<T> {
   return nativeDomainCall<T>(root, method, body, commandId, isCurrent)
 }
+/** 启动期后台预热：提前建立 nativeGui 管道长连接并缓存工作区授权，消除首次点进对话的串行握手开销。 */
+export async function prewarmConversationWorkspace(root: string): Promise<void> {
+  if (!root || admissionClosed) return
+  try {
+    const client = await connect(false, true)
+    await scope(client, root, () => !admissionClosed, true)
+  } catch { /* 后台预热失败静默忽略 */ }
+}
 /** Read one original native command. No new feature command or workspace grant is issued. */
 export async function readRuntimeCommandReceipt(root: string, commandId: string, isCurrent?: () => boolean): Promise<{ state: 'absent' | 'dispatching' | 'completed' | 'unknown'; result?: unknown }> {
   z.string().uuid().parse(commandId)

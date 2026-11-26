@@ -132,7 +132,7 @@ const POLL_DELAY_MS = 450
 /** An open idle thread still re-reads deltas, so work started in another window shows up. */
 const IDLE_POLL_DELAY_MS = 5_000
 const READ_RETRY_MS = 1_800
-const CACHE_LIMIT = 12
+const CACHE_LIMIT = 32
 const decodeModelSelection = Schema.decodeUnknownOption(ModelSelection)
 
 export function isActiveRun(run: ConversationRun): boolean {
@@ -663,6 +663,36 @@ function retainsCommand(result: ConversationApplyResult, command: TrackedCommand
   )
 }
 
+const inflightPrefetches = new Map<string, Promise<void>>()
+
+/**
+ * 对标 t3code ShellSnapshot 预热：后台提前读取指定会话快照并写入 projectionCache，
+ * 用户点击进对话或切换最近会话时 0ms 直接命中内存投影，无需等待跨进程读取。
+ */
+export function prefetchConversationThread(
+  root: string,
+  threadId: string,
+  scopeKey = '',
+  task?: ConversationTaskLocator,
+): Promise<void> {
+  if (!root || !threadId) return Promise.resolve()
+  const locator = task?.workspaceKey && task.taskId && task.taskCreatedAt
+    ? { workspaceKey: task.workspaceKey, taskId: task.taskId, taskCreatedAt: task.taskCreatedAt, ...(task.scopeKey && { scopeKey: task.scopeKey }) }
+    : undefined
+  const key = cacheKey(scopeKey, root, threadId, locator)
+  if (projectionCache.has(key)) return Promise.resolve()
+  const existing = inflightPrefetches.get(key)
+  if (existing) return existing
+  const work = api.conversationRead(threadId, root, locator).then(result => {
+    if (!result.ok || result.thread.id !== threadId || result.cursor.threadId !== threadId) return
+    if (!projectionCache.has(key)) remember(key, snapshotProjection(result))
+  }).catch(() => undefined).finally(() => {
+    if (inflightPrefetches.get(key) === work) inflightPrefetches.delete(key)
+  })
+  inflightPrefetches.set(key, work)
+  return work
+}
+
 export function useConversationThread(
   root: string,
   target: ThreadReadTarget | null,
@@ -677,7 +707,11 @@ export function useConversationThread(
     : undefined, [workspaceKey, taskId, taskCreatedAt, taskScopeKey])
   const scope = cacheKey(scopeKey, root, threadId ?? '', locator)
   const currentScope = useRef<string | undefined>()
-  const [state, setState] = useState<ReadState>()
+  const [state, setState] = useState<ReadState | undefined>(() => {
+    if (!target || !interactive) return undefined
+    const cached = projectionCache.get(scope)?.projection
+    return cached ? { target, scope, result: { projection: cached } } : undefined
+  })
   const [attempt, setAttempt] = useState(0)
   const [pendingByScope, setPendingByScope] = useState<ReadonlyMap<string, ReadonlySet<string>>>(new Map())
   const [commandIssue, setCommandIssue] = useState<{
@@ -826,7 +860,12 @@ export function useConversationThread(
     }
   }, [root, scope, locator, target, interactive, attempt])
 
-  const active = interactive && state?.scope === scope && state.target === target ? state.result : undefined
+  const active = useMemo(() => {
+    if (!interactive || !target) return undefined
+    if (state?.scope === scope && state.target === target) return state.result
+    const cached = projectionCache.get(scope)?.projection
+    return cached ? { projection: cached } : undefined
+  }, [interactive, scope, state, target])
 
   const reload = useCallback((): void => {
     setAttempt((value) => value + 1)

@@ -8,6 +8,7 @@ import { workcopyOwnerSchema, type WorkcopyOwner } from '../../../shared/workcop
 import { DaemonError } from '../../daemon/errors'
 import { readBounded, writeAtomic, writeExclusiveAtomic } from '../../daemon/files'
 import { powershellPath, processIdentity, sameOwner } from '../../daemon/native'
+import { fastCleanAcpJob } from '../../daemon/win32-fast'
 import { workcopyOwnerKey } from './owner-journal'
 import { kernelLifetime, kernelLifetimeSchema, kernelReplaced } from './kernel-lifetime'
 import { workcopyJobLauncher } from './job-launcher'
@@ -127,7 +128,24 @@ function checkedSpec(base: string, state: OwnerState, record: LaunchState): stri
 async function cleanLaunch(directory: string, state: OwnerState, launchId: string): Promise<void> {
   const base = ownerDirectory(directory, state.owner), record = readLaunch(base, launchId)
   if (record.state === 'cleaned') return
-  const spec = checkedSpec(base, state, record), launcher = workcopyJobLauncher(directory)
+  const spec = checkedSpec(base, state, record)
+  const proofFile = join(base, record.launchId, 'proof.json')
+  if (existsSync(proofFile)) {
+    try {
+      const proof = proofSchema.parse(JSON.parse(readBounded(proofFile, 4096)))
+      if (proof.nonce === record.nonce && proof.launchId === record.launchId) {
+        const cleanedFast = await fastCleanAcpJob(`Global\\TrellisAcp-${record.nonce}`, {
+          helperPid: proof.helperPid,
+          helperStartedAt: proof.helperStartedAt
+        })
+        if (cleanedFast === true) {
+          recordLaunchState(base, record, 'cleaned')
+          return
+        }
+      }
+    } catch { /* 快速清理异常时无缝回退至 PowerShell 完整清理 */ }
+  }
+  const launcher = workcopyJobLauncher(directory)
   const result = await new Promise<boolean>((accept) => execFile(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', launcher, '-Mode', 'cleanup', '-SpecPath', spec], {
     windowsHide: true, timeout: 15_000, maxBuffer: 8192, encoding: 'utf8'
   }, (error, stdout) => {
@@ -201,7 +219,7 @@ export async function createAcpJobOwner(directory: string, root: string, owner: 
           }
         }
         if (child.exitCode !== null || child.signalCode !== null) throw new DaemonError('E_UNAVAILABLE', '原生进程未完成受控 Job 启动。')
-        await new Promise(accept => setTimeout(accept, 30))
+        await new Promise(accept => setTimeout(accept, 10))
       }
       throw new DaemonError('E_UNKNOWN', '原生 Job 启动见证超时，未接纳协议执行。', 'unknown')
     },

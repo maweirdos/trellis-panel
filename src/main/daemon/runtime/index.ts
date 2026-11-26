@@ -85,6 +85,7 @@ export interface DaemonRuntime {
   ownsWorkspace(root: string): Promise<boolean>
   shutdown(): Promise<void>
   release(): Promise<void>
+  prewarm(recentProjectRoots?: readonly string[]): void
   observe(listener: (event: RuntimeObservation) => void): () => void
   catchUp(root: string, cursor: RuntimeCursor | null, limit: number): ReturnType<RuntimeEvents['catchUp']>
 }
@@ -573,6 +574,25 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     unpack(root, wire) { ports.assertOwner(); ports.assertAuthority(); return blobs.unpack(root, wire) },
     ownsWorkspace: root => lifecycle.ownsWorkspace(root),
     release: () => lifecycle.release(),
+    prewarm: (recentProjectRoots = []) => {
+      const defaults: Array<{ cwd: string; projectId: string; instanceId: string }> = []
+      try {
+        const profile = ports.userData ?? ports.directory
+        const defaultWorkRoot = ownedDirectory(profile, 'conversation-v2-workspace')
+        const identity = directoryIdentity(defaultWorkRoot)
+        const projectId = createHash('sha256').update(JSON.stringify([pathKey(defaultWorkRoot), identity])).digest('hex')
+        defaults.push({ cwd: defaultWorkRoot, projectId, instanceId: 'codex' })
+      } catch { /* ignore */ }
+      for (const candidate of recentProjectRoots.slice(0, 1)) {
+        try {
+          const checked = checkedDirectory(candidate)
+          const identity = directoryIdentity(checked)
+          const projectId = createHash('sha256').update(JSON.stringify([pathKey(checked), identity])).digest('hex')
+          defaults.push({ cwd: checked, projectId, instanceId: 'codex' })
+        } catch { /* ignore */ }
+      }
+      conversation.prewarmRecentDrivers(defaults)
+    },
     observe: listener => events.observe(listener), catchUp: (root, cursor, limit) => events.catchUp(root, cursor, limit),
     async dispatch<M extends RuntimeMethod>(method: M, payload: RuntimeRequest<M>, context: RuntimeDispatchContext): Promise<RuntimeResult<M>> {
       if (['runtime.taskPreparation', 'runtime.taskExecution'].includes(method) && !taskReads.getStore())

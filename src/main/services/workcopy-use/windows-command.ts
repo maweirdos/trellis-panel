@@ -5,12 +5,13 @@ $originalPSModulePath=$env:PSModulePath
 $env:PSModulePath=Join-Path $PSHOME 'Modules'
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 $spec=Get-Content -LiteralPath $SpecPath -Raw -Encoding UTF8 | ConvertFrom-Json
-Add-Type -TypeDefinition @'
+$workcopySource=@'
 using System;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public static class TrellisWorkcopyCommand {
   [StructLayout(LayoutKind.Sequential)] struct STARTUPINFO { public uint cb; public IntPtr reserved,desktop,title; public uint x,y,xSize,ySize,xChars,yChars,fill,flags; public ushort show,reserved2; public IntPtr reservedBytes,input,output,error; }
@@ -20,6 +21,7 @@ public static class TrellisWorkcopyCommand {
   [StructLayout(LayoutKind.Sequential)] struct IO_COUNTERS { public ulong readOperations,writeOperations,otherOperations,readBytes,writeBytes,otherBytes; }
   [StructLayout(LayoutKind.Sequential)] struct EXTENDED_LIMIT { public BASIC_LIMIT basic; public IO_COUNTERS io; public UIntPtr processMemory,jobMemory,peakProcessMemory,peakJobMemory; }
   [StructLayout(LayoutKind.Sequential)] struct ACCOUNTING { public long userTime,kernelTime,periodUserTime,periodKernelTime; public uint faults,totalProcesses,activeProcesses,terminatedProcesses; }
+  [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct PROCESSENTRY32 { public uint size,usage,pid; public UIntPtr heap; public uint module,threads,parent; public int priority; public uint flags; [MarshalAs(UnmanagedType.ByValTStr,SizeConst=260)] public string exe; }
   [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr attributes,string name);
   [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr OpenJobObjectW(uint access,bool inherit,string name);
   [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int info,ref EXTENDED_LIMIT limits,uint size);
@@ -38,6 +40,59 @@ public static class TrellisWorkcopyCommand {
   [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
   [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetProcessTimes(IntPtr process,out long created,out long exited,out long kernel,out long user);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr CreateToolhelp32Snapshot(uint flags,uint pid);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool Process32FirstW(IntPtr snapshot,ref PROCESSENTRY32 entry);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool Process32NextW(IntPtr snapshot,ref PROCESSENTRY32 entry);
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern IntPtr GetModuleHandleW(string name);
+  [DllImport("kernel32.dll",CharSet=CharSet.Ansi)] static extern IntPtr GetProcAddress(IntPtr module,string name);
+  [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate int QueryProcess(IntPtr process,int kind,IntPtr value,uint size,out uint returned);
+  public sealed class WrapperInfo { public int ProcessId; public long CreatedTicks; }
+  static string ReadCommandLine(IntPtr handle) {
+    IntPtr address=GetProcAddress(GetModuleHandleW("ntdll.dll"),"NtQueryInformationProcess");
+    if(address==IntPtr.Zero) return null;
+    var query=(QueryProcess)Marshal.GetDelegateForFunctionPointer(address,typeof(QueryProcess));
+    uint needed; query(handle,60,IntPtr.Zero,0,out needed);
+    for(int attempt=0;attempt<2;attempt++) {
+      if(needed<16 || needed>131072) return null;
+      uint capacity=needed; IntPtr buffer=Marshal.AllocHGlobal((int)capacity);
+      try {
+        int status=query(handle,60,buffer,capacity,out needed);
+        if(status<0) { if(needed>capacity) continue; return null; }
+        int bytes=(ushort)Marshal.ReadInt16(buffer);
+        IntPtr text=Marshal.ReadIntPtr(buffer,IntPtr.Size==8?8:4);
+        long start=buffer.ToInt64(),pointer=text.ToInt64();
+        if(bytes==0 || bytes>65534 || bytes%2!=0 || pointer<start || pointer+bytes>start+capacity) return null;
+        return Marshal.PtrToStringUni(text,bytes/2);
+      } finally { Marshal.FreeHGlobal(buffer); }
+    }
+    return null;
+  }
+  public static WrapperInfo[] FindWrappers(string specPath,int selfPid) {
+    var list=new List<WrapperInfo>();
+    IntPtr snapshot=CreateToolhelp32Snapshot(2,0);
+    if(snapshot==new IntPtr(-1)) return null;
+    try {
+      PROCESSENTRY32 entry=new PROCESSENTRY32(); entry.size=(uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+      if(!Process32FirstW(snapshot,ref entry)) return null;
+      do {
+        int pid=(int)entry.pid;
+        if(pid<=0 || pid==selfPid) continue;
+        if(!String.Equals(entry.exe,"powershell.exe",StringComparison.OrdinalIgnoreCase)) continue;
+        IntPtr h=OpenProcess(0x101000,false,pid);
+        if(h==IntPtr.Zero) continue;
+        try {
+          if(WaitForSingleObject(h,0)==0) continue;
+          string cmd=ReadCommandLine(h);
+          if(String.IsNullOrEmpty(cmd) || !cmd.Contains(specPath)) continue;
+          if(!cmd.Contains("-Mode run") && !cmd.Contains("-Mode transport")) continue;
+          long created,exited,kernel,user;
+          if(!GetProcessTimes(h,out created,out exited,out kernel,out user)) continue;
+          list.Add(new WrapperInfo { ProcessId=pid, CreatedTicks=DateTime.FromFileTimeUtc(created).Ticks });
+        } finally { CloseHandle(h); }
+      } while(Process32NextW(snapshot,ref entry));
+      return list.ToArray();
+    } finally { CloseHandle(snapshot); }
+  }
   static string Quote(string value) {
     if(value.IndexOf('\0')>=0) throw new Exception("Invalid argument");
     StringBuilder text=new StringBuilder("\""); int slashes=0;
@@ -108,6 +163,27 @@ public static class TrellisWorkcopyCommand {
   }
 }
 '@
+$workcopyLoaded=$false
+try {
+  $cacheRoot=[IO.Path]::Combine($PSScriptRoot,'native-cache')
+  if(-not [IO.Directory]::Exists($cacheRoot)) { [void][IO.Directory]::CreateDirectory($cacheRoot) }
+  if(([IO.File]::GetAttributes($cacheRoot) -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+    $dllName=[IO.Path]::GetFileNameWithoutExtension($PSCommandPath)+'-'+[Environment]::Version.ToString()+'-'+[IntPtr]::Size+'.dll'
+    $dllPath=[IO.Path]::Combine($cacheRoot,$dllName)
+    if(-not [IO.File]::Exists($dllPath)) {
+      $tmpPath=$dllPath+'.'+[Guid]::NewGuid().ToString('N')+'.tmp.dll'
+      try {
+        Add-Type -TypeDefinition $workcopySource -OutputAssembly $tmpPath -OutputType Library
+        try { [IO.File]::Move($tmpPath,$dllPath) } catch { if([IO.File]::Exists($tmpPath)) { [IO.File]::Delete($tmpPath) } }
+      } catch { if([IO.File]::Exists($tmpPath)) { try { [IO.File]::Delete($tmpPath) } catch {} } }
+    }
+    if([IO.File]::Exists($dllPath) -and (([IO.File]::GetAttributes($dllPath) -band [IO.FileAttributes]::ReparsePoint) -eq 0)) {
+      [void][Reflection.Assembly]::LoadFrom($dllPath)
+      $workcopyLoaded=$true
+    }
+  }
+} catch {}
+if(-not $workcopyLoaded) { Add-Type -TypeDefinition $workcopySource }
 if($Mode -eq 'cleanup') {
   $limit=[DateTime]::UtcNow.AddSeconds(9)
   do {
@@ -117,16 +193,28 @@ if($Mode -eq 'cleanup') {
       if($proof.nonce -ne $spec.nonce -or $proof.launchId -ne $spec.launchId) { throw 'Original Job witness does not match' }
     }
     $clean=[TrellisWorkcopyCommand]::Clean([string]$spec.jobName)
-    $wrappers=@(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains($SpecPath) -and ($_.CommandLine.Contains('-Mode run') -or $_.CommandLine.Contains('-Mode transport')) })
-    if($clean -and $proof) {
-      foreach($wrapper in $wrappers) {
-        if($wrapper.ProcessId -eq $proof.helperPid -and ([long]$wrapper.CreationDate.ToUniversalTime().Ticks/10) -eq ([long]$proof.helperStartedAt/10)) {
-          [TrellisWorkcopyCommand]::StopWitness([int]$proof.helperPid,[long]$proof.helperStartedAt)
+    $nativeWrappers=[TrellisWorkcopyCommand]::FindWrappers($SpecPath,$PID)
+    if($null -ne $nativeWrappers) {
+      if($clean -and $proof) {
+        foreach($wrapper in $nativeWrappers) {
+          if($wrapper.ProcessId -eq $proof.helperPid -and ([long]$wrapper.CreatedTicks/10) -eq ([long]$proof.helperStartedAt/10)) {
+            [TrellisWorkcopyCommand]::StopWitness([int]$proof.helperPid,[long]$proof.helperStartedAt)
+          }
         }
       }
+      if($clean -and $nativeWrappers.Length -eq 0) { [Console]::Out.WriteLine('{"cleaned":true}'); exit 0 }
+    } else {
+      $wrappers=@(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains($SpecPath) -and ($_.CommandLine.Contains('-Mode run') -or $_.CommandLine.Contains('-Mode transport')) })
+      if($clean -and $proof) {
+        foreach($wrapper in $wrappers) {
+          if($wrapper.ProcessId -eq $proof.helperPid -and ([long]$wrapper.CreationDate.ToUniversalTime().Ticks/10) -eq ([long]$proof.helperStartedAt/10)) {
+            [TrellisWorkcopyCommand]::StopWitness([int]$proof.helperPid,[long]$proof.helperStartedAt)
+          }
+        }
+      }
+      if($clean -and $wrappers.Count -eq 0) { [Console]::Out.WriteLine('{"cleaned":true}'); exit 0 }
     }
-    if($clean -and $wrappers.Count -eq 0) { [Console]::Out.WriteLine('{"cleaned":true}'); exit 0 }
-    Start-Sleep -Milliseconds 100
+    Start-Sleep -Milliseconds 25
   } while([DateTime]::UtcNow -lt $limit)
   [Console]::Out.WriteLine('{"cleaned":false}'); exit 0
 }

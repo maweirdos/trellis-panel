@@ -4,12 +4,13 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { nativeResource, powershellPath, processIdentity, protectDirectory } from './native'
+import { cachedGuardianExecutable, nativeResource, powershellPath, processIdentity, protectDirectory } from './native'
 import { readBounded, writeExclusiveAtomic } from './files'
 import { nativeJobProofSchema } from './job-proof'
 import { processOwnerSchema } from '../../shared/daemon'
 import { DaemonError } from './errors'
 import { verifyGuiJobRoot } from './lifecycle-native'
+import { fastDetachProcess } from './win32-fast'
 
 const markerPrefix = '--trellis-gui-contained='
 const sameBirth = (a: string, b: string): boolean => BigInt(a) / 10n === BigInt(b) / 10n
@@ -55,6 +56,7 @@ export async function runGuiProcessBootstrap(argumentsAtLaunch = process.argv.sl
     await verifyGuiJobRoot(join(userData, 'daemon-v1', mode), proof)
     return true
   }
+  const cacheDir = join(userData, 'daemon-v1', mode, 'native-cache')
   mkdirSync(directory); await protectDirectory(directory)
   const childArgs = argumentsAtLaunch.filter(value => !value.startsWith('--trellis-role='))
   childArgs.push('--trellis-role=gui', markerPrefix + nonce)
@@ -62,12 +64,25 @@ export async function runGuiProcessBootstrap(argumentsAtLaunch = process.argv.sl
     watchController: !app.isPackaged, executable: realpathSync(process.execPath), args: childArgs }
   const specPath = join(directory, 'launch.json')
   writeExclusiveAtomic(specPath, JSON.stringify(spec))
-  const reply = await nativeLaunch([nativeResource('windows-launch-gui.ps1'), '-SpecPath', specPath], 10_000)
-  const guardian = z.object({ guardian: processOwnerSchema }).strict().parse(JSON.parse(reply)).guardian
+  let guardian: z.infer<typeof processOwnerSchema>
+  const guardianExe = cachedGuardianExecutable(cacheDir)
+  const fastGuardian = guardianExe
+    ? fastDetachProcess(guardianExe, ['gui-guardian', specPath])
+    : fastDetachProcess(
+      powershellPath(),
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+        nativeResource('windows-lifecycle.ps1'), '-Mode', 'gui-guardian', '-SpecPath', specPath, '-CacheDir', cacheDir]
+    )
+  if (fastGuardian) {
+    guardian = processOwnerSchema.parse(fastGuardian)
+  } else {
+    const reply = await nativeLaunch([nativeResource('windows-launch-gui.ps1'), '-SpecPath', specPath], 10_000)
+    guardian = z.object({ guardian: processOwnerSchema }).strict().parse(JSON.parse(reply)).guardian
+  }
   const deadline = Date.now() + 10_000
   while (!existsSync(proofFile)) {
     if (existsSync(join(directory, 'failure.json')) || Date.now() > deadline) throw new DaemonError('E_UNAVAILABLE', '桌面受管进程范围未能建立。')
-    await new Promise(resolve => setTimeout(resolve, 25))
+    await new Promise(resolve => setTimeout(resolve, 10))
   }
   const proof = validProof()
   if (!proof.controller || proof.controller.pid !== owner.pid || !sameBirth(proof.controller.startedAt, owner.startedAt) ||
@@ -76,7 +91,7 @@ export async function runGuiProcessBootstrap(argumentsAtLaunch = process.argv.sl
   }
   if (!app.isPackaged) {
     const released = z.object({ nonce: z.literal(nonce), cleaned: z.literal(true) }).strict().parse(JSON.parse(
-      await nativeLaunch([nativeResource('windows-lifecycle.ps1'), '-Mode', 'gui-wait', '-SpecPath', specPath])))
+      await nativeLaunch([nativeResource('windows-lifecycle.ps1'), '-Mode', 'gui-wait', '-SpecPath', specPath, '-CacheDir', cacheDir])))
     if (!released.cleaned) throw new DaemonError('E_UNKNOWN', '桌面原范围尚未结束。', 'unknown')
   }
   return false

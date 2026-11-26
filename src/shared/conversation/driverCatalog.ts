@@ -39,6 +39,8 @@ export interface ConversationDriverDescriptor {
   readonly configurationKey: string
   readonly observedAt: string
   readonly source: 'native-catalog' | 'native-session'
+  /** 标记该目录为冷启动尚未生成磁盘缓存时返回的内置静态兜底快照；后台预热完成后将替换为真实原生目录。 */
+  readonly provisional?: true
   readonly models: readonly ConversationDriverModel[]
   readonly options: readonly ConversationDriverOption[]
   readonly skills?: readonly ConversationDriverSkill[]

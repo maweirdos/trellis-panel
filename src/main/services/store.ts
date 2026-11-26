@@ -142,6 +142,9 @@ export function defaultSettings(): Settings { return structuredClone(DEFAULTS) }
 export function pushRecentProject(root: string): Settings {
   const s = getSettings()
   const next = [root, ...s.recentProjects.filter((r) => r !== root)].slice(0, 10)
+  if (next.length === s.recentProjects.length && next.every((item, index) => item === s.recentProjects[index])) {
+    return s
+  }
   return setSettings({ recentProjects: next })
 }
 

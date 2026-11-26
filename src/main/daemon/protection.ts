@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { nativeResource, powershellPath } from './native'
+import { fastDpapi } from './win32-fast'
 import { readBounded, writeExclusiveAtomic } from './files'
 import { DaemonError } from './errors'
 import type { ProtectedStoragePort } from './protected-storage'
@@ -28,6 +29,8 @@ export function decodeProtectedCiphertext(value: string, limit = MAX_CIPHERTEXT_
 /** Tiny private stdin/stdout channel for OS protection of 32-byte keys only. */
 async function dpapi(operation: 'protect' | 'unprotect', value: Buffer, entropy: string): Promise<Buffer> {
   if (process.platform !== 'win32' || !/^(?:[a-f0-9]{64})?$/.test(entropy) || !value.length || value.length > MAX_WRAPPED_KEY_BYTES || (operation === 'protect' && (value.length !== 32 || !entropy))) throw new DaemonError('E_DENIED', 'Invalid native key protection request.')
+  const fast = fastDpapi(operation, value, entropy)
+  if (fast !== undefined) return fast
   const nonce = randomBytes(32).toString('hex')
   return new Promise((resolve, reject) => {
     const child = execFile(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', nativeResource('windows-protection.ps1'), '-Operation', operation], { windowsHide: true, timeout: 7000, maxBuffer: 32 * 1024, encoding: 'utf8' }, (error, stdout) => {

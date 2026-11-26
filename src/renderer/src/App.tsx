@@ -1,3 +1,4 @@
+import '@shared/csp-validation'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useApp } from './store'
 import { api, hasIpc } from './api'

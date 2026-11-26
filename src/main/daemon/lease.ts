@@ -51,9 +51,10 @@ export async function acquireLease(context: DaemonContext): Promise<DaemonLease>
   await reconcileStaleLease(context)
   if (await verifiedLease(context)) throw new DaemonError('E_CONFLICT', 'A verified daemon already owns this profile; attach to it.')
   const directory = join(context.directory, 'owner')
-  mkdirSync(directory)
   const lease = daemonLeaseSchema.parse({ version: 1, epoch: randomUUID(), nonce: randomUUID(), identity: context.identity, owner: context.owner, acquiredAt: Date.now() })
-  writeAtomic(join(directory, 'lease.json'), JSON.stringify(lease))
+  const serialized = JSON.stringify(lease)
+  mkdirSync(directory)
+  writeAtomic(join(directory, 'lease.json'), serialized)
   return lease
 }
 export function assertLease(context: DaemonContext, lease: DaemonLease): void {

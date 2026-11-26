@@ -86,10 +86,21 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => {
     bootstrap: async () => {
       const initialNavigation = get().navigationRevision
       const initialPage = get().page
+      const auxiliaryMode = get().capsuleMode || get().quickTodoMode
+      // 主窗口进入 bootstrap 时即与 getSettings 并行预取默认 Work 对话根与工作台分包，
+      // 消除首屏落在 chat 或点击「对话」时的串行等待与 Suspense 二次重挂。
+      const workRootWarmup = auxiliaryMode
+        ? Promise.resolve(undefined)
+        : import('../../pages/Chat').then(m => m.preloadWorkConversationRoot()).catch(() => undefined)
+      const workbenchWarmup = auxiliaryMode
+        ? Promise.resolve(undefined)
+        : import('../../conversation-workbench/ConversationWorkbench').catch(() => undefined)
+      if (!auxiliaryMode) void import('../../pages/AcpConsole').catch(() => undefined)
+
       const settings = normalizeSettings(await api.getSettings())
       set({ settings, starting: false })
       // 胶囊 / 速记窗口与主窗口共享主进程的项目状态，只需拉取当前快照。
-      if (get().capsuleMode || get().quickTodoMode) {
+      if (auxiliaryMode) {
         const snap = await api.getSnapshot()
         if (snap) get().setSnapshot(snap)
         return
@@ -126,6 +137,9 @@ export const sessionSlice: AppSlice<SessionSlice> = (set, get) => {
           const location = loadStartupNavigationLocation(app.snapshot?.meta.root ?? null, app.snapshot?.meta.developer)
           set({ page: location?.page ?? 'chat' })
         }
+      }
+      if (get().page === 'chat') {
+        await Promise.all([workRootWarmup, workbenchWarmup])
       }
       set({ bootstrapped: true })
     },

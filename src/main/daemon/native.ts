@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { processOwnerSchema, type ProcessOwner } from '../../shared/daemon'
 import { DaemonError } from './errors'
 import { nativeDiagnosticSchema } from './native-diagnostic'
+import { fastIsDirectoryProtected, fastProcessIdentity, fastProtectDirectory } from './win32-fast'
 
 export function nativeResource(name: string): string {
   const installed = join(process.resourcesPath, 'daemon', name)
@@ -39,13 +41,68 @@ async function native(args: string[]): Promise<unknown> {
 const identityResultSchema = z.discriminatedUnion('state', [z.object({ state: z.literal('present'), owner: processOwnerSchema }), z.object({ state: z.literal('absent') })])
 export async function processIdentity(pid: number): Promise<ProcessOwner | null> {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new DaemonError('E_INVALID_ARG', 'Invalid process identity.')
+  const fast = fastProcessIdentity(pid)
+  if (fast !== undefined) return fast ? processOwnerSchema.parse(fast) : null
   const value = identityResultSchema.parse(await native(['-Operation', 'identity', '-ProcessId', String(pid)]))
   return value.state === 'present' ? value.owner : null
 }
 export function sameOwner(a: ProcessOwner, b: ProcessOwner): boolean {
-  return a.pid === b.pid && a.startedAt === b.startedAt && a.userId === b.userId && a.executable.toLowerCase() === b.executable.toLowerCase()
+  if (a.pid !== b.pid || a.userId !== b.userId) return false
+  if (a.startedAt !== b.startedAt) {
+    try { if (BigInt(a.startedAt) / 10n !== BigInt(b.startedAt) / 10n) return false }
+    catch { return false }
+  }
+  if (a.executable.toLowerCase() === b.executable.toLowerCase()) return true
+  try { return realpathSync.native(a.executable).toLowerCase() === realpathSync.native(b.executable).toLowerCase() }
+  catch { return false }
 }
+const inFlightProtections = new Map<string, Promise<void>>()
 export async function protectDirectory(directory: string): Promise<void> {
-  const result = await native(['-Operation', 'secure-directory', '-DirectoryBase64', Buffer.from(directory, 'utf8').toString('base64')])
-  if (!z.object({ ok: z.literal(true) }).safeParse(result).success) throw new DaemonError('E_DENIED', 'The daemon directory could not be restricted to the current Windows user.')
+  if (fastIsDirectoryProtected(directory) || fastProtectDirectory(directory)) return
+  const key = process.platform === 'win32' ? directory.toLowerCase() : directory
+  const existing = inFlightProtections.get(key)
+  if (existing) return existing
+  const work = (async () => {
+    if (fastIsDirectoryProtected(directory) || fastProtectDirectory(directory)) return
+    const result = await native(['-Operation', 'secure-directory', '-DirectoryBase64', Buffer.from(directory, 'utf8').toString('base64')])
+    if (!z.object({ ok: z.literal(true) }).safeParse(result).success) throw new DaemonError('E_DENIED', 'The daemon directory could not be restricted to the current Windows user.')
+  })()
+  inFlightProtections.set(key, work)
+  try { await work } finally { if (inFlightProtections.get(key) === work) inFlightProtections.delete(key) }
+}
+
+let cachedGuardianHash: string | null | undefined
+function guardianBinaryHash(): string | null {
+  if (cachedGuardianHash !== undefined) return cachedGuardianHash
+  try {
+    const core = readFileSync(nativeResource('windows-lifecycle-native.cs'))
+    const entry = readFileSync(nativeResource('windows-guardian-main.cs'))
+    const archTag = process.arch === 'ia32' ? 'x86' : 'x64'
+    cachedGuardianHash = createHash('sha256').update(core).update(entry).update(`|guardian-v1|${archTag}`).digest('hex')
+    return cachedGuardianHash
+  } catch {
+    cachedGuardianHash = null
+    return null
+  }
+}
+
+/**
+ * 返回受保护 native-cache 目录内预编译的轻量原生 guardian 可执行文件（~14KB），
+ * 仅在目录通过独占 DACL 核验且目标为非符号链接普通文件时启用，否则无缝回退 PowerShell 脚本。
+ */
+export function cachedGuardianExecutable(cacheDir: string): string | undefined {
+  if (process.platform !== 'win32') return undefined
+  const hash = guardianBinaryHash()
+  if (!hash) return undefined
+  try {
+    if (!existsSync(cacheDir) || lstatSync(cacheDir).isSymbolicLink()) return undefined
+    if (!fastIsDirectoryProtected(cacheDir) && !fastProtectDirectory(cacheDir)) return undefined
+    const candidate = join(cacheDir, `crux-guardian-${hash}.exe`)
+    if (!existsSync(candidate)) return undefined
+    const stat = lstatSync(candidate)
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0) return undefined
+    return candidate
+  } catch {
+    return undefined
+  }
 }

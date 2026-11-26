@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
@@ -26,6 +27,9 @@ import {
 import { ConversationDeadlineError, ConversationEffectWorker, awaitDeadline, runBounded } from '../../services/conversation/orchestration/EffectWorker'
 import { decideThreadResume, THREAD_RESUME_MAX_REPLAY_EVENTS } from '../../services/conversation/orchestration/ThreadStream'
 import { ANSWER_ATTACHMENT_MAX_BYTES, assertPromptAttachments, nativeTextAttachment, TEXT_ATTACHMENTS } from '../../services/conversation/providers/core/attachment-input'
+import { DriverDescriptorCache, bundledFallbackDescriptor } from '../../services/conversation/providers/core/descriptor-cache'
+import { resolveCodexCommand } from '../../services/conversation/providers/codex/driver'
+import { resolveClaudeSdkExecutablePath } from '../../services/conversation/providers/claude/ClaudeAdapterV2'
 import {
   conversationDriverRegistry, ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverDescriptor, type ConversationDriverModel, type ConversationDriverRegistration, type ConversationDriverRegistry,
@@ -147,7 +151,7 @@ export class ConversationRuntime {
   private readonly processes = new Map<string, OwnedDriverSlot>()
   /** Drivers whose handshake completed, by project root. */
   private readonly ready = new Map<string, DriverIdentity & { driver: ConversationDriverSession }>()
-  private readonly driverOpenings = new Map<string, DriverIdentity & { root: string; opening: Promise<ConversationDriverSession> }>()
+  private readonly driverOpenings = new Map<string, DriverIdentity & { root: string; opening: Promise<ConversationDriverSession>; background?: boolean }>()
   private readonly driverFence = new AsyncLocalStorage<() => void>()
   private readonly dispatches = new Map<string, { root: string; work: Promise<void> }>()
   private readonly activeTurns = new Map<string, ActiveTurn>()
@@ -164,9 +168,12 @@ export class ConversationRuntime {
   private readonly delegationContinuationParents = new Map<string, ActiveTurn>()
   private readonly unsettledTerminals = new Map<string, { turn: ActiveTurn; detail: string; terminal: ConversationNativeTerminalEvidence }>()
   private readonly shutdownController = new AbortController()
+  private readonly descriptorCache: DriverDescriptorCache
+  private readonly backgroundPrewarms = new Set<string>()
   private closing = false
   constructor(private readonly ports: ConversationRuntimePorts) {
     this.ports.assertOwner()
+    this.descriptorCache = new DriverDescriptorCache(ports.directory)
     this.database = openConversationDatabase(ports.directory)
     this.driverRegistry = ports.driverRegistry ?? conversationDriverRegistry
     this.eventSink = new ConversationEventSink(this.database)
@@ -202,7 +209,7 @@ export class ConversationRuntime {
   }
 
   private async ensureDriver(cwd: string, projectId: string, registration: ConversationDriverRegistration, assertCurrent: () => void, ordinaryTask = false,
-    ownerScope?: string, managedExecution?: true, worktreeWriter?: DriverIdentity['worktreeWriter']) {
+    ownerScope?: string, managedExecution?: true, worktreeWriter?: DriverIdentity['worktreeWriter'], background = false) {
     this.ports.assertOwner()
     if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation admission is closed while the kernel shuts down.')
     const key = driverSlotKey(registration.instanceId, cwd, ownerScope)
@@ -231,6 +238,8 @@ export class ConversationRuntime {
       if (!matches(existing)) {
         throw new DaemonError('E_BUSY', '原目录或配置的引擎启动尚未结束。')
       }
+      // 若前台请求命中正在进行的后台预热，无缝接管并提升为前台优先级，避免重复启动。
+      if (!background && existing.background) existing.background = false
       const driver = await existing.opening
       assertCurrent()
       assertConfiguration()
@@ -238,7 +247,7 @@ export class ConversationRuntime {
     }
     const identity = { projectId, fingerprint, ordinaryTask, ownerScope, managedExecution, worktreeWriter }
     const opening = Promise.resolve().then(() => this.runOpenDriver(key, cwd, identity, registration, assertConfiguration, assertCurrent))
-    this.driverOpenings.set(key, { root: cwd, ...identity, opening })
+    this.driverOpenings.set(key, { root: cwd, ...identity, opening, ...(background ? { background: true } : {}) })
     const driver = await opening
     assertCurrent()
     assertConfiguration()
@@ -370,6 +379,44 @@ export class ConversationRuntime {
     assertCurrent()
     const registration = this.requireDriver(instanceId, ordinaryTask)
     const fingerprint = this.configurationFingerprint(registration)
+    const cacheLookup = {
+      instanceId, driverKind: registration.driverKind, cwd, ordinaryTask, ownerScope, configurationFingerprint: fingerprint,
+    }
+    const key = driverSlotKey(registration.instanceId, cwd, ownerScope)
+    const liveReady = this.ready.get(key)
+    const hasLiveReady = liveReady !== undefined
+      && liveReady.projectId === projectId
+      && liveReady.fingerprint === fingerprint
+      && liveReady.ordinaryTask === ordinaryTask
+      && liveReady.driver.isAvailable()
+      && !this.uncertainDrivers.has(liveReady.driver)
+
+    // 借鉴 t3code ProviderRegistry & BUNDLED_MODEL_MANIFEST：
+    // 1) 冷启动尚未拉起进程时，若配置指纹匹配的磁盘缓存存在，毫秒级返回缓存目录；
+    // 2) 若首次尚未生成磁盘缓存但本机对应 CLI 已安装（普通个人会话），毫秒级返回内置静态兜底目录；
+    // 两种情况下均立即在后台静默拉起真实驱动进程完成握手并落盘最新目录。
+    if (!hasLiveReady) {
+      const cached = this.descriptorCache.load(cacheLookup)
+      if (cached) {
+        if (!ordinaryTask && ownerScope === undefined) {
+          this.descriptorCache.recordRecentSlot({ cwd, projectId, instanceId })
+        }
+        this.scheduleBackgroundDriverPrewarm(cwd, projectId, instanceId, registration, fingerprint, ordinaryTask, ownerScope)
+        return cached
+      }
+      if (!ordinaryTask && ownerScope === undefined) {
+        const cliInstalled = await this.isDriverCliInstalled(registration.driverKind)
+        if (cliInstalled) {
+          const fallback = bundledFallbackDescriptor(registration.driverKind, registration.configurationKey?.() ?? fingerprint)
+          if (fallback) {
+            this.descriptorCache.recordRecentSlot({ cwd, projectId, instanceId })
+            this.scheduleBackgroundDriverPrewarm(cwd, projectId, instanceId, registration, fingerprint, ordinaryTask, ownerScope)
+            return fallback
+          }
+        }
+      }
+    }
+
     const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertCurrent, ordinaryTask, ownerScope)
     try {
       assertCurrent()
@@ -378,9 +425,100 @@ export class ConversationRuntime {
       const result = await this.driverFence.run(assertCurrent, () => runBounded(describe(), this.deadlines.thread, '读取引擎能力'))
       assertCurrent()
       this.assertDriverFingerprint(instanceId, fingerprint)
+      this.descriptorCache.save(cacheLookup, result)
+      if (!ordinaryTask && ownerScope === undefined) {
+        this.descriptorCache.recordRecentSlot({ cwd, projectId, instanceId })
+      }
       return result
     } finally {
       unpin()
+    }
+  }
+
+  /**
+   * 后台单飞预热驱动进程并刷新磁盘目录缓存。
+   * 仅做只读握手与目录查询，不创建对话或发送提示词；退出或配置变化时自动中止。
+   */
+  private scheduleBackgroundDriverPrewarm(
+    cwd: string,
+    projectId: string,
+    instanceId: string,
+    registration: ConversationDriverRegistration,
+    fingerprint: string,
+    ordinaryTask: boolean,
+    ownerScope?: string,
+  ): void {
+    if (this.closing) return
+    const key = driverSlotKey(registration.instanceId, cwd, ownerScope)
+    if (this.backgroundPrewarms.has(key) || this.driverOpenings.has(key)) return
+    this.backgroundPrewarms.add(key)
+    const assertBackgroundCurrent = (): void => {
+      this.ports.assertOwner()
+      if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Conversation kernel is shutting down.')
+      this.assertDriverFingerprint(instanceId, fingerprint)
+    }
+    setImmediate(() => {
+      void (async () => {
+        try {
+          if (this.closing) return
+          const { driver, unpin } = await this.ensureDriver(cwd, projectId, registration, assertBackgroundCurrent, ordinaryTask, ownerScope, undefined, undefined, true)
+          try {
+            if (this.closing || !driver.describe) return
+            const describe = driver.describe.bind(driver)
+            const result = await this.driverFence.run(assertBackgroundCurrent, () => runBounded(describe(), this.deadlines.thread, '预热引擎能力'))
+            assertBackgroundCurrent()
+            this.descriptorCache.save(
+              { instanceId, driverKind: registration.driverKind, cwd, ordinaryTask, ownerScope, configurationFingerprint: fingerprint },
+              result,
+            )
+          } finally {
+            unpin()
+          }
+        } catch {
+          // 后台预热失败静默忽略；用户实际发消息或主动刷新时会走正常前台错误反馈。
+        } finally {
+          this.backgroundPrewarms.delete(key)
+        }
+      })()
+    })
+  }
+
+  private async isDriverCliInstalled(driverKind: string): Promise<boolean> {
+    try {
+      if (driverKind === 'codex') {
+        await resolveCodexCommand(process.env)
+        return true
+      }
+      if (driverKind === 'claudeCode') {
+        resolveClaudeSdkExecutablePath(process.env)
+        return true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Daemon 启动就绪后调用：按最近活跃记录及默认托管目录在后台预热最多 2 个个人工作区驱动进程，
+   * 让用户一进入界面或会话时，驱动进程已处于 ready 态可直接收发消息。
+   */
+  prewarmRecentDrivers(defaults: ReadonlyArray<{ cwd: string; projectId: string; instanceId: string }> = []): void {
+    if (this.closing) return
+    const combined = [...this.descriptorCache.listRecentSlots(), ...defaults]
+    const seen = new Set<string>()
+    let scheduled = 0
+    for (const slot of combined) {
+      if (scheduled >= 2) break
+      const slotKey = `${pathKey(slot.cwd)}\0${slot.instanceId}`
+      if (seen.has(slotKey)) continue
+      seen.add(slotKey)
+      if (!existsSync(slot.cwd)) continue
+      const registration = this.driverRegistry.get(slot.instanceId)
+      if (!registration) continue
+      const fingerprint = this.configurationFingerprint(registration)
+      this.scheduleBackgroundDriverPrewarm(slot.cwd, slot.projectId, slot.instanceId, registration, fingerprint, false)
+      scheduled += 1
     }
   }
 
@@ -2408,7 +2546,11 @@ export class ConversationRuntime {
   }
 
   activityCount(): number {
-    return this.dispatches.size + this.driverOpenings.size
+    let foregroundOpenings = 0
+    for (const opening of this.driverOpenings.values()) {
+      if (!opening.background) foregroundOpenings += 1
+    }
+    return this.dispatches.size + foregroundOpenings
   }
 
   ownsWorkspace(within: (path: string) => boolean): boolean {

@@ -1,3 +1,4 @@
+import '@shared/csp-validation'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { LoaderCircle, X } from 'lucide-react'
 import type { DaemonLifecycleDecision, DaemonLifecycleDialogApi, DaemonLifecycleDialogState } from '@shared/daemon-lifecycle-dialog'

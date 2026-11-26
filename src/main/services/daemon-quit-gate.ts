@@ -3,7 +3,7 @@ import { daemonManager, daemonIsAbsent } from './daemon-client/manager'
 import { sameOwner } from '../daemon/native'
 import { showDaemonQuitDialog } from './daemon-quit-dialog'
 import { setRuntimeClientAdmissionClosed } from './daemon-client/runtime'
-interface Ports { closeGuiAdmission(closed: boolean): void; stopGuiWork(): Promise<void>; detach(): Promise<void>; finalize(): void; quit(): void; reportError(error: unknown): void }
+interface Ports { closeGuiAdmission(closed: boolean): void; hideWindows?(): void; restoreWindows?(): void; stopGuiWork(): Promise<void>; detach(): Promise<void>; finalize(): void; quit(): void; reportError(error: unknown): void }
 /** Serialized fresh-state decision. Cancel changes neither preference nor admission. */
 export function createDaemonQuitGate(ports: Ports): { beforeQuit(event: { preventDefault(): void }): void; whenIdle(): Promise<void> } {
   let settled = false, pending: Promise<void> | null = null
@@ -25,20 +25,25 @@ export function createDaemonQuitGate(ports: Ports): { beforeQuit(event: { preven
         if (!saved.ok) throw new Error(saved.error)
       }
       ports.closeGuiAdmission(true); setRuntimeClientAdmissionClosed(true)
-      await ports.stopGuiWork()
-      if (status && !selected.decision.keepRunning) {
-        const stopped = await daemonManager.stop()
-        if (!stopped.ok) throw new Error(stopped.error)
-      } else if (!status && selected.decision.keepRunning) {
-        if (!await daemonIsAbsent()) throw new Error('后台所有者仍在，但连接不可用；尚未确认保留状态，请恢复连接后重试')
-      } else if (!status) {
-        // An unverified connection failure cannot prove there is no original daemon owner.
-        const stopped = await daemonManager.stop()
-        if (!stopped.ok) throw new Error(stopped.error)
+      // 借鉴 t3code：确认退出后立即隐藏桌面窗口与托盘提供秒关体感；若后续清理失败会在 catch 中恢复展示诊断。
+      ports.hideWindows?.()
+      const stopDaemonWork = async (): Promise<void> => {
+        if (status && !selected.decision.keepRunning) {
+          const stopped = await daemonManager.stop()
+          if (!stopped.ok) throw new Error(stopped.error)
+        } else if (!status && selected.decision.keepRunning) {
+          if (!await daemonIsAbsent()) throw new Error('后台所有者仍在，但连接不可用；尚未确认保留状态，请恢复连接后重试')
+        } else if (!status) {
+          // An unverified connection failure cannot prove there is no original daemon owner.
+          const stopped = await daemonManager.stop()
+          if (!stopped.ok) throw new Error(stopped.error)
+        }
       }
+      await Promise.all([ports.stopGuiWork(), stopDaemonWork()])
       await ports.detach(); ports.finalize(); settled = true; ports.quit()
     } catch (cause) {
       ports.closeGuiAdmission(false); setRuntimeClientAdmissionClosed(false)
+      ports.restoreWindows?.()
       throw new Error(cause instanceof Error ? cause.message : '停止结果尚未核实，请重试或取消后检查原任务')
     }
   }

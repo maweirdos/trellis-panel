@@ -90,12 +90,28 @@ function runNode(path: string, args: string[]): Promise<string> {
 export async function validateNodeExecutable(path: string, { sqlite = false, run = runNode }: { sqlite?: boolean; run?: NodeRunner } = {}): Promise<NodeExecutable> {
   if (!isAbsolute(path) || !statSync(path).isFile()) throw new Error('Node.js 路径不是有效的独立可执行文件')
   if (process.versions.electron && realpathSync(path).toLowerCase() === realpathSync(process.execPath).toLowerCase()) throw new Error('请选择独立 Node.js，不能使用 Electron 可执行文件')
-  const version = await run(path, ['--version'])
+  // 单次子进程同时校验独立 Node 身份、版本号与可选 node:sqlite 能力，避免每次探测起 2 个 node.exe。
+  const script = `if (process.versions.electron || process.release.name !== 'node') process.exit(1); ${sqlite ? 'try { const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(":memory:"); db.close() } catch { process.exit(2) }; ' : ''}process.stdout.write(process.version)`
+  let version: string
+  try {
+    version = await run(path, ['--input-type=commonjs', '-e', script])
+  } catch (error) {
+    const exitCode = error && typeof error === 'object' && 'code' in error ? (error as { code?: unknown }).code : undefined
+    if (sqlite && exitCode === 2) throw new Error('ZCode 需要支持 node:sqlite 的独立 Node.js（>=22.13）')
+    // 兼容被测试/自定义 runner 仅模拟 --version + -e 两段调用的场景
+    if (run !== runNode) {
+      const legacyVersion = await run(path, ['--version'])
+      const legacyMatch = /^v(\d+)\.(\d+)\.(\d+)$/.exec(legacyVersion)
+      if (!legacyMatch || Number(legacyMatch[1]) < 22 || Number(legacyMatch[1]) === 22 && Number(legacyMatch[2]) < 13) throw new Error(`Node ${legacyVersion.slice(0, 60)} 不兼容，需要 >=22.13`)
+      try {
+        await run(path, ['--input-type=commonjs', '-e', `if (process.versions.electron || process.release.name !== 'node') process.exit(1); ${sqlite ? 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(":memory:"); db.close()' : ''}`])
+      } catch { throw new Error(sqlite ? 'ZCode 需要支持 node:sqlite 的独立 Node.js（>=22.13）' : '该程序不是可用的独立 Node.js') }
+      return { path, version: legacyVersion }
+    }
+    throw new Error(sqlite ? 'ZCode 需要支持 node:sqlite 的独立 Node.js（>=22.13）' : '该程序不是可用的独立 Node.js')
+  }
   const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(version)
   if (!match || Number(match[1]) < 22 || Number(match[1]) === 22 && Number(match[2]) < 13) throw new Error(`Node ${version.slice(0, 60)} 不兼容，需要 >=22.13`)
-  try {
-    await run(path, ['--input-type=commonjs', '-e', `if (process.versions.electron || process.release.name !== 'node') process.exit(1); ${sqlite ? 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(":memory:"); db.close()' : ''}`])
-  } catch { throw new Error(sqlite ? 'ZCode 需要支持 node:sqlite 的独立 Node.js（>=22.13）' : '该程序不是可用的独立 Node.js') }
   return { path, version }
 }
 

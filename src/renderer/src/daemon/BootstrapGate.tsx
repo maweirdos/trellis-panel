@@ -1,5 +1,4 @@
 import { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Info } from 'lucide-react'
 import type { BootstrapApi, BootstrapSnapshot, DaemonTakeoverDiagnostics, LegacyDaemonInspection, LegacyDaemonStopInput, WorkcopyOwner, WorkcopyRecoveryResult } from '@shared/bootstrap'
 import type { DaemonFailure } from '@shared/daemon'
 import { api, hasIpc } from '../api'
@@ -326,7 +325,7 @@ class BootstrapAppBoundary extends Component<{ children: ReactNode; recovery(err
 
 /** Only the ordinary main renderer uses this gate. Auxiliary windows are
  * created by the ready desktop and retain their own bootstrap/quit contracts. */
-export function BootstrapGate({ children }: { children: ReactNode }): JSX.Element {
+export function BootstrapGate({ children, preloadApp }: { children: ReactNode; preloadApp?: () => void }): JSX.Element {
   const bridge = api?.bootstrap
   const [state, setState] = useState<BootstrapSnapshot | null>(null)
   const [error, setError] = useState<{ message: string; code?: string } | null>(null)
@@ -454,12 +453,15 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
     let secondFrame: number | undefined
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
+        // 受限首屏已提交并开始连接后台时，并行预取 App 分包脚本以消除 ready 后的串行加载；
+        // 仍严格延迟挂载直到 phase === 'ready'，加载异常保留给外层 BootstrapAppBoundary 捕获。
+        preloadApp?.()
         void bridge.rendered().then(result => { if (current && !result.ok) setError({ message: result.error, code: result.code }) })
           .catch(cause => { if (current) setError({ message: cause instanceof Error ? cause.stack || cause.message : String(cause) }) })
       })
     })
     return () => { current = false; cancelAnimationFrame(firstFrame); if (secondFrame !== undefined) cancelAnimationFrame(secondFrame) }
-  }, [bridge])
+  }, [bridge, preloadApp])
 
   useEffect(() => {
     if (!bridge || typeof PerformanceObserver === 'undefined') return
@@ -546,7 +548,13 @@ export function BootstrapGate({ children }: { children: ReactNode }): JSX.Elemen
         : <>
           <StartupSplash status={[labels[state?.phase ?? 'window-ready'], state?.ui.warning].filter(Boolean).join('。')} active={handoff === 'covered'} />
           {state?.ui.warning && <details className="my-startup-warning">
-            <summary aria-label="查看外观设置提示" title="查看外观设置提示"><Info size={16} aria-hidden="true" /></summary>
+            <summary aria-label="查看外观设置提示" title="查看外观设置提示">
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
+              </svg>
+            </summary>
             <p>{state.ui.warning}</p>
           </details>}
         </>}

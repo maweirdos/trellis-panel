@@ -6,60 +6,40 @@ import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, nativeThem
 import { join, resolve, basename, dirname, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { existsSync, readFileSync } from 'fs'
+import * as nodeModule from 'node:module'
 import brandIdentity from '../../resources/brand/identity.json'
-import { abortAll } from './services/cli'
-import { getSettings } from './services/store'
-import { stopDiffWorker } from './services/documents'
-import { stopObservationWorker } from './services/observability'
-import { routeNotifyRail } from './services/daemon-client/acp'
-import { detachRuntimeObservers, setRuntimeClientAdmissionClosed } from './services/daemon-client/runtime'
-import { configureDaemonQuitDialog } from './services/daemon-quit-dialog'
 import { configureDaemonLifecycleDialog, showDaemonLifecycleConfirmation, runDaemonLifecycleWithDialog, lifecycleDialogWasClosed } from './services/daemon-lifecycle-dialog'
-import { configureLifecycleConfirmation } from './services/daemon-client/manager'
+import { configureLifecycleConfirmation, daemonManager } from './services/daemon-client/manager'
 import { developmentLifecycle, installGuiLifecycleEndpoint } from './services/gui-lifecycle'
 import { LifecycleCancelled } from './services/daemon-client/lifecycle'
-import { startInbox, stopInbox, parseDeepLink, handleDeepLink, broadcastToWindows } from './services/bridge'
-import { httpApiStatus } from './services/httpapi'
-import { accessServer } from './services/access/server'
-import { applyChromiumProxy } from './services/proxy'
 import { applyMainWindowAppearance, mainWindowAppearance } from './services/window-appearance'
 import { installWindowNavigation, openExternalHttpUrl } from './services/window-navigation'
 import { TASKBAR_APPLICATION_ID, applyWindowsTaskbarBranding, prepareWindowsTaskbarShortcut } from './services/window-branding'
 import { APPLICATION_ICON } from './services/notifications'
-import { appRuntime } from './services/app-runtime'
-import { createDaemonQuitGate } from './services/daemon-quit-gate'
-import { createDaemonTray } from './services/daemon-tray'
 import { DaemonError } from './daemon/errors'
 import { createGuiBootstrap, desktopUiPreferences, takeoverDiagnostics, type GuiBootstrap } from './services/bootstrap'
 import { registerBootstrapIpc } from './ipc/bootstrap'
 import { createOnboarding } from './onboarding'
-import { closeCreationService } from './services/creations'
 import { ipcEvent } from '../shared/ipc-channels'
 import type { DaemonStatus } from '../shared/daemon'
 import { FLOATING_TASK_WINDOWS } from '../shared/floating-window'
-import {
-  setUiHooks,
-  setMainWindow,
-  sendSnapshot,
-  toast,
-  restartHttpApi,
-  applyAutoStart,
-  stopTimers,
-  openProjectAt,
-  findTask,
-  pushFocusTask,
-  getSnapshot,
-  getProjectRoot
-} from './state'
 import type { CapsuleApi, WindowDeps } from './ipc/deps'
 import { readerWindowBounds } from './services/document-window-placement'
-import { setWorkflowAdmissionClosed } from './services/workflow-desktop'
-import { stopWorkflowSubscriptions } from './ipc/workflow'
-import { closeTaskConversations } from './ipc/task-conversations'
-import { resumeDesktopTeamBackground, setDesktopTeamAdmissionClosed, closeDesktopTeamService, withDesktopTeamService } from './services/team-desktop'
-import { tickScheduledAutomations } from './services/crux/planning'
-import { resumeCruxWorkspace, closeCruxWorkspace, configureCruxConnectionService } from './services/crux/connection-service'
-import { ensureTeamGitlabConnection } from './services/integrations/team-gitlab'
+
+type DesktopRuntimeDeps = typeof import('./desktop-runtime-deps')
+let desktopDeps: DesktopRuntimeDeps | null = null
+let desktopDepsPromise: Promise<DesktopRuntimeDeps> | undefined
+function loadDesktopDeps(): Promise<DesktopRuntimeDeps> {
+  desktopDepsPromise ??= import('./desktop-runtime-deps').then((mod) => {
+    desktopDeps = mod
+    return mod
+  })
+  return desktopDepsPromise
+}
+function requireDesktop(): DesktopRuntimeDeps {
+  if (!desktopDeps) throw new DaemonError('E_UNAVAILABLE', 'Desktop runtime dependencies are not initialized.')
+  return desktopDeps
+}
 
 let win: BrowserWindow | null = null
 let mainWindowCreated = false
@@ -68,7 +48,7 @@ let capsuleOnTop = true
 let capsuleShape: 'pill' | 'card' = 'card'
 let quickTodo: BrowserWindow | null = null
 let tray: Tray | null = null
-let daemonTray: ReturnType<typeof createDaemonTray> | undefined
+let daemonTray: ReturnType<DesktopRuntimeDeps['createDaemonTray']> | undefined
 let daemonTrayTimer: ReturnType<typeof setInterval> | undefined
 let daemonTrayExitPending = false
 let pendingDaemonSettings = false
@@ -83,20 +63,12 @@ let guiApplicationsStarted = false
 let guiClosing = false
 let requestBootstrapExit = (): void => { app.exit(0) }
 let collaborationTimer: ReturnType<typeof setInterval> | null = null
+let quitGate: ReturnType<DesktopRuntimeDeps['createDaemonQuitGate']> | undefined
 
 nativeTheme.on('updated', () => {
-  if (guiNativeStateReady && getSettings().theme === 'system') applyMainWindowAppearance(win, 'system')
+  if (guiNativeStateReady && desktopDeps?.getSettings().theme === 'system') applyMainWindowAppearance(win, 'system')
   else if (!guiNativeStateReady && bootstrap) applyMainWindowAppearance(win, bootstrap.refreshAppearance())
 })
-
-/* eslint-disable @typescript-eslint/no-var-requires */
-const { autoUpdater } = (() => {
-  try {
-    return { autoUpdater: require('electron-updater').autoUpdater }
-  } catch {
-    return { autoUpdater: null }
-  }
-})()
 
 /* ---------------- windows ---------------- */
 
@@ -169,14 +141,15 @@ function openDocWindow(opts: Parameters<WindowDeps['openDocWindow']>[0]): {
   // 最大化状态广播给本窗（标题栏还原图标随动；双击拖动区原生切换也走这里）
   w.on('maximize', () => w.webContents.send(ipcEvent.windowMaximized, true))
   w.on('unmaximize', () => w.webContents.send(ipcEvent.windowMaximized, false))
-  loadAppWindow(w, opts.readerViewId ? { mode: 'doc', viewId: opts.readerViewId, theme: getSettings().theme } : { mode: 'doc', path: opts.file, title: opts.title, theme: getSettings().theme })
+  const themePref = requireDesktop().getSettings().theme
+  loadAppWindow(w, opts.readerViewId ? { mode: 'doc', viewId: opts.readerViewId, theme: themePref } : { mode: 'doc', path: opts.file, title: opts.title, theme: themePref })
   w.once('ready-to-show', () => w.show())
   return { ok: true }
 }
 
 function createWindow(): void {
   // Window creation has no dependency on protected settings/native context.
-  const theme = guiNativeStateReady ? getSettings().theme : bootstrap?.state().ui.theme ?? 'dark'
+  const theme = guiNativeStateReady && desktopDeps ? desktopDeps.getSettings().theme : bootstrap?.state().ui.theme ?? 'dark'
   win = new BrowserWindow({
     icon: APPLICATION_ICON,
     width: 1360,
@@ -192,13 +165,15 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      spellcheck: false
+      spellcheck: false,
+      // 借鉴 t3code：隐藏建窗阶段关闭后台节流，避免首帧与 rAF 被 Chromium 拖慢；显示后恢复。
+      backgroundThrottling: false
     }
   })
 
   // state 里的主窗口引用必须随创建/销毁同步，深链聚焦依赖它（getMainWindow 判活）
   mainWindowCreated = true
-  setMainWindow(win)
+  desktopDeps?.setMainWindow(win)
   const window = win
   fullRendererAttached = false
   window.webContents.on('did-start-loading', () => { fullRendererAttached = false })
@@ -208,6 +183,7 @@ function createWindow(): void {
   window.once('show', () => bootstrap?.firstVisible())
   window.once('ready-to-show', () => {
     if (window.isDestroyed()) return
+    window.webContents.setBackgroundThrottling(true)
     window.show()
     // The restricted renderer has painted before native preparation starts.
     // Yield once after showing so native work cannot hold the first show event.
@@ -218,7 +194,7 @@ function createWindow(): void {
   win.on('closed', () => {
     fullRendererAttached = false
     win = null
-    setMainWindow(null)
+    desktopDeps?.setMainWindow(null)
   })
 
   loadAppWindow(win, { theme })
@@ -267,7 +243,7 @@ function createCapsule(initialShape?: 'pill' | 'card'): void {
       win?.hide()
     }
   })
-  loadAppWindow(capsule, { mode: 'capsule', shape: capsuleShape, pinned: String(capsuleOnTop), theme: getSettings().theme })
+  loadAppWindow(capsule, { mode: 'capsule', shape: capsuleShape, pinned: String(capsuleOnTop), theme: requireDesktop().getSettings().theme })
 }
 
 function getQuickTodo(): BrowserWindow | null {
@@ -317,7 +293,7 @@ function ensureQuickTodo(): BrowserWindow {
     const w = getQuickTodo()
     if (w && w.isVisible()) w.hide()
   })
-  loadAppWindow(quickTodo, { mode: 'quicktodo', theme: getSettings().theme })
+  loadAppWindow(quickTodo, { mode: 'quicktodo', theme: requireDesktop().getSettings().theme })
   return quickTodo
 }
 
@@ -339,13 +315,14 @@ function toggleQuickTodo(): void {
 
 function createTray(): void {
   if (tray) return
+  const deps = requireDesktop()
   const icon = nativeImage.createFromPath(join(BRAND_RESOURCES, 'icon-16.png'))
   for (const size of [20, 24, 32, 40, 48, 64]) {
     icon.addRepresentation({ scaleFactor: size / 16, buffer: readFileSync(join(BRAND_RESOURCES, `icon-${size}.png`)) })
   }
   tray = new Tray(icon)
   tray.setToolTip(brandIdentity.name)
-  daemonTray = createDaemonTray({
+  daemonTray = deps.createDaemonTray({
     getMain: () => win && !win.isDestroyed() ? win : null,
     changed: rebuildTrayMenu,
     isClosing: () => guiClosing || daemonTrayExitPending,
@@ -378,8 +355,9 @@ function disposeDaemonTray(): void {
 }
 
 function rebuildTrayMenu(): void {
-  if (!tray) return
-  const snap = getSnapshot()
+  if (!tray || !desktopDeps) return
+  const deps = desktopDeps
+  const snap = deps.getSnapshot()
   const menu = Menu.buildFromTemplate([
     { label: '打开面板', click: () => showMain() },
     {
@@ -387,7 +365,7 @@ function rebuildTrayMenu(): void {
       label: '回到上次阅读',
       click: () => {
         showMain()
-        broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
+        deps.broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
       }
     },
     {
@@ -409,9 +387,9 @@ function rebuildTrayMenu(): void {
     },
     {
       label: '打开只读 Web 看板',
-      enabled: httpApiStatus().running,
+      enabled: deps.httpApiStatus().running,
       click: () => {
-        const port = httpApiStatus().port
+        const port = deps.httpApiStatus().port
         if (port) void openExternalHttpUrl(`http://127.0.0.1:${port}/`)
       }
     },
@@ -435,21 +413,23 @@ function showMain(): void {
 }
 
 function registerGlobalShortcut(): void {
+  const deps = requireDesktop()
   globalShortcut.unregisterAll()
-  const accel = getSettings().desktop.globalShortcut || 'Alt+Shift+T'
+  const settings = deps.getSettings()
+  const accel = settings.desktop.globalShortcut || 'Alt+Shift+T'
   try {
     globalShortcut.register(accel, () => {
       if (win && win.isVisible() && win.isFocused()) win.hide()
       else {
         showMain()
         // FR：热键唤起 = 回到上次阅读位置（不新开窗口、不跳最新文件）
-        broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
+        deps.broadcastToWindows(ipcEvent.focusLastReading, { at: Date.now() })
       }
     })
   } catch {
     // invalid accelerator — ignore
   }
-  const quickAccel = getSettings().desktop.quickTodoShortcut || 'Alt+N'
+  const quickAccel = settings.desktop.quickTodoShortcut || 'Alt+N'
   try {
     globalShortcut.register(quickAccel, () => toggleQuickTodo())
   } catch {
@@ -458,14 +438,17 @@ function registerGlobalShortcut(): void {
 }
 
 function setupUpdater(): void {
-  if (!autoUpdater || !app.isPackaged) return
+  if (!app.isPackaged) return
+  const deps = requireDesktop()
+  const autoUpdater = deps.getAutoUpdater()
+  if (!autoUpdater) return
   autoUpdater.autoDownload = false
   autoUpdater.on('update-available', () => {
-    toast({ kind: 'info', title: '发现新版本', body: '到「设置 → 关于」下载更新' })
+    deps.toast({ kind: 'info', title: '发现新版本', body: '到「设置 → 关于」下载更新' })
   })
   autoUpdater.on('update-not-available', () => undefined)
   autoUpdater.on('error', () => undefined)
-  if (getSettings().desktop.autoUpdate) {
+  if (deps.getSettings().desktop.autoUpdate) {
     autoUpdater.checkForUpdates().catch(() => undefined)
   }
 }
@@ -485,6 +468,7 @@ function focusMainAndOpenTask(taskDir: string): void {
     return
   }
 
+  const deps = requireDesktop()
   const target = resolve(taskDir)
   // 深链任务可能来自另一个项目：向上找到最近的 .trellis 祖先作为项目根，
   // 与当前打开项目不一致时自动切换，避免停留在历史项目上。
@@ -499,37 +483,38 @@ function focusMainAndOpenTask(taskDir: string): void {
     if (parent === cur) break
     cur = parent
   }
-  if (root && (!getSnapshot() || resolve(getSnapshot()?.meta.root ?? '') !== resolve(root))) {
+  if (root && (!deps.getSnapshot() || resolve(deps.getSnapshot()?.meta.root ?? '') !== resolve(root))) {
     // openProjectAt 内部完成 pushRecentProject / watcher 重挂 / git 缓存清理
-    const opened = openProjectAt(root)
+    const opened = deps.openProjectAt(root)
     if (!opened.ok) return
     // App has already bootstrapped when deferred focus is delivered. Publish
     // the new project before its focus event so it cannot use the old snapshot.
-    sendSnapshot()
+    deps.sendSnapshot()
     // fall through — focus still works if the project was already open
   }
-  const snap = getSnapshot()
+  const snap = deps.getSnapshot()
   if (!snap || !target.startsWith(resolve(snap.meta.root) + sep)) return
   // AI 工具常在事件后立刻拉起面板，先重扫一次确保新任务已在快照里
-  if (!findTask(basename(target))) sendSnapshot()
-  pushFocusTask(basename(target))
+  if (!deps.findTask(basename(target))) deps.sendSnapshot()
+  deps.pushFocusTask(basename(target))
 }
 
 function bridgeHandlers() {
+  const deps = requireDesktop()
   return {
     onTaskEvent: (taskDir: string | null, text: string | undefined, source: string) => {
-      sendSnapshot()
-      toast({
+      deps.sendSnapshot()
+      deps.toast({
         kind: 'info',
         title: 'AI 工具更新了任务',
         body: text ?? `${source} → ${taskDir ? basename(taskDir) : ''}`
       })
     },
     onNotify: (text: string) => {
-      toast({ kind: 'info', title: '桥接消息', body: text })
+      deps.toast({ kind: 'info', title: '桥接消息', body: text })
       // ACP 轨道：`acp:<kind>:` 前缀的钩子上报进会话时间线（spec 注入等），普通文本不受影响
-      const railRoot = getProjectRoot()
-      if (railRoot) routeNotifyRail(railRoot, text)
+      const railRoot = deps.getProjectRoot()
+      if (railRoot) deps.routeNotifyRail(railRoot, text)
     },
     onOpenTask: (taskDir: string) => focusMainAndOpenTask(taskDir)
   }
@@ -592,30 +577,37 @@ if (!gotLock) {
   let guiCleanupWork: Promise<void> | undefined
   let guiExitWork: Promise<void> | undefined
   let disposeGuiLifecycle: (() => Promise<void>) | undefined
+  let guiLifecyclePromise: Promise<() => Promise<void>> | undefined
   const cleanupGui = (): Promise<void> => {
     if (guiCleanupWork) return guiCleanupWork
     guiClosing = true
     const work = (async () => {
       const errors: unknown[] = []
+      const deps = desktopDepsPromise ? await desktopDepsPromise.catch((error: unknown) => { errors.push(error); return null }) : desktopDeps
       // GUI-owned work only. No daemon stop, restart, preference or quit dialog.
       const closeSources = [
-        () => appRuntime.setAdmissionClosed(true),
-        () => setWorkflowAdmissionClosed(true),
-        () => setDesktopTeamAdmissionClosed(true),
-        () => setRuntimeClientAdmissionClosed(true),
+        ...(deps ? [
+          () => deps.appRuntime.setAdmissionClosed(true),
+          () => deps.setWorkflowAdmissionClosed(true),
+          () => deps.setDesktopTeamAdmissionClosed(true),
+          () => deps.setRuntimeClientAdmissionClosed(true)
+        ] : []),
         () => { if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null } },
-        stopTimers, stopInbox, abortAll, stopDiffWorker, stopWorkflowSubscriptions,
-        closeTaskConversations, stopObservationWorker, detachRuntimeObservers,
-        () => globalShortcut.unregisterAll(), () => accessServer.stop(),
+        ...(deps ? [
+          deps.stopTimers, deps.stopInbox, deps.abortAll, deps.stopDiffWorker, deps.stopWorkflowSubscriptions,
+          deps.closeTaskConversations, deps.stopObservationWorker, deps.detachRuntimeObservers
+        ] : []),
+        () => globalShortcut.unregisterAll(),
+        ...(deps ? [() => deps.accessServer.stop()] : []),
         () => { disposeDaemonTray(); tray?.destroy(); tray = null }
       ]
       for (const close of closeSources) { try { close() } catch (error) { errors.push(error) } }
-      const results = await Promise.allSettled([
-        closeCreationService(),
-        closeCruxWorkspace(),
-        closeDesktopTeamService(),
-        ...(guiApplicationsStarted ? [appRuntime.shutdown()] : [])
-      ])
+      const results = deps ? await Promise.allSettled([
+        deps.closeCreationService(),
+        deps.closeCruxWorkspace(),
+        deps.closeDesktopTeamService(),
+        ...(guiApplicationsStarted ? [deps.appRuntime.shutdown()] : [])
+      ]) : []
       if (errors.length || results.some(result => result.status === 'rejected')) {
         throw new DaemonError('E_UNKNOWN', 'GUI cleanup has not completed. Preserve this window and retry desktop exit after checking the original local operations.', 'unknown')
       }
@@ -654,6 +646,9 @@ if (!gotLock) {
         // but the user must be able to exit this recovery window immediately.
         void cleanupGui().catch(() => {})
       }
+      if (guiLifecyclePromise) {
+        try { disposeGuiLifecycle = await guiLifecyclePromise } catch { /* 通道未建立则无需额外关闭 */ }
+      }
       await disposeGuiLifecycle?.()
       app.exit(0)
     })()
@@ -663,8 +658,9 @@ if (!gotLock) {
   }
   requestBootstrapExit = () => { void exitBootstrapGui().catch(reportGuiCleanupFailure) }
   const dispatchSecondInstance = (argv: string[]): void => {
-    const link = parseDeepLink(argv)
-    if (link) handleDeepLink(link, bridgeHandlers(), getSettings().bridgeToken)
+    const deps = requireDesktop()
+    const link = deps.parseDeepLink(argv)
+    if (link) deps.handleDeepLink(link, bridgeHandlers(), deps.getSettings().bridgeToken)
     showMain()
   }
   app.on('second-instance', (_e, argv) => {
@@ -678,17 +674,60 @@ if (!gotLock) {
 
   const composeDesktop = async (): Promise<void> => {
     // One-shot full composition, reached only after native authority is ready.
-    const { registerIpc } = await import('./ipc')
+    const deps = await loadDesktopDeps()
     if (guiClosing) throw new DaemonError('E_UNAVAILABLE', 'Desktop exit has closed GUI initialization.')
-    configureDaemonQuitDialog({ load: window => loadAppWindow(window, { mode: 'daemon-quit', theme: getSettings().theme }), getMain: () => win && !win.isDestroyed() ? win : null })
-    // Notifications may otherwise register the generic Electron host as our app.
-    prepareWindowsTaskbarShortcut(join(BRAND_RESOURCES, 'icon.ico'))
-    if (process.defaultApp) {
-      app.setAsDefaultProtocolClient('trellis-panel', process.execPath, [resolve(process.argv[1] ?? '.')])
-    } else {
-      app.setAsDefaultProtocolClient('trellis-panel')
-    }
-    setUiHooks({ showMain, rebuildTray: rebuildTrayMenu })
+    deps.setMainWindow(win && !win.isDestroyed() ? win : null)
+    let hiddenForQuit: BrowserWindow[] = []
+    quitGate ??= deps.createDaemonQuitGate({
+      closeGuiAdmission: (closed) => { deps.appRuntime.setAdmissionClosed(closed); deps.setWorkflowAdmissionClosed(closed); deps.setDesktopTeamAdmissionClosed(closed) },
+      hideWindows: () => {
+        const candidates = [win, capsule, quickTodo, ...docWindows.values()]
+        hiddenForQuit = candidates.filter((w): w is BrowserWindow => Boolean(w && !w.isDestroyed() && w.isVisible()))
+        for (const w of hiddenForQuit) w.hide()
+        // 同步销毁托盘图标，避免后台停止期间任务栏图标长时间滞留（若退出失败将在 restoreWindows 恢复）。
+        disposeDaemonTray()
+        tray?.destroy()
+        tray = null
+      },
+      restoreWindows: () => {
+        if (!tray) createTray()
+        const restored = hiddenForQuit.filter((w) => !w.isDestroyed())
+        hiddenForQuit = []
+        if (restored.length === 0) {
+          if (win && !win.isDestroyed()) { win.show(); win.focus() }
+          return
+        }
+        for (const w of restored) w.show()
+        const primaryFocus = restored.includes(win as BrowserWindow) ? win : restored[0]
+        if (primaryFocus && !primaryFocus.isDestroyed()) primaryFocus.focus()
+      },
+      stopGuiWork: async () => { await Promise.all([deps.appRuntime.shutdown(), deps.closeDesktopTeamService()]) },
+      detach: async () => {
+        deps.detachRuntimeObservers()
+        await Promise.all([deps.closeCreationService(), deps.closeCruxWorkspace(), disposeGuiLifecycle?.()])
+      },
+      finalize: () => {
+        disposeDaemonTray()
+        tray?.destroy()
+        tray = null
+        if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }
+        deps.stopTimers()
+        deps.stopInbox()
+        deps.abortAll()
+        deps.stopDiffWorker()
+        deps.stopWorkflowSubscriptions()
+        deps.closeTaskConversations()
+        deps.stopObservationWorker()
+        globalShortcut.unregisterAll()
+        deps.accessServer.stop()
+      },
+      quit: () => app.quit(),
+      reportError: (error) => {
+        dialog.showErrorBox('退出收尾未完成', `应用清理或会话保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : '请检查应用与会话状态'}`)
+      }
+    })
+    deps.configureDaemonQuitDialog({ load: window => loadAppWindow(window, { mode: 'daemon-quit', theme: deps.getSettings().theme }), getMain: () => win && !win.isDestroyed() ? win : null })
+    deps.setUiHooks({ showMain, rebuildTray: rebuildTrayMenu })
     const capsuleApi: CapsuleApi = {
       onTop: () => capsuleOnTop,
       setOnTop: (on) => {
@@ -701,8 +740,8 @@ if (!gotLock) {
       },
       create: createCapsule
     }
-    configureCruxConnectionService({ withService: withDesktopTeamService, notify: (channel, payload) => broadcastToWindows(channel, payload), ensureGitlab: ensureTeamGitlabConnection })
-    registerIpc({
+    deps.configureCruxConnectionService({ withService: deps.withDesktopTeamService, notify: (channel, payload) => deps.broadcastToWindows(channel, payload), ensureGitlab: deps.ensureTeamGitlabConnection })
+    deps.registerIpc({
       getMain: () => (win && !win.isDestroyed() ? win : null),
       getCapsule: () => (capsule && !capsule.isDestroyed() ? capsule : null),
       getQuickTodo: () => (quickTodo && !quickTodo.isDestroyed() ? quickTodo : null),
@@ -721,19 +760,28 @@ if (!gotLock) {
       isDocWindowSender: (senderId) => [...docWindows.values()].some((w) => !w.isDestroyed() && w.webContents.id === senderId)
     })
     guiApplicationsStarted = true
-    void appRuntime.initialize().catch(() => {
-      toast({ kind: 'warn', title: '应用运行记录未能恢复', body: '请在应用面板检查本地配置与遗留运行状态' })
+    void deps.appRuntime.initialize().catch(() => {
+      deps.toast({ kind: 'warn', title: '应用运行记录未能恢复', body: '请在应用面板检查本地配置与遗留运行状态' })
     })
-    // 速记窗启动即预创建（隐藏），热键首次按下瞬时显示
-    ensureQuickTodo()
     createTray()
-    applyAutoStart()
     registerGlobalShortcut()
-    setupUpdater()
-    restartHttpApi()
-    accessServer.syncFromSettings()
-    void applyChromiumProxy().catch(() => toast({ kind: 'warn', title: '代理配置未能应用', body: '请在设置中检查代理配置' }))
     guiNativeStateReady = true
+    // 非首屏桌面外围初始化延后一拍执行，避免阻塞主窗口 ready 发布（借鉴 t3code 停泊策略）。
+    setImmediate(() => {
+      if (guiClosing) return
+      // Notifications may otherwise register the generic Electron host as our app.
+      prepareWindowsTaskbarShortcut(join(BRAND_RESOURCES, 'icon.ico'))
+      if (process.defaultApp) {
+        app.setAsDefaultProtocolClient('trellis-panel', process.execPath, [resolve(process.argv[1] ?? '.')])
+      } else {
+        app.setAsDefaultProtocolClient('trellis-panel')
+      }
+      deps.applyAutoStart()
+      setupUpdater()
+      deps.restartHttpApi()
+      deps.accessServer.syncFromSettings()
+      void deps.applyChromiumProxy().catch(() => deps.toast({ kind: 'warn', title: '代理配置未能应用', body: '请在设置中检查代理配置' }))
+    })
   }
   const installDesktop = async (): Promise<void> => {
     desktopCompositionStarted = true
@@ -748,27 +796,48 @@ if (!gotLock) {
   let desktopIngressStarted = false
   const attachFullRenderer = (): void => {
     if (guiClosing || !guiNativeStateReady) throw new DaemonError('E_UNAVAILABLE', 'GUI admission is closed; reload cannot restart partial initialization.')
+    const deps = requireDesktop()
     fullRendererAttached = true; fullRendererEverAttached = true
     if (!desktopIngressStarted) {
       desktopIngressStarted = true
-      resumeDesktopTeamBackground()
-      resumeCruxWorkspace()
+      deps.resumeDesktopTeamBackground()
+      deps.resumeCruxWorkspace()
       const tickCollaboration = (): void => {
-        try { tickScheduledAutomations() }
+        try { deps.tickScheduledAutomations() }
         catch (error) { console.warn('协作定时规则检查失败', error) }
       }
       collaborationTimer = setInterval(tickCollaboration, 30_000)
       collaborationTimer.unref()
       tickCollaboration()
-      const coldLink = parseDeepLink(process.argv)
-      if (coldLink) handleDeepLink(coldLink, bridgeHandlers(), getSettings().bridgeToken)
-      startInbox({
+      const coldLink = deps.parseDeepLink(process.argv)
+      if (coldLink) deps.handleDeepLink(coldLink, bridgeHandlers(), deps.getSettings().bridgeToken)
+      deps.startInbox({
         ...bridgeHandlers(),
         onTaskEvent: (taskDir, text, source) => {
-          sendSnapshot()
-          toast({ kind: 'info', title: 'AI 工具更新了任务', body: text ?? `${source} → ${taskDir ? basename(taskDir) : '任务'}` })
+          deps.sendSnapshot()
+          deps.toast({ kind: 'info', title: 'AI 工具更新了任务', body: text ?? `${source} → ${taskDir ? basename(taskDir) : '任务'}` })
         }
       })
+      // 预热 nativeGui 命名管道长连接与默认 Work 对话目录授权，避免首次点击「对话」时现场建连握手。
+      setImmediate(() => {
+        if (guiClosing) return
+        try {
+          const workRoot = deps.ownedDirectory(app.getPath('userData'), 'conversation-v2-workspace')
+          void deps.prewarmConversationWorkspace(workRoot)
+          const activeRoot = deps.getProjectRoot()
+          if (activeRoot && existsSync(activeRoot)) void deps.prewarmConversationWorkspace(activeRoot)
+        } catch { /* ignore */ }
+      })
+      // 速记窗延迟到首屏完全交互后再预创建，避免启动期双渲染进程抢占 CPU；首次按热键也会按需即时创建。
+      const precreateQuickTodo = setTimeout(() => {
+        if (!guiClosing && guiNativeStateReady) ensureQuickTodo()
+      }, 1500)
+      precreateQuickTodo.unref()
+      // 启动完成后主动落盘 V8 编译缓存（借鉴 t3code：Windows 强杀退出不会自动刷盘）。
+      try {
+        const mod = nodeModule as typeof nodeModule & { flushCompileCache?: () => void }
+        mod.flushCompileCache?.()
+      } catch { /* ignore */ }
     }
     for (const argv of pendingSecondInstances.splice(0)) dispatchSecondInstance(argv)
     for (const taskDir of pendingTaskFocus.splice(0)) focusMainAndOpenTask(taskDir)
@@ -776,7 +845,13 @@ if (!gotLock) {
   }
 
   void app.whenReady().then(async () => {
-    disposeGuiLifecycle = await installGuiLifecycleEndpoint(cleanupGui)
+    // 窗口创建与本地生命周期命名管道并行启动：不再等管道子进程 ready 才弹主窗，
+    // 但在 prepare 阶段汇合并严格校验管道就绪，失败同样由 bootstrap.fail 接管。
+    guiLifecyclePromise = installGuiLifecycleEndpoint(cleanupGui).then(dispose => {
+      disposeGuiLifecycle = dispose
+      return dispose
+    })
+    void guiLifecyclePromise.catch(() => undefined)
     let nativeState: typeof import('./services/daemon-client/native-state') | undefined
     bootstrap = createGuiBootstrap({
       prepare: async (onPreparing, onAuthenticated) => {
@@ -788,8 +863,9 @@ if (!gotLock) {
           await developmentLifecycle(showDaemonLifecycleConfirmation)
           developmentReady = true
         }
+        const endpointReady = guiLifecyclePromise ? guiLifecyclePromise.then(() => undefined) : Promise.resolve()
         nativeState = await import('./services/daemon-client/native-state')
-        await nativeState.prepareGuiNativeState(onPreparing, onAuthenticated)
+        await Promise.all([endpointReady, nativeState.prepareGuiNativeState(onPreparing, onAuthenticated)])
       },
       migration: () => nativeState?.guiNativePreparationIdentity(),
       installDesktop,
@@ -831,6 +907,21 @@ if (!gotLock) {
     app.on('browser-window-created', (_event, window) => applyWindowsTaskbarBranding(window, join(BRAND_RESOURCES, 'icon.ico')))
     Menu.setApplicationMenu(null)
     createWindow()
+    // 若开发重启已完成且当前非手动启动模式，在主窗首帧渲染期间并行提前拉起后台守护进程；
+    // prepareGuiNativeState 会通过 daemonManager.start() 队列自动复用该启动，不提前开放任何桌面 IPC 或挂载全量应用。
+    if (developmentReady && !developmentFailure) {
+      setImmediate(() => {
+        if (guiClosing) return
+        try {
+          const ledgerPath = join(app.getPath('userData'), 'daemon-v1', app.isPackaged ? 'production' : 'development', 'integration-ledger.json')
+          if (existsSync(ledgerPath)) {
+            const raw = JSON.parse(readFileSync(ledgerPath, 'utf8')) as { preferences?: { startup?: string } }
+            if (raw?.preferences?.startup === 'manual') return
+          }
+        } catch { /* 读取失败时交给正常 prepareGuiNativeState 流程 */ }
+        void daemonManager.start().catch(() => undefined)
+      })
+    }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   }).catch((error: unknown) => {
     // Also catch native whenReady/window-setup failures. If a shell exists keep
@@ -850,36 +941,15 @@ if (!gotLock) {
     // keep running in tray — quit only via tray menu
   })
 
-  const quitGate = createDaemonQuitGate({
-    closeGuiAdmission: (closed) => { appRuntime.setAdmissionClosed(closed); setWorkflowAdmissionClosed(closed); setDesktopTeamAdmissionClosed(closed) },
-    stopGuiWork: async () => { await appRuntime.shutdown(); await closeDesktopTeamService() },
-    detach: async () => { await closeCreationService(); detachRuntimeObservers(); await closeCruxWorkspace(); await disposeGuiLifecycle?.() },
-    finalize: () => {
-      disposeDaemonTray()
-      if (collaborationTimer) { clearInterval(collaborationTimer); collaborationTimer = null }
-      stopTimers()
-      stopInbox()
-      abortAll()
-      stopDiffWorker()
-      stopWorkflowSubscriptions()
-      closeTaskConversations()
-      stopObservationWorker()
-      globalShortcut.unregisterAll()
-      accessServer.stop()
-    },
-    quit: () => app.quit(),
-    reportError: (error) => {
-      dialog.showErrorBox('退出收尾未完成', `应用清理或会话保存尚未完成，请处理后重试退出。\n${error instanceof Error ? error.message : '请检查应用与会话状态'}`)
-    }
-  })
   app.on('before-quit', event => {
     // A bootstrap exit never queries/stops a retained daemon, changes its
     // preference, or enters the full GUI's cleanup/dialog path.
-    if (!guiNativeStateReady || !fullRendererEverAttached) { event.preventDefault(); requestBootstrapExit(); return }
+    if (!guiNativeStateReady || !fullRendererEverAttached || !quitGate) { event.preventDefault(); requestBootstrapExit(); return }
+    const activeQuitGate = quitGate
     daemonTrayExitPending = true
     rebuildTrayMenu()
-    quitGate.beforeQuit(event)
-    void quitGate.whenIdle().finally(() => { daemonTrayExitPending = false; rebuildTrayMenu() })
+    activeQuitGate.beforeQuit(event)
+    void activeQuitGate.whenIdle().finally(() => { daemonTrayExitPending = false; rebuildTrayMenu() })
   })
 }
 }

@@ -10,8 +10,31 @@ import { useApp } from '../store'
 import { useTaskWorkThread } from '../conversation-workbench/task-work-navigation'
 import { ThreadRouteView } from '../conversation-workbench/ThreadRouteView'
 
+const WORK_ROOT_STORAGE_KEY = 'crux.conversation.workRoot.v1'
+let retainedWorkRoot: string | undefined = (() => {
+  try { return localStorage.getItem(WORK_ROOT_STORAGE_KEY) || undefined } catch { return undefined }
+})()
+let workRootInflight: Promise<string | undefined> | undefined
+
+export function preloadWorkConversationRoot(): Promise<string | undefined> {
+  if (!hasIpc) return Promise.resolve(undefined)
+  if (workRootInflight) return workRootInflight
+  const pending = api.conversationWorkRoot().then(result => {
+    if (result.ok && result.root) {
+      retainedWorkRoot = result.root
+      try { localStorage.setItem(WORK_ROOT_STORAGE_KEY, result.root) } catch { /* ignore */ }
+      return result.root
+    }
+    return undefined
+  }).catch(() => undefined).finally(() => {
+    if (workRootInflight === pending) workRootInflight = undefined
+  })
+  workRootInflight = pending
+  return pending
+}
+
 function WorkConversation({ active }: { active: boolean }): JSX.Element {
-  const [root, setRoot] = useState<string>()
+  const [root, setRoot] = useState<string | undefined>(() => retainedWorkRoot)
   const [issue, setIssue] = useState('')
   const [retry, setRetry] = useState(0)
   const taskThread = useTaskWorkThread(root)
@@ -22,17 +45,24 @@ function WorkConversation({ active }: { active: boolean }): JSX.Element {
     void api.conversationWorkRoot().then(result => {
       if (!current) return
       if (result.ok) {
-        setRoot(result.root)
+        retainedWorkRoot = result.root
+        try { localStorage.setItem(WORK_ROOT_STORAGE_KEY, result.root) } catch { /* ignore */ }
+        setRoot(prev => prev === result.root ? prev : result.root)
         setIssue('')
-      } else setIssue(result.error)
-    }).catch(() => { if (current) setIssue('无法打开 Work 会话目录。') })
+      } else {
+        retainedWorkRoot = undefined
+        try { localStorage.removeItem(WORK_ROOT_STORAGE_KEY) } catch { /* ignore */ }
+        setRoot(undefined)
+        setIssue(result.error)
+      }
+    }).catch(() => { if (current && !retainedWorkRoot) setIssue('无法打开 Work 会话目录。') })
     return () => { current = false }
   }, [active, retry])
 
-  if (root) return <ThreadRouteView root={root} source="work" target={taskThread} />
-  if (!hasIpc) return <EmptyState title="请在 Crux 桌面端打开对话" />
-  if (issue) return <FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
-    actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} />
+  if (root) return <><ThreadRouteView root={root} source="work" target={taskThread} /><StartupContentCommit active={active} /></>
+  if (!hasIpc) return <><EmptyState title="请在 Crux 桌面端打开对话" /><StartupContentCommit active={active} /></>
+  if (issue) return <><FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
+    actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} /><StartupContentCommit active={active} /></>
   return <PageLoading />
 }
 
@@ -74,10 +104,9 @@ export function ChatPage({ active }: { active: boolean }): JSX.Element {
   const root = useApp((state) => state.snapshot?.meta.root)
   let content: JSX.Element
   if (!directoryMode) content = <WorkConversation active={active} />
-  else if (!root) content = <CodeProjectPrompt />
-  else content = <ThreadRouteView root={root} source="code" />
+  else if (!root) content = <><CodeProjectPrompt /><StartupContentCommit active={active} /></>
+  else content = <><ThreadRouteView root={root} source="code" /><StartupContentCommit active={active} /></>
   return <Suspense fallback={active ? <PageLoading /> : null}>
     {content}
-    <StartupContentCommit active={active} />
   </Suspense>
 }

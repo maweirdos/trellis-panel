@@ -23,8 +23,10 @@ const bridgeEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('frame'), id: z.number().int().positive(), data: z.string().max(350000) })
 ])
 /** Windows user-DACL adapter. No TCP listener or unrestricted pipe fallback. */
-export async function listenNativePipe(name: string, connected: (peer: NativePeer) => void, fatal: () => void): Promise<NativeServer> {
-  const child: ChildProcessWithoutNullStreams = spawn(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', nativeResource('windows-pipe.ps1'), '-Name', name], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+export async function listenNativePipe(name: string, connected: (peer: NativePeer) => void, fatal: () => void, cacheDir?: string): Promise<NativeServer> {
+  const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', nativeResource('windows-pipe.ps1'), '-Name', name]
+  if (cacheDir) args.push('-CacheDir', cacheDir)
+  const child: ChildProcessWithoutNullStreams = spawn(powershellPath(), args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
   const peers = new Map<number, NativePeer>()
   let closing = false
   let buffer = ''
@@ -97,7 +99,8 @@ export async function listenNativePipe(name: string, connected: (peer: NativePee
     closing = true
     if (child.exitCode !== null || child.signalCode !== null) return
     await new Promise<void>(resolve => {
-      let timer = setTimeout(onDeadline, DAEMON_LIMITS.requestMs)
+      // Pipe helper closes cleanly on stdin EOF; bound wait to 1.5s before SIGKILL so quit never stalls.
+      let timer = setTimeout(onDeadline, Math.min(DAEMON_LIMITS.requestMs, 1500))
       child.once('exit', () => { clearTimeout(timer); resolve() })
       child.stdin.end()
       function onDeadline(): void {

@@ -50,6 +50,7 @@ import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
 import { useConversationModelCatalog } from './useConversationModelCatalog'
+import { modelPickerKey, readModelPickerPreferences } from './modelPickerPreferences'
 import type { ComposerPromptEditorHandle } from './ComposerPromptEditorTiptap'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import { LOCAL_ASSISTANT_CITATION_ENVIRONMENT } from '../../../shared/conversation/assistantCitationText'
@@ -57,7 +58,7 @@ import { useCodeTaskActions } from './useCodeTaskActions'
 import { closeUnusedSideThread, useSideChat } from './useSideChat'
 import { useWorkTaskActions } from './useWorkTaskActions'
 import {
-  isActiveRun, queuedRunsWithText, runStartIso, useConversationThread,
+  isActiveRun, prefetchConversationThread, queuedRunsWithText, runStartIso, useConversationThread,
   type ConversationApplyResult, type ConversationTimelineRow, type ThreadReadTarget,
 } from './useConversationThread'
 import '../acp/workspace.css'
@@ -73,6 +74,47 @@ interface CitationRouteRequest {
   readonly sideThreadId?: string
   readonly resolve: (found: boolean) => void
   phase: 'parent' | 'side' | 'revealing'
+}
+
+const THREAD_LIST_STORAGE_PREFIX = 'crux.conversation.threadList.v1:'
+const THREAD_LIST_TTL_MS = 24 * 60 * 60_000
+const retainedThreadLists = new Map<string, readonly OrchestrationV2AppThread[]>()
+
+function readCachedThreadList(scopeKey: string): readonly OrchestrationV2AppThread[] | undefined {
+  const inMem = retainedThreadLists.get(scopeKey)
+  if (inMem) return inMem
+  try {
+    const raw = localStorage.getItem(THREAD_LIST_STORAGE_PREFIX + scopeKey)
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw) as { cachedAt?: number; threads?: OrchestrationV2AppThread[] } | null
+    if (!parsed || typeof parsed.cachedAt !== 'number' || Date.now() - parsed.cachedAt >= THREAD_LIST_TTL_MS || !Array.isArray(parsed.threads)) {
+      return undefined
+    }
+    retainedThreadLists.set(scopeKey, parsed.threads)
+    return parsed.threads
+  } catch {
+    return undefined
+  }
+}
+
+function writeCachedThreadList(scopeKey: string, threads: readonly OrchestrationV2AppThread[]): void {
+  retainedThreadLists.set(scopeKey, threads)
+  while (retainedThreadLists.size > 24) {
+    const oldest = retainedThreadLists.keys().next().value
+    if (oldest === undefined) break
+    retainedThreadLists.delete(oldest)
+  }
+  try {
+    localStorage.setItem(THREAD_LIST_STORAGE_PREFIX + scopeKey, JSON.stringify({
+      cachedAt: Date.now(),
+      threads: threads.slice(0, 60),
+    }))
+  } catch { /* ignore quota */ }
+}
+
+function clearCachedThreadList(scopeKey: string): void {
+  retainedThreadLists.delete(scopeKey)
+  try { localStorage.removeItem(THREAD_LIST_STORAGE_PREFIX + scopeKey) } catch { /* ignore */ }
 }
 
 function savedThread(key: string): string | null {
@@ -193,7 +235,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const canInteract = useInteractionGuard()
   const writable = interactive && hasIpc && taskScope?.canSend !== false
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [threads, setThreads] = useState<readonly OrchestrationV2AppThread[]>()
+  const [threadsByRoot, setThreadsByRoot] = useState<{ rootKey: string; items: readonly OrchestrationV2AppThread[] | undefined }>(() => ({
+    rootKey,
+    items: readCachedThreadList(rootKey),
+  }))
+  const threads = threadsByRoot.rootKey === rootKey ? threadsByRoot.items : readCachedThreadList(rootKey)
   const [query, setQuery] = useState('')
   const [listError, setListError] = useState('')
   const [listRevision, setListRevision] = useState(0)
@@ -388,15 +434,34 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         const result = await api.conversationList(root, { query, ...(task && { task }) })
         if (cancelled) return
         if (!result.ok) throw new Error(result.error)
-        setThreads(result.threads)
+        setThreadsByRoot({ rootKey, items: result.threads })
+        if (!query) {
+          writeCachedThreadList(rootKey, result.threads)
+          const warmIds = new Set<string>()
+          if (targetRef.current?.threadId) warmIds.add(targetRef.current.threadId)
+          for (const item of result.threads.slice(0, 2)) warmIds.add(item.id)
+          for (const warmId of warmIds) {
+            void prefetchConversationThread(root, warmId, readScopeKey, taskScope?.locator)
+          }
+        }
         setListError('')
       } catch (error) {
-        if (!cancelled) setListError(conversationError(error))
+        if (!cancelled) {
+          if (!query) {
+            clearCachedThreadList(rootKey)
+            setThreadsByRoot({ rootKey, items: undefined })
+          }
+          setListError(conversationError(error))
+        }
       }
     }
-    const timer = window.setTimeout(() => void list(), query ? 160 : 0)
+    if (!query) {
+      void list()
+      return () => { cancelled = true }
+    }
+    const timer = window.setTimeout(() => void list(), 160)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [interactive, listRevision, query, root, task])
+  }, [interactive, listRevision, query, readScopeKey, root, rootKey, task, taskScope?.locator])
 
   function select(next: ThreadReadTarget | null): void {
     citationRouteGeneration.current += 1
@@ -622,6 +687,73 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       composer.setModel(matched)
     }
   }, [activeAgentContext, target, catalog, composer])
+
+  // 进入对话工作台立即主动预热驱动目录与默认/最近使用的驱动进程（对标 t3code 进界面即用），
+  // 而不是等到用户点开模型选择器或点击发送时才首次拉起 Runtime。
+  const catalogRefresh = catalog.refresh
+  const catalogEnsure = catalog.ensure
+  useEffect(() => {
+    if (!writable) return
+    void catalogRefresh()
+  }, [writable, rootKey, catalogRefresh])
+
+  useEffect(() => {
+    if (!writable || catalog.instances.length === 0) return
+    const preferredInstances = new Set<string>()
+    if (instanceId) preferredInstances.add(instanceId)
+    const normalizedRoot = projectRootKey(root)
+    if (normalizedRoot) {
+      const prefs = readModelPickerPreferences(normalizedRoot)
+      const latestRecent = prefs.recent[0]?.split('\u0000', 1)[0]
+      if (latestRecent) preferredInstances.add(latestRecent)
+    }
+    if (preferredInstances.size === 0) {
+      const codexInstance = catalog.instances.find(item => item.instanceId === 'codex')
+      const fallback = codexInstance ?? catalog.instances[0]
+      if (fallback) preferredInstances.add(fallback.instanceId)
+    }
+    for (const targetInstance of preferredInstances) {
+      if (catalog.instances.some(item => item.instanceId === targetInstance)) {
+        void catalogEnsure(targetInstance)
+      }
+    }
+  }, [writable, root, instanceId, catalog.instances, catalogEnsure])
+
+  // 新建草稿尚未选模型时，自动回填当前项目最近使用或默认模型，让用户进界面即可直接输入发送；
+  // 若首次回填来自静态兜底目录而未能命中用户偏好模型，待真实目录到达且用户未改选时自动升级回偏好模型。
+  const autoSelectedDraftRef = useRef<{ scopeToken: string; pendingRecentUpgrade: boolean; selectedKey: string } | null>(null)
+  useEffect(() => {
+    if (!writable || target || activeAgentContext || catalog.models.length === 0) return
+    const scopeToken = `${rootKey}:${composer.draftKey}`
+    const prevAuto = autoSelectedDraftRef.current
+    const currentKey = composer.model ? modelPickerKey(composer.model.instanceId, composer.model.id) : null
+    if (composer.model && (!prevAuto || prevAuto.scopeToken !== scopeToken || !prevAuto.pendingRecentUpgrade || prevAuto.selectedKey !== currentKey)) {
+      return
+    }
+    if (!composer.model && prevAuto?.scopeToken === scopeToken && !prevAuto.pendingRecentUpgrade) return
+
+    const normalizedRoot = projectRootKey(root)
+    const prefs = normalizedRoot ? readModelPickerPreferences(normalizedRoot) : undefined
+    const matchedRecent = prefs?.recent
+      .map(entry => catalog.models.find(model => modelPickerKey(model.instanceId, model.id) === entry))
+      .find((item): item is NonNullable<typeof item> => Boolean(item))
+    const hasProvisionalRead = catalog.instances.some(item => item.read?.status === 'ready' && item.read.descriptor.provisional)
+    const chosen = matchedRecent
+      ?? catalog.models.find(model => model.instanceId === 'codex' && model.isDefault)
+      ?? catalog.models.find(model => model.isDefault)
+      ?? catalog.models[0]
+    if (chosen) {
+      const nextKey = modelPickerKey(chosen.instanceId, chosen.id)
+      autoSelectedDraftRef.current = {
+        scopeToken,
+        pendingRecentUpgrade: Boolean(!matchedRecent && prefs?.recent.length && hasProvisionalRead),
+        selectedKey: nextKey,
+      }
+      if (nextKey !== currentKey) {
+        composer.setModel({ instanceId: chosen.instanceId, id: chosen.id, displayName: chosen.displayName })
+      }
+    }
+  }, [writable, target, composer.model, composer.draftKey, composer.setModel, activeAgentContext, catalog.instances, catalog.models, root, rootKey])
   const canPreselectTask = composer.state.phase === 'idle' || (composer.state.phase === 'rejected' && composer.state.restored)
   const workTask = useWorkTaskActions({
     root, threadId: hostThreadId, isWork: source === 'work', enabled: source === 'work' && writable && !archivedThread && (!target || Boolean(projection)),
