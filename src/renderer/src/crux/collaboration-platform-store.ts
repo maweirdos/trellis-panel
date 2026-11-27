@@ -4,11 +4,52 @@ import type { CruxRuntimeKind, CruxSnapshot, CruxTask, CruxWorkingDirectoryMode 
 export type IsolationMode = 'worktree' | 'in_place'
 export type AgentVisibility = 'space' | 'personal'
 export type WorkflowMode = 'simple' | 'strict'
-export type EffortEmblemStyle = 'logo' | 'sun' | 'moon' | 'star' | 'crux' | 'eclipse'
-export type EffortTrackTone = 'amber' | 'teal' | 'jade' | 'glacier'
-const EFFORT_TRACK_TONES: ReadonlySet<EffortTrackTone> = new Set(['amber', 'teal', 'jade', 'glacier'])
+export type EffortEmblemStyle =
+  | 'classic'
+  | 'tachometer'
+  | 'tourbillon'
+  | 'turbine'
+  | 'radar'
+  | 'arc-reactor'
+  | 'camera-lens'
+  | 'vinyl'
+  | 'orrery'
+  | 'compass'
+  | 'holo-globe'
+  | 'vault-dial'
+  | 'ufo'
+  | 'pixel-lighthouse'
+  | 'crux'
+  | 'eclipse'
+  | 'logo'
+  | 'moon'
+  | 'sun'
+  | 'star'
+export type EffortTrackTone = 'obsidian' | 'amber' | 'jade' | 'glacier'
+const EFFORT_TRACK_TONES: ReadonlySet<EffortTrackTone> = new Set(['obsidian', 'amber', 'jade', 'glacier'])
 
-const EFFORT_EMBLEM_STYLES: ReadonlySet<EffortEmblemStyle> = new Set(['logo', 'sun', 'moon', 'star', 'crux', 'eclipse'])
+const EFFORT_EMBLEM_STYLES: ReadonlySet<EffortEmblemStyle> = new Set([
+  'classic',
+  'tachometer',
+  'tourbillon',
+  'turbine',
+  'radar',
+  'arc-reactor',
+  'camera-lens',
+  'vinyl',
+  'orrery',
+  'compass',
+  'holo-globe',
+  'vault-dial',
+  'ufo',
+  'pixel-lighthouse',
+  'crux',
+  'eclipse',
+  'logo',
+  'moon',
+  'sun',
+  'star'
+])
 
 export interface EnvPair {
   key: string
@@ -480,8 +521,8 @@ function defaultState(): PersistedPlatformState {
       updatedAt: new Date().toISOString()
     },
     crewQuickReplies: {},
-    effortEmblemStyle: 'crux',
-    effortTrackTone: 'teal'
+    effortEmblemStyle: 'classic',
+    effortTrackTone: 'obsidian'
   }
 }
 
