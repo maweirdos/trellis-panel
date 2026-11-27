@@ -9,6 +9,7 @@ import { Button, EmptyState } from '../my/ui'
 import { useApp } from '../store'
 import { useTaskWorkThread } from '../conversation-workbench/task-work-navigation'
 import { ThreadRouteView } from '../conversation-workbench/ThreadRouteView'
+import type { EmbeddedCruxChatConfig } from '../conversation-workbench/ConversationWorkbench'
 
 const WORK_ROOT_STORAGE_KEY = 'crux.conversation.workRoot.v1'
 let retainedWorkRoot: string | undefined = (() => {
@@ -33,7 +34,7 @@ export function preloadWorkConversationRoot(): Promise<string | undefined> {
   return pending
 }
 
-function WorkConversation({ active }: { active: boolean }): JSX.Element {
+function WorkConversation({ active, embeddedCrux }: { active: boolean; embeddedCrux?: EmbeddedCruxChatConfig }): JSX.Element {
   const [root, setRoot] = useState<string | undefined>(() => retainedWorkRoot)
   const [issue, setIssue] = useState('')
   const [retry, setRetry] = useState(0)
@@ -59,7 +60,7 @@ function WorkConversation({ active }: { active: boolean }): JSX.Element {
     return () => { current = false }
   }, [active, retry])
 
-  if (root) return <><ThreadRouteView root={root} source="work" target={taskThread} /><StartupContentCommit active={active} /></>
+  if (root) return <><ThreadRouteView root={root} source="work" target={taskThread} embeddedCrux={embeddedCrux} /><StartupContentCommit active={active} /></>
   if (!hasIpc) return <><EmptyState title="请在 Crux 桌面端打开对话" /><StartupContentCommit active={active} /></>
   if (issue) return <><FeedbackNotice variant="inline" title="无法打开 Work 对话" diagnostic={issue}
     actions={<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>重新打开</Button>} /><StartupContentCommit active={active} /></>
@@ -99,13 +100,13 @@ function CodeProjectPrompt(): JSX.Element {
   </section>
 }
 
-export function ChatPage({ active }: { active: boolean }): JSX.Element {
+export function ChatPage({ active, embeddedCrux }: { active: boolean; embeddedCrux?: EmbeddedCruxChatConfig }): JSX.Element {
   const directoryMode = useMy((state) => state.chatWorkdirMode === 'directory')
   const root = useApp((state) => state.snapshot?.meta.root)
   let content: JSX.Element
-  if (!directoryMode) content = <WorkConversation active={active} />
+  if (!directoryMode) content = <WorkConversation active={active} embeddedCrux={embeddedCrux} />
   else if (!root) content = <><CodeProjectPrompt /><StartupContentCommit active={active} /></>
-  else content = <><ThreadRouteView root={root} source="code" /><StartupContentCommit active={active} /></>
+  else content = <><ThreadRouteView root={root} source="code" embeddedCrux={embeddedCrux} /><StartupContentCommit active={active} /></>
   return <Suspense fallback={active ? <PageLoading /> : null}>
     {content}
   </Suspense>

@@ -3,6 +3,7 @@ import type { CruxAgent, CruxRuntimeKind, CruxSnapshot } from '@shared/crux'
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { useLocalExecutionSlot } from './local-execution-slot'
+import { useCrux, type CruxModule } from './store'
 import type { ComposerModel } from '../conversation-workbench/useComposerSend'
 import type { ConversationModelCatalog } from '../conversation-workbench/useConversationModelCatalog'
 
@@ -25,14 +26,20 @@ export interface ConversationAgentContext {
 interface AgentChatBridgeState {
   selectedAgentId: string | null
   startNonce: number
+  returnModule: CruxModule
+  inspectAgentId: string | null
   selectAgent: (agentId: string | null) => void
+  setInspectAgentId: (agentId: string | null) => void
   startAgentChat: (agentId: string | null, sharedFallback?: { runtimeKind?: CruxRuntimeKind; workingDirectory?: 'repo' | 'temp' }) => void
 }
 
 export const useAgentChatBridge = create<AgentChatBridgeState>()((set) => ({
   selectedAgentId: null,
   startNonce: 0,
+  returnModule: 'all-agents',
+  inspectAgentId: null,
   selectAgent: (selectedAgentId) => set({ selectedAgentId }),
+  setInspectAgentId: (inspectAgentId) => set({ inspectAgentId }),
   startAgentChat: (agentId, sharedFallback) => {
     if (agentId) {
       const { slot } = useLocalExecutionSlot.getState().resolveAgentSlot(agentId, sharedFallback)
@@ -43,8 +50,17 @@ export const useAgentChatBridge = create<AgentChatBridgeState>()((set) => ({
         useMy.getState().setChatWorkdirMode('default')
       }
     }
-    set((state) => ({ selectedAgentId: agentId, startNonce: state.startNonce + 1 }))
-    useApp.getState().setPage('chat')
+    const crux = useCrux.getState()
+    const currentModule = crux.module
+    set((state) => ({
+      selectedAgentId: agentId,
+      startNonce: state.startNonce + 1,
+      returnModule: currentModule !== 'chat' ? currentModule : state.returnModule
+    }))
+    if (useApp.getState().page !== 'crux') {
+      useApp.getState().setPage('crux')
+    }
+    crux.setModule('chat')
   }
 }))
 

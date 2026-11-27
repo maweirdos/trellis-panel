@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, Bot, Check, ChevronDown, Cpu, FolderOpen, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Bot, Check, ChevronDown, Cpu, FolderOpen, History, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, X } from 'lucide-react'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
@@ -195,6 +195,11 @@ function ConversationIssue({ title, reason, actions, uncertain = false }: {
     tone={uncertain ? 'warning' : 'error'} actions={actions} />
 }
 
+export interface EmbeddedCruxChatConfig {
+  onClose: () => void
+  onOpenSettings?: (agentId: string) => void
+}
+
 interface ConversationWorkbenchProps {
   root: string
   source?: 'code' | 'native' | 'work' | 'task'
@@ -205,10 +210,11 @@ interface ConversationWorkbenchProps {
   compact?: boolean
   projectRoleRequest?: ConversationProjectRole
   onProjectRoleOpened?: () => void
+  embeddedCrux?: EmbeddedCruxChatConfig
 }
 
 export function ConversationWorkbench({ root, source = 'native', taskScope, onBackToTask, initialThreadId,
-  projectIntake = false, compact = false, projectRoleRequest, onProjectRoleOpened }: ConversationWorkbenchProps): JSX.Element {
+  projectIntake = false, compact = false, projectRoleRequest, onProjectRoleOpened, embeddedCrux }: ConversationWorkbenchProps): JSX.Element {
   const sidebarWidth = useSidebarWidthStyle()
   const collapsed = useMy((state) => state.sidebarCollapsed)
   const agentView = useMy((state) => state.agentTarget)
@@ -1033,7 +1039,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         </div>
       </form>}
     </Modal>
-    <ContextRegion collapsed={collapsed && !sidebarOpen}><div className="acp-navigation-host flex min-h-0 shrink-0">
+    {!embeddedCrux && <ContextRegion collapsed={collapsed && !sidebarOpen}><div className="acp-navigation-host flex min-h-0 shrink-0">
     <ConversationSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} ariaLabel={`${workspaceLabel}历史`} resizable={!compact}
       title={taskScope ? <strong className="my-item-title truncate" title={taskScope.title}>{taskScope.title}</strong>
         : projectIntake ? <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-module-switch" aria-label="切换对话模块" aria-expanded={open} onClick={toggle}>
@@ -1062,9 +1068,90 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           </>}
         </Dropdown>} />)}
     </ConversationSidebar>
-    </div></ContextRegion>
+    </div></ContextRegion>}
     <ChatView label={workspaceLabel} draftHero={draftIsEmpty}
-      header={<ConversationWorkspaceHeader leading={<>
+      header={embeddedCrux ? <ConversationWorkspaceHeader
+        leading={<>
+          <button type="button" className="my-icon-control" title="关闭对话" aria-label="关闭对话" onClick={embeddedCrux.onClose}>
+            <X size={15} aria-hidden="true" />
+          </button>
+          <span className="mx-0.5 h-3.5 w-px bg-my-line" aria-hidden="true" />
+        </>}
+        identity={<div className="flex min-w-0 items-center gap-1.5">
+          {agentPickerControl ?? <strong className="truncate">{activeAgentContext?.name ?? '小助手'}</strong>}
+          {selectedThread?.title && (
+            <>
+              <span className="text-my-tertiary">/</span>
+              <span className="max-w-[260px] truncate text-my-sm text-my-secondary">{selectedThread.title}</span>
+            </>
+          )}
+          {writable && (
+            <button type="button" className="my-icon-control ml-0.5" title="新建对话" aria-label="新建对话" onClick={() => openDraft()}>
+              <RotateCcw size={13} aria-hidden="true" />
+            </button>
+          )}
+        </div>}
+        actions={<>
+          <Dropdown
+            align="right"
+            width={280}
+            trigger={({ open, toggle }) => (
+              <button type="button" className="my-icon-control" title="对话历史" aria-label="对话历史" aria-expanded={open} onClick={toggle}>
+                <History size={15} aria-hidden="true" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <div className="flex flex-col gap-1.5 p-1">
+                <div className="flex items-center justify-between px-2 pt-1 pb-0.5">
+                  <span className="text-my-xs font-medium text-my-secondary">对话历史</span>
+                  {writable && (
+                    <button type="button" className="text-my-2xs text-my-secondary hover:text-my-primary" onClick={() => { close(); openDraft() }}>
+                      + 新建
+                    </button>
+                  )}
+                </div>
+                <SearchInput value={query} onChange={value => setQuery(value.slice(0, 160))} size="sm" placeholder="搜索历史对话" />
+                <div className="collab-scroll max-h-64 space-y-0.5">
+                  {(threads ?? []).length === 0 ? (
+                    <div className="py-5 text-center text-my-xs text-my-tertiary">暂无历史会话</div>
+                  ) : (
+                    (threads ?? []).slice(0, 20).map((thread) => (
+                      <button
+                        key={thread.id}
+                        type="button"
+                        data-selected={thread.id === target?.threadId || undefined}
+                        onClick={() => { close(); select({ threadId: thread.id }) }}
+                        className="my-menu-item justify-between"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+                        {thread.id === target?.threadId && <Check size={13} className="shrink-0 text-my-success-text" />}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </Dropdown>
+          {activeAgentContext && embeddedCrux.onOpenSettings && (
+            <button
+              type="button"
+              onClick={() => embeddedCrux.onOpenSettings?.(activeAgentContext.id)}
+              className="inline-flex items-center gap-1.5 rounded-my-base px-2 py-1 text-my-xs text-my-secondary transition-colors hover:bg-my-layer-1 hover:text-my-primary"
+            >
+              <Settings2 size={14} aria-hidden="true" />
+              <span>设置</span>
+            </button>
+          )}
+          {projection && (projectAvailable || projection.relations.children.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
+            title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
+            onClick={() => {
+              if (!canInteract()) return
+              if (panel.active) hidePanel()
+              else { panelReturnFocus.current = panelTrigger.current; panel.show() }
+            }}><PanelRight size={16} aria-hidden="true" /></button>}
+        </>} />
+      : <ConversationWorkspaceHeader leading={<>
         {onBackToTask && <button type="button" className="my-icon-control" title="返回任务" aria-label="返回任务" onClick={onBackToTask}>
           <ArrowLeft size={16} aria-hidden="true" />
         </button>}
