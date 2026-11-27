@@ -1452,7 +1452,8 @@ export interface TrellisApi extends ApplicationRuntimeApi, ApplicationInstanceAp
   acpProfileSave: (profile: AcpAgentProfile) => Promise<{ ok: boolean; error?: string; profile?: AcpAgentProfile }>
   acpProfileDelete: (id: string) => Promise<{ ok: boolean; error?: string }>
   acpRuntimeRefresh: () => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
-  acpRuntimeSetup: (runtimeId: string) => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[] }>
+  acpRuntimeSetup: (runtimeId: string) => Promise<{ ok: boolean; error?: string; agents?: AcpAgentStatus[]; outcome?: 'not-admitted' | 'unknown'; commandId?: string }>
+  acpRuntimeSetupStatus?: (runtimeId?: string) => Promise<{ ok: boolean; error?: string; tasks?: AcpRuntimeSetupProgress[] }>
   acpRuntimeNodePick: () => Promise<{ ok: boolean; error?: string; cancelled?: boolean; nodePath?: string; agents?: AcpAgentStatus[] }>
   /** ACP initialize-only 握手探测并返回当前引擎状态；SDK 仅验证启动条件，不创建会话、不认证、不 prompt。 */
   acpRuntimeTestConnection: (runtimeId: string) => Promise<{ ok: boolean; error?: string; probe?: AcpConnectionProbeResult; agents?: AcpAgentStatus[] }>
@@ -1767,6 +1768,35 @@ export interface AcpAgentStatus extends AcpAgentConfig {
 }
 
 export type AcpRuntimeHealth = 'not_checked' | 'executable_missing' | 'adapter_missing' | 'launch_error' | 'incompatible' | 'auth_required' | 'directory_unavailable' | 'ready'
+
+export type AcpRuntimeSetupPhase =
+  | 'checking_env'
+  | 'reading_version'
+  | 'checking_registry'
+  | 'installing'
+  | 'verifying'
+  | 'refreshing'
+  | 'succeeded'
+  | 'failed'
+
+/** 执行引擎安装/升级的后台真实进度快照（由 daemon 内存维护，仅反映实际已到达的阶段与子进程输出）。 */
+export interface AcpRuntimeSetupProgress {
+  runtimeId: string
+  intent: 'install' | 'upgrade'
+  state: 'running' | 'succeeded' | 'failed'
+  phase: AcpRuntimeSetupPhase
+  phaseLabel: string
+  detail?: string
+  currentVersion?: string
+  targetVersion?: string
+  commandSummary?: string
+  pid?: number
+  startedAt: number
+  updatedAt: number
+  finishedAt?: number
+  logs: string[]
+  error?: string
+}
 
 /** 测试连接（R7）：initialize-only 握手结果；绝不发送 session/new，authMethodIds 非空仅提示需认证，不做认证动作。 */
 export interface AcpConnectionProbeResult {

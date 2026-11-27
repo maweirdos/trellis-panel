@@ -13,7 +13,7 @@ export const pickAcpNode = () => pickLocalNode(writeNativeSettings)
 export const pickAcpRuntimePath = (id: string) => pickLocalRuntimePath(id, writeNativeSettings)
 type Result<K extends keyof typeof Local> = (typeof Local)[K] extends (...args: never[]) => unknown ? Awaited<ReturnType<(typeof Local)[K]>> : never
 async function call<K extends keyof typeof Local, M extends RuntimeBodyMethod>(root: string, method: M, body: RuntimeBody<M>, isCurrent?: () => boolean): Promise<Result<K>> {
-  if (!root && !['runtime.agents', 'runtime.setup', 'runtime.probe'].includes(method)) return ipcFail(IpcErrorCode.NoProject, '未打开项目') as Result<K>
+  if (!root && !['runtime.agents', 'runtime.setup', 'runtime.setupStatus', 'runtime.probe'].includes(method)) return ipcFail(IpcErrorCode.NoProject, '未打开项目') as Result<K>
   try { return await runtimeCall<Result<K>, M>(root, method, body, undefined, isCurrent) }
   catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
@@ -25,6 +25,7 @@ async function call<K extends keyof typeof Local, M extends RuntimeBodyMethod>(r
 }
 export const listAcpAgents = (refresh = false) => call<'listAcpAgents', 'runtime.agents'>('', 'runtime.agents', { refresh })
 export const setupAcpRuntime = (runtimeId: string) => call<'setupAcpRuntime', 'runtime.setup'>('', 'runtime.setup', { runtimeId })
+export const getAcpRuntimeSetupStatus = (runtimeId?: string) => call<'getAcpRuntimeSetupStatus', 'runtime.setupStatus'>('', 'runtime.setupStatus', runtimeId ? { runtimeId } : {})
 export const testAcpRuntimeConnection = (runtimeId: string) => call<'testAcpRuntimeConnection', 'runtime.probe'>('', 'runtime.probe', { runtimeId })
 export const listAcpSessions = (root: string, limit?: number) => call<'listAcpSessions', 'runtime.sessions'>(root, 'runtime.sessions', { limit })
 export const listAcpProfiles = (root: string) => call<'listAcpProfiles', 'runtime.profiles'>(root, 'runtime.profiles', {})

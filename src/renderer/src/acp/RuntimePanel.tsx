@@ -466,8 +466,9 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
         const actionButton = (action: RuntimeAction, label: string, variant: 'primary' | 'outline' | 'ghost' = 'outline', setupIntent?: SetupIntent): JSX.Element => {
           const busy = pending === (action === 'refresh' || action === 'node' ? action : `${action}:${id}`) || automaticallyChecking && action === 'test'
           const Icon = action === 'setup' ? Download : action === 'test' ? PlugZap : action === 'refresh' ? RefreshCw : action === 'migration' ? ExternalLink : FolderOpen
-          return <Button size="sm" variant={variant} aria-label={`${agent.name} · ${busy ? automaticallyChecking ? '正在检测连接' : pendingActionLabel(action, pendingSetupIntent) : label}`} disabled={(controlsDisabled && !busy) || !hasIpc} aria-disabled={busy || undefined} onClick={() => { if (!busy) void run(action, id, setupIntent) }}>
-            <Icon size={13} aria-hidden="true" /> {label}
+          const busyLabel = busy && action === 'setup' ? (setupIntent === 'upgrade' ? '升级中…' : setupIntent === 'reinstall' ? '重装中…' : '安装中…') : label
+          return <Button size="sm" variant={variant} aria-busy={busy || undefined} aria-label={`${agent.name} · ${busy ? automaticallyChecking ? '正在检测连接' : pendingActionLabel(action, pendingSetupIntent) : label}`} disabled={(controlsDisabled && !busy) || !hasIpc} aria-disabled={busy || undefined} onClick={() => { if (!busy) void run(action, id, setupIntent) }}>
+            {busy ? <Loader2 size={13} className={motionEnabled ? 'animate-spin' : undefined} aria-hidden="true" /> : <Icon size={13} aria-hidden="true" />} {busyLabel}
           </Button>
         }
         const controls = (

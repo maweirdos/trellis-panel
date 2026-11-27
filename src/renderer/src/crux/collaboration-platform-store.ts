@@ -4,6 +4,11 @@ import type { CruxRuntimeKind, CruxSnapshot, CruxTask, CruxWorkingDirectoryMode 
 export type IsolationMode = 'worktree' | 'in_place'
 export type AgentVisibility = 'space' | 'personal'
 export type WorkflowMode = 'simple' | 'strict'
+export type EffortEmblemStyle = 'logo' | 'sun' | 'moon' | 'star' | 'crux' | 'eclipse'
+export type EffortTrackTone = 'amber' | 'teal' | 'jade' | 'glacier'
+const EFFORT_TRACK_TONES: ReadonlySet<EffortTrackTone> = new Set(['amber', 'teal', 'jade', 'glacier'])
+
+const EFFORT_EMBLEM_STYLES: ReadonlySet<EffortEmblemStyle> = new Set(['logo', 'sun', 'moon', 'star', 'crux', 'eclipse'])
 
 export interface EnvPair {
   key: string
@@ -29,6 +34,10 @@ export interface RuntimeLaunchConfig {
   env: EnvPair[]
   manualModels: string[]
   isolationMode: IsolationMode
+  /** 当前引擎默认偏好的思考强度档位（例如 'medium' / 'high' / 'xhigh'） */
+  defaultReasoningEffort?: string
+  /** 按模型 ID 持久化的默认思考强度档位 */
+  reasoningEffortByModel?: Record<string, string>
 }
 
 export interface MachineCleanupPolicy {
@@ -447,6 +456,8 @@ interface PersistedPlatformState {
   spaceSettings: Record<string, SpaceExtendedSettings>
   orgInviteLink: OrgInviteLinkConfig
   crewQuickReplies: Record<string, AgentQuickReply[]>
+  effortEmblemStyle: EffortEmblemStyle
+  effortTrackTone: EffortTrackTone
 }
 
 function defaultState(): PersistedPlatformState {
@@ -468,7 +479,9 @@ function defaultState(): PersistedPlatformState {
       defaultRole: 'member',
       updatedAt: new Date().toISOString()
     },
-    crewQuickReplies: {}
+    crewQuickReplies: {},
+    effortEmblemStyle: 'crux',
+    effortTrackTone: 'teal'
   }
 }
 
@@ -491,7 +504,9 @@ function loadPlatformState(): PersistedPlatformState {
       favorites: Array.isArray(parsed.favorites) ? parsed.favorites : base.favorites,
       spaceSettings: parsed.spaceSettings && typeof parsed.spaceSettings === 'object' ? parsed.spaceSettings : base.spaceSettings,
       orgInviteLink: parsed.orgInviteLink ? { ...base.orgInviteLink, ...parsed.orgInviteLink } : base.orgInviteLink,
-      crewQuickReplies: parsed.crewQuickReplies && typeof parsed.crewQuickReplies === 'object' ? parsed.crewQuickReplies : base.crewQuickReplies
+      crewQuickReplies: parsed.crewQuickReplies && typeof parsed.crewQuickReplies === 'object' ? parsed.crewQuickReplies : base.crewQuickReplies,
+      effortEmblemStyle: parsed.effortEmblemStyle && EFFORT_EMBLEM_STYLES.has(parsed.effortEmblemStyle) ? parsed.effortEmblemStyle : base.effortEmblemStyle,
+      effortTrackTone: parsed.effortTrackTone && EFFORT_TRACK_TONES.has(parsed.effortTrackTone) ? parsed.effortTrackTone : base.effortTrackTone
     }
   } catch {
     return base
@@ -513,7 +528,9 @@ function savePlatformState(state: PersistedPlatformState): void {
       favorites: state.favorites,
       spaceSettings: state.spaceSettings,
       orgInviteLink: state.orgInviteLink,
-      crewQuickReplies: state.crewQuickReplies
+      crewQuickReplies: state.crewQuickReplies,
+      effortEmblemStyle: state.effortEmblemStyle,
+      effortTrackTone: state.effortTrackTone
     }))
   } catch {
     // 忽略本地存储受限异常
@@ -563,6 +580,8 @@ interface CollaborationPlatformStore extends PersistedPlatformState {
   setRuntimeLaunchConfig: (runtimeId: string, config: Partial<RuntimeLaunchConfig>) => void
   setCleanupPolicy: (patch: Partial<MachineCleanupPolicy>) => void
   setKeepAwake: (patch: Partial<PersistedPlatformState['keepAwake']>) => void
+  setEffortEmblemStyle: (style: EffortEmblemStyle) => void
+  setEffortTrackTone: (tone: EffortTrackTone) => void
   getAgentMeta: (agentId: string) => AgentExtendedMeta
   updateAgentMeta: (agentId: string, patch: Partial<AgentExtendedMeta>) => void
   recordAgentInstructionVersion: (agentId: string, instructions: string, note?: string) => void
@@ -605,7 +624,9 @@ export const useCollaborationPlatform = create<CollaborationPlatformStore>()((se
       favorites: s.favorites,
       spaceSettings: s.spaceSettings,
       orgInviteLink: s.orgInviteLink,
-      crewQuickReplies: s.crewQuickReplies
+      crewQuickReplies: s.crewQuickReplies,
+      effortEmblemStyle: s.effortEmblemStyle,
+      effortTrackTone: s.effortTrackTone
     }
   }
 
@@ -655,6 +676,16 @@ export const useCollaborationPlatform = create<CollaborationPlatformStore>()((se
     setKeepAwake: (patch) => {
       const current = snapshotPersisted()
       commit({ ...current, keepAwake: { ...current.keepAwake, ...patch } })
+    },
+
+    setEffortEmblemStyle: (effortEmblemStyle) => {
+      const current = snapshotPersisted()
+      commit({ ...current, effortEmblemStyle })
+    },
+
+    setEffortTrackTone: (effortTrackTone) => {
+      const current = snapshotPersisted()
+      commit({ ...current, effortTrackTone })
     },
 
     getAgentMeta: (agentId) => {

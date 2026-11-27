@@ -128,6 +128,7 @@ export const runtimeBodies = {
   'runtime.sessions': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
   'runtime.agents': z.object({ refresh: z.boolean().optional() }).strict(),
   'runtime.setup': z.object({ runtimeId: id }).strict(),
+  'runtime.setupStatus': z.object({ runtimeId: id.optional() }).strict(),
   'runtime.probe': z.object({ runtimeId: id }).strict(),
   'runtime.profiles': empty,
   'runtime.profileSave': z.object({ input: z.unknown() }).strict(),

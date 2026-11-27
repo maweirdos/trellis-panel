@@ -4,6 +4,7 @@ import { ipcFail, IpcErrorCode } from '../../shared/ipc-errors'
 import { getMainWindow, getProjectRoot } from '../state'
 import {
   deleteAcpProfile,
+  getAcpRuntimeSetupStatus,
   listAcpAgents,
   listAcpProfiles,
   pickAcpNode,
@@ -25,6 +26,7 @@ export function registerAcpIpc(): void {
   handle(ipcInvoke.acp.profileDelete, (_e, id: string) => deleteAcpProfile(getProjectRoot() ?? '', id))
   handle(ipcInvoke.acp.runtimeRefresh, () => listAcpAgents(true))
   handle(ipcInvoke.acp.runtimeSetup, (_e, id: string) => setupAcpRuntime(id))
+  handle(ipcInvoke.acp.runtimeSetupStatus, (_e, id?: string) => getAcpRuntimeSetupStatus(typeof id === 'string' && id.trim() ? id.trim() : undefined))
   handle(ipcInvoke.acp.runtimeNodePick, () => pickAcpNode())
   handle(ipcInvoke.acp.runtimeTest, (_e, id: string) => testAcpRuntimeConnection(id))
   handle(ipcInvoke.acp.runtimePathPick, (_e, id: string) => pickAcpRuntimePath(id))

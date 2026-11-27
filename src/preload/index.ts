@@ -609,6 +609,7 @@ const api = {
   acpProfileDelete: (id: string) => ipcRenderer.invoke(ipcInvoke.acp.profileDelete, id),
   acpRuntimeRefresh: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeRefresh),
   acpRuntimeSetup: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeSetup, runtimeId),
+  acpRuntimeSetupStatus: (runtimeId?: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeSetupStatus, runtimeId),
   acpRuntimeNodePick: () => ipcRenderer.invoke(ipcInvoke.acp.runtimeNodePick),
   acpRuntimeTestConnection: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimeTest, runtimeId),
   acpRuntimePathPick: (runtimeId: string) => ipcRenderer.invoke(ipcInvoke.acp.runtimePathPick, runtimeId),

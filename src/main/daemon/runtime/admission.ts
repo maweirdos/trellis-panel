@@ -51,6 +51,7 @@ const GLOBAL_METHODS = new Set<string>([
   'runtime.conversationTaskScope',
   'runtime.agents',
   'runtime.setup',
+  'runtime.setupStatus',
   'runtime.probe',
   'runtime.blob.open',
   'runtime.blob.append',

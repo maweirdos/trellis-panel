@@ -534,6 +534,7 @@ export const ipcInvoke = {
     profileDelete: 'acp:profile.delete',
     runtimeRefresh: 'acp:runtime.refresh',
     runtimeSetup: 'acp:runtime.setup',
+    runtimeSetupStatus: 'acp:runtime.setup-status',
     runtimeNodePick: 'acp:runtime.node-pick',
     runtimeTest: 'acp:runtime.test-connection',
     runtimePathPick: 'acp:runtime.path-pick',

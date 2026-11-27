@@ -77,7 +77,7 @@ import { AcpProtocolError } from './acp/v2/errors'
 import { disconnectTelemetry, IDLE_RELEASE_POLL_MS, RuntimeSessionManager, runtimeFailureCause, runtimeTelemetryCause, type AcpRuntimeCapacityFailure, type AcpRuntimeCapacityOwnerView, type AcpRuntimeProviderFamily, type AcpRuntimeReleaseReason, type AcpRuntimeReservationView, type AcpRuntimeTelemetryEvent } from './acp/runtime-session-manager'
 import { reserveTaskSessionIntent, claimTaskSessionIntent, completeTaskSessionIntent, enterTaskSessionNativeBoundary, readTaskSessionIntent, saveTaskSessionIntent, markTaskSessionPrompt, taskSessionExpectedSchema, type TaskSessionExpected } from './workcopy-use/task-session-intent'
 export type { TaskSessionExpected } from './workcopy-use/task-session-intent'
-export { listAcpAgents, setupAcpRuntime, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
+export { listAcpAgents, setupAcpRuntime, getAcpRuntimeSetupStatus, pickAcpNode, pickAcpRuntimePath } from './acp/setup'
 export { testAcpRuntimeConnection } from './acp/connection-probe'
 export { archiveAcpEvent, ensureAcpHistory, flushAcpHistory, historyPersistence, retryAcpHistory, stopAcpHistory } from './acp/history-service'
 

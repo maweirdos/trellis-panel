@@ -1,9 +1,9 @@
 /** Explicit, pinned adapter provisioning. Discovery and Start never install. */
 import { app, dialog } from 'electron'
-import { execFile } from 'child_process'
+import { execFile, spawn, type ChildProcess } from 'child_process'
 import { readFileSync, realpathSync, statSync } from 'fs'
 import { delimiter, dirname, isAbsolute, join, normalize } from 'path'
-import type { AcpAgentConfig, AcpAgentStatus, Settings } from '../../../shared/types'
+import type { AcpAgentConfig, AcpAgentStatus, AcpRuntimeSetupPhase, AcpRuntimeSetupProgress, Settings } from '../../../shared/types'
 import { ipcFail, IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { getSettings, setSettings } from '../store'
 import { acpDataPath, writeJson } from './metadata'
@@ -30,6 +30,12 @@ export const NATIVE_TOOLS_DIAGNOSTIC = '工具由适配器原生能力提供；A
 export const LEGACY_CUSTOM_RUNTIME_ERROR = '旧自定义执行引擎已停用，无法继续执行、启动或恢复；原会话和配置仍可查看，请选择受支持的执行引擎创建新会话'
 
 const setups = new Map<string, Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail>>()
+const setupProgress = new Map<string, AcpRuntimeSetupProgress>()
+const SETUP_LOG_LIMIT = 80
+const SETUP_LINE_MAX_CHARS = 300
+const SETUP_HISTORY_TTL_MS = 10 * 60_000
+const ANSI_ESCAPE_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
+const NPM_ERROR_LINE_RE = /(?:npm\s+(?:ERR!|error)|^ERR!|\b(?:EACCES|EPERM|ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|E404|E403|EBUSY)\b)/i
 let lastProbe: Promise<AcpAgentStatus[]> | undefined
 let lastDiscoveryIdentity: string | undefined
 let probeInFlight: Promise<AcpAgentStatus[]> | undefined
@@ -507,56 +513,248 @@ function sameExecutable(left: string, right: string): boolean {
   return canonical(left) === canonical(right)
 }
 
-async function setupNativeRuntime(config: AcpAgentConfig & { id: NativeId }, settings: Settings['acp'], node: NodeRuntime, npmCli: string): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> {
+function pruneSetupProgress(now = Date.now()): void {
+  for (const [id, item] of setupProgress) {
+    if (item.state !== 'running' && now - (item.finishedAt ?? item.updatedAt) > SETUP_HISTORY_TTL_MS) {
+      setupProgress.delete(id)
+    }
+  }
+}
+
+function cloneSetupProgress(item: AcpRuntimeSetupProgress): AcpRuntimeSetupProgress {
+  return { ...item, logs: [...item.logs] }
+}
+
+/** 只读查询后台安装/升级任务的实时阶段与输出日志，不触发任何探测或副作用。 */
+export function getAcpRuntimeSetupStatus(runtimeId?: string): { ok: true; tasks: AcpRuntimeSetupProgress[] } {
+  pruneSetupProgress()
+  if (runtimeId) {
+    const task = setupProgress.get(runtimeId)
+    return { ok: true, tasks: task ? [cloneSetupProgress(task)] : [] }
+  }
+  return { ok: true, tasks: [...setupProgress.values()].map(cloneSetupProgress) }
+}
+
+interface SetupProgressTracker {
+  setPhase(phase: AcpRuntimeSetupPhase, phaseLabel: string, detail?: string): void
+  patch(partial: Partial<Pick<AcpRuntimeSetupProgress, 'currentVersion' | 'targetVersion' | 'commandSummary' | 'pid' | 'detail'>>): void
+  appendLog(line: string): void
+  fail(failure: IpcFail): IpcFail
+  succeed(detail: string, targetVersion?: string): void
+}
+
+function createSetupTracker(runtimeId: string, intent: 'install' | 'upgrade'): SetupProgressTracker {
+  pruneSetupProgress()
+  const now = Date.now()
+  const entry: AcpRuntimeSetupProgress = {
+    runtimeId,
+    intent,
+    state: 'running',
+    phase: 'checking_env',
+    phaseLabel: '正在检查 Node.js 与 npm 环境',
+    startedAt: now,
+    updatedAt: now,
+    logs: []
+  }
+  setupProgress.set(runtimeId, entry)
+  const appendLog = (raw: string): void => {
+    const clean = raw.replace(ANSI_ESCAPE_RE, '').trim()
+    if (!clean) return
+    const bounded = clean.length > SETUP_LINE_MAX_CHARS ? `${clean.slice(0, SETUP_LINE_MAX_CHARS)}…` : clean
+    entry.logs.push(bounded)
+    if (entry.logs.length > SETUP_LOG_LIMIT) entry.logs.splice(0, entry.logs.length - SETUP_LOG_LIMIT)
+    entry.updatedAt = Date.now()
+  }
+  return {
+    setPhase(phase, phaseLabel, detail) {
+      entry.phase = phase
+      entry.phaseLabel = phaseLabel
+      if (detail !== undefined) entry.detail = detail
+      entry.updatedAt = Date.now()
+    },
+    patch(partial) {
+      Object.assign(entry, partial)
+      entry.updatedAt = Date.now()
+    },
+    appendLog,
+    fail(failure) {
+      entry.state = 'failed'
+      entry.phase = 'failed'
+      entry.phaseLabel = intent === 'upgrade' ? '升级未完成' : '安装未完成'
+      entry.error = failure.error
+      entry.pid = undefined
+      entry.finishedAt = Date.now()
+      entry.updatedAt = entry.finishedAt
+      return failure
+    },
+    succeed(detail, targetVersion) {
+      entry.state = 'succeeded'
+      entry.phase = 'succeeded'
+      entry.phaseLabel = intent === 'upgrade' ? '升级已完成' : '安装已完成'
+      entry.detail = detail
+      if (targetVersion) entry.targetVersion = targetVersion
+      entry.pid = undefined
+      entry.finishedAt = Date.now()
+      entry.updatedAt = entry.finishedAt
+    }
+  }
+}
+
+function terminateChildTree(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid) {
+    execFile(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, () => undefined)
+  }
+  try { child.kill() } catch { /* 子进程可能已退出 */ }
+}
+
+function flushLines(pending: string, onLine: (line: string) => void): string {
+  const parts = pending.split(/\r\n|\n|\r/)
+  const tail = parts.pop() ?? ''
+  for (const part of parts) {
+    const clean = part.replace(ANSI_ESCAPE_RE, '').trim()
+    if (clean) onLine(clean)
+  }
+  return tail
+}
+
+function runStreamed(
+  executable: string,
+  args: string[],
+  options: { timeout: number; onPid?: (pid: number) => void; onLine?: (line: string) => void }
+): Promise<string> {
+  const { target, argv, batch } = batchShell(executable, args)
+  return new Promise((resolve, reject) => {
+    const child = spawn(target, argv, { windowsHide: true, windowsVerbatimArguments: batch, stdio: ['ignore', 'pipe', 'pipe'] })
+    if (child.pid) options.onPid?.(child.pid)
+    let settled = false
+    let timedOut = false
+    let stdoutAll = ''
+    let stderrTailBuf = ''
+    let outPending = ''
+    let errPending = ''
+    const errorLines: string[] = []
+    const recordErrorLine = (line: string): void => {
+      if (!NPM_ERROR_LINE_RE.test(line)) return
+      errorLines.push(line)
+      if (errorLines.length > 20) errorLines.shift()
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      terminateChildTree(child)
+    }, options.timeout)
+    const finish = (err: Error | null): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      const tailOut = outPending.replace(ANSI_ESCAPE_RE, '').trim()
+      const tailErr = errPending.replace(ANSI_ESCAPE_RE, '').trim()
+      if (tailOut) options.onLine?.(tailOut)
+      if (tailErr) { recordErrorLine(tailErr); options.onLine?.(tailErr) }
+      if (!err) { resolve(stdoutAll.trim()); return }
+      const diag = errorLines.length > 0 ? errorLines.join('\n') : stderrTailBuf.trim()
+      reject(Object.assign(err, diag ? { stderr: diag } : {}))
+    }
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString('utf8')
+      stdoutAll = (stdoutAll + text).slice(-256 * 1024)
+      outPending = flushLines(outPending + text, line => options.onLine?.(line))
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString('utf8')
+      stderrTailBuf = (stderrTailBuf + text).slice(-16 * 1024)
+      errPending = flushLines(errPending + text, line => { recordErrorLine(line); options.onLine?.(line) })
+    })
+    child.on('error', error => finish(error))
+    child.on('close', (code, signal) => {
+      if (timedOut) {
+        finish(new Error(`执行超时（已超过 ${Math.round(options.timeout / 1000)} 秒），请检查网络连接或 npm 镜像源配置`))
+        return
+      }
+      if (code === 0) { finish(null); return }
+      finish(new Error(signal ? `安装进程异常中断（信号 ${signal}）` : `命令执行失败（退出码 ${code ?? '未知'}）`))
+    })
+  })
+}
+
+async function setupNativeRuntime(
+  config: AcpAgentConfig & { id: NativeId },
+  settings: Settings['acp'],
+  node: NodeRuntime,
+  npmCli: string,
+  tracker: SetupProgressTracker
+): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> {
   const spec = NATIVES[config.id]
   const detected = nativeExecutableFor(config.id, settings)
-  if (settings?.nativePaths?.[config.id]) return ipcFail(IpcErrorCode.InvalidArg, '已配置程序路径，请使用原安装方式升级，再重新探测')
+  if (settings?.nativePaths?.[config.id]) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '已配置程序路径，请使用原安装方式升级，再重新探测'))
   const source = nativeSourceIdentity(config, settings, detected, node)
+  tracker.setPhase('reading_version', '正在读取当前版本与全局安装目录', detected ? `检测本机 ${spec.commandName}` : `准备安装 ${spec.name}`)
   let version: string | undefined
   if (detected) {
     try { version = versionToken(await run(detected.path, ['--version'])) } catch { /* Unknown version must not choose a package. */ }
-    if (!parseReleaseVersion(version)) return ipcFail(IpcErrorCode.InvalidArg, '无法读取当前程序版本，未安装任何软件包；请配置有效路径或使用原安装方式更新')
+    if (!parseReleaseVersion(version)) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '无法读取当前程序版本，未安装任何软件包；请配置有效路径或使用原安装方式更新'))
+    tracker.patch({ currentVersion: version })
+    tracker.appendLog(`当前已安装版本：v${version}（${detected.path}）`)
   }
   const release = config.id === 'opencode' ? detected ? openCodeRelease(version) : { packageName: OPENCODE_V2_PACKAGE, major: 2 } : undefined
-  if (config.id === 'opencode' && !release) return ipcFail(IpcErrorCode.InvalidArg, '此 OpenCode 主版本尚无受支持的更新通道，请使用官方安装方式')
+  if (config.id === 'opencode' && !release) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '此 OpenCode 主版本尚无受支持的更新通道，请使用官方安装方式'))
   const packageName = release?.packageName ?? spec.npmPackage
   const prefix = await run(node.path, [npmCli, 'prefix', '-g'], 8000)
-  if (!isAbsolute(prefix)) return ipcFail(IpcErrorCode.InvalidArg, '无法确认 npm 全局安装目录，未安装任何软件包')
+  if (!isAbsolute(prefix)) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '无法确认 npm 全局安装目录，未安装任何软件包'))
+  tracker.appendLog(`npm 全局安装目录：${prefix}`)
   const binDirectory = process.platform === 'win32' ? prefix : join(prefix, 'bin')
   const targets = (process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : ['']).map(suffix => join(binDirectory, `${spec.commandName}${suffix}`))
   if (detected && !targets.some(target => sameExecutable(detected.path, target))) {
-    return ipcFail(IpcErrorCode.InvalidArg, `当前 ${spec.name} 不属于所选 npm 的全局安装目录，请使用原安装方式升级或配置路径`)
+    return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, `当前 ${spec.name} 不属于所选 npm 的全局安装目录，请使用原安装方式升级或配置路径`))
   }
   // Resolve and pin this exact release after reading the selected CLI. A moved latest tag
   // must not cross a major version or downgrade an installation ahead of the registry.
+  tracker.setPhase('checking_registry', '正在查询 npm 仓库目标版本', `查询 ${packageName} 最新版本`)
   const latest = await latestNativeVersion(packageName, source, node, true)
-  if (!latest) return ipcFail(IpcErrorCode.Io, '无法读取更新版本，未安装任何软件包；请重新探测后重试')
-  if (release && parseReleaseVersion(latest)?.major !== release.major) return ipcFail(IpcErrorCode.InvalidArg, '注册表版本与当前 OpenCode 主版本不一致，请查看官方迁移指南')
-  if ((compareReleaseVersions(version, latest) ?? 0) > 0) return ipcFail(IpcErrorCode.InvalidArg, '当前版本高于注册表版本，未执行降级')
+  if (!latest) return tracker.fail(ipcFail(IpcErrorCode.Io, '无法读取更新版本，未安装任何软件包；请重新探测后重试'))
+  if (release && parseReleaseVersion(latest)?.major !== release.major) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '注册表版本与当前 OpenCode 主版本不一致，请查看官方迁移指南'))
+  if ((compareReleaseVersions(version, latest) ?? 0) > 0) return tracker.fail(ipcFail(IpcErrorCode.InvalidArg, '当前版本高于注册表版本，未执行降级'))
   if (detected) {
     let currentVersion: string | undefined
     try { currentVersion = versionToken(await run(detected.path, ['--version'])) } catch { /* Source drift fails before installation. */ }
-    if (compareReleaseVersions(currentVersion, version) !== 0) return ipcFail(IpcErrorCode.Conflict, '当前程序版本已变化，未安装任何软件包；请重新探测')
+    if (compareReleaseVersions(currentVersion, version) !== 0) return tracker.fail(ipcFail(IpcErrorCode.Conflict, '当前程序版本已变化，未安装任何软件包；请重新探测'))
   }
   const current = runtimeDefinitions().find(item => item.id === config.id)
   const currentSettings = getSettings().acp
   if (!current || !isNative(current) || source !== nativeSourceIdentity(current, currentSettings, nativeExecutableFor(config.id, currentSettings), node)) {
-    return ipcFail(IpcErrorCode.Conflict, '程序或路径设置已变化，未安装任何软件包；请重新探测')
+    return tracker.fail(ipcFail(IpcErrorCode.Conflict, '程序或路径设置已变化，未安装任何软件包；请重新探测'))
   }
   const exactVersion = config.id === 'opencode' ? spec.version : latest
-  await run(node.path, [npmCli, 'install', '-g', '--prefix', prefix, '--no-audit', '--no-fund', '--loglevel=error', `${packageName}@${exactVersion}`], 600000)
+  const commandSummary = `npm install -g ${packageName}@${exactVersion}`
+  tracker.patch({ targetVersion: exactVersion, commandSummary })
+  tracker.setPhase('installing', `正在下载并安装 v${exactVersion}`, `执行 ${commandSummary}`)
+  tracker.appendLog(`> ${commandSummary}`)
+  await runStreamed(
+    node.path,
+    [npmCli, 'install', '-g', '--prefix', prefix, '--no-audit', '--no-fund', '--loglevel=http', `${packageName}@${exactVersion}`],
+    {
+      timeout: 600000,
+      onPid: pid => tracker.patch({ pid }),
+      onLine: line => tracker.appendLog(line)
+    }
+  )
+  tracker.patch({ pid: undefined })
+  tracker.setPhase('verifying', '正在核验安装后的程序版本', `检查 ${spec.commandName} --version`)
   const afterSettings = getSettings().acp
   const afterConfig = runtimeDefinitions().find(item => item.id === config.id)
   const after = nativeExecutableFor(config.id, afterSettings)
   if (!afterConfig || !isNative(afterConfig) || JSON.stringify(afterConfig) !== JSON.stringify(config)
     || afterSettings?.nodePath !== settings?.nodePath || afterSettings?.nativePaths?.[config.id] !== settings?.nativePaths?.[config.id]
     || !after || detected && !sameExecutable(after.path, detected.path) || !targets.some(target => sameExecutable(after.path, target))) {
-    return ipcFail(IpcErrorCode.Conflict, 'npm 安装已结束，但当前程序来源已变化，请重新探测并核对路径')
+    return tracker.fail(ipcFail(IpcErrorCode.Conflict, 'npm 安装已结束，但当前程序来源已变化，请重新探测并核对路径'))
   }
   let installedVersion: string | undefined
   try { installedVersion = versionToken(await run(after.path, ['--version'])) } catch { /* Report unverified installation below. */ }
-  if (compareReleaseVersions(installedVersion, exactVersion) !== 0) return ipcFail(IpcErrorCode.Io, 'npm 安装已结束，但当前程序版本未匹配安装结果，请使用原安装方式更新并核对路径')
-  return listAcpAgents(true)
+  if (compareReleaseVersions(installedVersion, exactVersion) !== 0) return tracker.fail(ipcFail(IpcErrorCode.Io, 'npm 安装已结束，但当前程序版本未匹配安装结果，请使用原安装方式更新并核对路径'))
+  tracker.appendLog(`版本核验通过：v${installedVersion ?? exactVersion}`)
+  tracker.setPhase('refreshing', '正在刷新本机 Runtime 状态', '重新同步引擎清单')
+  const refreshed = await listAcpAgents(true)
+  tracker.succeed(version ? `已从 v${version} 升级至 v${exactVersion}` : `已安装 v${exactVersion}`, exactVersion)
+  return refreshed
 }
 
 export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> {
@@ -571,20 +769,45 @@ export async function setupAcpRuntime(id: string): Promise<{ ok: true; agents: A
   if (!config || native && !isNative(config) || !native && !isManaged(config)) return ipcFail(IpcErrorCode.InvalidArg, '执行引擎不可安装')
   const pending = setups.get(id)
   if (pending) return pending
+  const intent: 'install' | 'upgrade' = isNative(config)
+    ? (nativeExecutableFor(config.id, settings) ? 'upgrade' : 'install')
+    : (installedEntry(id as BuiltinId) ? 'upgrade' : 'install')
+  const tracker = createSetupTracker(id, intent)
   const task = (async (): Promise<{ ok: true; agents: AcpAgentStatus[] } | IpcFail> => {
     try {
       const node = await externalNodeFor(settings, { npm: true })
       const npmCli = npmCliFor(node.path)
-      if (!npmCli) return ipcFail(IpcErrorCode.NotFound, '选定 Node 旁未找到 npm-cli.js，请选择包含 npm 的 Node 安装')
-      if (isNative(config)) return await setupNativeRuntime(config, settings, node, npmCli)
+      if (!npmCli) return tracker.fail(ipcFail(IpcErrorCode.NotFound, '选定 Node 旁未找到 npm-cli.js，请选择包含 npm 的 Node 安装'))
+      tracker.appendLog(`使用 Node ${node.version}（${node.path}）`)
+      if (isNative(config)) return await setupNativeRuntime(config, settings, node, npmCli, tracker)
       const spec = BUILTINS[id as BuiltinId]
       const directory = acpDataPath('runtimes', id, spec.version)
+      const commandSummary = `npm install --save-exact ${spec.packageName}@${spec.version}`
+      tracker.patch({ targetVersion: spec.version, commandSummary })
+      tracker.setPhase('installing', `正在下载并安装 v${spec.version}`, `执行 ${commandSummary}`)
+      tracker.appendLog(`> ${commandSummary}`)
       writeJson(join(directory, 'package.json'), { name: `trellis-acp-${id}`, private: true, version: '1.0.0' })
-      await run(node.path, [npmCli, 'install', '--prefix', directory, '--no-audit', '--no-fund', '--save-exact', `${spec.packageName}@${spec.version}`], 180000)
+      await runStreamed(
+        node.path,
+        [npmCli, 'install', '--prefix', directory, '--no-audit', '--no-fund', '--save-exact', '--loglevel=http', `${spec.packageName}@${spec.version}`],
+        {
+          timeout: 180000,
+          onPid: pid => tracker.patch({ pid }),
+          onLine: line => tracker.appendLog(line)
+        }
+      )
+      tracker.patch({ pid: undefined })
+      tracker.setPhase('verifying', '正在核验适配器安装结果', `检查 ${spec.packageName}@${spec.version}`)
       if (!installedEntry(id as BuiltinId)) throw new Error('安装结果缺少预期版本或入口，未标记为可用')
       writeJson(join(directory, 'trellis-runtime.json'), { schemaVersion: 1, packageName: spec.packageName, version: spec.version, nodePath: node.path, installedAt: Date.now() })
-      return listAcpAgents(true)
-    } catch (error) { return ipcFail(IpcErrorCode.Io, `Runtime 安装失败：${errorMessage(error)}${stderrTail(error)}`) }
+      tracker.appendLog(`适配器入口核验通过：v${spec.version}`)
+      tracker.setPhase('refreshing', '正在刷新本机 Runtime 状态', '重新同步引擎清单')
+      const refreshed = await listAcpAgents(true)
+      tracker.succeed(`已完成 v${spec.version} 安装`, spec.version)
+      return refreshed
+    } catch (error) {
+      return tracker.fail(ipcFail(IpcErrorCode.Io, `Runtime 安装失败：${errorMessage(error)}${stderrTail(error)}`))
+    }
   })()
   setups.set(id, task)
   try { return await task } finally { setups.delete(id) }

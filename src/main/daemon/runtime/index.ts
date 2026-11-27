@@ -376,6 +376,7 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
     if (method === 'runtime.knowledge') return knowledge.execute(root, 0, raw)
     if (method === 'runtime.agents') return acp.listAcpAgents(runtimeBodies[method].parse(raw).refresh)
     if (method === 'runtime.setup') return acp.setupAcpRuntime(runtimeBodies[method].parse(raw).runtimeId)
+    if (method === 'runtime.setupStatus') return acp.getAcpRuntimeSetupStatus(runtimeBodies[method].parse(raw).runtimeId)
     if (method === 'runtime.probe') return acp.testAcpRuntimeConnection(runtimeBodies[method].parse(raw).runtimeId)
     if (method === 'runtime.profiles') return acp.listAcpProfiles(root)
     if (method === 'runtime.taskExecution') {
