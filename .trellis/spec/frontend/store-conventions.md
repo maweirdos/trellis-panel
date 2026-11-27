@@ -26,5 +26,8 @@ src/renderer/src/store/
 4. **⚠ 命名陷阱**：实现目录是 `store/`。历史上曾有同名 `store.ts` 与目录并存，
    `export from './store'` 解析到文件自身形成循环、类型静默变 any。**永远不要在
    `store/` 目录旁重建同名 .ts 文件**；同类问题对任何"目录 + index.ts"导出都成立。
-5. **持久化**：localStorage 键统一 `tpanel.` 前缀；容量敏感数据写入前截断（参照
+5. **持久化**：主应用 localStorage 键使用 `tpanel.` 前缀，Crux 协作工作台使用 `crux.` 前缀；容量敏感数据写入前截断（参照
    inbox 的 newest-200 策略），读取 try/catch 给空默认。
+6. **配置覆盖优先级（强制）**：解析运行时、模型、权限等可继承配置时，必须严格遵循
+   `局部显式覆盖（local override） > 实体自身配置（entity config） > 全局默认兜底（global default）`；
+   **严禁**把全局默认排在实体配置之前（否则像 `agent.runtimeKind = 'claude-code'` 这类独立配置会被全局默认 `codex` 静默吞掉）。

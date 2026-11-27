@@ -113,9 +113,12 @@ useMyData({ dateFrom, dateTo }); // Stable references, no infinite loop
 | ------------------------------------------------ | ------------- |
 | Primitive values (`string`, `number`, `boolean`) | No            |
 | Objects/arrays created inline                    | Yes           |
+| Zustand selectors or derived `.filter()/.map()` arrays passed to effects | Yes (`useMemo` or `useShallow`) |
 | Date objects                                     | Yes           |
 | Results from functions that return new objects   | Yes           |
 | Stable references (from useState, useRef)        | No            |
+
+> **Real-world trap (Zustand derived lists in effects)**: Computing `const list = items.filter(...).map(...)` in render and placing `list` in a `useEffect` / `useLayoutEffect` dependency array that also updates state (for example syncing active selection) triggers a synchronous infinite re-render loop ("Maximum update depth exceeded") and freezes the page. Always wrap derived arrays in `useMemo` or depend on primitive IDs/counts instead.
 
 ---
 

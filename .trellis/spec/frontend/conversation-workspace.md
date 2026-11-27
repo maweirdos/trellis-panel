@@ -17,6 +17,7 @@ Work, Code and authorized ordinary tasks use `ConversationWorkbench`. The host s
 - During catalog revalidation, retain the last successful suggestions for the same authorized scope and engine. Clear them when refresh fails, the engine disappears, or the scope changes. A suggestion is not an authorization to run a command.
 - The history ruler highlights turns intersecting the viewport, including a long reply whose user message is above it. Refresh it after scroll, LegendList metrics changes and reading-position restoration. Cancel and clear its pending animation frame on cleanup so a remounted timeline can schedule another refresh.
 - Verify T3 transcript parity with the same Chinese prompt, Markdown reply and ordered run events in both renderers. Match the window viewport, zoom, density, color scheme, panel state and interaction state. Capture both sides again after fixing a discrepancy. Record the T3 release or commit, the actual rendering entry points and whether the run events came from replay, a controlled runtime or a live model. Keep screenshots and replay data in OS TEMP.
+- **Embedded shell reuse (`embeddedCrux`)**: When `ConversationWorkbench` is embedded inside another shell that already owns a navigation sidebar (such as the Crux collaboration workspace's inline Agent chat page), suppress its duplicate internal `ConversationSidebar`, expose thread history switching through a compact top-right dropdown menu, and render a single unified header (never nest two sidebars or stack double top headers).
 
 ## Named roles and execution engines
 

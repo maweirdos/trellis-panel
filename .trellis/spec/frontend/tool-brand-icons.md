@@ -12,11 +12,11 @@ Known products use actual local artwork. The initial catalog contains 49 product
 
 ## Color and layout
 
-Preserve original colored artwork in `image` mode. Use controlled `currentColor` masks for selected monochrome artwork so it follows the app theme. Do not globally gray/filter colored images, invent a green default, or tint one product to imitate another. The current Codex/Cursor/ZCode marks are monochrome; Claude Code and other colored assets keep their original colors.
+Preserve original colored artwork in `image` mode. Use controlled `currentColor` masks for selected monochrome artwork so it follows the app theme. Do not globally gray/filter colored images, invent a green default, or tint one product to imitate another. Colored official marks (such as Codex's blue-indigo gradient SVG, Claude Code, ZCode and other colored assets) render in `image` mode to preserve brand fidelity; monochrome marks (such as Cursor) use `mask` mode so they adapt cleanly to light and dark surfaces.
 
 Static imports are required; no render-time CDN requests or dynamic URL from user data. Keep object-fit/mask contain in the existing square slot. The homepage entry remains 220×28 with unchanged source/text/trailing-action alignment, global control radius, task/status/priority and click ownership. Native source/destination text should not repeat the same brand name; retain meaningful terminal/workspace information.
 
-Use the same component for homepage native entries, association candidates/linked relationships, RuntimePicker/RuntimeMark and RuntimePanel. Avoid new per-page brand maps or letter badges.
+Use `ToolBrandIcon` consistently across homepage native entries, association candidates/linked relationships, RuntimePicker/RuntimeMark and RuntimePanel. For collaboration, IM and external integration marks (`feishu`, `dingtalk`, `wecom`, `wechat`, `slack`, `weknora`, `github`, `gitlab`, `jira`, `gitee`), use the shared `AppBrandIcon` (`src/renderer/src/crux/AppBrandIcon.tsx`) backed by local assets under `src/renderer/src/assets/app-brands/`. In summary rows, inspector headers and pickers, prefer real brand marks over verbose text badges or ad-hoc letter circles; avoid new per-page brand maps.
 
 ## Provenance and distribution
 

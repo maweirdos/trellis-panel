@@ -85,10 +85,13 @@
 | **Native APIs require IPC**                                  | [ipc-electron.md](./ipc-electron.md)                                           |
 | **NEVER use prompt/alert/confirm**                           | [electron-browser-api-restrictions.md](./electron-browser-api-restrictions.md) |
 | **Wrap functions with `() =>`** when storing in useState     | [react-pitfalls.md](./react-pitfalls.md)                                       |
-| **Use `useMemo`** for objects/Date passed to hooks           | [react-pitfalls.md](./react-pitfalls.md)                                       |
+| **Use `useMemo`** for objects/Date/derived arrays in hooks   | [react-pitfalls.md](./react-pitfalls.md)                                       |
 | **Distinguish initial load vs refetch**                      | [react-pitfalls.md](./react-pitfalls.md)                                       |
 | **No non-null assertions `!`**                               | [quality.md](./quality.md)                                                     |
-| **Use `scrollbar-gutter: stable`** for scrollable containers | [components.md](./components.md)                                               |
+| **Zero Layout Shift** (`scrollbar-gutter: stable`, no hover scroll/height jumps) | [css-design.md](./css-design.md), [components.md](./components.md) |
+| **Single `.my-menu-*` dropdown system** with perceivable hover contrast | [css-design.md](./css-design.md), [components.md](./components.md) |
+| **Use `@container` queries** for split/drawer responsive grids | [css-design.md](./css-design.md)                                               |
+| **Config precedence**: `override > entity > global default`  | [store-conventions.md](./store-conventions.md)                                 |
 
 ---
 

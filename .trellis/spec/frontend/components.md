@@ -153,15 +153,60 @@ negative-margin wrappers (`-mt-24`) unless a custom canvas cannot host `EmptySta
 
 ## Preventing Scrollbar Layout Shift & Auto-Hide
 
-Use the shared `.my-scrollbar` class from `my-components.css` instead of writing
+Use the shared `.my-scrollbar` (or `.collab-scroll`) class instead of writing
 custom `::-webkit-scrollbar` blocks or raw `hsl()` / `border-radius: 5px` rules
 (which fail `check:ui` token/radius checks).
 
-- `.my-scrollbar` provides `scrollbar-gutter: stable` and auto-revealing neutral
-  thumbs driven by `--my-scrollbar-thumb*` and `--my-radius-full`.
+- `.my-scrollbar` provides `scrollbar-gutter: stable` with a constant `6px`
+  transparent track and auto-revealing neutral thumbs driven purely by changing
+  `::-webkit-scrollbar-thumb` background color (`--my-scrollbar-thumb*` and
+  `--my-radius-full`).
+- Never toggle `scrollbar-width`, `scrollbar-gutter`, `overflow`, `overflow-x`
+  or `overflow-y` inside `:hover`, `:focus`, `:focus-within`, `:focus-visible`
+  or `:active` (`npm run check:ui` statically rejects these). In particular,
+  avoid `scrollbar-width: none` → `:hover { scrollbar-width: thin }`, which
+  causes Chromium on Windows to drop `::-webkit-scrollbar` and jump width.
 - Short popovers and narrow icon rails (`.my-menu`, `.my-select-menu`,
   `.my-module-rail > nav`) explicitly set `scrollbar-gutter: auto` so compact
   containers do not reserve a blank trailing scrollbar column.
+
+---
+
+## Unified Dropdown Menus (`ActionMenu` & `.my-menu-*`)
+
+All overflow ("More"), context, organization switcher, runtime picker and task
+action menus must reuse the single shared `.my-menu` / `.my-menu-item` /
+`.my-menu-header` / `.my-menu-divider` primitives rather than defining parallel
+menu styles.
+
+- Use `<ActionMenu>` (`src/renderer/src/crux/ActionMenu.tsx`) or `<Dropdown>`
+  (`src/renderer/src/components/Dropdown.tsx`) for action menus, and `<Select>`
+  (`src/renderer/src/components/Select.tsx`) for value selection. Never use bare
+  HTML `<select>` (rejected by `check:ui`).
+- Menu rows share `30px` height, `0 8px` padding, `2px` (`--my-space-2`) gap,
+  `cursor: pointer`, trailing check for `selected`, and perceivable Oklab hover
+  mixes (`9%` neutral / `11%` danger on `--my-bg-elevated`).
+
+---
+
+## Modal Form Visual Hierarchy & Indentation
+
+Centered creation and assignment modals (Create Agent, Create Task, Create Team)
+should read cleanly from top to bottom and fit within a single viewport without
+vertical scrollbars whenever possible:
+
+| Role | Font Size | Weight | Color Token | Geometry |
+| --- | --- | --- | --- | --- |
+| Modal title | `15px` | `600` | `--my-txt-primary` | `24px` horizontal modal inset |
+| Field label | `12px` | `500` | `--my-txt-secondary` | `padding-left: 2px`, `6px` above control |
+| Control value | `13px` | `400/500` | `--my-txt-primary` | Canonical `10px` radius (`rounded-my-base`) |
+| Helper / hint | `11px` | `400` | `--my-txt-tertiary` | Below control, muted |
+
+- Maintain `14px` vertical spacing between field groups and `12px` gap between
+  two-column fields.
+- Collapse optional long-text fields (such as custom instructions or detailed
+  descriptions) behind an inline toggle by default so core required inputs remain
+  visible above the fold without triggering modal scrollbars.
 
 ---
 

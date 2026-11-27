@@ -196,6 +196,7 @@ typography:
     fontSize: "14px"
 rounded:
   base: "10px"
+  composer: "16px"
   none: "0px"
   full: "9999px"
   round: "50%"
@@ -546,7 +547,7 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 
 ## 7. 几何形状与圆角规范 (Shapes & Radii)
 
-普通矩形组件只使用 `--my-radius-base: 10px`，单位为 CSS px。卡片、常规控件、按钮、图标容器、导航选中面、标签、菜单、工具提示、弹窗与页面外框共用该值，三档密度均不改变圆角。主交互对话框容器作为整屏核心载体（Hero Composer），经专属语义令牌 `--my-radius-composer: 16px` 统一定义，形成外层核心托盘与内嵌子组件/次级卡片（10px）的物理层级嵌套（Corner Radius Nesting）。既有圆角别名只用于兼容，全部指向各自标准基准；不在页面内另写任意像素值、用间距推导圆角或增加随意偏移。
+普通矩形组件只使用 `--my-radius-base: 10px`，单位为 CSS px。卡片、常规控件、按钮、图标容器、导航选中面、标签、菜单、工具提示、弹窗与页面外框共用该值，三档密度均不改变圆角。主交互对话框容器作为整屏核心载体（Hero Composer），经专属语义令牌 `--my-radius-composer: 16px` 统一定义，形成外层核心托盘与内嵌子组件/次级卡片（10px）的物理层级嵌套（Corner Radius Nesting）。既有圆角别名只用于兼容，全部指向各自标准基准；不在页面内另写任意像素值、用间距推导圆角或增加随意偏移。所有在源码中使用的 `rounded-my-*` Tailwind 工具类必须在 `tailwind.config.js` 的 `borderRadius` 中显式注册并映射至 `my-tokens.css` 规范令牌，由 `npm run check:ui` 静态校验防漏（避免未注册类名静默退回直角）。
 
 - **同心圆角法则 (Concentric Radius) 与适用边界**：当存在专属大圆角外容器时（目前仅适用于主交互编写器 Hero Composer：外层 `--my-radius-composer: 16px`，内部间距 `6px`，内嵌控制块与卡片为 `--my-radius-base: 10px`），内外转角遵循 $R_{\text{inner}} = \max(0, R_{\text{outer}} - \text{Padding})$，使两道圆角弧线在视觉上平行同心。普通 `10px` 面板、卡片与弹出菜单内部**禁止**再做减法推导非标准小圆角（如 `4px`/`6px`），统一复用 `--my-radius-base: 10px`（由 `check:ui` 强制守卫）。
 
@@ -569,12 +570,18 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
   - **L1 · 无框自承载输入（零聚焦框）**：对话编写器（Composer）、命令面板搜索条（`.my-command-search`）及行内文本编辑器本身已通过容器表面、图标或光标明确表达焦点，禁止套用黑色/粗线外框；自定义无框输入统一声明 `.my-focus-none` 或 `data-focus-ring="none"` 免疫全局聚焦环。
   - **L2 · 常规表单输入与选择器（柔和 1px 微边界）**：`.my-input:focus` 与 `.my-select-trigger` 严禁叠加 2px 粗线外框；统一使用 1px 边框微提亮/加深（`--my-border-strong-1`）配合克制的 1px `--my-focus-shadow` 微光过渡。
   - **L3 · 独立控件键盘盲操（克制无障碍指引）**：仅在键盘 `:focus-visible` 时对按钮、开关、导航与菜单项渲染 `1.5px`（`--my-focus-width`）轻透轮廓（`--my-focus-ring`），鼠标点击不显示聚焦黑框。
-  - **选项与菜单微间隙、插槽与几何一致 (Option Gap, Slots & Geometry)**：所有下拉菜单（`.my-menu`）、选择器列表（`.my-select-menu`）、命令面板及侧栏/列表选项容器，必须在垂直排列的选项之间保留至少 **2px（`var(--my-space-2)`）物理间隙**（通过容器 `display: flex; flex-direction: column; gap: var(--my-space-2);` 实现）。严禁选项底色无缝紧贴导致选中态、悬停态与激活态圆角胶囊粘连碰撞；菜单外容器使用 `6px` 内边距，分隔线（`.my-menu-divider`）左右内缩 `4px` 且紧随其后的分组标题（`.my-menu-divider + .my-menu-header`）收紧顶距，条件渲染的末尾分组须将分隔线放进同一条件块内，防止出现悬空分隔线。`.my-menu-item` 与 `.my-select-option` 共用 `30px` 行高、`0 8px` 内边距、`--my-menu-option-size`（`13px`）字号与右侧唯一 `14px` 对勾（选中项使用 `medium` 字重）；前置图标、头像或组织徽标必须通过 `DropdownItem` 的 `icon` 插槽传入，状态后缀走 `trailing`，选中仅传 `selected`，**禁止**在单行 `truncate` 的 `children` 内混排图标或重复手写 `<Check />`。同一菜单混排 `14px` 线性图标与 `20px` 徽标时，统一固定 `.my-menu-icon` 为 `20×20px` 居中槽位，并仅对直接子元素 `.my-menu-icon > svg` 约束 `14px` 尺寸，避免拉伸徽标内部小图形。`my-select-menu` 保持 `scrollbar-gutter: auto` 且**不挂载 `my-fade-scroll`**，避免短菜单（2–4 项）出现首尾文字被渐隐遮罩淡化及右侧预留空白滚动槽的问题。
+  - **选项与菜单微间隙、插槽、悬停对比与几何一致 (Option Gap, Slots, Hover Contrast & Geometry)**：全应用所有下拉菜单（组织切换、更多操作 `<ActionMenu>`、Runtime 选择器、任务菜单、`.my-menu`、`.my-select-menu`、命令面板）必须复用同一套 `.my-menu` / `.my-menu-item` / `.my-menu-header` / `.my-menu-divider` 体系，禁止各页面另起一套弹出菜单样式。选项容器必须在垂直排列的选项之间保留至少 **2px（`var(--my-space-2)`）物理间隙**（`display: flex; flex-direction: column; gap: var(--my-space-2);`），外容器使用 `6px` 内边距，分隔线（`.my-menu-divider`）左右内缩 `4px` 且紧随其后的分组标题（`.my-menu-divider + .my-menu-header`）收紧顶距，条件渲染的末尾分组须将分隔线放进同一条件块内，防止出现悬空分隔线。`.my-menu-item` 与 `.my-select-option` 共用 `30px` 行高、`0 8px` 内边距、`--my-menu-option-size`（`13px`）字号、`cursor: pointer` 与右侧唯一 `14px` 对勾（选中项使用 `medium` 字重）；前置图标、头像或组织徽标必须通过 `DropdownItem` 的 `icon` 插槽传入，状态后缀走 `trailing`，选中仅传 `selected`，**禁止**在单行 `truncate` 的 `children` 内混排图标或重复手写 `<Check />`。同一菜单混排 `14px` 线性图标与 `20px` 徽标时，统一固定 `.my-menu-icon` 为 `20×20px` 居中槽位，并仅对直接子元素 `.my-menu-icon > svg` 约束 `14px` 尺寸。禁止在 `--my-bg-elevated` 菜单浮层上单独使用 `--my-bg-layer-2` 作为悬停底色（对比度不足）；统一使用可感知 Oklab 混色：`9%` 悬停 / `8%` 选中（`12%` 选中悬停） / `14%` 按压，以及 `11%` 危险悬停 / `16%` 危险按压。`my-select-menu` 保持 `scrollbar-gutter: auto` 且**不挂载 `my-fade-scroll`**，避免短菜单（2–4 项）出现首尾文字被渐隐遮罩淡化及右侧预留空白滚动槽的问题。
+  - **严禁裸写原生 `<select>` 标签**：所有下拉选择场景必须统一使用主题感知的 `<Select>` 组件（源自 `src/renderer/src/components/Select.tsx`，或由领域共享 UI 统一导出）。该组件底层依托 `Dropdown` 浮层与 `--my-select-*` 语义令牌，原生支持深浅主题无缝切换、全键盘无障碍导航（ArrowDown/ArrowUp/Home/End、字符前缀实时检索、Escape 关闭、Tab 焦点切换）、10px 统一圆角微描边与选中态 Checkmark 标识。坚决杜绝平台默认粗糙下沉边框、生硬截断及系统默认原生弹出菜单。
+- **零布局抖动与稳定滚动条 (Zero Layout Shift)：** 悬停、聚焦、切 Tab 与行内编辑等任意交互态绝不允许引起内容区宽度或高度跳动。
+  - **静态禁令（`npm run check:ui` 强制校验）**：严禁在 `:hover`、`:focus`、`:focus-within`、`:focus-visible` 或 `:active` 中改写 `scrollbar-width`、`scrollbar-gutter`、`overflow`、`overflow-x` 或 `overflow-y`；禁止使用 `scrollbar-width: none` 切 `thin`（在 Windows Chromium 下会丢弃自定义滑块、回退原生宽灰条并导致面板宽度跳动）。
+  - **稳定滚动槽**：多标签页抽屉、可展开手风琴与动态列表统一采用 `scrollbar-gutter: stable` + 恒定 `6px` 透明轨道（`::-webkit-scrollbar`），仅在悬停时改变滑块背景色（`--my-scrollbar-thumb*`），确保溢出与非溢出标签页切换及悬停时宽度偏移恒为 0px。
+  - **行内点击编辑与悬停浮层**：行内点击即编辑控件（显示态 ↔ 输入态）共用完全一致的 `box-sizing: border-box`、固定高度、内边距与常态 `1px solid transparent` 占位边框，切换编辑态 0px 高度抖动；卡片悬停显露的快捷操作组采用绝对定位浮层 + 与卡片表面色匹配的左侧渐隐遮罩覆盖，不挤压正文流宽度。
+- **弹窗表单排印层级与缩进 (Modal Form Hierarchy)：** 居中创建与指派弹窗（如创建 Agent、创建小队、创建或指派任务）建立清晰四阶阅读层级：弹窗标题 `15px`（600 / 主色） > 控件值 `13px`（主色） > 字段标签 `12px`（500 / 次色，左缩进 `2px` 与输入文本对齐） > 辅助提示 `11px`（弱化色）。弹窗横向内边距 `24px`、字段组间距 `14px`、标签与控件间距 `6px`、双列间距 `12px`；可选长文本字段（如自定义指令、详细描述）默认折叠为轻量行内展开触发器，确保常规窗口下核心表单一屏完整呈现且无滚动条。
+- **容器查询响应式栅格与品牌图形表达 (`@container` & Brand Icons)：** 位于侧栏或右侧详情抽屉并排布局中的卡片网格必须采用 CSS 容器查询（`container-type: inline-size` + `@container`），禁用依赖整窗宽度的媒体查询断点，避免展开详情抽屉时卡片拥挤错行。执行引擎与外部集成优先使用本地真实品牌图标（`ToolBrandIcon` / `AppBrandIcon`），官方彩色图形（如 Codex 官方蓝紫渐变图标、Claude Code、飞书、钉钉、企业微信等）使用 `image` 模式保真，单色线性图形使用 `mask` 模式跟随深浅主题；配置摘要行与选择器优先以真实图标替代冗长文字胶囊。
 - **左侧模块栏与顶栏品牌标志 (Module Rail & Brand Identity)**：
   - **透气比例与三态分离**：模块按钮边长为 `32 / 34 / 36px`，内部图标控制在 `16 / 17 / 18px`（约占按钮 48%–50%，留白充裕），常态线宽 `1.55`、激活态 `1.75`。未选中图标统一使用 `--my-module-icon-rest` 柔灰退让，悬停提亮至主色（`--my-module-button-hover-bg`），选中项使用 `--my-module-button-active-bg/border/shadow` 构成清晰浮起的立体键帽（浅色纯白微投影键帽、深色微光暗炭键帽）；禁止在按钮组件上写 `text-my-icon-secondary` 等硬编码灰阶类覆盖轨道令牌。
   - **品牌标志去混淆与光学居中**：顶栏左上角非交互品牌标志**禁止**套用与下方导航按钮同款的键帽底框（易误认成侧栏按钮），也**禁止**套用高反差实心黑/白大色块（深色刺眼、浅色生硬且与组织徽标打架）。应保持无框纯净主色图形（`20 / 22 / 23px`），底部配居中 `18px` 发丝短分隔线与底部分隔线上下对称；涉及精确网格对齐时使用绝对几何居中的矢量源 `mark.svg`（`compact={false}`），避开紧凑栅格图的半格取整偏移。
   - **图标视觉重量统一与角标防遮挡**：同一纵向图标列优先选用外轮廓饱满均匀、几何密度接近的线性图标（如 `House`、`MessageCircle`、`BookOpen`、`SquareTerminal`、`LayoutGrid`、`CircleHelp`、`Settings`），避免混排高噪点密集针脚或过分稀疏的细线图形。未读数字徽章允许按钮 `overflow: visible` 向右上角微探出（`-3px`）并配 `2px` 轨道底色切割环（滚动区顶部预留不小于探出量的安全 `padding-top`），状态绿/黄点在激活态自动切换为键帽底色切割环，绝不压糊图标主体线条。
-  - **严禁裸写原生 `<select>` 标签**：所有下拉选择场景必须统一使用主题感知的 `<Select>` 组件（源自 `src/renderer/src/components/Select.tsx`，或由领域共享 UI 统一导出）。该组件底层依托 `Dropdown` 浮层与 `--my-select-*` 语义令牌，原生支持深浅主题无缝切换、全键盘无障碍导航（ArrowDown/ArrowUp/Home/End、字符前缀实时检索、Escape 关闭、Tab 焦点切换）、10px 统一圆角微描边与选中态 Checkmark 标识。坚决杜绝平台默认粗糙下沉边框、生硬截断及系统默认原生弹出菜单。
 - **设置导航：** 按偏好设置、智能与连接、应用管理分组。条目内边距为 4px 8px；最小行高、图标容器、图形与分组间距随密度变化。搜索匹配标题与关键词，使用 NFKC、大小写与空白规范化，多词全部匹配。无结果时显示文字和清除入口；清除后焦点回到搜索框。方向键循环移动焦点，Home / End 定位首尾，Enter / Space 激活；当前项使用 `aria-current='page'`。
 - **设置面板：** 分组标题与行体共用边界，行之间使用细分隔线。通用页头提供“打开引导”；“启动与窗口”包含三个开关，“键盘快捷键”包含两个输入项。最近项目为空时只显示一行文字；有最近项目时显示列表，包含名称、路径与行内动作。三档保持相同内容结构。
 - **开关与分段控件：** 开关轨道紧凑、标准档为 32 × 20px，滑块 14px；舒适档为 34 × 22px，滑块 16px；内边距均为 3px。滑块平移量由轨道宽度、内边距与滑块宽度计算。主题与密度分段选择器按内容收紧并右对齐，不撑满字段列；单项最小宽 48px、左右内边距 8px，三档按钮高度为 24/26/28px，图标随按钮字号缩放。选中项使用面板底色和轻投影，通过 `aria-pressed` 表达。
@@ -589,7 +596,9 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 
 ### 必须遵循 (Do)
 - **Do 贯彻四大质感支柱**：严格遵循多层表面阶梯、微排版灰度、外疏内紧栅格与 5% 克制点睛。
-- **Do 遵守同心圆角法则**：嵌套子卡片或组件时严格保持内外圆角弧线平行动态同心（$R_{\text{inner}} = R_{\text{outer}} - \text{Padding}$），杜绝角挤压。
+- **Do 遵守同心圆角法则与注册校验**：嵌套子卡片或组件时严格保持内外圆角弧线平行动态同心（$R_{\text{inner}} = R_{\text{outer}} - \text{Padding}$），杜绝角挤压；所有 `rounded-my-*` 工具类均须在 `tailwind.config.js` 显式注册并通过 `check:ui` 静态门禁。
+- **Do 守住零布局抖动红线**：多 Tab 抽屉与动态滚动区使用 `scrollbar-gutter: stable` + 恒定 `6px` 透明轨道；行内点击编辑与卡片悬停操作保持 0px 宽高偏移。
+- **Do 在分栏与抽屉内使用 `@container` 容器查询**：让卡片网格随自身面板真实宽度自适应，而非依赖整窗媒体查询断点。
 - **Do 以设置页与标杆质感为设计基线**：普通矩形组件统一共用 10px 圆角，图标光学严格对齐。
 - **Do 保持指标数字的高级展示感**：核心统计数据必须拉开与辅助文字的字号、字重与颜色差距；动态变动数值统一使用等宽数字（`font-variant-numeric: tabular-nums`）。
 - **Do 规范长路径与关键标识排印**：长路径、Commit Hash 与密钥统一采用“前缀 + 中间省略号 + 关键后缀”的中间截断，保留文件类型与版本特征。
@@ -597,13 +606,15 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 - **Do 严格通过共享语义 token 同步主题**：确保在深色模式与浅色模式下具备同等精湛的光影与对比度。
 - **Do 为字段关联标签与说明**：保留键盘焦点、状态文字和长文本换行。
 - **Do 在减少动态效果时关闭图标缩放与空间过渡**。
-- **Do 统一使用标准 `<Select>` 组件**：全局所有下拉选择必须使用项目封装的 `Select` 组件，保持微阴影浮层、深浅色自适应、10px 统一圆角与键盘可访问性，保证各模块视觉质感一致。
+- **Do 统一使用标准 `<Select>` 与 `.my-menu-*` 菜单体系**：全局下拉选择与操作菜单必须复用项目封装组件（`<Select>` / `<Dropdown>` / `<ActionMenu>`），保持微阴影浮层、深浅色自适应、10px 统一圆角、可感知的 Oklab 悬停对比度（`9%` 中性 / `11%` 危险）与键盘可访问性。
 - **Do 保证下拉与导航选项间保留微间隙**：`.my-menu`、`.my-select-menu` 及所有垂直选项列表必须使用 `gap: var(--my-space-2)`（2px），使选中态与悬停态各自成片、呼吸分明；菜单前置图标与徽标统一通过 `DropdownItem.icon` 传入并对齐槽宽。
 - **Do 保持窄模块栏轻盈有序**：图标保持 16/17/18px 留白比例与 1.55/1.75 线宽差、未选中柔灰退让、选中立体键帽浮起，并使首枚按钮与右侧侧栏首行页头水平对齐。
 - **Do 为高危智能体动作设置独立审批闸门**：破坏性操作必须由结构化审批卡片明确影响范围并提供清晰拒绝/放行操作。
 
 ### 坚决禁止 (Don't)
-- **Don't 让选项底色紧贴粘连或滥用菜单 `children`**：严禁在下拉菜单、选择器或侧栏选项中零间距堆叠，也严禁在 `DropdownItem` 的 `children` 中混排前置图标/徽标或重复手写 `<Check />`。
+- **Don't 在交互态修改引发抖动的滚动或尺寸属性**：严禁在 `:hover/:focus/:active` 中改写 `scrollbar-width`/`scrollbar-gutter`/`overflow`，严禁行内点击编辑时改变行高挤压周边内容。
+- **Don't 让选项底色紧贴粘连、悬停不可感知或滥用菜单 `children`**：严禁在下拉菜单、选择器或侧栏选项中零间距堆叠，严禁在 `--my-bg-elevated` 菜单上仅用无对比度的 `--my-bg-layer-2` 当悬停底色或另起非标准菜单样式，也严禁在 `DropdownItem` 的 `children` 中混排前置图标/徽标或重复手写 `<Check />`。
+- **Don't 使用未注册的 `rounded-my-*` 工具类**：严禁编写未在 `tailwind.config.js` 注册的自定义圆角类（避免静默失效变直角）。
 - **Don't 给非交互品牌标志套按钮框或高反差黑/白块**：严禁让顶栏 Logo 复用导航键帽边框（混淆为按钮）或套实心反色大色块（破坏顶栏克制感），也严禁让未读徽章直接压盖图标主体线条。
 - **Don't 让内容区空旷漂浮**：严禁在超宽视口中只丢 3~4 个缺乏排版节奏的极度简陋卡片。
 - **Don't 出现嵌套转角挤压 (Corner Pinching)**：严禁在具有内边距的容器内外盲目使用相同圆角导致转角形态失衡。
