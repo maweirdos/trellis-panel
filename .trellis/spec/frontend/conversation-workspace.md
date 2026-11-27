@@ -850,8 +850,8 @@ Check that transcript and composer still share the same centered760px column
 through narrow/font/settings and inspector changes.
 
 The global chat role uses13/14/15px across the font presets,1.75 line height and
-16px paragraph separation. `--my-txt-chat` is theme-owned (light ink96%, dark
-white92%); headings/strong text remain primary. Paragraphs and lists have separate
+16px paragraph separation. `--my-txt-chat` is theme-owned (light ink 96%, dark
+`#e2e2e2`); headings/strong text remain primary. Paragraphs and lists have separate
 rhythms, so loose Markdown lists do not inherit a full paragraph gap for every
 item. Preserve actual message content and the existing Markdown renderer; do not
 rewrite replies or inject headings merely to make a screenshot look structured.

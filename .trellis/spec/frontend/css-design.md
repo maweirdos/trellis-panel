@@ -64,10 +64,14 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
   grouped settings, section headings and fields. Theme values live only in
   `my-tokens.css` and keep strict zero-blue neutral (`R = G = B`) surface/text
   steps: Light lifts off muddy grey onto crisp paper white (`#f5f5f5` shell →
-  `#f9f9f9` sidebar → `#ffffff` canvas/panel/input, `#141414` ink); Dark deepens
-  into pure neutral charcoal (`#0d0d0d` shell → `#121212` sidebar → `#151515`
-  canvas → `#1b1b1b` panel, `#fafafa` / `#d4d4d4` / `#9a9a9a` text). `my-app-window`
-  and `my-shell-layout` paint the shell with shared inset/radius/border tokens.
+  `#f9f9f9` sidebar → `#ffffff` canvas/panel/input, `#141414` ink); Dark uses a
+  relaxed, anti-glare neutral charcoal ladder (`#121212` shell → `#161616`
+  sidebar/inspector tray → `#1b1b1b` canvas → `#222222` panel → `#2a2a2a`
+  elevated/layer-3 icon tile, `#e6e6e6` / `#b8b8b8` / `#9e9e9e` text, `#161616`
+  input + `#333333` border, clean `6%` white `--my-surface-rim` top catchlight
+  without an outer haze ring). Icon tiles inside `bg-my-panel`/`bg-my-layer-2`
+  cards use `bg-my-layer-3` rather than an inverted darker `bg-my-layer-1`.
+  `my-app-window` and `my-shell-layout` paint the shell with shared inset/radius/border tokens.
   Utility-window roots do not acquire that frame.
 - Conversation geometry: place `my-conversation-column` inside
   `my-conversation-frame`. Transcript and composer use the same 760px maximum and
@@ -267,7 +271,7 @@ Example:
   the plus menu, including plan mode and expandable parameters, use the same
   option role. A short action label does not need a duplicate inline instruction.
 - All placeholder consumers use `--my-txt-placeholder` with explicit opacity1.
-  The palette defines light ink42% and dark white36%; pages must not stack extra
+  The palette defines light ink 40% and dark `#e6e6e6` 46%; pages must not stack extra
   opacity or hard-code a grey. The invitation is intentionally quieter than
   entered text, while labels and actual text keep their full readable roles.
   Renderer checks composite alpha against the real surface: menu title/option
@@ -370,9 +374,14 @@ Application roots carry `.my-root`, `data-my-theme="light|dark"` and
 `html.dark` for initial paint. A nested `.my-root` must not reset a parent's
 font step: use an ordinary content container inside the App-owned root.
 
-The accent is neutral inversion: white on dark, dark ink on light. Filled accent
-controls use `text-my-on-accent`; danger/colored controls use `text-my-on-color`.
-Do not reuse constant white text on a white accent fill. Green is a success/
+The accent is pure-flat neutral inversion (no gradients or bevel highlights):
+primary buttons consume `--my-button-primary-*` (dark matte soft-white `#e2e2e2`
+with `#141414` ink; light `#141414` with `#ffffff` ink), and viewports enforce
+single-focus primary CTA discipline (when a detail drawer owns the active primary
+button, the background list header primary action steps down to `outline`).
+Small accent indicators, switches and progress fills use `--my-bg-accent-primary`
+(dark `#d8d8d8`, light `#141414`) with `text-my-on-accent`; danger/colored
+controls use `text-my-on-color`. Do not reuse constant white text on a white accent fill. Green is a success/
 completion or user-label semantic color, never an application brand setting.
 No legacy leaf variables/classes, private accent overrides or `@fontsource-variable/inter` package imports.
 
@@ -389,8 +398,8 @@ select Standard. Keep stored values, unrelated settings and
 cross-window storage synchronization. Font controls remain in Settings only.
 Metadata and activity use a smaller global text role. Heading line-height is1.2.
 Changing type never changes reader/session identity. Chat uses the UI font-size
-role (13/14/15px), 1.75 line height and the shared16px paragraph gap. Its light
-ink96% / dark white92% foreground is the canonical `--my-txt-chat` token; do not
+role (13/14/15px), 1.75 line height and the shared 16px paragraph gap. Its light
+ink 96% / dark `#e2e2e2` foreground is the canonical `--my-txt-chat` token; do not
 fade the entire Markdown container. Titles and strong emphasis retain their
 primary text role. Chat lists use compact2px item gaps and4px inner-paragraph gaps,
 with deliberate nested-list spacing; do not stack full prose paragraph margins

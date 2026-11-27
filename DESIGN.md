@@ -5,6 +5,13 @@ colors:
   light-bg-accent-primary: "#141414"
   light-bg-accent-primary-hover: "#2b2b2b"
   light-bg-accent-primary-active: "#404040"
+  light-button-primary-bg: "#141414"
+  light-button-primary-hover: "#2b2b2b"
+  light-button-primary-active: "#404040"
+  light-button-primary-text: "#ffffff"
+  light-bg-brand-badge: "#f5f5f5"
+  light-bg-brand-plate: "#f4f4f4"
+  light-txt-on-brand-plate: "#141414"
   light-txt-on-accent: "#ffffff"
   light-bg-shell: "#f5f5f5"
   light-bg-sidebar: "#f9f9f9"
@@ -58,56 +65,64 @@ colors:
   light-txt-success-primary: "#25743b"
   light-bg-warning-subtle: "#fef3c6"
   light-txt-warning-primary: "#973c00"
-  dark-bg-accent-primary: "#fafafa"
+  dark-bg-accent-primary: "#d8d8d8"
   dark-bg-accent-primary-hover: "#e6e6e6"
-  dark-bg-accent-primary-active: "#b5b5b5"
+  dark-bg-accent-primary-active: "#c4c4c4"
+  dark-button-primary-bg: "#e2e2e2"
+  dark-button-primary-hover: "#efefef"
+  dark-button-primary-active: "#cfcfcf"
+  dark-button-primary-text: "#141414"
   dark-txt-on-accent: "#121212"
-  dark-bg-shell: "#0d0d0d"
-  dark-bg-sidebar: "#121212"
-  dark-bg-canvas: "#151515"
-  dark-bg-panel: "#1b1b1b"
-  dark-bg-panel-header: "#212121"
-  dark-bg-input: "#181818"
-  dark-bg-elevated: "#212121"
-  dark-bg-layer-1: "#191919"
-  dark-bg-layer-2-active: "color-mix(in oklab, #ffffff 10%, #1b1b1b)"
-  dark-bg-layer-3: "#222222"
-  dark-bg-layer-3-hover: "color-mix(in oklab, #ffffff 6%, #222222)"
-  dark-bg-layer-3-active: "color-mix(in oklab, #ffffff 10%, #222222)"
+  dark-bg-shell: "#121212"
+  dark-bg-sidebar: "#161616"
+  dark-bg-canvas: "#1b1b1b"
+  dark-bg-panel: "#222222"
+  dark-bg-panel-header: "#262626"
+  dark-bg-input: "#161616"
+  dark-bg-elevated: "#2a2a2a"
+  dark-bg-brand-badge: "#2c2c2c"
+  dark-bg-brand-plate: "#ececec"
+  dark-txt-on-brand-plate: "#181818"
+  dark-bg-layer-1: "#1f1f1f"
+  dark-bg-layer-2-active: "color-mix(in oklab, #ffffff 10%, #222222)"
+  dark-bg-layer-3: "#2a2a2a"
+  dark-bg-layer-3-hover: "color-mix(in oklab, #ffffff 6%, #2a2a2a)"
+  dark-bg-layer-3-active: "color-mix(in oklab, #ffffff 10%, #2a2a2a)"
   dark-bg-layer-transparent: "transparent"
   dark-bg-layer-transparent-hover: "color-mix(in oklab, #ffffff 6%, transparent)"
   dark-bg-layer-transparent-active: "color-mix(in oklab, #ffffff 10%, transparent)"
   dark-bg-layer-disabled: "color-mix(in oklab, #ffffff 10%, transparent)"
   dark-bg-navigation-hover: "color-mix(in oklab, #ffffff 5%, transparent)"
-  dark-bg-navigation-selected: "#232323"
-  dark-border-shell: "#1e1e1e"
-  dark-border-input: "#2c2c2c"
-  dark-border-subtle: "color-mix(in oklab, #ffffff 8%, transparent)"
-  dark-border-subtle-1: "color-mix(in oklab, #ffffff 12%, transparent)"
-  dark-border-strong: "color-mix(in oklab, #ffffff 15%, transparent)"
-  dark-border-strong-1: "color-mix(in oklab, #ffffff 22%, transparent)"
+  dark-bg-navigation-selected: "#282828"
+  dark-border-shell: "#262626"
+  dark-border-input: "#333333"
+  dark-border-subtle: "color-mix(in oklab, #ffffff 7%, transparent)"
+  dark-border-subtle-1: "color-mix(in oklab, #ffffff 11%, transparent)"
+  dark-border-strong: "color-mix(in oklab, #ffffff 14%, transparent)"
+  dark-border-strong-1: "color-mix(in oklab, #ffffff 21%, transparent)"
   dark-border-disabled: "color-mix(in oklab, #ffffff 5%, transparent)"
-  dark-txt-primary: "#fafafa"
-  dark-settings-label: "color-mix(in oklab, #fafafa 72%, #d4d4d4)"
-  dark-item-title: "color-mix(in oklab, #fafafa 72%, #d4d4d4)"
-  dark-item-description: "#9a9a9a"
-  dark-txt-secondary: "#d4d4d4"
-  dark-txt-tertiary: "#9a9a9a"
-  dark-txt-placeholder: "color-mix(in oklab, #fafafa 44%, transparent)"
-  dark-txt-disabled: "color-mix(in oklab, #fafafa 36%, transparent)"
-  dark-txt-icon-primary: "#fafafa"
-  dark-txt-icon-secondary: "color-mix(in oklab, #fafafa 80%, transparent)"
-  dark-txt-icon-tertiary: "color-mix(in oklab, #fafafa 60%, transparent)"
-  dark-focus-ring: "color-mix(in oklab, #ffffff 38%, transparent)"
+  dark-txt-primary: "#e6e6e6"
+  dark-txt-chat: "#e2e2e2"
+  dark-settings-label: "color-mix(in oklab, #e6e6e6 72%, #b8b8b8)"
+  dark-item-title: "color-mix(in oklab, #e6e6e6 72%, #b8b8b8)"
+  dark-item-description: "#9e9e9e"
+  dark-txt-secondary: "#b8b8b8"
+  dark-txt-tertiary: "#9e9e9e"
+  dark-txt-placeholder: "color-mix(in oklab, #e6e6e6 46%, transparent)"
+  dark-txt-disabled: "color-mix(in oklab, #e6e6e6 38%, transparent)"
+  dark-txt-icon-primary: "#e6e6e6"
+  dark-txt-icon-secondary: "#b8b8b8"
+  dark-txt-icon-tertiary: "#9c9c9c"
+  dark-focus-ring: "color-mix(in oklab, #ffffff 34%, transparent)"
   dark-selection-bg: "color-mix(in oklab, #ffffff 18%, transparent)"
-  dark-bg-backdrop: "rgba(0, 0, 0, 0.52)"
+  dark-bg-backdrop: "rgba(0, 0, 0, 0.56)"
   dark-bg-danger-primary: "#bf2c22"
   dark-bg-danger-primary-hover: "#a5261d"
   dark-bg-danger-primary-active: "#8b2018"
   dark-bg-danger-subtle: "#3c0e0b"
   dark-border-danger-strong: "#e8847d"
   dark-txt-danger-primary: "#eea5a0"
-  dark-txt-on-color: "#fafafa"
+  dark-txt-on-color: "#f4f4f4"
   dark-bg-info-subtle: "#0d1b44"
   dark-txt-info-primary: "#8ec5ff"
   dark-bg-success-subtle: "#11361c"
@@ -314,8 +329,8 @@ components:
     width: "32px"
     height: "20px"
   button-primary-dark:
-    backgroundColor: "{colors.dark-bg-accent-primary}"
-    textColor: "{colors.dark-txt-on-accent}"
+    backgroundColor: "{colors.dark-button-primary-bg}"
+    textColor: "{colors.dark-button-primary-text}"
     typography: "{typography.control}"
     rounded: "{rounded.base}"
     padding: "0 12px"
@@ -428,16 +443,16 @@ Crux 采用中性石墨与纸白双主题体系，以精密对齐、结构化分
 - **环境微阴影与高光内描边 (Ambient Shadow & Inset Border)**：
   - 卡片与面板禁用生硬的大面积模糊黑影。
   - 浅色模式下采用双层微阴影配合半透明内微描边：`box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.02); border: 1px solid rgba(0, 0, 0, 0.06);`。
-  - 深色模式下通过多级灰阶递进，并使用微光顶边或细微描边：`border: 1px solid rgba(255, 255, 255, 0.08);`，让卡片在深邃背景上清晰悬浮。
-- **发丝级微描边 (Hairline Border)**：边框采用极低透明度（浅色 `rgba(0, 0, 0, 0.06)`，深色 `rgba(255, 255, 255, 0.08)`）的 1px 发丝微线，避免纯实色灰线对深浅背景色彩的生硬割裂。
+  - 深色模式下通过舒展的多级石墨灰阶递进拉开空间，使用克制的细描边（`border: 1px solid color-mix(in oklab, #ffffff 7%, transparent)`）配合轻柔顶边微光（`--my-surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.06)`），**禁止**在卡片外缘叠加额外 `0.5px` 半透明白圈或高亮 `16%` 顶边，避免产生“亮线牢笼感”与边缘泛灰雾。
+- **发丝级微描边 (Hairline Border)**：边框采用极低透明度（浅色 `rgba(0, 0, 0, 0.06)`，深色 `color-mix(in oklab, #ffffff 7%, transparent)`）的 1px 发丝微线，避免纯实色灰线或高亮度白线对背景的生硬割裂。
 - **边缘渐隐遮罩 (Edge Fade / Scrim)**：在横向滚动的标签栏、工作区顶栏工具条及长列表边缘，使用基于滚动位置动态感知的 CSS `mask-image`（配合 `.my-fade-scroll` / `.my-fade-scroll-x` 与全局 `installScrollEdgeFades()`）。**严禁静态常驻双向渐隐**——仅当某侧真实存在滚出可视区的内容时才在该侧启用 16px 边缘渐隐，处于顶部/底部/左侧/右侧尽头或未溢出时保持 100% 实色清晰，绝不淡化首尾可见条目。
 - **磨砂与背景模糊 (Backdrop Blur)**：浮动抽屉、下拉菜单与浮动工具栏支持微弱的高斯模糊背景（`backdrop-filter: blur(8px~16px)`），拉开与下层内容的物理景深距离。
 
 ### 2.2 微排版与字体灰度阶梯 (Micro-typography)
 - **严苛的明度阶梯**：严禁全页面使用同一种黑/白色文字，严格采用 `R = G = B` 纯中性灰度体系，避免偏蓝紫或发灰混浊，建立 3 层阶梯：
-  - **主要内容（Primary）**：高对比纯度主字（浅色 `#141414` / 深色 `#fafafa`），用于核心标题、激活导航与主操作名称。
-  - **次要内容（Secondary）**：浅色约 72% 墨度；深色采用纯中性明灰 `#d4d4d4`（`txt-secondary`），用于导航菜单、常规字段说明与正文描述，保持深底下的通透清晰感且无蓝偏色。
-  - **辅助弱化（Tertiary / Hint）**：浅色 `#666666`；深色 `#9a9a9a`（`txt-tertiary` / `txt-placeholder`），用于元数据、时间戳、快捷键标签与分组标题，兼顾弱化层级与 WCAG AA 可读性。
+  - **主要内容（Primary）**：清晰防眩光主字（浅色 `#141414` / 深色 `#e6e6e6`，暗色与画布/面板维持约 12.8:1~14:1 护眼对比区，规避纯白 `#fafafa` 带来的散光光晕），用于核心标题、激活导航与主操作名称；暗色聊天正文采用 `#e2e2e2`。
+  - **次要内容（Secondary）**：浅色约 72% 墨度；深色采用纯中性明灰 `#b8b8b8`（`txt-secondary`），图标次色使用实色 `#b8b8b8` 而非透明淡化白，避免暗底发糊。
+  - **辅助弱化（Tertiary / Hint）**：浅色 `#666666`；深色 `#9e9e9e`（`txt-tertiary` / `item-description`，图标弱色 `#9c9c9c`），用于元数据、时间戳、快捷键标签与分组说明，在深底及浮层上均满足 WCAG AA（≥ 4.5:1）可读性，消除 12px 中文发虚。
 - **字重与字距韵律 (Weight & Tracking)**：
   - 核心标题与卡片指标采用中等字重（500/600），字距微收紧（`-0.01em ~ -0.02em`），呈现紧实有力的品质感。
   - 小字号辅助标签（11px/12px）及全大写分类标题（如 `NAVIGATION`、`WORKSPACE`）字距适度拉宽（`+0.04em ~ +0.06em`），增强可读性与高级感。
@@ -466,16 +481,18 @@ Crux 采用中性石墨与纸白双主题体系，以精密对齐、结构化分
 ### 2.4 克制的 5% 点睛质感 (Strategic Accent Glow)
 - **95% 中性 + 5% 焦点**：
   - 界面 95% 以上由精致克制的中性黑、白、灰色阶构成，保证长时间工作的耐看度与低疲劳度。
-  - 仅在 5% 的极关键位置（品牌微标、核心操作 CTA、高危警示、AI/智能分析模块的微渐变或微弱发光）注入点睛色（Jewel Tones），引导视觉焦点，避免泛滥使用彩色。
+  - 仅在 5% 的极关键位置（品牌微标、状态语义徽标、高危警示）注入点睛色（Jewel Tones），引导视觉焦点，避免泛滥使用彩色；控件与按钮保持**纯平克制、禁用拟物渐变与高光装饰**。
 
 ---
 
 ## 3. 色彩系统 (Colors)
 
-主操作使用反差中性色；蓝、绿、橙、红分别表达信息、成功、警告与危险状态。颜色来自 `src/renderer/src/my/my-tokens.css`，保留源文件中的 `color-mix(in oklab, …)`，不另换近似色。全系中性表面与文字严格遵循 `R = G = B` 零蓝紫偏色原则：浅色以纯净纸白为主画布（`#ffffff`）配微浅冷雾外框与侧栏（`#f5f5f5` / `#f9f9f9`），彻底去掉传统灰蒙感；深色以纯正深炭黑构建明确层次（`#0d0d0d` 外框 → `#121212` 侧栏 → `#151515` 画布 → `#1b1b1b` 卡片），兼顾通透深邃与长时读写护眼。
+主操作使用纯平反差中性色（无渐变、无拟物顶边）；蓝、绿、橙、红分别表达信息、成功、警告与危险状态。颜色来自 `src/renderer/src/my/my-tokens.css`，保留源文件中的 `color-mix(in oklab, …)`，不另换近似色。全系中性表面与文字严格遵循 `R = G = B` 零蓝紫偏色原则：浅色以纯净纸白为主画布（`#ffffff`）配微浅冷雾外框与侧栏（`#f5f5f5` / `#f9f9f9`），彻底去掉传统灰蒙感；深色以舒展通透的中性石墨灰构建清晰五级层次（`#121212` 外框 → `#161616` 侧栏与抽屉托盘 → `#1b1b1b` 主画布 → `#222222` 卡片面板 → `#2a2a2a` 浮层与卡片内图标槽），避开逼近纯黑的死黑压抑，兼顾白天环境抗反光与长时读写护眼。
 
-- `bg-shell`、`bg-sidebar`、`bg-canvas` 区分外壳、上下文导航与画布；`bg-panel` 承载内容，`bg-panel-header` 区分分组标题。
-- `bg-input` 与 `border-input` 标记可编辑区域（浅色纯白 `#ffffff` + `#e2e2e2`，深色 `#181818` + `#2c2c2c`）；`txt-primary`、`txt-secondary`、`txt-tertiary` 分别承担主要内容、说明和辅助信息。
+- `bg-shell`、`bg-sidebar`、`bg-canvas` 区分外壳、上下文导航/抽屉托盘与主画布；`bg-panel` 承载内容卡片，`bg-panel-header`（深色 `#262626`）区分分组标题，`bg-layer-3`（深色 `#2a2a2a`）承载卡片内部图标槽与抬升微组件，**严禁在 `bg-panel` 卡片内部倒挂使用更暗的 `bg-layer-1`**。
+- `bg-input` 与 `border-input` 标记可编辑区域（浅色纯白 `#ffffff` + `#e2e2e2`，深色下沉 `#161616` + `#333333`）；`txt-primary`、`txt-secondary`、`txt-tertiary` 分别承担主要内容、说明和辅助信息。
+- 主操作按钮消费专用令牌 `--my-button-primary-*`（浅色 `#141414` 底 + `#ffffff` 字；深色纯平柔雾白 `#e2e2e2` 底 + `#141414` 墨字，悬停 `#efefef`，禁用渐变），并遵守**单屏唯一主焦点原则**：当右侧详情抽屉打开并承载主操作时，背景列表顶部的主操作自动降级为 `outline`，防止深色模式下同屏多个亮色实心块造成局部眩光。开关开启态、进度条与微型角标消费柔和银灰 `--my-bg-accent-primary`（深色 `#d8d8d8`）。
+- 暗色语义标签与识别头像（`--my-label-*-bg/text/icon`）保持足够明度差并配同色系 `1px` 细内轮廓（`color-mix(in oklab, currentColor 22%, transparent)`），避免深彩底融进暗色卡片而发浑。
 - 导航悬停使用 `bg-navigation-hover`，选中使用 `bg-navigation-selected`；普通悬停不覆盖选中态。
 - 浅色主题选择器为 `:root:not(.dark)` 或 `[data-my-theme='light']`；深色为 `:root.dark` 或 `[data-my-theme='dark']`。组件在两种主题中消费相同的语义变量。
 
@@ -543,7 +560,7 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 
 静态设置面板使用表面色、分组底色与一像素边界区分层次，不加投影。选中的分段控件使用 `shadow-raised-100`；工具提示使用 `shadow-raised-200`；菜单与模态面板使用 `shadow-overlay-200`。顶栏下拉菜单通过展开背景与焦点表达状态。遮罩使用 `bg-backdrop`；投影随深浅主题取值。
 
-设置画布与导航共用 `bg-sidebar`；`PreferenceSection` 面板使用 `bg-surface-1`，分组标题使用 `bg-surface-2`。深色分别为 `#121212`、`#151515`、`#1c1c1c`；浅色分别为 `#f9f9f9`、`#ffffff`、`#f7f7f7`。
+设置画布与导航共用 `bg-sidebar`；`PreferenceSection` 面板使用 `bg-surface-1`，分组标题使用 `bg-surface-2`。深色分别为 `#161616`、`#1b1b1b`、`#262626`；浅色分别为 `#f9f9f9`、`#ffffff`、`#f7f7f7`。
 
 ## 7. 几何形状与圆角规范 (Shapes & Radii)
 
@@ -565,7 +582,7 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 - 默认展示内容名称、简短状态与下一步操作。完整路径、哈希、命令身份和诊断记录按需查看；权限、数据损失风险与不可逆影响在决策前明确呈现。
 - 交互视觉验收遵守 `.trellis/spec/frontend/design-principles.md`；具体几何、动效参数与减少动态效果规则沿用共享令牌。
 
-- **按钮：** primary、neutral、ghost、outline、danger 共享控件几何，使用 `text-sm`、500 字重和左右 12px 内边距；小号左右为 8px。高度按密度表取值，圆角固定 10px。neutral 使用一像素内描边，outline 使用一像素边框；悬停、按下与禁用分别使用状态 token。所有可操作按钮、图标按钮、分段器与可点击卡片在鼠标激活（`:active`）或按压时，自动触发微下沉与微缩放（`transform: translateY(1px) scale(0.988)`，依托 `--my-tactile-press-y` 与 `--my-tactile-press-scale`），配合 `--my-ease-snappy` 产生紧实的机械按键触感，且**基础态必须同步声明 `transform` 过渡**以保证松手平滑回弹；全宽左对齐导航项与下拉菜单行（`.my-nav-item`、`.collab-nav-item`、`.my-menu-item`、`.my-select-option`）仅通过背景色反馈按压，禁止叠加中心缩放避免图标/文字横向偏移抖动。
+- **按钮：** primary、neutral、ghost、outline、danger 共享控件几何，使用 `text-sm`、500 字重和左右 12px 内边距；小号左右为 8px。高度按密度表取值，圆角固定 10px。所有按钮保持**纯平单色（禁止渐变与拟物高光顶边）**：primary 消费 `--my-button-primary-*`（深色纯平柔雾白 `#e2e2e2` + `#141414` 墨字，浅色 `#141414` + `#ffffff`），同屏仅在当前聚焦区保留 **1 枚** 实心主操作（抽屉展开时背景列表主操作自动退让为 `outline`）；neutral 使用一像素内描边，outline 使用一像素边框；悬停、按下与禁用分别使用状态 token。所有可操作按钮、图标按钮、分段器与可点击卡片在鼠标激活（`:active`）或按压时，自动触发微下沉与微缩放（`transform: translateY(1px) scale(0.988)`，依托 `--my-tactile-press-y` 与 `--my-tactile-press-scale`），配合 `--my-ease-snappy` 产生紧实的机械按键触感，且**基础态必须同步声明 `transform` 过渡**以保证松手平滑回弹；全宽左对齐导航项与下拉菜单行（`.my-nav-item`、`.collab-nav-item`、`.my-menu-item`、`.my-select-option`）仅通过背景色反馈按压，禁止叠加中心缩放避免图标/文字横向偏移抖动。
 - **输入与选择器（三层分级聚焦体系）：** 输入使用 `text-ui`、上下 9px 与左右 11px 内边距；选择器使用 `text-sm`、左右 10px 内边距。字段高度随密度变化。错误状态替换边框与柔和警示微光，禁用保留可辨识的文字与边界。普通输入 placeholder 使用 `txt-placeholder`；设置搜索框局部使用 `txt-secondary`。
   - **L1 · 无框自承载输入（零聚焦框）**：对话编写器（Composer）、命令面板搜索条（`.my-command-search`）及行内文本编辑器本身已通过容器表面、图标或光标明确表达焦点，禁止套用黑色/粗线外框；自定义无框输入统一声明 `.my-focus-none` 或 `data-focus-ring="none"` 免疫全局聚焦环。
   - **L2 · 常规表单输入与选择器（柔和 1px 微边界）**：`.my-input:focus` 与 `.my-select-trigger` 严禁叠加 2px 粗线外框；统一使用 1px 边框微提亮/加深（`--my-border-strong-1`）配合克制的 1px `--my-focus-shadow` 微光过渡。
@@ -577,7 +594,7 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
   - **稳定滚动槽**：多标签页抽屉、可展开手风琴与动态列表统一采用 `scrollbar-gutter: stable` + 恒定 `6px` 透明轨道（`::-webkit-scrollbar`），仅在悬停时改变滑块背景色（`--my-scrollbar-thumb*`），确保溢出与非溢出标签页切换及悬停时宽度偏移恒为 0px。
   - **行内点击编辑与悬停浮层**：行内点击即编辑控件（显示态 ↔ 输入态）共用完全一致的 `box-sizing: border-box`、固定高度、内边距与常态 `1px solid transparent` 占位边框，切换编辑态 0px 高度抖动；卡片悬停显露的快捷操作组采用绝对定位浮层 + 与卡片表面色匹配的左侧渐隐遮罩覆盖，不挤压正文流宽度。
 - **弹窗表单排印层级与缩进 (Modal Form Hierarchy)：** 居中创建与指派弹窗（如创建 Agent、创建小队、创建或指派任务）建立清晰四阶阅读层级：弹窗标题 `15px`（600 / 主色） > 控件值 `13px`（主色） > 字段标签 `12px`（500 / 次色，左缩进 `2px` 与输入文本对齐） > 辅助提示 `11px`（弱化色）。弹窗横向内边距 `24px`、字段组间距 `14px`、标签与控件间距 `6px`、双列间距 `12px`；可选长文本字段（如自定义指令、详细描述）默认折叠为轻量行内展开触发器，确保常规窗口下核心表单一屏完整呈现且无滚动条。
-- **容器查询响应式栅格与品牌图形表达 (`@container` & Brand Icons)：** 位于侧栏或右侧详情抽屉并排布局中的卡片网格必须采用 CSS 容器查询（`container-type: inline-size` + `@container`），禁用依赖整窗宽度的媒体查询断点，避免展开详情抽屉时卡片拥挤错行。执行引擎与外部集成优先使用本地真实品牌图标（`ToolBrandIcon` / `AppBrandIcon`），官方彩色图形（如 Codex 官方蓝紫渐变图标、Claude Code、飞书、钉钉、企业微信等）使用 `image` 模式保真，单色线性图形使用 `mask` 模式跟随深浅主题；配置摘要行与选择器优先以真实图标替代冗长文字胶囊。
+- **容器查询响应式栅格与品牌图形表达 (`@container` & Brand Icons)：** 位于侧栏或右侧详情抽屉并排布局中的卡片网格必须采用 CSS 容器查询（`container-type: inline-size` + `@container`），禁用依赖整窗宽度的媒体查询断点，避免展开详情抽屉时卡片拥挤错行。执行引擎与外部集成优先使用本地真实品牌图标（`ToolBrandIcon` / `AppBrandIcon`）：官方彩色图形（如 Codex、Claude Code、飞书、钉钉、企业微信、WeKnora 等）使用 `image` 模式保真，**含内部符号的彩色 SVG（如 `codex.svg`）必须显式填充前景色，严禁以 `evenodd` 透明镂空依赖白底透色**；单色暗色图形（如 `github`、`cursor`、`openhands`）使用 `mask` 模式跟随深浅主题 `currentColor`。为白底设计的第三方彩色集成图标在暗色摘要行/列表行展示时，统一置于柔和浅底圆形微底托（`.collab-brand-badge[data-tone='plate']`，消费 `--my-bg-brand-plate` + `overflow: hidden`），禁止给彩色品牌图标硬加 `opacity-65` 压暗导致浑浊或暗底隐身。配置摘要行与选择器优先以真实图标替代冗长文字胶囊。
 - **左侧模块栏与顶栏品牌标志 (Module Rail & Brand Identity)**：
   - **透气比例与三态分离**：模块按钮边长为 `32 / 34 / 36px`，内部图标控制在 `16 / 17 / 18px`（约占按钮 48%–50%，留白充裕），常态线宽 `1.55`、激活态 `1.75`。未选中图标统一使用 `--my-module-icon-rest` 柔灰退让，悬停提亮至主色（`--my-module-button-hover-bg`），选中项使用 `--my-module-button-active-bg/border/shadow` 构成清晰浮起的立体键帽（浅色纯白微投影键帽、深色微光暗炭键帽）；禁止在按钮组件上写 `text-my-icon-secondary` 等硬编码灰阶类覆盖轨道令牌。
   - **品牌标志去混淆与光学居中**：顶栏左上角非交互品牌标志**禁止**套用与下方导航按钮同款的键帽底框（易误认成侧栏按钮），也**禁止**套用高反差实心黑/白大色块（深色刺眼、浅色生硬且与组织徽标打架）。应保持无框纯净主色图形（`20 / 22 / 23px`），底部配居中 `18px` 发丝短分隔线与底部分隔线上下对称；涉及精确网格对齐时使用绝对几何居中的矢量源 `mark.svg`（`compact={false}`），避开紧凑栅格图的半格取整偏移。
@@ -585,7 +602,7 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 - **设置导航：** 按偏好设置、智能与连接、应用管理分组。条目内边距为 4px 8px；最小行高、图标容器、图形与分组间距随密度变化。搜索匹配标题与关键词，使用 NFKC、大小写与空白规范化，多词全部匹配。无结果时显示文字和清除入口；清除后焦点回到搜索框。方向键循环移动焦点，Home / End 定位首尾，Enter / Space 激活；当前项使用 `aria-current='page'`。
 - **设置面板：** 分组标题与行体共用边界，行之间使用细分隔线。通用页头提供“打开引导”；“启动与窗口”包含三个开关，“键盘快捷键”包含两个输入项。最近项目为空时只显示一行文字；有最近项目时显示列表，包含名称、路径与行内动作。三档保持相同内容结构。
 - **开关与分段控件：** 开关轨道紧凑、标准档为 32 × 20px，滑块 14px；舒适档为 34 × 22px，滑块 16px；内边距均为 3px。滑块平移量由轨道宽度、内边距与滑块宽度计算。主题与密度分段选择器按内容收紧并右对齐，不撑满字段列；单项最小宽 48px、左右内边距 8px，三档按钮高度为 24/26/28px，图标随按钮字号缩放。选中项使用面板底色和轻投影，通过 `aria-pressed` 表达。
-- **标签与卡片：** 标签最小高 20px、左右内边距 6px，使用 `text-xs` 与 500 字重。普通卡片使用面板底色和细边界；只有可点击卡片应用悬停与按下背景。列表行与卡片内的次要操作项（如复制、定位、删除）在未聚焦时保持隐蔽（配合 `.my-hover-reveal`），悬停时平滑显露，保持静态界面的低干扰。
+- **标签与卡片：** 标签最小高 20px、左右内边距 6px，使用 `text-xs` 与 500 字重。普通卡片使用面板底色（`bg-panel`）和细边界，卡片内部的图标底槽使用高一档的 `bg-layer-3` + 细边（禁止倒挂使用更暗的 `bg-layer-1`）；只有可点击卡片应用悬停与按下背景。同一纵向配置/手风琴卡片列表必须保持**严格统一的最小行高（如 `min-height: 64px`）与单行描述截断**，名称和描述使用 `my-item-title` / `my-item-description` 配合 `truncate`（附 `title` 悬停回看完整文案），严禁在同一元素上混写 `block` 与 `line-clamp-*`（`block` 会覆盖 `-webkit-box` 导致截断失效、卡片高低不齐）。列表行与卡片内的次要操作项（如复制、定位、删除）在未聚焦时保持隐蔽（配合 `.my-hover-reveal`），悬停时平滑显露，保持静态界面的低干扰。
 - **名称与描述：** `my-item-title` 与 `my-item-description` 只承担文字样式，使用低优先级选择器，允许危险、选中及填充按钮的语义色覆盖。布局、换行、省略和行距的具体阅读需求由组件承载。
 - **会话操作：** 输入框上方的知识库、需求与目录入口使用共享小号 ghost 按钮，普通字重与次文字色；控件之间、图标与文字之间均为 8px。不在此行使用底部工具栏的负边距文字触发器。Code 的 Git 展示来自当前会话固定目录的真实分支与改动，详情按需展开。侧栏选中底色覆盖完整会话行，包含独立可聚焦的“更多”按钮。
 - **会话延续：** 空白输入框下方的快捷入口连接真实会话、需求草稿或本机资料；使用共享名称、描述层级与 10px 圆角，保留简短状态，不添加示例模型、组件预览或虚构任务文案。归档仅在设置的数据管理中查看与恢复。
@@ -628,6 +645,8 @@ UI 行高为 1.45，标题为 1.2，文档为 1.6，会话正文为 1.75。列�
 - **Don't 为输入框叠加外圈光晕、阴影和多重焦点边界**。
 - **Don't 让图标悬停改变布局、覆盖已选中或禁用状态，或靠整页入场动画展示内容**。
 - **Don't 将 Agent 的长篇原始推理过程和无序工具日志全量摊开在主对话流中**。
+- **Don't 使用拟物渐变按钮或在暗色模式堆砌多个发光白块**：严禁给按钮添加垂直渐变或厚重高光顶边，也严禁在暗色同一视口同时放置多个实心亮白主按钮（遵循单屏唯一主焦点原则，且主字/按钮避免直上 `#fafafa`/`#ffffff` 纯白引发散光光晕）。
+- **Don't 在卡片内倒挂使用更暗的底槽或破坏同组卡片等高纪律**：严禁在 `bg-panel` 卡片内部用 `bg-layer-1` 当图标底框（导致发糊），严禁在同元素混写 `block` 与 `line-clamp-*` 导致卡片折行高低不一，也严禁把深色/透明第三方品牌图标裸贴暗底或用 `opacity-65` 压脏。
 - **Don't 使用原生 `<select>` / `<option>` 标签**：严禁在任何页面中直接编写 HTML 原生 `<select>` 标签，杜绝浏览器默认下拉样式的粗糙边框与系统弹出层破窗。
 
 ---
