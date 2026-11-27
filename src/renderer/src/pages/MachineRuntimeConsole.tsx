@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import {
   Activity, AlertTriangle, ArrowUpRight, Bot, Brain, Check, ChevronDown, ChevronRight, Coffee, Copy, Download, ExternalLink, Eye, EyeOff,
-  FolderOpen, HardDrive, Loader2, Play, Plug, Plus, RefreshCw, RotateCcw, Search,
+  FolderOpen, HardDrive, Loader2, Palette, Play, Plug, Plus, RefreshCw, RotateCcw, Search,
   Server, Settings2, Sparkles, Square, Terminal, Trash2, X, Zap
 } from 'lucide-react'
 import type { CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
@@ -2911,19 +2911,21 @@ export function MachineRuntimeConsole({
                                   <Brain size={11} aria-hidden="true" />
                                   <span>思考深度</span>
                                   <Dropdown
+                                    placement="bottom"
                                     align="right"
-                                    width={306}
+                                    width={316}
+                                    gap={6}
                                     trigger={({ open, toggle }) => (
                                       <button
                                         type="button"
                                         className="ef-quiet-trigger"
                                         aria-expanded={open}
                                         aria-haspopup="menu"
-                                        aria-label={`自定义思考深度滑块样式（当前：${findEffortStyleOption(effortEmblemStyle).name}）`}
-                                        title={`滑块样式：${findEffortStyleOption(effortEmblemStyle).name}（也可在设置 → 外观预览）`}
+                                        aria-label={`自定义思考深度滑块外观（当前：${findEffortStyleOption(effortEmblemStyle).name}）`}
+                                        title={`切换滑块外观：${findEffortStyleOption(effortEmblemStyle).name}（也可在设置 → 外观预览）`}
                                         onClick={toggle}
                                       >
-                                        <Sparkles size={12} aria-hidden="true" />
+                                        <Palette size={13} aria-hidden="true" />
                                       </button>
                                     )}
                                   >

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent } from 'react'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { BrandMark } from '../../my/BrandMark'
 import { PreferenceRow, PreferenceSection } from '../../pages/settings/PreferenceSection'
 import {
@@ -1019,6 +1019,7 @@ export interface EffortDetentFaderProps {
   isDark?: boolean
   onSelect: (value: string) => void
   onHoverPreview?: (label: string | null, isPeak: boolean) => void
+  onDragStateChange?: (dragging: boolean) => void
 }
 
 export function EffortDetentFader({
@@ -1032,12 +1033,15 @@ export function EffortDetentFader({
   trackTone,
   isDark: isDarkProp,
   onSelect,
-  onHoverPreview
+  onHoverPreview,
+  onDragStateChange
 }: EffortDetentFaderProps): JSX.Element {
   const autoDark = useIsDarkTheme()
   const isDark = isDarkProp ?? autoDark
   const trackRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{ pointerId: number; startX: number; moved: boolean; seatedIdx: number } | null>(null)
+  const dragCallbackRef = useRef(onDragStateChange)
+  dragCallbackRef.current = onDragStateChange
   const snapTimerRef = useRef<number | null>(null)
   const lastHoverIdxRef = useRef(0)
   const [dragVisual, setDragVisual] = useState<{ visualFloat: number; seatedIdx: number } | null>(null)
@@ -1047,6 +1051,10 @@ export function EffortDetentFader({
 
   useEffect(() => () => {
     if (snapTimerRef.current !== null) window.clearTimeout(snapTimerRef.current)
+    if (dragRef.current) {
+      dragRef.current = null
+      dragCallbackRef.current?.(false)
+    }
   }, [])
 
   const triggerSnap = useCallback(() => {
@@ -1110,6 +1118,7 @@ export function EffortDetentFader({
     setHoverIdx(null)
     onHoverPreview?.(null, false)
     dragRef.current = { pointerId: e.pointerId, startX: e.clientX, moved: false, seatedIdx: safeSelected }
+    dragCallbackRef.current?.(true)
     setDragVisual({ visualFloat: safeSelected, seatedIdx: safeSelected })
   }
 
@@ -1158,6 +1167,7 @@ export function EffortDetentFader({
     if (!d || e.pointerId !== d.pointerId) return
     const wasMoved = d.moved
     dragRef.current = null
+    dragCallbackRef.current?.(false)
     setDragVisual(null)
     if (el && el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
 
@@ -1326,7 +1336,8 @@ export function EffortStylePickerPopover({
   isDark,
   onSelectStyle,
   onSelectTone,
-  onClose
+  onClose,
+  closeOnSelect = false
 }: {
   emblemStyle: EffortEmblemStyle
   trackTone: EffortTrackTone
@@ -1334,6 +1345,7 @@ export function EffortStylePickerPopover({
   onSelectStyle: (style: EffortEmblemStyle) => void
   onSelectTone: (tone: EffortTrackTone) => void
   onClose?: () => void
+  closeOnSelect?: boolean
 }): JSX.Element {
   const currentMeta = findEffortStyleOption(emblemStyle)
   const [cat, setCat] = useState<EffortStyleCategory>(currentMeta.category)
@@ -1342,9 +1354,22 @@ export function EffortStylePickerPopover({
 
   return (
     <div className="mc-pop-card ef-popover" role="menu" aria-label="自定义思考深度滑块样式">
-      <div className="mc-pop-head">
-        <span className="mc-pop-title">思考深度滑块样式</span>
-        <span className="mc-pop-badge">{currentMeta.name}</span>
+      <div className="mc-pop-head ef-popover-head">
+        <span className="mc-pop-title">滑块外观</span>
+        <div className="ef-popover-head-right">
+          <span className="mc-pop-badge">{currentMeta.name}</span>
+          {onClose && (
+            <button
+              type="button"
+              className="ef-popover-close"
+              aria-label="关闭滑块外观面板"
+              title="关闭"
+              onClick={onClose}
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="ef-cat-tabs" role="tablist" aria-label="样式分类">
@@ -1378,11 +1403,11 @@ export function EffortStylePickerPopover({
               className={`mc-emblem-opt${picked ? ' is-picked' : ''}`}
               onClick={() => {
                 onSelectStyle(opt.id)
-                onClose?.()
+                if (closeOnSelect) onClose?.()
               }}
             >
               <span className="mc-emblem-opt-ico">
-                <EffortStylePreviewBadge styleKind={opt.id} toneKind={trackTone} isDark={isDark} sizePx={26} />
+                <EffortStylePreviewBadge styleKind={opt.id} toneKind={trackTone} isDark={isDark} sizePx={24} />
               </span>
               <span className="mc-emblem-opt-meta">
                 <span className="mc-emblem-opt-name">{opt.name}</span>
@@ -1393,7 +1418,7 @@ export function EffortStylePickerPopover({
         })}
       </div>
 
-      <div className="mc-pop-foot">
+      <div className="mc-pop-foot ef-popover-foot">
         {scenicActive ? (
           <div className="ef-tone-note">像素灯塔自带 6 档昼夜与极光色阶，也可在「设置 → 外观」完整预览</div>
         ) : (

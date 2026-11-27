@@ -2403,17 +2403,22 @@
 }
 
 .mc-emblem-opt-ico {
-  width: var(--my-space-22);
-  height: var(--my-space-22);
+  width: var(--my-space-28);
+  height: var(--my-space-28);
   display: grid;
   place-items: center;
   flex: none;
 }
 
 .mc-emblem-opt-ico svg {
-  width: 100%;
-  height: 100%;
+  width: var(--my-space-24);
+  height: var(--my-space-24);
   display: block;
+}
+
+.mc-emblem-opt-ico .mc-emblem-logo {
+  width: var(--my-space-24);
+  height: var(--my-space-24);
 }
 
 .mc-emblem-opt-meta {
