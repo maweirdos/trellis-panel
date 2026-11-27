@@ -9,6 +9,7 @@ import { ProviderEcosystemPanel } from '../acp/ProviderEcosystemPanel'
 import { getRuntimeInventorySnapshot } from '../acp/useRuntimeInventoryRefresh'
 import { DaemonSettings } from '../daemon/DaemonSettings'
 import { AppearancePreferences, ThemePreferences } from '../my/AppearancePreferences'
+import { EffortFaderPreferences } from '../components/effort/EffortDetentFader'
 import { PreferenceRow, PreferenceSection } from './settings/PreferenceSection'
 import { StorageSettings } from './settings/StorageSettings'
 import type { SettingsView } from '../my/navigation'
@@ -36,10 +37,13 @@ export function SettingsPage(): JSX.Element {
   // 浏览器预览（?my=1）无 IPC 桥、settings 恒为 null：渲染空态而非在渲染期解引用崩溃（真机 bootstrap 后恒非空）
   if (!settings) return (
     <div className="preferences-page">
-      {settingsView === 'appearance' && <PreferenceSection id="preferences-preview-appearance" title="界面显示">
-        <ThemePreferences theme={previewTheme} onChange={(next) => { setPreviewTheme(next); if (next !== 'system') setTheme(next) }} />
-        <AppearancePreferences />
-      </PreferenceSection>}
+      {settingsView === 'appearance' && <>
+        <PreferenceSection id="preferences-preview-appearance" title="界面显示">
+          <ThemePreferences theme={previewTheme} onChange={(next) => { setPreviewTheme(next); if (next !== 'system') setTheme(next) }} />
+          <AppearancePreferences />
+        </PreferenceSection>
+        <EffortFaderPreferences />
+      </>}
       <EmptyState title="设置未加载" description="连接桌面应用后可查看其余设置。" />
     </div>
   )
@@ -121,11 +125,14 @@ function SettingsPageBody({ settings, view }: { settings: Settings; view: Settin
 
   return (
     <div className="preferences-page">
-      {view === 'appearance' && <PreferenceSection id="preferences-appearance" title="界面显示">
-        <ThemePreferences theme={settings.theme} disabled={pending.theme}
-          onChange={(theme) => void perform('theme', () => saveSettings({ theme }))} />
-        <AppearancePreferences />
-      </PreferenceSection>}
+      {view === 'appearance' && <>
+        <PreferenceSection id="preferences-appearance" title="界面显示">
+          <ThemePreferences theme={settings.theme} disabled={pending.theme}
+            onChange={(theme) => void perform('theme', () => saveSettings({ theme }))} />
+          <AppearancePreferences />
+        </PreferenceSection>
+        <EffortFaderPreferences />
+      </>}
 
       {view === 'preferences' && <PreferenceSection id="preferences-desktop" title="启动与窗口">
         <PreferenceRow label="开机自动启动" hint="登录系统后自动打开应用。">
