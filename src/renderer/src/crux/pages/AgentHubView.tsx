@@ -335,7 +335,7 @@ export function AgentHubView({ scope }: { scope: 'all' | 'space' }): JSX.Element
             </Button>
             <Button
               size="sm"
-              variant="primary"
+              variant={drawerOpen ? 'outline' : 'primary'}
               disabled={!targetSpaceId}
               onClick={() => setCreateAgentOpen(true)}
             >
@@ -627,7 +627,7 @@ export function AgentHubView({ scope }: { scope: 'all' | 'space' }): JSX.Element
       {drawerOpen && (
         <aside
           aria-label="Agent 与小队设置抽屉"
-          className={`flex h-full shrink-0 flex-col border-l border-my-line bg-my-panel transition-all ${
+          className={`flex h-full shrink-0 flex-col border-l border-my-line bg-my-sidebar transition-all ${
             drawerExpanded ? 'w-[580px] max-w-full' : 'w-[430px] xl:w-[460px] max-w-full'
           }`}
         >
@@ -1345,8 +1345,8 @@ function AgentInspectorDrawer({
                   summary={
                     <span className="inline-flex items-center gap-1">
                       {(enabledImBrands.length > 0 ? enabledImBrands : IM_PLATFORMS.slice(0, 2)).map((im) => (
-                        <span key={im.id} className="collab-brand-badge">
-                          <AppBrandIcon brand={im.id} size={13} />
+                        <span key={im.id} className="collab-brand-badge" data-tone="plate">
+                          <AppBrandIcon brand={im.id} size={14} />
                         </span>
                       ))}
                     </span>
@@ -1443,8 +1443,8 @@ function AgentInspectorDrawer({
                         {inheritedUpstreams.slice(0, 3).map((u) => {
                           const brand = inferAppBrandFromName(u.name)
                           return brand ? (
-                            <span key={u.id} className="collab-brand-badge">
-                              <AppBrandIcon brand={brand} size={13} />
+                            <span key={u.id} className="collab-brand-badge" data-tone="plate">
+                              <AppBrandIcon brand={brand} size={15} />
                             </span>
                           ) : (
                             <span
@@ -1520,8 +1520,8 @@ function AgentInspectorDrawer({
                             return (
                               <div key={up.id} className="collab-mcp-row">
                                 {brand ? (
-                                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-my-sm border border-my-line bg-my-layer-3 text-my-primary">
-                                    <AppBrandIcon brand={brand} size={15} />
+                                  <span className="collab-brand-badge" data-tone="plate" data-size="md">
+                                    <AppBrandIcon brand={brand} size={16} />
                                   </span>
                                 ) : (
                                   <span
@@ -1557,8 +1557,8 @@ function AgentInspectorDrawer({
                             return (
                               <div key={ep.id} className="collab-mcp-row">
                                 {brand ? (
-                                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-my-sm border border-my-line bg-my-layer-3 text-my-primary">
-                                    <AppBrandIcon brand={brand} size={15} />
+                                  <span className="collab-brand-badge" data-tone="plate" data-size="md">
+                                    <AppBrandIcon brand={brand} size={16} />
                                   </span>
                                 ) : (
                                   <span className="collab-tone-avatar grid h-6 w-6 shrink-0 place-items-center rounded-my-sm text-my-2xs font-semibold" data-tone={identityTone(ep.name)}>
@@ -2057,14 +2057,21 @@ function AgentInspectorDrawer({
               </div>
 
               {/* 8. 底部独立「归档」卡片 */}
-              <div className="collab-accordion-card flex items-center justify-between gap-3 px-3.5 py-3">
+              <div className="collab-accordion-card flex min-h-16 items-center justify-between gap-3 px-3.5 py-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-my-base border border-my-line bg-my-layer-3 text-my-icon-secondary">
                     {agent.archived ? <RotateCcw size={15} /> : <Archive size={15} />}
                   </span>
                   <div className="min-w-0">
-                    <div className="text-my-sm font-medium text-my-primary">{agent.archived ? '恢复此 Agent' : '归档'}</div>
-                    <div className="mt-0.5 line-clamp-1 text-my-2xs text-my-tertiary">
+                    <div className="my-item-title truncate">{agent.archived ? '恢复此 Agent' : '归档'}</div>
+                    <div
+                      className="my-item-description mt-0.5 truncate"
+                      title={
+                        agent.archived
+                          ? '恢复后，Agent 将重新出现在目录中并可接受任务指派。'
+                          : '归档后，Agent 不再接受指派和提及；历史会保留，随时可以恢复。'
+                      }
+                    >
                       {agent.archived
                         ? '恢复后，Agent 将重新出现在目录中并可接受任务指派。'
                         : '归档后，Agent 不再接受指派和提及；历史会保留，随时可以恢复。'}
@@ -2174,8 +2181,8 @@ function AccordionCard({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-my-sm font-medium text-my-primary">{title}</span>
-          <span className="mt-0.5 block line-clamp-1 text-my-2xs text-my-tertiary">{description}</span>
+          <span className="my-item-title block truncate">{title}</span>
+          <span className="my-item-description mt-0.5 block truncate" title={description}>{description}</span>
         </span>
         <span className="inline-flex shrink-0 items-center gap-1.5 text-my-xs text-my-tertiary">
           {summary && <span className="inline-flex items-center">{summary}</span>}

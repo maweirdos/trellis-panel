@@ -434,7 +434,7 @@
 
 /* 表面层级与低饱和语义识别色（严格复用 my-tokens.css 双主题令牌，点睛色 ≤ 5%） */
 .collab-canvas-surface {
-  background: var(--my-bg-sidebar);
+  background: var(--my-bg-canvas);
 }
 .collab-elevated-card {
   background: var(--my-bg-panel);
@@ -467,10 +467,20 @@
   height: var(--my-space-20);
   flex: 0 0 auto;
   place-items: center;
+  overflow: hidden;
   border: 1px solid var(--my-border-brand-badge);
   border-radius: var(--my-radius-full);
   background: var(--my-bg-brand-badge);
   color: var(--my-txt-primary);
+}
+.collab-brand-badge[data-tone='plate'] {
+  border-color: var(--my-border-brand-plate);
+  background: var(--my-bg-brand-plate);
+  color: var(--my-txt-on-brand-plate);
+}
+.collab-brand-badge[data-size='md'] {
+  width: var(--my-space-24);
+  height: var(--my-space-24);
 }
 
 .collab-tone-solid[data-tone='indigo'] { background: var(--my-label-indigo-bg-strong); color: var(--my-txt-on-color); }
@@ -779,6 +789,7 @@
 .collab-accordion-trigger {
   display: flex;
   width: 100%;
+  min-height: var(--my-space-64);
   align-items: center;
   gap: var(--my-space-12);
   padding: var(--my-space-12) var(--my-space-14);

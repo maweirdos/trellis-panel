@@ -209,7 +209,7 @@ export function MarketplacePage(): JSX.Element | null {
                             <span className="truncate text-my-sm font-semibold text-my-primary">{tpl.name}</span>
                             <span className="my-chip">{tpl.category}</span>
                           </span>
-                          <span className="mt-1 line-clamp-2 block text-my-xs text-my-secondary">{tpl.description}</span>
+                          <span className="mt-1 line-clamp-2 text-my-xs text-my-secondary">{tpl.description}</span>
                         </span>
                       </button>
                     )
@@ -238,7 +238,7 @@ export function MarketplacePage(): JSX.Element | null {
                             <span className="truncate text-my-sm font-semibold text-my-primary">{sk.name}</span>
                             <span className="my-chip">{sk.category}</span>
                           </span>
-                          <span className="mt-1 line-clamp-2 block text-my-xs text-my-secondary">{sk.description}</span>
+                          <span className="mt-1 line-clamp-2 text-my-xs text-my-secondary">{sk.description}</span>
                         </span>
                       </button>
                     )
@@ -267,7 +267,7 @@ export function MarketplacePage(): JSX.Element | null {
                             <span className="truncate text-my-sm font-semibold text-my-primary">{conn.name}</span>
                             <span className="my-chip">{conn.category}</span>
                           </span>
-                          <span className="mt-1 line-clamp-2 block text-my-xs text-my-secondary">{conn.description}</span>
+                          <span className="mt-1 line-clamp-2 text-my-xs text-my-secondary">{conn.description}</span>
                         </span>
                       </button>
                     )
