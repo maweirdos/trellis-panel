@@ -83,6 +83,17 @@ for (const file of globSync(root + '**/*.{ts,tsx}')) {
   assert.doesNotMatch(read(file), /(?:["'`]--my-[\w-]*radius[\w-]*["'`]\s*:|\.setProperty\(\s*["'`]--my-[\w-]*radius[\w-]*["'`])/, `do not override radius tokens in renderer code: ${file}`)
 }
 assert.doesNotMatch(sources, /\brounded(?:-[a-z]+)?-\[[^\]]+\]/, 'use shared rounded utilities rather than arbitrary radius classes')
+const tailwindConfig = new Function(read('tailwind.config.js').replace(/\bexport\s+default\b/, 'return'))()
+const registeredMyRadii = new Set(Object.keys(tailwindConfig.theme?.extend?.borderRadius ?? {}).filter(key => key.startsWith('my-')))
+for (const key of registeredMyRadii) {
+  const mapped = tailwindConfig.theme.extend.borderRadius[key]
+  assert.ok(canonicalRadius(mapped), `tailwind rounded-${key} must map to a canonical radius token: ${mapped}`)
+}
+for (const file of globSync(root + '**/*.{ts,tsx,css}')) {
+  for (const match of read(file).matchAll(/\brounded-(?:[trblse]{1,2}-)?(my-[\w-]+)\b/g)) {
+    assert.ok(registeredMyRadii.has(match[1]), `unregistered Tailwind radius class "${match[0]}" (missing "${match[1]}" in tailwind.config.js): ${file}`)
+  }
+}
 for (const match of sources.matchAll(/\bborderRadius\s*:\s*(?:(-?\d+(?:\.\d+)?)|(["'`])([^"'`]*)\2)/g)) {
   assert.ok(match[1] !== undefined ? Number(match[1]) === 0 : canonicalRadius(match[3]), `inline radius must use a canonical token or zero: ${match[0]}`)
 }

@@ -146,7 +146,7 @@ export default {
       ])),
       lineHeight: { normal: 'var(--my-line-ui)', tight: 'var(--my-line-tight)', relaxed: 'var(--my-line-document)', 'my-ui': 'var(--my-line-ui)', 'my-chat': 'var(--my-line-chat)', 'my-document': 'var(--my-line-document)' },
       borderRadius: Object.fromEntries([
-        ...['base', 'xs', 'sm', 'inset', 'control', 'md', 'lg', 'xl', 'menu', '3xl', '4xl'].map((size) => [`my-${size}`, `var(--my-radius-${size})`]),
+        ...['none', 'base', 'xs', 'sm', 'inset', 'control', 'md', 'lg', 'xl', 'menu', '3xl', '4xl', 'composer', 'full', 'round'].map((size) => [`my-${size}`, `var(--my-radius-${size})`]),
         ...[['none','none'],['sm','sm'],['DEFAULT','inset'],['md','md'],['lg','lg'],['xl','xl'],['2xl','3xl'],['3xl','4xl'],['full','full']].map(([name, token]) => [name, `var(--my-radius-${token})`])
       ]),
       zIndex: { 'my-modal': 'var(--my-z-modal)', 'my-menu': 'var(--my-z-menu)', 'my-tooltip': 'var(--my-z-tooltip)' }
