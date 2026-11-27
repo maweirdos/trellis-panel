@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { Archive, Bot, Loader2, Pencil, Plus, RotateCcw, Users } from 'lucide-react'
+import { Archive, Bot, Loader2, MessageSquare, Pencil, Plus, RotateCcw, Trash2, Users } from 'lucide-react'
 import type { CruxAgent, CruxCrew, CruxCrewInput, CruxRole, CruxSnapshot } from '@shared/crux'
 import { api } from '../../api'
 import { Button, EmptyState, Modal, SearchInput, Tooltip } from '../../my/ui'
+import { useAgentChatBridge } from '../agent-chat-bridge'
+import { useCollaborationPlatform, type AgentQuickReply } from '../collaboration-platform-store'
 import { useCrux } from '../store'
+import { AGENT_PRESENCE_META, computeAgentPresence, useTaskRuns } from '../task-run-store'
 import { PageHeader, Field, inputClass, textareaClass, MemberChip, Select } from '../ui'
 import { AgentEditor } from './AgentsPage'
 
@@ -15,6 +18,8 @@ export function CrewsPage(): JSX.Element | null {
   const currentSpaceId = useCrux((state) => state.currentSpaceId)
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
+  const runs = useTaskRuns((state) => state.runs)
+  const crewQuickReplies = useCollaborationPlatform((state) => state.crewQuickReplies)
   const [editing, setEditing] = useState<CruxCrew | 'new' | null>(null)
   const [editingAgent, setEditingAgent] = useState<CruxAgent | null>(null)
   const [archived, setArchived] = useState(false)
@@ -41,6 +46,12 @@ export function CrewsPage(): JSX.Element | null {
           const captainReady = crew.captain.kind === 'member' ? snapshot.members.some((member) => member.id === crew.captain.id && space?.memberIds.includes(member.id)) : Boolean(captain?.enabled && !captain.archived)
           const roster = [crew.captain, ...crew.members.filter((ref) => !(ref.kind === crew.captain.kind && ref.id === crew.captain.id))]
           const tasks = snapshot.tasks.filter((task) => task.executor?.kind === 'crew' && task.executor.id === crew.id)
+          const chatAgent = (crew.captain.kind === 'agent' ? captain : undefined)
+            ?? roster
+              .filter((ref) => ref.kind === 'agent')
+              .map((ref) => snapshot.agents.find((item) => item.id === ref.id && item.enabled && !item.archived))
+              .find((item): item is CruxAgent => Boolean(item))
+          const quickReplies = crewQuickReplies[crew.id] ?? []
           return <section key={crew.id} className="flex flex-col gap-3 rounded-my-md border border-my-line p-3">
             <header className="flex items-start gap-2"><Users size={18} className="mt-0.5 shrink-0 text-my-icon-secondary" />
               <div className="min-w-0 flex-1"><h2 className="my-item-title truncate">{crew.name}</h2>{crew.description && <p className="my-item-description mt-0.5">{crew.description}</p>}</div>
@@ -50,12 +61,26 @@ export function CrewsPage(): JSX.Element | null {
             <div className="flex flex-wrap gap-2">{roster.map((ref) => {
               const agent = ref.kind === 'agent' ? snapshot.agents.find((item) => item.id === ref.id) : undefined
               const isCaptain = ref.kind === crew.captain.kind && ref.id === crew.captain.id
+              const presence = agent ? computeAgentPresence(agent.id, runs, agent.enabled && !agent.archived) : null
               return ref.kind === 'agent' ? <button key={`agent:${ref.id}`} type="button" disabled={!agent} onClick={() => { if (agent) setEditingAgent(agent) }} className="inline-flex items-center gap-1.5 rounded-my-md border border-my-line px-2 py-1 text-my-xs text-my-secondary hover:bg-my-layer-1-hover">
-                <Bot size={14} />{agent?.name ?? ref.name}{isCaptain && <span className="text-my-2xs text-my-tertiary">队长</span>}{agent?.exclusiveCrewId && <span className="text-my-2xs text-my-tertiary">专属</span>}{agent && (!agent.enabled || agent.archived) && <span className="text-my-2xs text-my-tertiary">不可用</span>}
+                {presence && <span className="collab-presence-dot" data-state={presence.state} title={AGENT_PRESENCE_META[presence.state].label} />}
+                <Bot size={14} />{agent?.name ?? ref.name}{isCaptain && <span className="text-my-2xs text-my-tertiary">队长</span>}{agent?.exclusiveCrewId && <span className="text-my-2xs text-my-tertiary">专属</span>}{presence && <span className="text-my-2xs text-my-tertiary">· {AGENT_PRESENCE_META[presence.state].label}</span>}
               </button> : <span key={`member:${ref.id}`} className="inline-flex items-center gap-1.5 rounded-my-md border border-my-line px-2 py-1 text-my-xs text-my-secondary"><MemberChip member={snapshot.members.find((member) => member.id === ref.id)} size="sm" />{snapshot.members.find((member) => member.id === ref.id)?.name ?? ref.name}{isCaptain && <span className="text-my-2xs text-my-tertiary">队长</span>}</span>
             })}</div>
             {crew.instructions && <p className="line-clamp-3 whitespace-pre-wrap text-my-xs leading-relaxed text-my-secondary">{crew.instructions}</p>}
-            <footer className="mt-auto flex flex-wrap items-center gap-2"><span className="text-my-xs text-my-tertiary">{roster.filter((ref) => ref.kind === 'member').length} 人 · {roster.filter((ref) => ref.kind === 'agent').length} Agent · 任务 {tasks.length}</span><div className="ml-auto flex gap-1">
+            {quickReplies.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {quickReplies.slice(0, 3).map((reply) => (
+                  <span key={reply.id} className="rounded-my-sm bg-my-layer-1 px-2 py-0.5 text-my-2xs text-my-secondary">{reply.label}</span>
+                ))}
+              </div>
+            )}
+            <footer className="mt-auto flex flex-wrap items-center gap-2"><span className="text-my-xs tabular-nums text-my-tertiary">{roster.filter((ref) => ref.kind === 'member').length} 人 · {roster.filter((ref) => ref.kind === 'agent').length} Agent · 任务 {tasks.length}</span><div className="ml-auto flex gap-1">
+              {!crew.archived && chatAgent && (
+                <Button variant="outline" size="sm" onClick={() => useAgentChatBridge.getState().startAgentChat(chatAgent.id, { runtimeKind: chatAgent.runtimeKind, workingDirectory: chatAgent.workingDirectory })}>
+                  <MessageSquare size={13} />小队对话
+                </Button>
+              )}
               <Tooltip label={`编辑 ${crew.name}`}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable} aria-label={`编辑 ${crew.name}`} onClick={() => setEditing(crew)}><Pencil size={14} /></Button></Tooltip>
               {crew.archived ? <Tooltip label={captainReady ? `恢复 ${crew.name}` : '请先更换可用队长'}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable || !captainReady} aria-label={`恢复 ${crew.name}`} onClick={() => restore(crew)}><RotateCcw size={14} /></Button></Tooltip>
                 : <Tooltip label={`归档 ${crew.name}`}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable} aria-label={`归档 ${crew.name}`} onClick={() => void run('归档小队', () => api.crux.removeCrew({ id: crew.id }))}><Archive size={14} /></Button></Tooltip>}
@@ -71,6 +96,8 @@ export function CrewsPage(): JSX.Element | null {
 function CrewEditor({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew | null; snapshot: CruxSnapshot; spaceId: string; onClose: () => void }): JSX.Element {
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
+  const getCrewQuickReplies = useCollaborationPlatform((state) => state.getCrewQuickReplies)
+  const setCrewQuickReplies = useCollaborationPlatform((state) => state.setCrewQuickReplies)
   const [name, setName] = useState(crew?.name ?? '')
   const [description, setDescription] = useState(crew?.description ?? '')
   const [instructions, setInstructions] = useState(crew?.instructions ?? '')
@@ -78,6 +105,9 @@ function CrewEditor({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew | nul
   const [captain, setCaptain] = useState<CrewRef | null>(crew ? { kind: crew.captain.kind, id: crew.captain.id } : null)
   const [memberRefs, setMemberRefs] = useState<CruxCrewInput['memberRefs']>(crew?.members ?? [])
   const [exclusiveIds, setExclusiveIds] = useState(snapshot.agents.filter((agent) => crew && agent.exclusiveCrewId === crew.id).map((agent) => agent.id))
+  const [quickReplies, setQuickReplies] = useState<AgentQuickReply[]>(() => (crew ? getCrewQuickReplies(crew.id) : []))
+  const [replyLabel, setReplyLabel] = useState('')
+  const [replyPrompt, setReplyPrompt] = useState('')
   const [keyword, setKeyword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const space = snapshot.spaces.find((item) => item.id === (crew?.spaceId ?? spaceId))
@@ -113,7 +143,11 @@ function CrewEditor({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew | nul
       memberRefs: memberRefs.map(({ kind, id }) => ({ kind, id })), exclusiveAgentIds: exclusiveIds,
       archived: crew?.archived ?? false
     }))
-    if (result?.ok) onClose()
+    if (result?.ok) {
+      const targetId = crew?.id ?? result.data.crews.find((item) => !snapshot.crews.some((prev) => prev.id === item.id))?.id
+      if (targetId) setCrewQuickReplies(targetId, quickReplies)
+      onClose()
+    }
     else if (result && !result.ok) setError(result.error)
     else setError('保存失败，请重试。')
   }
@@ -163,6 +197,36 @@ function CrewEditor({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew | nul
           </div>
         </fieldset>
         <Field label="协作约定（选填）"><textarea className={textareaClass} rows={3} value={instructions} onChange={(event) => setInstructions(event.target.value)} /></Field>
+        <div className="flex flex-col gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-3">
+          <div className="text-my-xs font-medium text-my-primary">小队快捷指令（HiFox Quick Replies）</div>
+          {quickReplies.length > 0 && (
+            <ul className="space-y-1">
+              {quickReplies.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-2 rounded-my-sm bg-my-panel px-2 py-1 text-my-xs">
+                  <span className="truncate font-medium text-my-primary">{item.label}</span>
+                  <button type="button" aria-label={`删除 ${item.label}`} onClick={() => setQuickReplies((prev) => prev.filter((r) => r.id !== item.id))} className="text-my-tertiary hover:text-my-danger-text"><Trash2 size={12} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            <input className={inputClass} value={replyLabel} onChange={(event) => setReplyLabel(event.target.value)} placeholder="快捷名称，如：输出联调方案" />
+            <input className={inputClass} value={replyPrompt} onChange={(event) => setReplyPrompt(event.target.value)} placeholder="对应发送给小队的指令" />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="self-start"
+            disabled={!replyLabel.trim() || !replyPrompt.trim()}
+            onClick={() => {
+              setQuickReplies((prev) => [...prev, { id: `cqr-${Date.now().toString(36)}`, label: replyLabel.trim(), prompt: replyPrompt.trim() }])
+              setReplyLabel('')
+              setReplyPrompt('')
+            }}
+          >
+            <Plus size={12} />添加快捷指令
+          </Button>
+        </div>
         {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
       </div></div>
       <div className="flex shrink-0 justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" aria-busy={busy} disabled={busy || !name.trim() || !captainReady} onClick={() => void submit()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}{crew ? '保存' : '组建'}</Button></div>
