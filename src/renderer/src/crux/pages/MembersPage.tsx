@@ -1,13 +1,14 @@
 /** 本地名册与团队成员入口；团队邀请必须使用服务端真实回执。 */
 import { useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, Link2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { CruxMember, CruxRole } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { Button, EmptyState, Modal } from '../../my/ui'
+import { Button, EmptyState, Modal, Switch } from '../../my/ui'
+import { useCollaborationPlatform } from '../collaboration-platform-store'
 import { FlowIcon } from '../icons'
 import { MemberInvitationDialog } from '../account/MemberInvitationDialog'
-import { useCrux } from '../store'
+import { statusOf, useCrux } from '../store'
 import { PageHeader, Field, inputClass, MemberChip, Select } from '../ui'
 
 const ROLE_LABEL: Record<CruxRole, string> = { owner: 'Owner', admin: '管理员', member: '成员' }
@@ -20,13 +21,27 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
   const busy = useCrux((state) => state.busy)
   const workspace = useCrux((state) => state.workspaceContext)
   const shared = workspace.state !== 'local'
+  const orgInviteLink = useCollaborationPlatform((state) => state.orgInviteLink)
+  const updateOrgInviteLink = useCollaborationPlatform((state) => state.updateOrgInviteLink)
+  const regenerateOrgInviteLink = useCollaborationPlatform((state) => state.regenerateOrgInviteLink)
   const [editing, setEditing] = useState<CruxMember | 'new' | null>(null)
   const [inviting, setInviting] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [onlySpace, setOnlySpace] = useState(false)
   if (!snapshot) return null
   const space = snapshot.spaces.find((item) => item.id === currentSpaceId)
   const canInvite = Boolean(workspace.connectionId ? workspace.canManage : webInvitation?.canManage)
+  const inviteUrl = `crux://invite/${orgInviteLink.code}?role=${orgInviteLink.defaultRole}`
+  const copyInviteLink = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      setCopiedLink(true)
+      window.setTimeout(() => setCopiedLink(false), 1800)
+    } catch {
+      // 忽略剪贴板权限受限
+    }
+  }
   const spaceMemberIds = new Set(space?.memberIds ?? [])
   const owners = snapshot.members.filter((member) => member.role === 'owner').length
   const members = snapshot.members.filter((member) => (!onlySpace || spaceMemberIds.has(member.id)) &&
@@ -46,6 +61,33 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader title="同事" description={shared ? `已登录的团队成员 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人` : `本机同事名册 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人 · 添加不会发送邀请`}
         actions={shared ? <Button variant="primary" size="sm" disabled={busy || !canInvite} onClick={() => { if (workspace.connectionId) setInviting(true); else webInvitation?.open() }}><Plus size={14} />邀请成员</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
+      <section className="flex flex-wrap items-center gap-3 rounded-my-base border border-my-line bg-my-panel px-3.5 py-2.5" aria-label="组织邀请链接">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Link2 size={15} className="shrink-0 text-my-icon-secondary" />
+          <div className="min-w-0 flex-1">
+            <div className="my-item-title">组织邀请链接</div>
+            <div className="my-item-description truncate font-mono">{orgInviteLink.enabled ? inviteUrl : '邀请链接已暂停，开启后新成员可凭链接申请加入'}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            className="w-28"
+            value={orgInviteLink.defaultRole}
+            onChange={(value) => updateOrgInviteLink({ defaultRole: value === 'admin' ? 'admin' : 'member' })}
+            options={[
+              { value: 'member', label: '默认成员' },
+              { value: 'admin', label: '默认管理员' }
+            ]}
+          />
+          <Button size="sm" variant="outline" disabled={!orgInviteLink.enabled} onClick={() => void copyInviteLink()}>
+            {copiedLink ? <><Check size={13} />已复制</> : <><Copy size={13} />复制链接</>}
+          </Button>
+          <Button size="sm" variant="ghost" title="重置邀请链接" onClick={regenerateOrgInviteLink}>
+            <RefreshCw size={13} />重置
+          </Button>
+          <Switch label="启用组织邀请链接" checked={orgInviteLink.enabled} onChange={(enabled) => updateOrgInviteLink({ enabled })} />
+        </div>
+      </section>
       <div className="flex flex-wrap items-center gap-3">
         <input className={`${inputClass} max-w-xs`} aria-label="搜索同事" placeholder="搜索姓名、邮箱或职位" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
         <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={onlySpace} onChange={(event) => setOnlySpace(event.target.checked)} />仅当前空间</label>
@@ -55,14 +97,18 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
           <table className="w-full border-collapse text-left text-my-sm">
             <thead className="sticky top-0 bg-my-canvas text-my-xs text-my-tertiary"><tr className="border-b border-my-line">
               <th className="px-3 py-2 font-medium">同事</th><th className="px-2 py-2 font-medium">角色</th><th className="px-2 py-2 font-medium">职位</th>
+              <th className="px-2 py-2 font-medium">任务负载</th>
               <th className="px-2 py-2 font-medium">空间</th><th className="px-3 py-2 font-medium">操作</th>
             </tr></thead>
             <tbody>{members.map((member) => {
               const lastOwner = member.role === 'owner' && owners === 1
+              const assignedTasks = snapshot.tasks.filter((task) => task.assigneeIds.includes(member.id))
+              const openTasks = assignedTasks.filter((task) => !['done', 'cancelled'].includes(statusOf(snapshot, task.statusId)?.category ?? '')).length
               return <tr key={member.id} className="border-b border-my-line hover:bg-my-layer-1-hover">
                 <td className="px-3 py-2"><MemberChip member={member} /><p className="mt-1 text-my-xs text-my-tertiary">{member.email || '未填写邮箱'}</p></td>
                 <td className="px-2 py-2"><span className="flex items-center gap-1.5 text-my-xs text-my-secondary"><FlowIcon name="members" size={14} />{ROLE_LABEL[member.role]}</span></td>
                 <td className="px-2 py-2 text-my-secondary">{member.title || '—'}</td>
+                <td className="px-2 py-2 text-my-xs tabular-nums text-my-secondary">进行中 {openTasks} / 共 {assignedTasks.length}</td>
                 <td className="px-2 py-2">
                   <label className="flex items-center gap-1.5 text-my-xs text-my-secondary"><input type="checkbox" disabled={busy || !space || (shared && !workspace.canManage)} checked={spaceMemberIds.has(member.id)} onChange={() => toggleSpaceMember(member.id)} />{space?.name ?? '未选择空间'}</label>
                   <p className="mt-1 text-my-2xs text-my-tertiary">{snapshot.spaces.filter((item) => item.memberIds.includes(member.id)).map((item) => item.name).join('、') || '尚未加入空间'}</p>

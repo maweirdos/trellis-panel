@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Archive, Globe, Layers, Lock, LogIn, Loader2, Pencil, Plus, RotateCcw, Sparkles, Users } from 'lucide-react'
+import { Archive, Filter, Globe, Layers, Lock, LogIn, Loader2, Pencil, Plus, RotateCcw, Sparkles, Star, Users } from 'lucide-react'
 import type { CruxRole, CruxSnapshot, CruxSpace, CruxSpaceModules } from '@shared/crux'
 import { getSpaceTemplatePreset, resolveSpaceModules, SPACE_MODULE_META } from '@shared/crux-space-presets'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Switch, Tooltip } from '../../my/ui'
+import { useCollaborationPlatform, type EstimationScale } from '../collaboration-platform-store'
 import { useCrux, statusOf } from '../store'
 import { Field, inputClass, MemberChip, PageHeader, textareaClass, Select } from '../ui'
 import { SpaceCodeResources } from '../code-resources/SpaceCodeResources'
@@ -21,6 +22,10 @@ export function SpacesPage(): JSX.Element | null {
   const workspace = useCrux((state) => state.workspaceContext)
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
+  const favorites = useCollaborationPlatform((state) => state.favorites)
+  const toggleFavorite = useCollaborationPlatform((state) => state.toggleFavorite)
+  const getSpaceSettings = useCollaborationPlatform((state) => state.getSpaceSettings)
+  const updateSpaceSettings = useCollaborationPlatform((state) => state.updateSpaceSettings)
   const [keyword, setKeyword] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [editing, setEditing] = useState<CruxSpace | null>(null)
@@ -38,6 +43,9 @@ export function SpacesPage(): JSX.Element | null {
   const pendingCount = space ? snapshot.tasks.filter((task) => task.spaceId === space.id && !['done', 'cancelled'].includes(statusOf(snapshot, task.statusId)?.category ?? '')).length : 0
   const resolvedModules = resolveSpaceModules(space)
   const templatePreset = space?.template ? getSpaceTemplatePreset(space.template) : null
+  const spaceExt = space ? getSpaceSettings(space.id) : null
+  const spaceAgents = space ? snapshot.agents.filter((agent) => agent.spaceId === space.id && !agent.archived && agent.enabled) : []
+  const spaceStarred = Boolean(space && favorites.some((fav) => fav.kind === 'space' && fav.id === space.id))
 
   const toggleSpaceModule = async (moduleKey: keyof CruxSpaceModules, nextValue: boolean): Promise<void> => {
     if (!space || busy || !canConfigure) return
@@ -61,7 +69,7 @@ export function SpacesPage(): JSX.Element | null {
     <div className="flex flex-wrap items-center gap-3"><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索空间" /><label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />含已归档</label><span className="text-my-xs text-my-tertiary">{spaces.length} 个</span></div>
     <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
       <section className="rounded-my-md border border-my-line" aria-label="可见空间">
-        {spaces.length === 0 ? <EmptyState title={keyword ? '没有匹配空间' : '暂无可见空间'} /> : <table className="w-full border-collapse text-left text-my-sm"><thead className="text-my-xs text-my-tertiary"><tr className="border-b border-my-line"><th className="px-3 py-2 font-medium">空间</th><th className="px-3 py-2 font-medium">工作模板</th><th className="px-3 py-2 font-medium">访问权限</th><th className="px-3 py-2 font-medium">成员</th><th className="px-3 py-2 font-medium"><span className="sr-only">操作</span></th></tr></thead><tbody>{spaces.map((item) => {
+        {spaces.length === 0 ? <EmptyState size="compact" title={keyword ? '没有匹配空间' : '暂无可见空间'} /> : <table className="w-full border-collapse text-left text-my-sm"><thead className="text-my-xs text-my-tertiary"><tr className="border-b border-my-line"><th className="px-3 py-2 font-medium">空间</th><th className="px-3 py-2 font-medium">工作模板</th><th className="px-3 py-2 font-medium">访问权限</th><th className="px-3 py-2 font-medium">成员</th><th className="px-3 py-2 font-medium"><span className="sr-only">操作</span></th></tr></thead><tbody>{spaces.map((item) => {
           const joined = Boolean(actorId && item.memberIds.includes(actorId))
           const readable = item.visibility !== 'private' || joined
           const itemPreset = item.template ? getSpaceTemplatePreset(item.template) : null
@@ -72,6 +80,11 @@ export function SpacesPage(): JSX.Element | null {
         <header className="flex flex-wrap items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-my-md font-medium text-my-primary">{space.name}</h2>
           <span className="font-mono text-my-xs text-my-tertiary">{space.key}</span>
+          <Tooltip label={spaceStarred ? '取消收藏空间' : '收藏空间到侧边栏'}>
+            <Button variant="ghost" size="sm" className="my-icon-control" aria-label={spaceStarred ? '取消收藏空间' : '收藏空间'} aria-pressed={spaceStarred} onClick={() => toggleFavorite('space', space.id, space.id)}>
+              <Star size={14} className={spaceStarred ? 'fill-current text-my-warning-text' : ''} />
+            </Button>
+          </Tooltip>
           {workspace.canManage && <>
             <Button variant="ghost" size="sm" disabled={busy || !canConfigure} onClick={() => setWizardMode('reconfigure')}><Sparkles size={14} />按模板重配</Button>
             <Tooltip label="编辑基本信息"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure} aria-label="编辑空间" onClick={() => setEditing(space)}><Pencil size={14} /></Button></Tooltip>
@@ -111,6 +124,69 @@ export function SpacesPage(): JSX.Element | null {
           </div>
         )}
         {canRead && <div className="flex items-center justify-between gap-3 border-t border-my-line pt-3"><span className="text-my-sm text-my-secondary">允许多个处理人</span><Switch label="允许多个处理人" checked={space.multiAssignee} disabled={busy || !canConfigure} onChange={(multiAssignee) => void run('更新空间', () => api.crux.updateSpace({ id: space.id, multiAssignee }))} /></div>}
+        {canRead && spaceExt && (
+          <div className="border-t border-my-line pt-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Filter size={16} className="text-my-icon-secondary" />
+              <h3 className="text-my-sm font-medium text-my-primary">分拣责任与工作量估算（HiFox 规范）</h3>
+              <span className="text-my-xs text-my-tertiary">配置待分拣需求的默认负责人、自动初检 Agent 与估算尺度</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="默认分拣负责人">
+                <Select
+                  className="w-full"
+                  disabled={!canConfigure}
+                  value={spaceExt.triageOwnerId ?? ''}
+                  onChange={(value) => updateSpaceSettings(space.id, { triageOwnerId: value || undefined })}
+                  options={[
+                    { value: '', label: '未指定（轮流分拣）' },
+                    ...members.map((member) => ({ value: member.id, label: member.name }))
+                  ]}
+                />
+              </Field>
+              <Field label="分拣自动初检 Agent">
+                <Select
+                  className="w-full"
+                  disabled={!canConfigure}
+                  value={spaceExt.triageAutoAgentId ?? ''}
+                  onChange={(value) => updateSpaceSettings(space.id, { triageAutoAgentId: value || undefined })}
+                  options={[
+                    { value: '', label: '不自动委派' },
+                    ...spaceAgents.map((agent) => ({ value: agent.id, label: `Agent · ${agent.name}` }))
+                  ]}
+                />
+              </Field>
+              <Field label="分拣超时提醒周期">
+                <Select
+                  className="w-full"
+                  disabled={!canConfigure}
+                  value={String(spaceExt.triageReminderHours)}
+                  onChange={(value) => updateSpaceSettings(space.id, { triageReminderHours: Number(value) || 24 })}
+                  options={[
+                    { value: '12', label: '12 小时未处理提醒' },
+                    { value: '24', label: '24 小时未处理提醒' },
+                    { value: '48', label: '48 小时未处理提醒' },
+                    { value: '72', label: '72 小时未处理提醒' }
+                  ]}
+                />
+              </Field>
+              <Field label="任务规模估算尺度">
+                <Select
+                  className="w-full"
+                  disabled={!canConfigure}
+                  value={spaceExt.estimationScale}
+                  onChange={(value) => updateSpaceSettings(space.id, { estimationScale: value as EstimationScale })}
+                  options={[
+                    { value: 'fibonacci', label: '斐波那契（1 / 2 / 3 / 5 / 8 / 13）' },
+                    { value: 'tshirt', label: 'T-Shirt 尺码（XS / S / M / L / XL）' },
+                    { value: 'linear', label: '线性点数（1 - 5）' },
+                    { value: 'none', label: '不启用估算' }
+                  ]}
+                />
+              </Field>
+            </div>
+          </div>
+        )}
         {canRead ? <div className="border-t border-my-line pt-3"><div className="mb-2 flex items-center gap-2"><Users size={16} className="text-my-icon-secondary" /><h3 className="flex-1 text-my-sm font-medium text-my-primary">成员 <span className="text-my-xs font-normal text-my-tertiary">{members.length}</span></h3>{canConfigure && <Tooltip label="管理空间成员"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy} aria-label="管理空间成员" onClick={() => setEditingMembers(space.id)}><Pencil size={14} /></Button></Tooltip>}</div><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id} className="flex items-center gap-2 py-2"><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></li>)}</ul>{members.length === 0 && <p className="py-2 text-my-xs text-my-tertiary">暂无成员</p>}</div> : <p className="text-my-xs text-my-tertiary">私有空间的内容与成员仅对空间成员开放。</p>}
       </section>}
       {space && (canRead || canConfigure) && <SpaceCodeResources spaceId={space.id} />}
@@ -191,5 +267,5 @@ function SpaceMembersEditor({ snapshot, space, onClose }: { snapshot: CruxSnapsh
     else if (result && !result.ok) setError(result.error)
     else setError('保存失败，请重试。')
   }
-  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel="管理空间成员"><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">管理空间成员</h2><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索组织成员" /><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id}><label className="flex items-center gap-2 py-2 text-my-sm text-my-secondary"><input type="checkbox" checked={member.id === space.ownerId || memberIds.includes(member.id)} disabled={member.id === space.ownerId} onChange={(event) => setMemberIds((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.id === space.ownerId ? '空间负责人' : member.title || ROLE_LABEL[member.role]}</span></label></li>)}</ul>{members.length === 0 && <EmptyState title="没有匹配成员" />}</div>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}保存</Button></div></fieldset></Modal>
+  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel="管理空间成员"><fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">管理空间成员</h2><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索组织成员" /><div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id}><label className="flex items-center gap-2 py-2 text-my-sm text-my-secondary"><input type="checkbox" checked={member.id === space.ownerId || memberIds.includes(member.id)} disabled={member.id === space.ownerId} onChange={(event) => setMemberIds((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.id === space.ownerId ? '空间负责人' : member.title || ROLE_LABEL[member.role]}</span></label></li>)}</ul>{members.length === 0 && <EmptyState size="compact" title="没有匹配成员" />}</div>{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy} onClick={() => void save()}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}保存</Button></div></fieldset></Modal>
 }

@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Bot, Plus, X } from 'lucide-react'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { useCrux, statusOf, memberOf } from '../store'
 import { PageHeader, Field, inputClass, textareaClass, StatusBadge, MemberChip, Select } from '../ui'
 import { FlowIcon } from '../icons'
-import { Button, EmptyState, Modal } from '../../my/ui'
+import { Button, EmptyState, Modal, SearchInput, Tabs, TriProgressBar } from '../../my/ui'
 import { NewTaskModal } from './TaskDetailDrawer'
 import type { CruxProject, CruxSnapshot } from '@shared/crux'
+
+type ProjectFilterTab = 'all' | 'active' | 'done' | 'archived'
 
 export function ProjectsPage(): JSX.Element | null {
   const snapshot = useCrux((s) => s.snapshot)
@@ -15,12 +17,18 @@ export function ProjectsPage(): JSX.Element | null {
   const run = useCrux((s) => s.run)
   const busy = useCrux((s) => s.busy)
   const openTask = useCrux((s) => s.openTask)
+  const [statusTab, setStatusTab] = useState<ProjectFilterTab>('active')
+  const [keyword, setKeyword] = useState('')
   const [editing, setEditing] = useState<CruxProject | 'new' | null>(null)
   const [newTaskProject, setNewTaskProject] = useState<string | null>(null)
   const [scopeProject, setScopeProject] = useState<string | null>(null)
   const [taskId, setTaskId] = useState('')
   if (!snapshot) return null
-  const projects = snapshot.projects.filter((p) => p.spaceId === spaceId)
+  const allProjects = snapshot.projects.filter((p) => p.spaceId === spaceId)
+  const projects = allProjects.filter((p) =>
+    (statusTab === 'all' || p.status === statusTab)
+    && `${p.name} ${p.goal ?? ''}`.toLowerCase().includes(keyword.trim().toLowerCase())
+  )
   const archive = async (project: CruxProject): Promise<void> => {
     if (!await confirmDialog({ title: `归档专项「${project.name}」？`, message: '归档后保留专项与已有任务记录。', confirmText: '归档' })) return
     await run('归档专项', () => api.crux.updateProject({ id: project.id, status: 'archived' }))
@@ -31,17 +39,38 @@ export function ProjectsPage(): JSX.Element | null {
     if (result?.ok) setTaskId('')
   }
   return <div className="flex min-h-0 flex-1 flex-col gap-3">
-    <PageHeader title="专项" description="围绕共同目标汇总任务，跟踪负责人和整体进度。" actions={<Button variant="primary" size="sm" disabled={!spaceId} onClick={() => setEditing('new')}><Plus size={14} />新建专项</Button>} />
-    {projects.length === 0 ? <EmptyState title="暂无专项" description="创建专项，将相关任务归入同一目标" /> : <div className="my-scrollbar grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-3 overflow-y-auto xl:grid-cols-2" style={{ scrollbarGutter: 'stable' }}>{projects.map((project) => {
+    <PageHeader title="专项" description="围绕共同目标汇总任务，按状态筛选跟踪负责人、AI 委派进度与整体完成率。" actions={<Button variant="primary" size="sm" disabled={!spaceId} onClick={() => setEditing('new')}><Plus size={14} />新建专项</Button>} />
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <Tabs
+        active={statusTab}
+        onChange={(id) => setStatusTab(id as ProjectFilterTab)}
+        tabs={[
+          { id: 'active', label: '进行中', count: allProjects.filter((p) => p.status === 'active').length },
+          { id: 'done', label: '已完成', count: allProjects.filter((p) => p.status === 'done').length },
+          { id: 'archived', label: '已归档', count: allProjects.filter((p) => p.status === 'archived').length },
+          { id: 'all', label: '全部', count: allProjects.length }
+        ]}
+      />
+      <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索专项名称或目标" />
+    </div>
+    {projects.length === 0 ? <EmptyState title="暂无匹配专项" description="创建专项或切换筛选标签，将相关任务归入同一目标" /> : <div className="my-scrollbar grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-3 overflow-y-auto xl:grid-cols-2" style={{ scrollbarGutter: 'stable' }}>{projects.map((project) => {
       const tasks = snapshot.tasks.filter((t) => t.projectId === project.id)
       const done = tasks.filter((t) => statusOf(snapshot, t.statusId)?.category === 'done').length
+      const started = tasks.filter((t) => ['in_progress', 'in_review', 'blocked'].includes(statusOf(snapshot, t.statusId)?.category ?? '')).length
       const cancelled = tasks.filter((t) => statusOf(snapshot, t.statusId)?.category === 'cancelled').length
+      const delegated = tasks.filter((t) => Boolean(t.executor)).length
       const percent = tasks.length ? Math.round(done / tasks.length * 100) : 0
       return <section key={project.id} className="flex flex-col gap-3 rounded-my-md border border-my-line bg-my-layer-1 p-4" aria-label={`专项 ${project.name}`}>
         <header className="flex items-start gap-2"><FlowIcon name="projects" /><h2 className="min-w-0 flex-1 text-my-md font-medium text-my-primary">{project.name}</h2><span className="rounded-my-sm bg-my-layer-1-active px-2 py-1 text-my-xs text-my-secondary">{project.status === 'active' ? '进行中' : project.status === 'done' ? '已完成' : '已归档'}</span></header>
         <p className="whitespace-pre-wrap text-my-sm text-my-secondary">{project.goal || '尚未填写目标'}</p>
-        <div className="flex items-center gap-2 text-my-xs text-my-tertiary"><span>已完成 {done}/{tasks.length}{cancelled > 0 ? ` · 已取消 ${cancelled}` : ''}</span><span className="ml-auto">{percent}%</span></div>
-        <div role="progressbar" aria-label={`${project.name} 完成率`} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-my-layer-1-active"><div className="h-full rounded-full bg-my-accent" style={{ width: `${percent}%` }} /></div>
+        <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">
+          <span className="tabular-nums">已完成 {done}/{tasks.length} · 进行中 {started}{cancelled > 0 ? ` · 已取消 ${cancelled}` : ''}</span>
+          {delegated > 0 && <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-secondary"><Bot size={11} />AI 委派 {delegated}</span>}
+          <span className="ml-auto tabular-nums">{percent}%</span>
+        </div>
+        <div role="progressbar" aria-label={`${project.name} 完成率`} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+          <TriProgressBar done={done} started={started} total={tasks.length} />
+        </div>
         <div className="flex flex-wrap items-center gap-2"><span className="text-my-xs text-my-tertiary">负责人</span>{project.ownerIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} />)}{project.ownerIds.length === 0 && <span className="text-my-xs text-my-tertiary">尚未指定</span>}</div>
         <ul className="my-scrollbar max-h-64 space-y-1 overflow-y-auto">{tasks.map((task) => <li key={task.id} className="flex items-center gap-1"><button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-my-md px-2 py-2 text-left hover:bg-my-layer-1-active" onClick={() => openTask(task.id)}><span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className="min-w-0 flex-1 truncate text-my-xs text-my-secondary">{task.title}</span><StatusBadge status={statusOf(snapshot, task.statusId)} /></button>{project.status === 'active' && <Button variant="ghost" size="sm" disabled={busy} aria-label={`移出专项 ${task.id}`} onClick={() => void run('移出专项', () => api.crux.updateTask({ id: task.id, patch: { projectId: null } }))}><X size={14} /></Button>}</li>)}</ul>
         {tasks.length === 0 && <p className="text-my-xs text-my-tertiary">专项中还没有任务。</p>}

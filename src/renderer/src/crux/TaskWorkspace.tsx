@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { clsx } from 'clsx'
-import { ChevronDown } from 'lucide-react'
+import { Bot, ChevronDown } from 'lucide-react'
 import type { CruxSnapshot, CruxTask, CruxTaskPatchInput, CruxViewFilter } from '@shared/crux'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { api, hasIpc } from '../api'
@@ -12,7 +12,9 @@ import type { GroupBy, Issue, IssueFilters, OrderBy, StateGroup, WorkItemLayout 
 import { Button, Dropdown, DropdownHeader, DropdownItem, EmptyState, LabelPill, SearchInput } from '../my/ui'
 import { PageToolbar } from '../my/layout/PageLayout'
 import { useInteractionGuard } from '../utils/interaction-scope'
-import { applyTaskFilter, useCrux, type CruxTaskFilterState } from './store'
+import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from './collaboration-platform-store'
+import { applyTaskFilter, statusDisplayName, useCrux, type CruxTaskFilterState } from './store'
+import { isActiveRunStatus, RUN_STATUS_META, useTaskRuns } from './task-run-store'
 import { LabelChip } from './ui'
 import { TaskOutputReviewBoardBadge } from './task-output-review/task-output-review'
 import { deriveTaskWorkspaceDataset, CRUX_STATE_GROUPS } from './task-workspace-adapter'
@@ -90,6 +92,10 @@ export function TaskWorkspace({ scope, layout, iterationId, taskIds }: TaskWorks
 function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationId, taskIds, ownsSurface }: TaskWorkspaceProps & { ownsSurface: () => boolean }): JSX.Element {
   const state = useCrux()
   const { snapshot, workspaceContext, currentSpaceId, busy, activeViewId } = state
+  const typeWorkflows = useCollaborationPlatform((platform) => platform.typeWorkflows)
+  const platformFavorites = useCollaborationPlatform((platform) => platform.favorites)
+  const togglePlatformFavorite = useCollaborationPlatform((platform) => platform.toggleFavorite)
+  const runs = useTaskRuns((runState) => runState.runs)
   const usesGlobalFilter = scope === 'space' && !iterationId
   const sourceIdentity = snapshot ? taskSourceKey(snapshot, workspaceContext) : ''
   const locationKey = JSON.stringify([sourceIdentity, state.module, scope, scope === 'mine' ? null : currentSpaceId, iterationId, taskIds])
@@ -102,7 +108,10 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
   const [tab, setTab] = useState<WorkItemsStore['workItemsTab']>(savedLocation?.tab ?? 'all')
   const [stateGroups, setStateGroups] = useState<StateGroup[]>(() => savedLocation?.stateGroups ?? (scope === 'mine' ? ['backlog', 'unstarted', 'started'] : []))
   const [sourceFilter, setSourceFilter] = useState<CruxTaskFilterState>(savedLocation?.sourceFilter ?? {})
-  const [favorites, setFavorites] = useState<string[]>(savedLocation?.favorites ?? [])
+  const favorites = useMemo(
+    () => platformFavorites.filter((item) => item.kind === 'task').map((item) => item.id),
+    [platformFavorites]
+  )
   const [relation, setRelation] = useState<PersonalTaskRelation>(savedLocation?.relation ?? 'assigned')
   const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(savedLocation?.personalSpaceId ?? null)
   const mounted = useRef(true)
@@ -210,6 +219,13 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
     if (!task || !canEdit(id)) return
     const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined)
     if (patch.statusId && (!flow.canEditStatus || !flow.statusOptions.some(item => item.id === patch.statusId))) return
+    if (patch.statusId && !task.workflow) {
+      const allowed = resolveAllowedTargetStatusIds(snapshot, task, typeWorkflows)
+      if (!allowed.has(patch.statusId)) {
+        useApp.getState().pushToast({ kind: 'info', title: '受工作流规则限制', body: '当前任务类型不允许直接流转到此状态。' })
+        return
+      }
+    }
     if (patch.assigneeIds && !flow.canAssign) return
     if (task.workflow && (patch.statusId || patch.assigneeIds)) {
       if (flow.canRestore) await state.run('更新任务', () => api.crux.restoreLightweightTask({ taskId: id, expectedUpdatedAt: task.updatedAt, statusId: patch.statusId, assigneeIds: patch.assigneeIds }))
@@ -280,11 +296,39 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
       identifier: (issue) => issue.id,
       renderBoardReview: issue => {
         const task = taskById.get(issue.id)
-        return task?.outputReview ? <TaskOutputReviewBoardBadge task={task} /> : null
+        if (!task) return null
+        const taskRuns = runs.filter((run) => run.taskId === task.id)
+        const activeRun = taskRuns.find((run) => isActiveRunStatus(run.status))
+        const queuedCount = taskRuns.filter((run) => run.status === 'queued').length
+        const showRunChip = Boolean(activeRun || queuedCount > 0 || task.executor)
+        if (!task.outputReview && !showRunChip) return null
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {task.outputReview && <TaskOutputReviewBoardBadge task={task} />}
+            {activeRun ? (
+              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-info-subtle px-1.5 py-0.5 text-my-2xs text-my-info-text">
+                <Bot size={11} />
+                {activeRun.executorName} · {RUN_STATUS_META[activeRun.status].label}
+              </span>
+            ) : queuedCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+                <Bot size={11} />排队 {queuedCount}
+              </span>
+            ) : task.executor ? (
+              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-tertiary">
+                <Bot size={11} />{task.executor.name}
+              </span>
+            ) : null}
+          </div>
+        )
       },
       stateIds: id => {
         const task = taskById.get(id)
-        return task ? getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined).statusOptions.map(status => status.id) : []
+        if (!task) return []
+        const baseOptions = getCruxLightweightTaskCapabilities(snapshot, task, actorId ?? undefined).statusOptions.map(status => status.id)
+        if (task.workflow) return baseOptions
+        const allowed = resolveAllowedTargetStatusIds(snapshot, task, typeWorkflows)
+        return baseOptions.filter((statusId) => allowed.has(statusId))
       },
       cycleMode: 'version', cycleIds: (issue) => taskById.get(issue.id)?.iterationIds ?? [],
       assigneeIds: (issue) => taskById.get(issue.id)?.assigneeIds ?? [],
@@ -311,7 +355,7 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
           <DropdownItem key={type.id} selected={filter.typeIds?.includes(type.id)} onClick={() => setFilter({ typeIds: toggleValue(filter.typeIds ?? [], type.id) })}>{type.name}</DropdownItem>)}
         <DropdownHeader>工作状态</DropdownHeader>
         {snapshot.taskStatuses.filter((status) => !filterSpaceId || status.spaceId === filterSpaceId).map((status) =>
-          <DropdownItem key={status.id} selected={filter.statusIds?.includes(status.id)} onClick={() => setFilter({ statusIds: toggleValue(filter.statusIds ?? [], status.id) })}>{status.name}</DropdownItem>)}
+          <DropdownItem key={status.id} selected={filter.statusIds?.includes(status.id)} onClick={() => setFilter({ statusIds: toggleValue(filter.statusIds ?? [], status.id) })}>{statusDisplayName(status)}</DropdownItem>)}
         <DropdownHeader>版本</DropdownHeader>
         {data.cycles.filter((version) => !filterSpaceId || version.projectId === filterSpaceId).map((version) => <DropdownItem key={version.id} selected={filter.iterationId === version.id} onClick={() => setFilter({ iterationId: filter.iterationId === version.id ? undefined : version.id })}>{version.name}</DropdownItem>)}
         <DropdownHeader>专项</DropdownHeader>
@@ -337,7 +381,10 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
           else state.setCreateTaskOpen(false)
         }
       },
-      favorites, toggleFavorite: (id) => setFavorites((previous) => toggleValue(previous, id).slice(-50)), saveView
+      favorites, toggleFavorite: (id) => {
+        const task = taskById.get(id)
+        togglePlatformFavorite('task', id, task?.spaceId)
+      }, saveView
     }
   }
   const openTaskId = state.openTaskId

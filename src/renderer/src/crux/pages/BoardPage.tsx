@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { BookmarkPlus, Plus, X } from 'lucide-react'
 import { api } from '../../api'
-import { useCrux, spaceTasks, applyTaskFilter, memberOf, statusOf, isTriagePending, allowedStatusIdsFor, PRIORITY_LABEL } from '../store'
+import { useCrux, spaceTasks, applyTaskFilter, memberOf, statusOf, statusDisplayName, isTriagePending, PRIORITY_LABEL } from '../store'
+import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from '../collaboration-platform-store'
+import { isActiveRunStatus, RUN_STATUS_META, useTaskRuns } from '../task-run-store'
 import { PageHeader, StatusBadge, PriorityBadge, ExecutorBadge, MemberChip, inputClass, compactInputClass, Select } from '../ui'
 import { Button, EmptyState } from '../../my/ui'
 import { TaskFilters } from './TasksPage'
@@ -22,6 +24,8 @@ export function BoardPage(): JSX.Element | null {
   const openTask = useCrux((s) => s.openTask)
   const run = useCrux((s) => s.run)
   const busy = useCrux((s) => s.busy)
+  const typeWorkflows = useCollaborationPlatform((s) => s.typeWorkflows)
+  const taskRuns = useTaskRuns((s) => s.runs)
   const [localGroup, setGroupBy] = useState<GroupBy>('status')
   const [viewName, setViewName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -37,7 +41,7 @@ export function BoardPage(): JSX.Element | null {
   const types = snapshot.taskTypes.filter((t) => t.spaceId === spaceId)
   const savedViews = snapshot.views.filter((v) => v.spaceId === spaceId)
   let columns: Array<{ key: string; title: string; tasks: CruxTask[] }>
-  if (groupBy === 'status') columns = statuses.map((s) => ({ key: s.id, title: s.name, tasks: tasks.filter((t) => t.statusId === s.id) }))
+  if (groupBy === 'status') columns = statuses.map((s) => ({ key: s.id, title: statusDisplayName(s), tasks: tasks.filter((t) => t.statusId === s.id) }))
   else if (groupBy === 'assignee') {
     const ids = new Set([...(snapshot.spaces.find((s) => s.id === spaceId)?.memberIds ?? []), ...tasks.flatMap((t) => t.assigneeIds)])
     columns = [...ids].map((id) => ({ key: id, title: memberOf(snapshot, id)?.name ?? '已离开的成员', tasks: tasks.filter((t) => t.assigneeIds.includes(id)) }))
@@ -48,7 +52,7 @@ export function BoardPage(): JSX.Element | null {
   } else columns = (Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => ({ key: p, title: PRIORITY_LABEL[p], tasks: tasks.filter((t) => t.priority === p) }))
   const moveTask = (taskId: string, statusId: string): void => {
     const task = tasks.find((t) => t.id === taskId)
-    if (!busy && !readOnly && task && task.statusId !== statusId && allowedStatusIdsFor(snapshot, task.spaceId, task.typeId).has(statusId)) void run('移动任务', () => api.crux.updateTask({ id: task.id, patch: { statusId } }))
+    if (!busy && !readOnly && task && task.statusId !== statusId && resolveAllowedTargetStatusIds(snapshot, task, typeWorkflows).has(statusId)) void run('移动任务', () => api.crux.updateTask({ id: task.id, patch: { statusId } }))
   }
   const saveView = async (): Promise<void> => {
     if (!spaceId || !viewName.trim() || busy) return
@@ -84,12 +88,14 @@ export function BoardPage(): JSX.Element | null {
               {column.tasks.length === 0 && pinnedColumns.includes(column.key) && <button type="button" className="text-my-2xs text-my-tertiary hover:text-my-primary" title="收起空列" onClick={() => setPinnedColumns((prev) => prev.filter((id) => id !== column.key))}>收起</button>}
             </header>
             <div className="my-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2" style={{ scrollbarGutter: 'stable' }}>{column.tasks.map((task) => {
-              const allowed = allowedStatusIdsFor(snapshot, task.spaceId, task.typeId)
+              const allowed = resolveAllowedTargetStatusIds(snapshot, task, typeWorkflows)
               const blocking = task.relations.filter((r) => r.kind === 'blocks')
               const resolved = blocking.filter((r) => { const related = snapshot.tasks.find((t) => t.id === r.taskId); return related && ['done', 'cancelled'].includes(statusOf(snapshot, related.statusId)?.category ?? '') }).length
+              const activeRun = taskRuns.find((r) => r.taskId === task.id && isActiveRunStatus(r.status))
+              const queuedCount = taskRuns.filter((r) => r.taskId === task.id && r.status === 'queued').length
               return <article key={task.id} draggable={groupBy === 'status' && !busy && !readOnly} onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-crux-task', task.id) }} className="rounded-my-md border border-my-line bg-my-canvas p-2">
                 <button type="button" onClick={() => openTask(task.id)} className="mb-2 w-full text-left text-my-xs leading-relaxed text-my-primary"><span className="mr-1 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className={statusOf(snapshot, task.statusId)?.category === 'done' ? 'text-my-tertiary line-through' : ''}>{task.title}</span></button>
-                <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} /></div>
+                <div className="flex flex-wrap items-center gap-1">{groupBy !== 'status' && <StatusBadge status={statusOf(snapshot, task.statusId)} />}{task.priority !== 'none' && <PriorityBadge priority={task.priority} />}<ExecutorBadge executor={task.executor} dispatchNote={task.dispatch?.note} />{activeRun && <span className="rounded-my-sm bg-my-info-subtle px-1.5 py-0.5 text-my-2xs font-medium text-my-info-text">{RUN_STATUS_META[activeRun.status].label}</span>}{!activeRun && queuedCount > 0 && <span className="my-chip tabular-nums">+{queuedCount} 排队</span>}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-1">{task.assigneeIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} size="sm" />)}<TaskOutputReviewBoardBadge task={task} />{blocking.length > 0 && <span className="ml-auto text-my-2xs text-my-tertiary">阻塞 {blocking.length} · 已结束 {resolved}/{blocking.length}</span>}</div>
                 <Select
                   size="sm"
@@ -98,14 +104,17 @@ export function BoardPage(): JSX.Element | null {
                   disabled={busy || readOnly}
                   value={task.statusId}
                   onChange={(val) => moveTask(task.id, val)}
-                  options={statuses.filter((s) => allowed.has(s.id)).map((s) => ({ value: s.id, label: s.name }))}
+                  options={statuses.filter((s) => allowed.has(s.id)).map((s) => ({ value: s.id, label: statusDisplayName(s) }))}
                 />
               </article>
             })}{column.tasks.length === 0 && <p className="py-3 text-center text-my-xs text-my-tertiary">暂无任务</p>}</div>
           </section>)}
           {collapsedColumns.length > 0 && <aside className="collab-collapsed-columns" aria-label="折叠的列">
-            <h2 className="collab-collapsed-columns-title">折叠的列</h2>
-            <div className="flex flex-col gap-1.5">
+            <div className="collab-collapsed-columns-header">
+              <h2 className="collab-collapsed-columns-title">折叠的列</h2>
+              <span className="collab-stat text-my-xs text-my-tertiary">{collapsedColumns.length}</span>
+            </div>
+            <div className="collab-collapsed-columns-list">
               {collapsedColumns.map((column) => (
                 <button key={column.key} type="button" data-drag-over={dragOverCol === column.key ? 'true' : undefined}
                   onClick={() => setPinnedColumns((prev) => prev.includes(column.key) ? prev : [...prev, column.key])}
@@ -114,7 +123,8 @@ export function BoardPage(): JSX.Element | null {
                   onDrop={(e) => { e.preventDefault(); setDragOverCol(null); if (groupBy === 'status') moveTask(e.dataTransfer.getData('application/x-crux-task'), column.key) }}
                   className="collab-collapsed-col" title={`展开「${column.title}」空列`}>
                   <span className="min-w-0 flex-1 truncate">{column.title}</span>
-                  <span className="text-my-2xs text-my-tertiary">0</span>
+                  <span className="collab-collapsed-col-count collab-stat">0</span>
+                  <Plus size={12} className="collab-collapsed-col-expand shrink-0" aria-hidden="true" />
                 </button>
               ))}
             </div>

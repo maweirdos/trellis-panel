@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type JSX, type ReactNode } from 'react'
-import { Check, Code2, MessageSquare, MoreHorizontal, Star, Trash2, X } from 'lucide-react'
+import { ArrowRight, Bell, Bot, Check, Code2, MessageSquare, MoreHorizontal, Star, Trash2, X } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { currentPostInput, fixedPostInput } from '@shared/crux'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
@@ -12,7 +12,10 @@ import { confirmDialog } from '../../components/Dialogs'
 import { PageContent, PageLayout } from '../../my/layout/PageLayout'
 import { Button, Dropdown, DropdownItem, Tooltip } from '../../my/ui'
 import { InteractionScope } from '../../utils/interaction-scope'
-import { memberOf, useCrux } from '../store'
+import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from '../collaboration-platform-store'
+import { memberOf, statusDisplayName, useCrux } from '../store'
+import { isActiveRunStatus, RUN_STATUS_META, useTaskRuns } from '../task-run-store'
+import { TaskExecutionRunPanel } from '../TaskExecutionRunPanel'
 import { TaskWorkflow } from '../TaskWorkflow'
 import { TaskConversationResults } from './task-detail/TaskConversationResults'
 import { formatCollaborationTime } from '../ui'
@@ -68,7 +71,7 @@ export function EmbeddedTaskPost({ taskId, onClose, onContinue, onQuote, onPolis
   </InteractionScope>
 }
 
-const postTabs = { activity: '动态', conversations: '对话记录', workflow: '工作记录' } as const
+const postTabs = { activity: '动态', runs: '执行与 AI', conversations: '对话记录', workflow: '工作记录' } as const
 type PostTab = keyof typeof postTabs
 
 function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, onQuote, onPolish, reviewSlot, editorDecoration }: {
@@ -84,10 +87,19 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
 }): JSX.Element | null {
   const context = useCrux((state) => state.workspaceContext)
   const busy = useCrux((state) => state.busy)
+  const typeWorkflows = useCollaborationPlatform((state) => state.typeWorkflows)
+  const favorites = useCollaborationPlatform((state) => state.favorites)
+  const toggleFavorite = useCollaborationPlatform((state) => state.toggleFavorite)
+  const taskRuns = useTaskRuns((state) => state.runs).filter((run) => run.taskId === task.id)
+  const activeRun = taskRuns.find((run) => isActiveRunStatus(run.status))
+  const queuedRunCount = taskRuns.filter((run) => run.status === 'queued').length
   const source = useTaskSource({ spaceId: task.spaceId, taskId: task.id, embedded })
   const { mutate, error, pending } = useTaskMutation(source)
-  const [panel, setPanel] = useState<'properties' | 'research' | null>(null)
+  const [panel, setPanel] = useState<'properties' | 'research' | null>(() => (embedded ? null : 'properties'))
   const propertiesOpen = panel === 'properties'
+  const starred = favorites.some((fav) => fav.kind === 'task' && fav.id === task.id)
+  const subtasks = snapshot.tasks.filter((candidate) => candidate.parentTaskId === task.id)
+  const doneSubtasks = subtasks.filter((candidate) => snapshot.taskStatuses.find((st) => st.id === candidate.statusId)?.category === 'done').length
   const [selectedSection, setSection] = useState<PostTab>('activity')
   const sectionId = useId()
   const tabBar = useRef<HTMLDivElement>(null)
@@ -119,12 +131,17 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const flow = getCruxLightweightTaskCapabilities(snapshot, task, actorId)
   const simple = flow.lightweight || flow.canRestore
   const desktop = hasIpc && typeof api.conversationRead === 'function'
-  const availableTabs: PostTab[] = ['activity']
+  const availableTabs: PostTab[] = ['activity', 'runs']
   if (desktop && workSources.length) availableTabs.push('conversations')
   if (!simple) availableTabs.push('workflow')
   const section = availableTabs.includes(selectedSection) ? selectedSection : 'activity'
   const status = snapshot.taskStatuses.find(item => item.id === task.statusId)
   const closed = status?.category === 'done' || status?.category === 'cancelled'
+  const allowedTargets = resolveAllowedTargetStatusIds(snapshot, task, typeWorkflows)
+  const nextFlowStatuses = snapshot.taskStatuses
+    .filter((item) => item.spaceId === task.spaceId && item.id !== task.statusId && allowedTargets.has(item.id))
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 4)
   const ordinaryTaskChat = context.state === 'connected' && isOrdinaryConversationTask(task)
   const mayOpenOrdinaryChat = ordinaryTaskChat && Boolean(actorId && task.assigneeIds[0] === actorId && !task.triagePending && !disabled)
   const canPlanInProject = context.state === 'connected' && !closed && canStartAssignedTaskPlan(task, actorId)
@@ -169,7 +186,8 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
         <span className="min-w-0 truncate text-my-xs text-my-tertiary">{space.name}</span><span className="shrink-0 text-my-sm text-my-secondary">{task.id}</span>
         <span className="collab-task-source-chip">{context.state === 'local' ? '本机任务' : '团队任务'}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Tooltip label={following ? '取消关注' : '关注任务'}><Button size="sm" variant="ghost" disabled={disabled || !actorId} aria-label={following ? '取消关注任务' : '关注任务'} aria-pressed={following} onClick={() => { if (actorId) void mutate('更新任务关注', () => api.crux.updateTask({ id: task.id, patch: { followerToggle: actorId } })) }}><Star size={15} className={following ? 'fill-current' : ''} /></Button></Tooltip>
+          <Tooltip label={starred ? '从侧边栏取消收藏' : '收藏到侧边栏'}><Button size="sm" variant="ghost" aria-label={starred ? '取消收藏任务' : '收藏任务'} aria-pressed={starred} onClick={() => toggleFavorite('task', task.id, task.spaceId)}><Star size={15} className={starred ? 'fill-current text-my-warning-text' : ''} /></Button></Tooltip>
+          <Tooltip label={following ? '取消关注动态' : '关注任务动态'}><Button size="sm" variant="ghost" disabled={disabled || !actorId} aria-label={following ? '取消关注任务' : '关注任务'} aria-pressed={following} onClick={() => { if (actorId) void mutate('更新任务关注', () => api.crux.updateTask({ id: task.id, patch: { followerToggle: actorId } })) }}><Bell size={15} className={following ? 'fill-current' : ''} /></Button></Tooltip>
           <Dropdown align="right" width={170} trigger={({ toggle, open }) => <Tooltip label="更多任务操作"><Button size="sm" variant="ghost" aria-label="更多任务操作" aria-expanded={open} aria-haspopup="true" onClick={toggle}><MoreHorizontal size={16} /></Button></Tooltip>}>
             {(dismiss) => <>
               {context.state === 'connected' && api.teamContent && <DropdownItem onClick={() => { dismiss(); setPanel('research') }}>Agent 调研</DropdownItem>}
@@ -190,8 +208,48 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
               <TaskPostTitle task={task} draft={draft} disabled={disabled || !actorId} mutate={mutate} />
               <div className="flex flex-wrap items-center gap-2"><TaskPostControls task={task} snapshot={snapshot} actor={actorId} disabled={disabled} mutate={mutate} onProperties={() => setPanel(propertiesOpen ? null : 'properties')} onWorkflow={() => switchSection('workflow', true)} />
                 {project && <span className="my-item-description">专项 · {project.name}</span>}
+                {(activeRun || queuedRunCount > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => switchSection('runs', true)}
+                    className={`inline-flex items-center gap-1.5 rounded-my-base border border-my-line px-2 py-1 text-my-xs font-medium ${activeRun ? 'bg-my-info-subtle text-my-info-text' : 'bg-my-layer-1 text-my-secondary'}`}
+                  >
+                    <Bot size={13} />
+                    {activeRun ? `${activeRun.executorName} · ${RUN_STATUS_META[activeRun.status].label}` : `${queuedRunCount} 个执行排队中`}
+                  </button>
+                )}
               </div>
+              {!task.workflow && nextFlowStatuses.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2" aria-label="工作流快捷流转">
+                  <span className="text-my-xs text-my-tertiary">流转至：</span>
+                  {nextFlowStatuses.map((target) => (
+                    <Button
+                      key={target.id}
+                      size="sm"
+                      variant={target.category === 'done' ? 'primary' : 'outline'}
+                      disabled={disabled}
+                      onClick={() => void mutate(`流转至 ${statusDisplayName(target)}`, () => api.crux.updateTask({ id: task.id, patch: { statusId: target.id } }))}
+                    >
+                      <ArrowRight size={12} />{statusDisplayName(target)}
+                    </Button>
+                  ))}
+                  <Button size="sm" variant="ghost" className="ml-auto" onClick={() => switchSection('runs', true)}>
+                    <Bot size={13} />AI 执行 ({taskRuns.length})
+                  </Button>
+                </div>
+              )}
               <TaskPostBody task={task} draft={draft} disabled={disabled || !actorId} mutate={mutate} onQuote={embedded ? onQuote : undefined} onPolish={embedded ? onPolish : undefined} editorDecoration={editorDecoration} />
+              {subtasks.length > 0 && (
+                <section className="flex flex-col gap-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2.5" aria-label="子任务进度">
+                  <div className="flex items-center justify-between text-my-xs">
+                    <span className="font-medium text-my-primary">子任务进度</span>
+                    <span className="tabular-nums text-my-tertiary">{doneSubtasks}/{subtasks.length}（{Math.round((doneSubtasks / subtasks.length) * 100)}%）</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-my-layer-2">
+                    <div className="h-full rounded-full bg-my-accent" style={{ width: `${Math.round((doneSubtasks / subtasks.length) * 100)}%` }} />
+                  </div>
+                </section>
+              )}
               {embedded && reviewSlot}
               <TaskConversationResults task={task} actorId={actorId} embedded={embedded} />
               <div className="flex flex-wrap items-center gap-2">
@@ -248,6 +306,7 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                 </div>
                 <div id={`${sectionId}-panel`} role="tabpanel" aria-labelledby={`${sectionId}-${section}`} className="task-post-tab-content">
                   {section === 'activity' && <TaskDiscussion taskDraft={draft} snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} source={source} />}
+                  {section === 'runs' && <TaskExecutionRunPanel snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} />}
                   {section === 'conversations' && <div className="task-post-conversations">
                     {workSources.map(link =>
                       <button key={link.id} type="button" className="task-post-conversation" disabled={conversationPending} onClick={() => void askTaskAgent(link.id)}>

@@ -3,7 +3,8 @@ import { ChevronDown } from 'lucide-react'
 import type { CruxPriority, CruxSnapshot, CruxTask, CruxTaskPatchInput } from '@shared/crux'
 import { api } from '../../../api'
 import { Button, Dropdown, DropdownHeader, DropdownItem, Tooltip } from '../../../my/ui'
-import { allowedStatusIdsFor, memberOf, PRIORITY_LABEL, useCrux, visibleLabels } from '../../store'
+import { memberOf, PRIORITY_LABEL, statusDisplayName, useCrux, visibleLabels } from '../../store'
+import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from '../../collaboration-platform-store'
 import { Field, LabelChip, MemberChip, Select } from '../../ui'
 import { TaskAllocationPicker } from './TaskAllocationPicker'
 import type { TaskMutation, TaskSourceOwner } from './use-task-source'
@@ -39,7 +40,12 @@ export function TaskProperties({ snapshot, task, disabled, actorId, source, muta
     void save(next)
   }
   const managed = Boolean(task.workflow)
-  const allowed = allowedStatusIdsFor(snapshot, task.spaceId, (draft.typeId === undefined ? task.typeId : draft.typeId) ?? undefined)
+  const typeWorkflows = useCollaborationPlatform((state) => state.typeWorkflows)
+  const allowed = resolveAllowedTargetStatusIds(snapshot, {
+    spaceId: task.spaceId,
+    typeId: (draft.typeId === undefined ? task.typeId : draft.typeId) ?? undefined,
+    statusId: draft.statusId ?? task.statusId
+  }, typeWorkflows)
   const statuses = snapshot.taskStatuses.filter((status) => status.spaceId === task.spaceId && allowed.has(status.id)).sort((a, b) => a.order - b.order)
   const types = snapshot.taskTypes.filter((type) => type.spaceId === task.spaceId)
   const visible = visibleLabels(snapshot, task.spaceId)
@@ -59,7 +65,7 @@ export function TaskProperties({ snapshot, task, disabled, actorId, source, muta
   const handler = memberOf(snapshot, handlerId)
   const hasDraft = Object.keys(draft).length > 0
   return <div className="flex min-w-0 flex-col gap-4" aria-label="任务属性">
-    {!managed && <Field label="状态"><Select disabled={disabled} value={draft.statusId ?? task.statusId} onChange={(value) => change({ statusId: value })} options={statuses.map((status) => ({ value: status.id, label: status.name }))} /></Field>}
+    {!managed && <Field label="状态"><Select disabled={disabled} value={draft.statusId ?? task.statusId} onChange={(value) => change({ statusId: value })} options={statuses.map((status) => ({ value: status.id, label: statusDisplayName(status) }))} /></Field>}
     <Field label="优先级"><Select disabled={disabled} value={draft.priority ?? task.priority} onChange={(value) => change({ priority: value as CruxPriority })} options={(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((priority) => ({ value: priority, label: PRIORITY_LABEL[priority] }))} /></Field>
     <Field label="类型"><Select disabled={disabled} value={(draft.typeId === undefined ? task.typeId : draft.typeId) ?? ''} onChange={(value) => change({ typeId: value || null })} options={[{ value: '', label: '默认类型' }, ...types.map((type) => ({ value: type.id, label: type.name }))]} /></Field>
     <Tooltip label={task.triagePending ? '通过阶段操作接纳任务后再安排版本' : '更改任务所属版本'} wrap><span className="w-full"><Field label="版本"><Select disabled={disabled || task.triagePending} value={(draft.iterationIds ?? task.iterationIds)[0] ?? ''} onChange={(value) => change({ iterationIds: value ? [value] : [] })} options={[{ value: '', label: '未排期' }, ...snapshot.iterations.filter((iteration) => iteration.spaceId === task.spaceId && (iteration.status !== 'completed' || task.iterationIds.includes(iteration.id))).map((iteration) => ({ value: iteration.id, label: `${iteration.name}${iteration.status === 'completed' ? '（已完成）' : ''}` }))]} /></Field></span></Tooltip>

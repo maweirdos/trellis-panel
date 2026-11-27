@@ -4,9 +4,10 @@ import { formatCollaborationTime } from '../ui'
  * Agent/小队目标当前只登记「等待 Runtime」；成员目标即时通知进收件箱。
  */
 import { useState } from 'react'
-import { Play, Plus, Trash2 } from 'lucide-react'
+import { Play, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { api } from '../../api'
-import { useCrux, availableExecutionTargets } from '../store'
+import { AUTOMATION_PRESETS, type AutomationPreset } from '../collaboration-platform-store'
+import { useCrux, availableExecutionTargets, statusDisplayName } from '../store'
 import { PageHeader, Field, inputClass, textareaClass, Select } from '../ui'
 import { Button, EmptyState, Modal, Switch } from '../../my/ui'
 import type { CruxAutomation, CruxAutomationTriggerKind } from '@shared/crux'
@@ -23,6 +24,7 @@ export function AutomationsPage(): JSX.Element {
   const run = useCrux((s) => s.run)
   const [editing, setEditing] = useState<CruxAutomation | 'new' | null>(null)
   const [historyOf, setHistoryOf] = useState<CruxAutomation | null>(null)
+  const [presetsOpen, setPresetsOpen] = useState(false)
   if (!snapshot) return <></>
 
   const automations = snapshot.automations.filter((a) => a.spaceId === currentSpaceId)
@@ -31,12 +33,37 @@ export function AutomationsPage(): JSX.Element {
   const members = snapshot.spaces.find((s) => s.id === currentSpaceId)?.memberIds
     .map((id) => snapshot.members.find((m) => m.id === id)).filter((m): m is NonNullable<typeof m> => Boolean(m)) ?? []
 
+  const applyPreset = async (preset: AutomationPreset): Promise<void> => {
+    if (!currentSpaceId) return
+    const defaultAgent = agents[0]
+    const defaultMember = members[0]
+    const target = defaultAgent
+      ? { kind: 'agent' as const, id: defaultAgent.id }
+      : defaultMember
+        ? { kind: 'member' as const, id: defaultMember.id }
+        : { kind: 'none' as const }
+    const res = await run('创建自动化模板', () => api.crux.saveAutomation({
+      spaceId: currentSpaceId,
+      name: preset.name,
+      enabled: true,
+      trigger: { kind: preset.triggerKind, value: preset.triggerValue || undefined, days: preset.days },
+      target,
+      instruction: preset.instruction
+    }))
+    if (res?.ok) setPresetsOpen(false)
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader
-        title="自动化"
-        description={`按时间、任务状态或评论触发；${shared ? '团队服务' : '本机应用'}负责定时规则，Agent 与小队等待运行环境执行`}
-        actions={<Button variant="primary" size="sm" onClick={() => setEditing('new')}><Plus size={14} />新建自动化</Button>}
+        title="Agent 自动化"
+        description={`响应任务事件或定时计划让 Agent 自主工作；${shared ? '团队服务' : '本机应用'}负责调度触发`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPresetsOpen(true)}><Sparkles size={14} />模板库</Button>
+            <Button variant="primary" size="sm" onClick={() => setEditing('new')}><Plus size={14} />创建自动化</Button>
+          </div>
+        }
       />
       {automations.length === 0
         ? <EmptyState title="暂无自动化" description="把重复动作（汇总、通知、初检）交给规则" />
@@ -50,7 +77,7 @@ export function AutomationsPage(): JSX.Element {
                     <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs font-normal text-my-tertiary">
                       {TRIGGER_LABEL[automation.trigger.kind]}
                       {automation.trigger.kind === 'schedule' && ` ${automation.trigger.value}${automation.trigger.days?.length ? ` · 周${automation.trigger.days.join('、')}` : ' · 每天'}`}
-                      {automation.trigger.kind === 'task_status' && ` → ${statuses.find((s) => s.id === automation.trigger.value)?.name ?? '—'}`}
+                      {automation.trigger.kind === 'task_status' && ` → ${statusDisplayName(statuses.find((s) => s.id === automation.trigger.value))}`}
                       {automation.trigger.kind === 'comment' && ` 含「${automation.trigger.value}」`}
                     </span>
                   </h2>
@@ -77,7 +104,7 @@ export function AutomationsPage(): JSX.Element {
       {editing && <AutomationEditor key={typeof editing === 'string' ? editing : editing.id}
         automation={editing}
         onClose={() => setEditing(null)}
-        statuses={statuses.map((s) => ({ id: s.id, name: s.name }))}
+        statuses={statuses.map((s) => ({ id: s.id, name: statusDisplayName(s) }))}
         agents={agents.map((a) => ({ id: a.id, name: a.name }))}
         crews={crews.map((c) => ({ id: c.id, name: c.name }))}
         members={members.map((m) => ({ id: m.id, name: m.name }))}
@@ -100,6 +127,27 @@ export function AutomationsPage(): JSX.Element {
             ))}
             {(historyOf?.runs.length ?? 0) === 0 && <li className="text-my-xs text-my-tertiary">还没有运行记录；可手动运行一次验证规则。</li>}
           </ul>
+        </div>
+      </Modal>
+      <Modal open={presetsOpen} onClose={() => setPresetsOpen(false)} width={560} ariaLabel="自动化规则模板">
+        <div className="flex flex-col gap-3 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-my-primary">常用协作自动化模板</h2>
+            <p className="mt-0.5 text-my-xs text-my-tertiary">一键创建并默认指派给当前空间可用 Agent（若无则通知成员），创建后可随时微调。</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {AUTOMATION_PRESETS.map((preset) => (
+              <div key={preset.id} className="flex items-start justify-between gap-3 rounded-my-base border border-my-line bg-my-layer-1 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="my-item-title">{preset.name}</div>
+                  <p className="my-item-description mt-0.5">{preset.description}</p>
+                  <p className="mt-1 text-my-2xs text-my-tertiary">触发：{TRIGGER_LABEL[preset.triggerKind]}{preset.triggerValue ? ` · ${preset.triggerValue}` : ''}</p>
+                </div>
+                <Button size="sm" variant="primary" onClick={() => void applyPreset(preset)}>一键启用</Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => setPresetsOpen(false)}>关闭</Button></div>
         </div>
       </Modal>
     </div>

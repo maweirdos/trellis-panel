@@ -8,6 +8,9 @@ import { api, hasIpc } from '../../api'
 import { Button, Modal, Tooltip } from '../../my/ui'
 import { InteractionScope } from '../../utils/interaction-scope'
 import { observeCollaborationWorkspace, PRIORITY_LABEL, useCrux, visibleLabels } from '../store'
+import { useCollaborationPlatform, workflowKey } from '../collaboration-platform-store'
+import { useLocalExecutionSlot } from '../local-execution-slot'
+import { useTaskRuns } from '../task-run-store'
 import { Field, inputClass, textareaClass, Select } from '../ui'
 import { capturePostFiles, sendPostFiles, PostFilePicker } from './task-detail/TaskPostFiles'
 import { TaskAllocationPicker, type TaskAllocation } from './task-detail/TaskAllocationPicker'
@@ -167,6 +170,8 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const [parentTaskId, setParentTaskId] = useTaskDraftField(draft, 'parentTaskId', unsent?.parentTaskId ?? (retained ? retained.input.parentTaskId ?? '' : initialParent ?? ''))
   const [creationMode, setCreationMode] = useTaskDraftField<'ai' | 'manual'>(draft, 'creationMode', 'manual')
   const [creationIntent, setCreationIntent] = useTaskDraftField<TaskCreationIntent>(draft, 'creationIntent', unsent?.creationIntent ?? ((retained ? retained.input.triagePending : explicitTriage) ? 'triage' : 'schedule'))
+  const [autoEnqueueRun, setAutoEnqueueRun] = useState(true)
+  const typeWorkflows = useCollaborationPlatform((state) => state.typeWorkflows)
   const [intakeOriginal] = useTaskDraftField(draft, 'intakeOriginal', '')
   const [intakeFiles] = useTaskDraftField<IntakeFile[]>(draft, 'intakeFiles', [])
   const [draftError, setDraftError] = useState('')
@@ -228,10 +233,11 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   }
   const submit = async (): Promise<void> => {
     if (flight.current || disabled || reconciliationRequired || !actorId || (!locked && (!title.trim() || needsFallback || requiresAssignee))) return
+    const typeWf = typeId ? typeWorkflows[workflowKey(spaceId, typeId)] : undefined
     const input: CruxTaskInput = submittedRef.current ?? {
       spaceId, creatorId: actorId, title: title.trim(), description: handoff?.draftId ? handoff.description : description.trim() || undefined,
       ...(staged ? { workKind, acceptanceCriteria: criteria.split(/\r?\n/).map((criterion) => criterion.trim()).filter(Boolean) } : {}),
-      typeId: typeId || undefined, priority, assigneeIds: allocation.assigneeIds, executor: allocation.executor,
+      typeId: typeId || undefined, statusId: typeWf?.defaultStatusId || undefined, priority, assigneeIds: allocation.assigneeIds, executor: allocation.executor,
       labelIds, projectId: projectId || undefined, iterationIds: triagePending ? [] : iterationId ? [iterationId] : [],
       parentTaskId: parentTaskId || undefined, triagePending,
       ...(handoff ? { handoff: { id: handoff.id, versionLabel: handoff.material?.versionLabel }, ...(handoff.conversationId ? { bindConversation: { id: handoff.conversationId, title: handoff.title } } : {}) } : {})
@@ -344,7 +350,35 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
     }
     const acknowledge = draft.acknowledge()
     const result = await mutate('新建任务', async () => { const result = await api.crux.createTask(input); if (result.ok) acknowledge(); return result })
-    if (result) { onClose(); useCrux.getState().openTask(result.taskId) }
+    if (result) {
+      if (autoEnqueueRun && allocation.executor && !triagePending) {
+        const execAgent = allocation.executor.kind === 'agent'
+          ? snapshot.agents.find((a) => a.id === allocation.executor?.id)
+          : undefined
+        const slot = useLocalExecutionSlot.getState().resolveAgentSlot(
+          allocation.executor.id,
+          execAgent ? { runtimeKind: execAgent.runtimeKind, workingDirectory: execAgent.workingDirectory } : undefined
+        ).slot
+        const agentMeta = useCollaborationPlatform.getState().getAgentMeta(allocation.executor.id)
+        useTaskRuns.getState().enqueueRun({
+          taskId: result.taskId,
+          spaceId,
+          executorKind: allocation.executor.kind,
+          executorId: allocation.executor.id,
+          executorName: allocation.executor.name,
+          runtimeKind: slot.runtimeKind,
+          model: slot.model,
+          workingDirectory: slot.workingDirectory,
+          localWorkdirPath: slot.localWorkdirPath,
+          isolationMode: agentMeta.isolationMode,
+          triggerSource: 'delegate',
+          prompt: `新建委派任务 ${result.taskId}「${title.trim()}」：\n${description.trim() || '请按任务标题分析并推进'}`,
+          runtimeReady: true
+        })
+      }
+      onClose()
+      useCrux.getState().openTask(result.taskId)
+    }
   }
   if (handoff?.draftId && explicitTriage) return <section className="flex flex-wrap items-center gap-2 border-b border-my-line bg-my-panel px-4 py-2" aria-label="交接需求">
     <span className="my-item-title">{handoff.material?.versionLabel ?? handoff.title}</span>
@@ -388,6 +422,18 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
           {handoff && <PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} />}
           {selectedMaterial && <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><p className="text-my-sm text-my-primary">首次正文 · {selectedMaterial.versionLabel}</p><details className="mt-2 text-my-sm text-my-secondary"><summary className="cursor-pointer">查看共享正文</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></details></div>}
           {handoff && !triagePending && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">负责人</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></section>}
+          {!handoff && (
+            <section className="flex flex-col gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-3">
+              <h3 className="my-item-title">负责人与 AI 委派执行者</h3>
+              <TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled} />
+              {allocation.executor && !triagePending && (
+                <label className="flex items-center gap-2 text-my-xs text-my-secondary">
+                  <input type="checkbox" checked={autoEnqueueRun} onChange={(e) => setAutoEnqueueRun(e.target.checked)} />
+                  创建后立即派发给「{allocation.executor.name}」进入执行队列
+                </label>
+              )}
+            </section>
+          )}
           <details><summary className="flex cursor-pointer items-center gap-2 text-my-xs font-medium text-my-secondary"><ChevronDown size={14} />完善任务属性</summary><div className="mt-3 flex flex-col gap-3">
           {!initialParent && canChooseIntent && <Field label="安排"><Select value={creationIntent} onChange={value => chooseIntent(value as TaskCreationIntent)} options={[{ value: 'schedule', label: '加入看板' }, { value: 'triage', label: '交给分拣台' }]} /></Field>}
           {!triagePending && <Field label="版本">

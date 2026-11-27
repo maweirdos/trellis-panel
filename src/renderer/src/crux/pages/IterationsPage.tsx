@@ -1,18 +1,19 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowDownToLine, CheckCheck, GitBranch, Loader2, Pencil, Play, Plus } from 'lucide-react'
+import { ArrowDownToLine, CheckCheck, ChevronRight, GitBranch, Loader2, Pencil, Play, Plus, Search, X } from 'lucide-react'
 import type { CruxIteration, CruxRecordVersionDeliveryInput, CruxSnapshot, CruxTask } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { Button, EmptyState, Modal, SearchInput, Tabs, Tooltip, TriProgressBar } from '../../my/ui'
+import { FlowIcon } from '../icons'
 import { useCrux, statusOf, isTriagePending } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, StatusBadge, formatCollaborationTime, Select } from '../ui'
+import { Field, inputClass, textareaClass, StatusBadge, formatCollaborationTime, Select } from '../ui'
 import { NewTaskModal } from './TaskDetailDrawer'
 
 export interface IterationsPageProps {
   renderTasks?: (tasks: CruxTask[], iteration: CruxIteration) => ReactNode
 }
 
-const STATUS_LABEL: Record<CruxIteration['status'], string> = { pending: '待开始', active: '进行中', completed: '已截版' }
+const STATUS_LABEL: Record<CruxIteration['status'], string> = { pending: '即将开始', active: '当前迭代', completed: '已完成' }
 
 function dateRange(): { start: string; end: string } {
   const format = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -38,11 +39,13 @@ export function IterationsPage({ renderTasks }: IterationsPageProps = {}): JSX.E
   const busy = useCrux((state) => state.busy)
   const openTask = useCrux((state) => state.openTask)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'all' | CruxIteration['status']>('all')
   const [keyword, setKeyword] = useState('')
   const [pane, setPane] = useState<'tasks' | 'deliveries'>('tasks')
   const [unfinishedOnly, setUnfinishedOnly] = useState(false)
   const [editing, setEditing] = useState<CruxIteration | 'new' | null>(null)
   const [confirmEndId, setConfirmEndId] = useState<string | null>(null)
+  const [carryOverTargetId, setCarryOverTargetId] = useState<string>('__backlog__')
   const [deliveryTarget, setDeliveryTarget] = useState<string | null>(null)
   const [moveTarget, setMoveTarget] = useState<string | null>(null)
   const [newTaskIteration, setNewTaskIteration] = useState<string | null>(null)
@@ -52,7 +55,10 @@ export function IterationsPage({ renderTasks }: IterationsPageProps = {}): JSX.E
   const space = snapshot.spaces.find((item) => item.id === spaceId)
   const writable = Boolean(space && !space.archived)
   const iterations = snapshot.iterations.filter((item) => item.spaceId === spaceId).sort((a, b) => a.startDate.localeCompare(b.startDate))
-  const visibleIterations = iterations.filter((item) => `${item.name} ${item.goal ?? ''}`.toLowerCase().includes(keyword.toLowerCase()))
+  const visibleIterations = iterations.filter((item) =>
+    (statusFilter === 'all' || item.status === statusFilter)
+    && `${item.name} ${item.goal ?? ''}`.toLowerCase().includes(keyword.toLowerCase())
+  )
   const selected = iterations.find((item) => item.id === selectedId) ?? iterations.find((item) => item.status === 'active') ?? iterations[0]
   const tasks = selected ? scopeTasks(snapshot, selected) : []
   const pending = tasks.filter((task) => !isFinished(snapshot, task))
@@ -62,21 +68,105 @@ export function IterationsPage({ renderTasks }: IterationsPageProps = {}): JSX.E
   const predecessorReady = !selected?.predecessorId || predecessor?.status === 'completed'
   const ending = iterations.find((item) => item.id === confirmEndId)
   const unfinished = ending ? scopeTasks(snapshot, ending).filter((task) => !isFinished(snapshot, task)) : []
+  const carryOverTargets = ending ? iterations.filter((item) => item.id !== ending.id && item.status !== 'completed') : []
   const complete = async (): Promise<void> => {
-    if (!ending || busy || !writable || unfinished.length > 0) return
+    if (!ending || busy || !writable) return
     setCloseError(null)
+    if (unfinished.length > 0) {
+      for (const task of unfinished) {
+        const nextIterationIds = carryOverTargetId === '__backlog__'
+          ? task.iterationIds.filter((id) => id !== ending.id)
+          : [...new Set([...task.iterationIds.filter((id) => id !== ending.id), carryOverTargetId])]
+        const moveRes = await run('结转未完成任务', () => api.crux.updateTask({ id: task.id, patch: { iterationIds: nextIterationIds } }))
+        if (!moveRes?.ok) {
+          setCloseError(moveRes && !moveRes.ok ? moveRes.error : `结转任务 ${task.id} 失败`)
+          return
+        }
+      }
+    }
     const result = await run('截版', () => api.crux.completeIteration({ id: ending.id }))
     if (result?.ok) setConfirmEndId(null)
     else if (result && !result.ok) setCloseError(result.error)
     else setCloseError('截版失败，请重试。')
   }
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
   return <div className="my-fade flex min-h-0 flex-1 flex-col gap-3">
-    <PageHeader title="版本" actions={<Tooltip label="新建版本" side="bottom"><Button variant="primary" size="sm" className="my-icon-control" disabled={busy || !writable} aria-label="新建版本" onClick={() => setEditing('new')}><Plus size={16} /></Button></Tooltip>} />
-    <div className="flex flex-wrap items-center gap-3"><SearchInput value={keyword} onChange={setKeyword} placeholder="搜索版本" /><span className="text-my-xs text-my-tertiary">{visibleIterations.length} 个</span></div>
-    {iterations.length === 0 ? <EmptyState title="暂无版本" /> : <>
+    <header className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1.5 text-my-sm">
+        <FlowIcon name="projects" size={15} className="text-my-icon-secondary" />
+        <span className="truncate text-my-secondary">{space?.name ?? '空间'}</span>
+        <ChevronRight size={14} className="shrink-0 text-my-icon-tertiary" />
+        <h1 className="font-semibold text-my-primary">迭代</h1>
+      </div>
+      <Button variant="primary" size="sm" disabled={busy || !writable} onClick={() => setEditing('new')}>
+        <Plus size={14} />新建迭代
+      </Button>
+    </header>
+
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="迭代状态">
+        {([
+          ['all', `全部 ${iterations.length}`],
+          ['active', `当前 ${iterations.filter((i) => i.status === 'active').length}`],
+          ['pending', `即将开始 ${iterations.filter((i) => i.status === 'pending').length}`],
+          ['completed', `已完成 ${iterations.filter((i) => i.status === 'completed').length}`]
+        ] as const).map(([id, label]) => {
+          const active = statusFilter === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setStatusFilter(id)}
+              className={`rounded-full border px-3 py-1 text-my-xs tabular-nums transition-colors ${
+                active
+                  ? 'border-my-line-strong bg-my-layer-2 font-medium text-my-primary'
+                  : 'border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex items-center gap-2">
+        {searchOpen && (
+          <input
+            autoFocus
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="搜索迭代名称或目标…"
+            aria-label="搜索迭代"
+            className={`${inputClass} w-48`}
+          />
+        )}
+        <button
+          type="button"
+          aria-label="搜索迭代"
+          onClick={() => { if (searchOpen && keyword) setKeyword(''); setSearchOpen((v) => !v) }}
+          className="grid h-8 w-8 place-items-center rounded-full border border-my-line bg-my-panel text-my-icon-secondary hover:border-my-line-strong hover:text-my-primary"
+        >
+          {searchOpen && keyword ? <X size={14} /> : <Search size={14} />}
+        </button>
+      </div>
+    </div>
+
+    {iterations.length === 0 ? (
+      <EmptyState
+        title="暂无迭代"
+        description="创建迭代，规划周期内的任务范围与交付节奏。"
+        action={writable ? (
+          <Button size="sm" variant="primary" onClick={() => setEditing('new')}>
+            <Plus size={14} />新建迭代
+          </Button>
+        ) : undefined}
+      />
+    ) : <>
       <div className="my-scrollbar max-h-56 shrink-0 overflow-y-auto rounded-my-md border border-my-line" style={{ scrollbarGutter: 'stable' }}>
-        {visibleIterations.length === 0 && <EmptyState title="没有匹配版本" />}
+        {visibleIterations.length === 0 && <EmptyState size="compact" title="没有匹配版本" />}
         {visibleIterations.map((iteration) => {
           const ownTasks = scopeTasks(snapshot, iteration)
           const done = ownTasks.filter((task) => isFinished(snapshot, task) && statusOf(snapshot, task.statusId)?.category !== 'cancelled').length
@@ -106,7 +196,41 @@ export function IterationsPage({ renderTasks }: IterationsPageProps = {}): JSX.E
       </section>}
     </>}
     {editing && spaceId && <VersionEditor key={editing === 'new' ? 'new' : editing.id} snapshot={snapshot} spaceId={spaceId} iteration={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSaved={(id) => { setSelectedId(id); setUnfinishedOnly(false) }} />}
-    <Modal open={Boolean(ending)} onClose={() => { if (!busy) setConfirmEndId(null) }} width={460} ariaLabel="截版"><div className="flex flex-col gap-4 p-4"><h2 className="text-my-md font-semibold text-my-primary">截版「{ending?.name}」</h2>{unfinished.length > 0 ? <div className="flex flex-col gap-2"><p role="status" className="text-my-sm text-my-danger-text">还有 {unfinished.length} 条未完成任务，暂不能截版。</p><Button size="sm" variant="outline" onClick={() => { if (ending) setSelectedId(ending.id); setPane('tasks'); setUnfinishedOnly(true); setConfirmEndId(null) }}>查看未完成任务</Button></div> : <p className="text-my-sm text-my-secondary">将本版本标记为已截版，保留当前任务范围、任务和交付记录。</p>}{closeError && <p role="alert" className="text-my-xs text-my-danger-text">{closeError}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmEndId(null)}>取消</Button><Button size="sm" variant="primary" disabled={busy || !ending || unfinished.length > 0 || !writable} onClick={() => void complete()}>确认截版</Button></div></div></Modal>
+    <Modal open={Boolean(ending)} onClose={() => { if (!busy) setConfirmEndId(null) }} width={480} ariaLabel="截版">
+      <div className="flex flex-col gap-4 p-4">
+        <h2 className="text-my-md font-semibold text-my-primary">截版「{ending?.name}」</h2>
+        {unfinished.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            <p role="status" className="text-my-sm text-my-warning-text">
+              当前还有 {unfinished.length} 条未完成任务。对标 HiFox 迭代结转机制，可直接将未完成任务移入下一版本或待办池后截版：
+            </p>
+            <Field label="未完成任务结转目标">
+              <Select
+                className="w-full"
+                value={carryOverTargetId}
+                onChange={setCarryOverTargetId}
+                options={[
+                  { value: '__backlog__', label: '移出版本，退回待规划池（Backlog）' },
+                  ...carryOverTargets.map((item) => ({ value: item.id, label: `结转至版本：${item.name}（${STATUS_LABEL[item.status]}）` }))
+                ]}
+              />
+            </Field>
+            <Button size="sm" variant="ghost" className="self-start" onClick={() => { if (ending) setSelectedId(ending.id); setPane('tasks'); setUnfinishedOnly(true); setConfirmEndId(null) }}>
+              先查看这 {unfinished.length} 条未完成任务
+            </Button>
+          </div>
+        ) : (
+          <p className="text-my-sm text-my-secondary">将本版本标记为已截版，保留当前任务范围、任务和交付记录。</p>
+        )}
+        {closeError && <p role="alert" className="text-my-xs text-my-danger-text">{closeError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmEndId(null)}>取消</Button>
+          <Button size="sm" variant="primary" disabled={busy || !ending || !writable} onClick={() => void complete()}>
+            {unfinished.length > 0 ? `结转 ${unfinished.length} 项并截版` : '确认截版'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
     {deliveryTarget && <DeliveryEditor key={deliveryTarget} snapshot={snapshot} targetId={deliveryTarget} onClose={() => setDeliveryTarget(null)} onSaved={() => setPane('deliveries')} />}
     {moveTarget && <MoveScopeEditor key={moveTarget} snapshot={snapshot} targetId={moveTarget} onClose={() => setMoveTarget(null)} />}
     <NewTaskModal open={Boolean(newTaskIteration)} onClose={() => setNewTaskIteration(null)} iterationId={newTaskIteration ?? undefined} />
@@ -255,7 +379,7 @@ function MoveScopeEditor({ snapshot, targetId, onClose }: { snapshot: CruxSnapsh
     <fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4">
       <h2 className="shrink-0 text-my-md font-semibold text-my-primary">移入任务 · {target?.name}</h2>
       <div className="my-scrollbar min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}><div className="flex flex-col gap-3">
-        {candidates.length === 0 ? <EmptyState title="没有可移入任务" /> : <><Field label="任务">
+        {candidates.length === 0 ? <EmptyState size="compact" title="没有可移入任务" /> : <><Field label="任务">
           <Select
             className="w-full"
             value={taskId}
