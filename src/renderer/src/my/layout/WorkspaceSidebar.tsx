@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { Activity, Blocks, BookOpen, ChevronRight, CircleHelp, CircleUser, Cpu, FileText, FolderInput, House, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings2, Star, Users, Workflow, Wrench, X } from 'lucide-react'
+import { Activity, BookOpen, ChevronRight, CircleHelp, CircleUser, FileText, FolderInput, House, LayoutGrid, ListTodo, MessageCircle, PanelsTopLeft, RotateCw, Settings, SquareTerminal, Star, Users, Workflow, Wrench, X } from 'lucide-react'
 import { ensureRuntimeInventoryLoaded, getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
 import { useApp, type Page } from '../../store'
 import { inboxGroups, useCrux } from '../../crux/store'
@@ -20,10 +20,10 @@ const MODULE_ICONS: Record<ModuleId, ReactNode> = {
   tasks: <ListTodo className="my-module-icon" aria-hidden="true" />,
   team: <House className="my-module-icon" aria-hidden="true" />,
   knowledge: <BookOpen className="my-module-icon" aria-hidden="true" />,
-  machines: <Cpu className="my-module-icon" aria-hidden="true" />,
-  integrations: <Blocks className="my-module-icon" aria-hidden="true" />,
+  machines: <SquareTerminal className="my-module-icon" aria-hidden="true" />,
+  integrations: <LayoutGrid className="my-module-icon" aria-hidden="true" />,
   automations: <Workflow className="my-module-icon" aria-hidden="true" />,
-  settings: <Settings2 className="my-module-icon" aria-hidden="true" />
+  settings: <Settings className="my-module-icon" aria-hidden="true" />
 }
 
 function countReadyRuntimes(agents: readonly AcpAgentStatus[]): number {
@@ -54,7 +54,7 @@ export function WorkspaceSidebar(): JSX.Element {
     : current === 'home'
       ? 'team'
       : current
-  const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center transition-colors hover:text-my-primary', selected ? 'is-selected text-my-primary' : 'text-my-icon-secondary')
+  const railClass = (selected: boolean): string => clsx('my-module-button my-nav-item relative grid shrink-0 place-items-center', selected && 'is-selected')
 
   return <>
     <aside aria-label="模块栏" className="my-module-rail flex h-full shrink-0 flex-col items-center">

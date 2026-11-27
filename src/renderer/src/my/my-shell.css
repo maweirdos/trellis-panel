@@ -24,17 +24,38 @@
 @media (prefers-reduced-motion: reduce) {
   .my-root .my-context-region { transition: none; }
 }
-.my-root .my-module-brand { width: var(--my-module-rail-width); }
+.my-root .my-module-brand {
+  position: relative;
+  width: var(--my-module-rail-width);
+  pointer-events: none;
+  user-select: none;
+}
+.my-root .my-module-brand::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: var(--my-space-18);
+  height: 1px;
+  transform: translateX(-50%);
+  background: var(--my-border-subtle);
+}
 .my-root .my-module-rail {
   width: var(--my-module-rail-width);
-  padding-block: var(--my-module-rail-padding);
+  padding-top: var(--my-space-4);
+  padding-bottom: var(--my-module-rail-padding);
   background: var(--my-bg-shell);
 }
-.my-root .my-module-rail > nav { gap: var(--my-module-gap); scrollbar-gutter: auto; scrollbar-width: none; }
+.my-root .my-module-rail > nav {
+  gap: var(--my-module-gap);
+  padding-top: var(--my-space-3);
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
 .my-root .my-module-rail > nav::-webkit-scrollbar { display: none; }
-.my-root .my-module-footer { gap: var(--my-module-gap); }
+.my-root .my-module-footer { gap: var(--my-module-gap); padding-bottom: var(--my-space-2); }
 .my-root .my-module-divider {
-  width: var(--my-space-20);
+  width: var(--my-space-18);
   height: 1px;
   background: var(--my-border-subtle);
   margin-bottom: var(--my-space-4);
@@ -42,56 +63,68 @@
 }
 .my-root .my-module-button {
   position: relative;
+  overflow: visible;
   width: var(--my-module-button-size);
   height: var(--my-module-button-size);
   border-radius: var(--my-control-radius);
   line-height: 1;
   border: 1px solid transparent;
-  color: var(--my-txt-icon-secondary);
+  color: var(--my-module-icon-rest);
   transition: transform var(--my-motion-fast) var(--my-ease-out),
               background-color var(--my-motion-fast) var(--my-ease-out),
               border-color var(--my-motion-fast) var(--my-ease-out),
               color var(--my-motion-fast) var(--my-ease-out),
               box-shadow var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-module-button:hover:not(:is(.is-selected, [aria-current='page'])) {
-  background: var(--my-bg-navigation-hover);
+.my-root .my-module-button.my-nav-item:hover:not(:is(.is-selected, [aria-current='page'], [aria-expanded='true'])),
+.my-root .my-module-button:hover:not(:is(.is-selected, [aria-current='page'], [aria-expanded='true'])) {
+  background: var(--my-module-button-hover-bg);
   color: var(--my-txt-primary);
 }
 .my-root .my-module-button.my-nav-item:is(.is-selected, [aria-current='page'], [aria-expanded='true']),
 .my-root .my-module-button:is(.is-selected, [aria-current='page'], [aria-expanded='true']) {
-  background: var(--my-bg-panel);
-  border-color: var(--my-border-subtle);
+  background: var(--my-module-button-active-bg);
+  border-color: var(--my-module-button-active-border);
   color: var(--my-txt-primary);
-  box-shadow: var(--my-shadow-raised-100);
+  box-shadow: var(--my-module-button-active-shadow);
+}
+.my-root .my-module-button:is(.is-selected, [aria-current='page'], [aria-expanded='true']) .my-module-icon {
+  stroke-width: var(--my-module-icon-stroke-active);
 }
 .my-root .my-module-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: var(--my-space-14);
-  height: var(--my-space-14);
-  padding-inline: var(--my-space-3);
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--my-space-15);
+  height: var(--my-space-15);
+  padding-inline: var(--my-space-4);
   border-radius: var(--my-radius-full);
   background: var(--my-bg-accent-primary);
   color: var(--my-txt-on-accent);
   font-size: var(--my-text-2xs);
   font-weight: var(--my-weight-semibold);
-  line-height: var(--my-space-14);
+  line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--my-bg-shell);
   pointer-events: none;
 }
 .my-root .my-module-status-dot {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 4px;
+  right: 4px;
   width: var(--my-space-6);
   height: var(--my-space-6);
   border-radius: var(--my-radius-full);
   background: var(--my-bg-success-primary);
-  box-shadow: 0 0 0 1.5px var(--my-bg-shell);
+  box-shadow: 0 0 0 2px var(--my-bg-shell);
   pointer-events: none;
+}
+.my-root .my-module-button:is(.is-selected, [aria-current='page']) .my-module-status-dot {
+  box-shadow: 0 0 0 2px var(--my-module-button-active-bg);
 }
 .my-root .my-module-status-dot[data-status='warn'] {
   background: var(--my-bg-warning-primary);
@@ -245,15 +278,19 @@
   transition: background-color var(--my-motion-fast) var(--my-ease-out),
               border-color var(--my-motion-fast) var(--my-ease-out);
 }
-.my-root .my-rail-account-trigger:hover,
+.my-root .my-rail-account-trigger:hover {
+  background: var(--my-module-button-hover-bg);
+}
 .my-root .my-rail-account-trigger[aria-expanded='true'] {
-  background: var(--my-bg-navigation-hover);
-  border-color: var(--my-border-subtle);
+  background: var(--my-module-button-active-bg);
+  border-color: var(--my-module-button-active-border);
+  box-shadow: var(--my-module-button-active-shadow);
 }
 .my-root .my-rail-account-avatar {
-  background: var(--my-bg-panel) !important;
+  background: var(--my-module-button-active-bg) !important;
   color: var(--my-txt-primary) !important;
-  box-shadow: inset 0 0 0 1px var(--my-border-subtle), var(--my-shadow-raised-100);
+  font-weight: var(--my-weight-semibold);
+  box-shadow: inset 0 0 0 1px var(--my-module-button-active-border), var(--my-shadow-raised-100);
   transform-origin: center;
   backface-visibility: hidden;
   transition: scale var(--my-motion-fast) var(--my-ease-out);

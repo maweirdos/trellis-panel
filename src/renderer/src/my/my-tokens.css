@@ -139,8 +139,10 @@
   --my-sidebar-width: 240px;
   --my-module-rail-width: 52px;
   --my-module-button-size: 34px;
-  --my-module-icon-size: var(--my-space-20);
-  --my-module-icon-stroke: 1.7;
+  --my-module-brand-glyph-size: 22px;
+  --my-module-icon-size: 17px;
+  --my-module-icon-stroke: 1.55;
+  --my-module-icon-stroke-active: 1.75;
   --my-module-gap: var(--my-space-6);
   --my-module-rail-padding: var(--my-space-6);
   --my-shell-inset: var(--my-space-6);
@@ -247,7 +249,8 @@
   --my-shell-chrome-size: 44px;
   --my-module-rail-width: 48px;
   --my-module-button-size: 32px;
-  --my-module-icon-size: 18px;
+  --my-module-brand-glyph-size: 20px;
+  --my-module-icon-size: 16px;
   --my-settings-content-width: 760px;
   --my-settings-field-width: 280px;
   --my-settings-title-size: 20px;
@@ -279,7 +282,8 @@
   --my-shell-chrome-size: 50px;
   --my-module-rail-width: 54px;
   --my-module-button-size: 36px;
-  --my-module-icon-size: 21px;
+  --my-module-brand-glyph-size: 23px;
+  --my-module-icon-size: 18px;
   --my-module-gap: 6px;
   --my-module-rail-padding: 6px;
   --my-settings-content-width: 820px;
@@ -581,6 +585,11 @@
   --my-border-input: #2c2c2c;
   --my-bg-navigation-hover: color-mix(in oklab, #ffffff 5%, transparent);
   --my-bg-navigation-selected: #232323;
+  --my-module-icon-rest: #8c8c8c;
+  --my-module-button-hover-bg: color-mix(in oklab, #ffffff 7%, transparent);
+  --my-module-button-active-bg: #262626;
+  --my-module-button-active-border: color-mix(in oklab, #ffffff 10%, transparent);
+  --my-module-button-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --my-bg-composer: #181818;
   --my-bg-user-message: #222222;
   --my-border-user-message: var(--my-border-subtle);
@@ -862,6 +871,11 @@
   --my-border-input: #e2e2e2;
   --my-bg-navigation-hover: color-mix(in oklab, #141414 4%, transparent);
   --my-bg-navigation-selected: #ededed;
+  --my-module-icon-rest: color-mix(in oklab, #141414 48%, transparent);
+  --my-module-button-hover-bg: color-mix(in oklab, #141414 5%, transparent);
+  --my-module-button-active-bg: #ffffff;
+  --my-module-button-active-border: color-mix(in oklab, #141414 11%, transparent);
+  --my-module-button-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --my-bg-composer: #ffffff;
   --my-bg-user-message: #f2f2f2;
   --my-border-user-message: var(--my-border-subtle);

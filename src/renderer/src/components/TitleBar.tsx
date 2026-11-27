@@ -37,7 +37,7 @@ export function TitleBar(): JSX.Element {
     <header className="my-window-header relative z-50 flex shrink-0 flex-col">
       <div className={clsx('my-global-header-row', hasIpc && 'drag-region')}>
         <div className="my-module-brand flex h-full shrink-0 items-center justify-center" data-startup-brand-target title="Crux">
-          <BrandMark size="var(--my-module-icon-size)" className="text-my-primary" />
+          <BrandMark size="var(--my-module-brand-glyph-size)" compact={false} className="text-my-primary" />
           <span className="sr-only">Crux</span>
         </div>
         <TeamContextSwitcher variant="global" selectOpensTasks={teamContext} onManageSpaces={() => useApp.getState().setPage('crux')} />

@@ -19,7 +19,7 @@ export function AccountMenu(): JSX.Element {
   const visibleAccount = inLocalMode ? snapshot?.meta.developer ?? '本机用户' : accountName ?? '团队账号待核对'
   return <>
     <Dropdown className="my-rail-account" align="left" placement="top" gap={8} width={210} trigger={({ open, toggle }) => <Tooltip side="top" label={`账号与主题 · ${visibleAccount}`} wrap>
-      <Button variant="ghost" aria-label="账号与主题" aria-haspopup="menu" aria-expanded={open} onClick={toggle} className="my-rail-account-trigger"><Avatar name={visibleAccount} color="var(--my-bg-panel)" tone="color" size={26} className="my-rail-account-avatar" /></Button>
+      <Button variant="ghost" aria-label="账号与主题" aria-haspopup="menu" aria-expanded={open} onClick={toggle} className="my-rail-account-trigger"><Avatar name={visibleAccount} color="var(--my-bg-panel)" tone="color" size={24} className="my-rail-account-avatar" /></Button>
     </Tooltip>}>
       {(close) => <>
         <div className="my-item-title px-2 py-1.5">{visibleAccount}<span className="my-item-description mt-0.5 block">{inLocalMode ? '本机使用 · 无需登录' : accountContext.state === 'connected' ? '团队账号' : accountContext.state === 'offline' ? '团队账号 · 离线缓存' : '团队账号 · 权限失效'}</span></div>
