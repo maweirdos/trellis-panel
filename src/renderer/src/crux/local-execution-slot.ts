@@ -7,6 +7,8 @@ export type MachineVisibilityScope = 'personal' | 'spaces' | 'organization'
 
 export interface LocalExecutionSlot {
   runtimeKind: CruxRuntimeKind
+  /** 精确的本机引擎 ID（如 codex / claude-code / pi / qoder / zcode / deepseek-dsh / antigravity） */
+  runtimeId?: string
   model: string
   approvalPolicy: LocalApprovalPolicy
   workingDirectory: CruxWorkingDirectoryMode
@@ -71,9 +73,53 @@ export function runtimeKindLabel(kind: CruxRuntimeKind): string {
   return RUNTIME_KIND_OPTIONS.find((item) => item.value === kind)?.label ?? kind
 }
 
-/** 将 CruxRuntimeKind 映射到真实的本机 AcpAgentStatus 记录。 */
-export function matchDetectedRuntime(agents: readonly AcpAgentStatus[], kind: CruxRuntimeKind): AcpAgentStatus | undefined {
-  const active = agents.filter((agent) => agent.launchKind !== 'custom' && agent.id !== 'opencode')
+/** 将具体引擎 ID 映射为协议层 CruxRuntimeKind。 */
+export function toCruxRuntimeKind(runtimeId: string): CruxRuntimeKind {
+  const lower = runtimeId.toLowerCase()
+  if (lower.includes('claude')) return 'claude-code'
+  if (lower.includes('codex')) return 'codex'
+  return 'custom'
+}
+
+/** 解析当前执行槽应展示的品牌图标 ID（精确匹配用户所选引擎，不再全被 Codex 覆盖）。 */
+export function resolveRuntimeBrandId(slot: Pick<LocalExecutionSlot, 'runtimeKind' | 'runtimeId'>): string {
+  if (slot.runtimeId && slot.runtimeId.trim()) return slot.runtimeId
+  if (slot.runtimeKind === 'claude-code') return 'claude-code'
+  if (slot.runtimeKind === 'codex') return 'codex'
+  return 'pi'
+}
+
+/** 解析当前执行槽应展示的引擎名称。 */
+export function resolveRuntimeDisplayName(
+  slot: Pick<LocalExecutionSlot, 'runtimeKind' | 'runtimeId'>,
+  detectedRuntimes: readonly AcpAgentStatus[] = []
+): string {
+  if (slot.runtimeId) {
+    const found = detectedRuntimes.find((r) => r.id === slot.runtimeId || r.runtimeId === slot.runtimeId)
+    if (found) return found.name
+    const map: Record<string, string> = {
+      codex: 'Codex',
+      'claude-code': 'Claude Code',
+      pi: 'Pi',
+      opencode: 'OpenCode',
+      qoder: 'Qoder',
+      zcode: 'ZCode',
+      'deepseek-dsh': 'DeepSeek Harness',
+      antigravity: 'Antigravity',
+      'gemini-cli': 'Gemini'
+    }
+    if (map[slot.runtimeId]) return map[slot.runtimeId]
+  }
+  return runtimeKindLabel(slot.runtimeKind)
+}
+
+/** 将 CruxRuntimeKind 或精确 runtimeId 映射到真实的本机 AcpAgentStatus 记录。 */
+export function matchDetectedRuntime(agents: readonly AcpAgentStatus[], kind: CruxRuntimeKind, runtimeId?: string): AcpAgentStatus | undefined {
+  if (runtimeId) {
+    const exact = agents.find((agent) => agent.id === runtimeId || agent.runtimeId === runtimeId)
+    if (exact) return exact
+  }
+  const active = agents.filter((agent) => agent.launchKind !== 'custom')
   if (kind === 'codex') {
     return active.find((agent) => (agent.runtimeId ?? agent.id).toLowerCase().includes('codex'))
   }
@@ -111,6 +157,7 @@ function loadState(): PersistedState {
     return {
       defaultSlot: {
         runtimeKind,
+        runtimeId: typeof parsed.defaultSlot?.runtimeId === 'string' && parsed.defaultSlot.runtimeId.trim() ? parsed.defaultSlot.runtimeId.trim() : undefined,
         model: typeof parsed.defaultSlot?.model === 'string' && parsed.defaultSlot.model ? parsed.defaultSlot.model : DEFAULT_SLOT.model,
         approvalPolicy: normalized.approval,
         workingDirectory: parsed.defaultSlot?.workingDirectory === 'repo' ? 'repo' : 'temp',
@@ -240,15 +287,18 @@ export const useLocalExecutionSlot = create<LocalExecutionSlotStore>()((set, get
     const state = get()
     const override = state.agentOverrides[agentId]
     const overridden = Boolean(override && Object.keys(override).length > 0)
-    const runtimeKind = override?.runtimeKind ?? state.defaultSlot.runtimeKind ?? sharedFallback?.runtimeKind ?? 'codex'
+    const runtimeKind = override?.runtimeKind ?? sharedFallback?.runtimeKind ?? state.defaultSlot.runtimeKind ?? 'codex'
+    const runtimeId = override?.runtimeId
+      ?? (sharedFallback?.runtimeKind ? (sharedFallback.runtimeKind === 'custom' ? 'pi' : sharedFallback.runtimeKind) : state.defaultSlot.runtimeId)
     const checked = resetIncompatibleApprovalForRuntime(runtimeKind, override?.approvalPolicy ?? state.defaultSlot.approvalPolicy)
     return {
       overridden,
       slot: {
         runtimeKind,
+        runtimeId,
         model: override?.model ?? state.defaultSlot.model,
         approvalPolicy: checked.approval,
-        workingDirectory: override?.workingDirectory ?? state.defaultSlot.workingDirectory ?? sharedFallback?.workingDirectory ?? 'temp',
+        workingDirectory: override?.workingDirectory ?? sharedFallback?.workingDirectory ?? state.defaultSlot.workingDirectory ?? 'temp',
         localWorkdirPath: override?.localWorkdirPath ?? state.defaultSlot.localWorkdirPath
       }
     }

@@ -20,8 +20,8 @@ import type {
 } from '@shared/crux'
 
 export type CruxModule =
-  | 'overview' | 'tasks' | 'board' | 'inbox' | 'triage' | 'creations' | 'cockpit'
-  | 'projects' | 'iterations' | 'members' | 'spaces'
+  | 'overview' | 'tasks' | 'board' | 'inbox' | 'triage' | 'creations' | 'cockpit' | 'chat'
+  | 'projects' | 'iterations' | 'members' | 'spaces' | 'runtimes' | 'analytics' | 'marketplace'
   | 'agents' | 'skills' | 'crews' | 'automations' | 'views' | 'all-agents' | 'my-tasks'
   | 'task-types' | 'task-statuses' | 'task-labels'
 
@@ -91,7 +91,7 @@ export const useCrux = create<CruxState>()((set, get) => ({
   loadError: null,
   busy: false,
   workspaceContext: { key: 'local', connectionId: null, projectId: null, projectName: null, actorId: null, canManage: true, revision: 0, state: 'local', pendingCount: 0 },
-  module: 'overview',
+  module: 'tasks',
   currentSpaceId: null,
   cockpitScope: {},
   openCockpit: (spaceId, scope = {}) => {
@@ -264,6 +264,27 @@ export function availableExecutionTargets(snapshot: CruxSnapshot, spaceId: CruxI
 
 export function statusOf(snapshot: CruxSnapshot, id: CruxID | undefined): CruxTaskStatus | undefined {
   return id ? snapshot.taskStatuses.find((s) => s.id === id) : undefined
+}
+
+const DEFAULT_STATUS_DISPLAY_NAMES: Record<string, string> = {
+  backlog: '待规划',
+  todo: '待开始',
+  'to do': '待开始',
+  'in progress': '进行中',
+  'in review': '待评审',
+  done: '已完成',
+  completed: '已完成',
+  blocked: '受阻',
+  cancelled: '已取消',
+  canceled: '已取消'
+}
+
+/** 将内置英文默认状态名映射为中文显示；自定义状态名原样保留。 */
+export function statusDisplayName(status: Pick<CruxTaskStatus, 'name'> | string | undefined | null): string {
+  const raw = typeof status === 'string' ? status : status?.name
+  if (!raw) return '—'
+  const normalized = raw.trim().toLowerCase().replace(/[-_\s]+/g, ' ')
+  return DEFAULT_STATUS_DISPLAY_NAMES[normalized] ?? raw
 }
 
 export function spaceTasks(snapshot: CruxSnapshot, spaceId: CruxID | null): CruxTask[] {
