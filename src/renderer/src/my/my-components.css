@@ -164,7 +164,7 @@
 .my-root :where(.my-button-danger) { background: var(--my-bg-danger-primary); color: var(--my-txt-on-color); }
 .my-root :where(.my-button-danger):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-hover); }
 .my-root :where(.my-button-danger):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-danger-primary-active); }
-.my-root :where(.my-button-primary, .my-button-neutral, .my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); color: var(--my-txt-disabled); box-shadow: none; opacity: 1; }
+.my-root :where(.my-button-primary, .my-button-neutral, .my-button-danger):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-disabled); border-color: transparent; color: var(--my-txt-disabled); box-shadow: none; opacity: 1; }
 .my-root :where(.my-button-outline, .my-button-ghost):is(:disabled, [aria-disabled='true']) { background: var(--my-bg-layer-transparent); border-color: var(--my-border-disabled); color: var(--my-txt-disabled); box-shadow: none; opacity: 1; }
 
 .my-root .my-icon-control {
@@ -220,9 +220,9 @@
   display: flex; flex-direction: column; gap: var(--my-space-2);
   scrollbar-gutter: auto;
   max-width: calc(100vw - var(--my-space-16));
-  z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-4);
+  z-index: var(--my-z-menu); overflow: hidden; padding: var(--my-space-6);
   border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base);
-  background: color-mix(in oklab, var(--my-bg-elevated) 88%, transparent);
+  background: color-mix(in oklab, var(--my-bg-elevated) 92%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   box-shadow: var(--my-surface-rim), var(--my-shadow-overlay-200);
@@ -399,16 +399,18 @@
   }
 }
 
-@keyframes my-pop-in { from { opacity: 0; transform: translateY(var(--my-pop-offset-y)); } to { opacity: 1; transform: translateY(0); } }
+@keyframes my-pop-in { from { opacity: 0; transform: translate3d(var(--my-pop-offset-x, 0px), var(--my-pop-offset-y, 0px), 0) scale(0.975); } to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); } }
 @keyframes my-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes my-peek-in { from { opacity: 0; transform: translateY(var(--my-space-10)) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes my-peek-in { from { opacity: 0; transform: translate3d(0, var(--my-space-10), 0) scale(.975); } to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); } }
 @keyframes my-shimmer-sweep { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
-.my-root .my-pop { --my-pop-offset-y: calc(var(--my-space-4) * -1); animation: my-pop-in var(--my-motion-fast) var(--my-ease-out); transform-origin: top left; }
-.my-root .my-pop[data-placement='top'] { --my-pop-offset-y: var(--my-space-4); transform-origin: bottom left; }
+.my-root .my-pop { --my-pop-offset-x: 0px; --my-pop-offset-y: calc(var(--my-space-4) * -1); animation: my-pop-in var(--my-motion-fast) var(--my-ease-spring) both; transform-origin: top left; }
+.my-root .my-pop[data-placement='top'] { --my-pop-offset-x: 0px; --my-pop-offset-y: var(--my-space-4); transform-origin: bottom left; }
 .my-root .my-pop[data-placement='top'][data-align='right'] { transform-origin: bottom right; }
 .my-root .my-pop[data-align='right'] { transform-origin: top right; }
-.my-root .my-fade { animation: my-fade-in var(--my-motion-fast) var(--my-ease-out); }
-.my-root .my-peek-in { animation: my-peek-in var(--my-motion-normal) var(--my-ease-out); }
+.my-root .my-pop[data-placement='left'] { --my-pop-offset-x: var(--my-space-4); --my-pop-offset-y: 0px; transform-origin: right bottom; }
+.my-root .my-pop[data-placement='right'] { --my-pop-offset-x: calc(var(--my-space-4) * -1); --my-pop-offset-y: 0px; transform-origin: left bottom; }
+.my-root .my-fade { animation: my-fade-in var(--my-motion-fast) var(--my-ease-out) both; }
+.my-root .my-peek-in { animation: my-peek-in var(--my-motion-normal) var(--my-ease-spring) both; }
 .my-root .my-shimmer-text {
   display: inline-block;
   color: var(--my-txt-secondary);
@@ -646,4 +648,48 @@ body[data-alt-held='true'] .my-secret-val {
   background: var(--my-bg-panel);
   color: var(--my-txt-primary);
   box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+}
+
+/* Unified empty-state layout: optical center for page states, compact spacing for embedded panes and modals. */
+.my-root .my-empty-state {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: var(--my-space-240);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--my-space-6);
+  padding: var(--my-space-32) var(--my-space-24) clamp(64px, 14vh, 140px);
+  text-align: center;
+}
+.my-root .my-empty-state--compact {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: var(--my-space-28) var(--my-space-16);
+}
+.my-root .my-empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--my-space-40);
+  height: var(--my-space-40);
+  margin-bottom: var(--my-space-4);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-2);
+  color: var(--my-txt-tertiary);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+}
+.my-root .my-empty-state-description {
+  max-width: var(--my-space-320);
+  text-wrap: balance;
+}
+.my-root .my-empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--my-space-8);
+  margin-top: var(--my-space-8);
 }

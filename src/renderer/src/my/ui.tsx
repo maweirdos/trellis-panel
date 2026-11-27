@@ -1,23 +1,26 @@
 // 外壳共享基础件。所有页面从本文件取用，勿各自造轮子。
-import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode, type RefObject, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Search, X } from 'lucide-react'
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
+import { MOTION_EXIT_MS, MOTION_POP_EXIT_MS, MOTION_TOOLTIP_EXIT_MS, usePresence } from './motion'
 
 /* ---------------- Avatar ---------------- */
 
 export function Avatar({
   name,
   color,
+  src,
   tone = 'color',
   size = 20,
   className
 }: {
   name: string
   color: string
+  src?: string
   tone?: 'color' | 'accent'
   size?: number
   className?: string
@@ -25,10 +28,10 @@ export function Avatar({
   return (
     <div
       title={name}
-      className={clsx('flex shrink-0 select-none items-center justify-center rounded-full font-medium', tone === 'accent' ? 'text-my-on-accent' : 'text-my-on-color', className)}
+      className={clsx('flex shrink-0 select-none items-center justify-center rounded-full font-medium', tone === 'accent' ? 'text-my-on-accent' : 'text-my-on-color', src && 'overflow-hidden', className)}
       style={{ width: size, height: size, background: color, fontSize: Math.max(9, size * 0.42) }}
     >
-      {name.slice(0, 1)}
+      {src ? <img src={src} alt="" draggable={false} className="h-full w-full object-contain" /> : name.slice(0, 1)}
     </div>
   )
 }
@@ -135,15 +138,25 @@ function guardComposingEscape(event: ReactKeyboardEvent): void {
 
 function anchorIsVisible(anchor: HTMLElement, rect: DOMRect): boolean {
   if (!anchor.getClientRects().length || rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) return false
-  for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
+  let current: HTMLElement | null = anchor
+  while (current) {
+    // A fixed-position overlay escapes ancestor overflow clipping; stop checking above it.
+    if (getComputedStyle(current).position === 'fixed') break
+    const parent: HTMLElement | null = current.parentElement
+    if (!parent) break
     const style = getComputedStyle(parent)
-    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue
-    const clip = parent.getBoundingClientRect()
-    if (style.overflowX !== 'visible' && (rect.right <= clip.left || rect.left >= clip.right)) return false
-    if (style.overflowY !== 'visible' && (rect.bottom <= clip.top || rect.top >= clip.bottom)) return false
+    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+      const clip = parent.getBoundingClientRect()
+      if (style.overflowX !== 'visible' && (rect.right <= clip.left || rect.left >= clip.right)) return false
+      if (style.overflowY !== 'visible' && (rect.bottom <= clip.top || rect.top >= clip.bottom)) return false
+    }
+    current = parent
   }
   return true
 }
+
+type DropdownPlacement = 'auto' | 'top' | 'bottom' | 'left' | 'right'
+type DropdownSide = 'top' | 'bottom' | 'left' | 'right'
 
 export function Dropdown({
   trigger,
@@ -155,6 +168,7 @@ export function Dropdown({
   placement = 'auto',
   gap = 4,
   disabled = false,
+  onOpenChange,
   className
 }: {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode
@@ -163,23 +177,36 @@ export function Dropdown({
   width?: number
   layoutKey?: string | number
   positionAnchorRef?: RefObject<HTMLElement | null>
-  placement?: 'auto' | 'top' | 'bottom'
+  placement?: DropdownPlacement
   gap?: number
   disabled?: boolean
+  onOpenChange?: (open: boolean) => void
   className?: string
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const parentScope = useContext(OverlayScope)
   const interactive = useInteractionActive() && !disabled
   const canInteract = useInteractionGuard()
+  const activeOpen = open && interactive
+  const presence = usePresence(activeOpen, MOTION_POP_EXIT_MS)
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; minWidth: number; above: boolean } | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; minWidth: number; side: DropdownSide } | null>(null)
+  const lastPosRef = useRef<{ top: number; left: number; maxHeight: number; minWidth: number; side: DropdownSide } | null>(null)
+  const lastRootRef = useRef<HTMLElement | null>(null)
+  const lockedSideRef = useRef<DropdownSide | null>(null)
+  if (pos) lastPosRef.current = pos
+  if (portalRoot) lastRootRef.current = portalRoot
+  const renderedPos = activeOpen ? pos : lastPosRef.current
+  const renderedRoot = activeOpen ? portalRoot : lastRootRef.current
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const escId = useId()
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const entryRef = useRef<'last' | 'selected' | null>('selected')
   const lastMenuFocusRef = useRef<HTMLElement | null>(null)
+  const onOpenChangeRef = useRef(onOpenChange)
+  onOpenChangeRef.current = onOpenChange
+  const prevActiveOpenRef = useRef(activeOpen)
   const interactionSignal = useInteractionSignal()
   const focusGeneration = useRef(0)
   const focusFrame = useRef<number | null>(null)
@@ -189,6 +216,15 @@ export function Dropdown({
     focusFrame.current = null
   }, [])
   useLayoutEffect(() => cancelFocusReturn, [interactive, interactionSignal, cancelFocusReturn])
+  useEffect(() => {
+    if (prevActiveOpenRef.current !== activeOpen) {
+      prevActiveOpenRef.current = activeOpen
+      onOpenChangeRef.current?.(activeOpen)
+    }
+  }, [activeOpen])
+  useEffect(() => () => {
+    if (prevActiveOpenRef.current) onOpenChangeRef.current?.(false)
+  }, [])
 
   const close = (restore = true): void => {
     cancelFocusReturn()
@@ -224,6 +260,7 @@ export function Dropdown({
 
   useLayoutEffect(() => {
     if (!open || !interactive) {
+      lockedSideRef.current = null
       setPos(null)
       setPortalRoot(null)
       return
@@ -239,7 +276,7 @@ export function Dropdown({
     const anchor = anchorRef.current
     const menu = menuRef.current
     if (!anchor || !menu) return
-    const update = (): void => {
+    const update = (allowReFlip: boolean): void => {
       const trigger = returnFocusRef.current ?? anchor
       const r = trigger.getBoundingClientRect()
       if (!anchorIsVisible(trigger, r)) {
@@ -247,41 +284,114 @@ export function Dropdown({
         return
       }
       const alignment = positionAnchorRef?.current?.getBoundingClientRect() ?? r
-      const topEdge = Math.min(alignment.top, r.top)
-      const bottomEdge = Math.max(alignment.bottom, r.bottom)
-      const roomAbove = Math.max(0, topEdge - gap - 8)
+      const inHeader = Boolean(anchor.closest('.my-window-header'))
+      const headerEl = inHeader ? null : portalRoot.querySelector<HTMLElement>('.my-window-header')
+      const headerBottom = headerEl ? Math.ceil(headerEl.getBoundingClientRect().bottom) : 0
+      const safeTop = headerBottom > 0 ? Math.max(8, headerBottom + 8) : 8
+
+      const isSidePreference = placement === 'left' || placement === 'right'
+      const topEdge = isSidePreference ? r.top : Math.min(alignment.top, r.top)
+      const bottomEdge = isSidePreference ? r.bottom : Math.max(alignment.bottom, r.bottom)
+      const roomAbove = Math.max(0, topEdge - gap - safeTop)
       const roomBelow = Math.max(0, innerHeight - bottomEdge - gap - 8)
       const naturalHeight = menu.scrollHeight + menu.offsetHeight - menu.clientHeight
-      const above = placement === 'top'
-        ? naturalHeight <= roomAbove || roomAbove >= roomBelow
-        : naturalHeight > roomBelow && (naturalHeight <= roomAbove || roomAbove > roomBelow)
-      const maxHeight = Math.max(0, Math.min(innerHeight - 16, above ? roomAbove : roomBelow))
-      const h = Math.min(menu.offsetHeight, maxHeight)
       const w = menu.offsetWidth
+      const menuW = Math.min(w || (width ?? 0), Math.max(0, innerWidth - 16))
+
+      const chooseVertical = (): 'top' | 'bottom' => {
+        if (placement === 'top') {
+          return naturalHeight <= roomAbove || roomAbove >= roomBelow ? 'top' : 'bottom'
+        }
+        if (placement === 'bottom') {
+          const comfortableBelow = roomBelow >= Math.min(naturalHeight, 260)
+          return !comfortableBelow && roomAbove > roomBelow ? 'top' : 'bottom'
+        }
+        return naturalHeight > roomBelow && (naturalHeight <= roomAbove || roomAbove > roomBelow) ? 'top' : 'bottom'
+      }
+
+      const chooseSide = (): DropdownSide => {
+        if (placement === 'left' || placement === 'right') {
+          const roomLeft = Math.max(0, alignment.left - gap - 8)
+          const roomRight = Math.max(0, innerWidth - alignment.right - gap - 8)
+          if (placement === 'left') {
+            if (roomLeft >= menuW) return 'left'
+            if (roomRight >= menuW) return 'right'
+          } else {
+            if (roomRight >= menuW) return 'right'
+            if (roomLeft >= menuW) return 'left'
+          }
+          return roomAbove >= roomBelow ? 'top' : 'bottom'
+        }
+        return chooseVertical()
+      }
+
+      let side = lockedSideRef.current
+      if (!side) {
+        side = chooseSide()
+        lockedSideRef.current = side
+      } else if (allowReFlip) {
+        if (side === 'left' || side === 'right') {
+          const roomLeft = Math.max(0, alignment.left - gap - 8)
+          const roomRight = Math.max(0, innerWidth - alignment.right - gap - 8)
+          if ((side === 'left' && roomLeft < menuW) || (side === 'right' && roomRight < menuW)) {
+            side = chooseSide()
+            lockedSideRef.current = side
+          }
+        } else {
+          const lockedRoom = side === 'top' ? roomAbove : roomBelow
+          const otherRoom = side === 'top' ? roomBelow : roomAbove
+          if (lockedRoom < Math.min(naturalHeight, 220) && otherRoom > lockedRoom + 40) {
+            side = chooseVertical()
+            lockedSideRef.current = side
+          }
+        }
+      }
+
+      let maxHeight: number
+      let h: number
+      let top: number
+      let left: number
+      if (side === 'left' || side === 'right') {
+        maxHeight = Math.max(0, innerHeight - safeTop - 8)
+        h = Math.min(menu.offsetHeight, maxHeight)
+        const preferredTop = align === 'right' ? alignment.bottom - h : alignment.top
+        top = Math.max(safeTop, Math.min(preferredTop, innerHeight - h - 8))
+        const preferredLeft = side === 'left' ? alignment.left - w - gap : alignment.right + gap
+        left = Math.max(8, Math.min(preferredLeft, innerWidth - w - 8))
+      } else {
+        const above = side === 'top'
+        maxHeight = Math.max(0, Math.min(innerHeight - safeTop - 8, above ? roomAbove : roomBelow))
+        h = Math.min(menu.offsetHeight, maxHeight)
+        top = Math.max(safeTop, Math.min(above ? topEdge - h - gap : bottomEdge + gap, innerHeight - h - 8))
+        left = Math.max(8, Math.min(align === 'right' ? alignment.right - w : alignment.left, innerWidth - w - 8))
+      }
+
       const next = {
-        top: Math.max(8, Math.min(above ? topEdge - h - gap : bottomEdge + gap, innerHeight - h - 8)),
-        left: Math.max(8, Math.min(align === 'right' ? alignment.right - w : alignment.left, innerWidth - w - 8)),
+        top,
+        left,
         maxHeight,
         minWidth: width === undefined ? Math.min(r.width, innerWidth - 16) : 0,
-        above
+        side
       }
       setPos((old) => old && Object.keys(next).every((key) => old[key as keyof typeof next] === next[key as keyof typeof next]) ? old : next)
     }
-    update()
-    const observer = new ResizeObserver(update)
+    update(false)
+    const onResizeContent = (): void => update(false)
+    const onViewportChange = (): void => update(true)
+    const observer = new ResizeObserver(onResizeContent)
     observer.observe(menu)
     observer.observe(anchor)
     if (returnFocusRef.current) observer.observe(returnFocusRef.current)
     if (positionAnchorRef?.current) observer.observe(positionAnchorRef.current)
     const onScroll = (event: Event): void => {
-      if (!ownsOverlay(menu, event.target, escId)) update()
+      if (!ownsOverlay(menu, event.target, escId)) update(true)
     }
     window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', update)
+    window.addEventListener('resize', onViewportChange)
     return () => {
       observer.disconnect()
       window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', update)
+      window.removeEventListener('resize', onViewportChange)
     }
   }, [open, portalRoot, align, interactive, width, layoutKey, positionAnchorRef, placement, gap])
 
@@ -346,23 +456,25 @@ export function Dropdown({
         ;(event.key === 'ArrowUp' ? controls.at(-1) : controls[0])?.focus()
       }
     }}>
-      {trigger({ open: open && interactive, toggle })}
-      {open && interactive && portalRoot && createPortal(
+      {trigger({ open: activeOpen, toggle })}
+      {presence.mounted && renderedRoot && createPortal(
         <OverlayScope.Provider value={{ ...parentScope, ids: [...parentScope.ids, escId] }}>
         <div
           ref={menuRef}
           data-my-layer={[...parentScope.ids, escId].join(' ')}
-          data-placement={pos ? (pos.above ? 'top' : 'bottom') : undefined}
+          data-placement={renderedPos?.side}
           data-align={align}
+          data-state={presence.state}
+          aria-hidden={presence.state === 'closing' || undefined}
           style={{
-            top: pos?.top ?? -9999,
-            left: pos?.left ?? -9999,
+            top: renderedPos?.top ?? -9999,
+            left: renderedPos?.left ?? -9999,
             width: width ?? 'max-content',
-            maxHeight: pos?.maxHeight,
-            minWidth: pos?.minWidth,
-            visibility: pos ? 'visible' : 'hidden'
+            maxHeight: renderedPos?.maxHeight,
+            minWidth: renderedPos?.minWidth,
+            visibility: renderedPos ? 'visible' : 'hidden'
           }}
-          className={clsx(pos && 'my-pop', 'my-menu my-scrollbar no-drag fixed')}
+          className={clsx(renderedPos && 'my-pop', 'my-menu my-scrollbar no-drag fixed')}
           onFocusCapture={(event) => { if (event.target instanceof HTMLElement) lastMenuFocusRef.current = event.target }}
           onKeyDown={(event) => {
             guardComposingEscape(event)
@@ -401,7 +513,7 @@ export function Dropdown({
         >
           {children(() => close())}
         </div>
-        </OverlayScope.Provider>, portalRoot
+        </OverlayScope.Provider>, renderedRoot
       )}
     </div>
   )
@@ -530,6 +642,7 @@ export function DropdownHeader({ children }: { children: ReactNode }): JSX.Eleme
 /* ---------------- Tooltip（portal 渲染 + 视口碰撞规避） ---------------- */
 
 const TOOLTIP_GAP = 6
+let lastTooltipClosedAt = 0
 
 export function Tooltip({ label, children, side = 'top', align = 'center', wrap = false }: { label: string; children: ReactNode; side?: 'top' | 'bottom'; align?: 'center' | 'right'; wrap?: boolean }): JSX.Element {
   const id = useId()
@@ -538,13 +651,39 @@ export function Tooltip({ label, children, side = 'top', align = 'center', wrap 
   const anchorRef = useRef<HTMLSpanElement>(null)
   const tipRef = useRef<HTMLSpanElement>(null)
   const suppressRef = useRef(false)
+  const delayTimerRef = useRef<number | null>(null)
   const [open, setOpen] = useState(false)
+  const activeOpen = open && interactive
+  const presence = usePresence(activeOpen, MOTION_TOOLTIP_EXIT_MS)
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
-  const [place, setPlace] = useState<{ top: number; left: number } | null>(null)
-  const hide = (): void => { suppressRef.current = true; setOpen(false) }
+  const [place, setPlace] = useState<{ top: number; left: number; side: 'top' | 'bottom' } | null>(null)
+  const lastPlaceRef = useRef<{ top: number; left: number; side: 'top' | 'bottom' } | null>(null)
+  const lastRootRef = useRef<HTMLElement | null>(null)
+  if (place) lastPlaceRef.current = place
+  if (portalRoot) lastRootRef.current = portalRoot
+  const renderedPlace = activeOpen ? place : lastPlaceRef.current
+  const renderedRoot = activeOpen ? portalRoot : lastRootRef.current
+
+  const clearDelay = useCallback((): void => {
+    if (delayTimerRef.current !== null) {
+      window.clearTimeout(delayTimerRef.current)
+      delayTimerRef.current = null
+    }
+  }, [])
+
+  const closeTip = useCallback((): void => {
+    clearDelay()
+    setOpen((prev) => {
+      if (prev) lastTooltipClosedAt = Date.now()
+      return false
+    })
+  }, [clearDelay])
+
+  const hide = (): void => { suppressRef.current = true; closeTip() }
   useEscLayer(open, { kind: 'modal', id: `tooltip-${id}`, onClose: hide })
 
-  useEffect(() => { if (!interactive) { setOpen(false); suppressRef.current = false } }, [interactive])
+  useEffect(() => clearDelay, [clearDelay])
+  useEffect(() => { if (!interactive) { clearDelay(); setOpen(false); suppressRef.current = false } }, [interactive, clearDelay])
 
   useLayoutEffect(() => {
     if (!open || !interactive) { setPortalRoot(null); setPlace(null); return }
@@ -584,48 +723,62 @@ export function Tooltip({ label, children, side = 'top', align = 'center', wrap 
     top = Math.min(Math.max(top, 8), Math.max(8, vh - t.height - 8))
     let left = align === 'right' ? a.right - t.width : a.left + a.width / 2 - t.width / 2
     left = Math.min(Math.max(left, 8), Math.max(8, vw - t.width - 8))
-    setPlace({ top: Math.round(top), left: Math.round(left) })
+    setPlace({ top: Math.round(top), left: Math.round(left), side: useTop ? 'top' : 'bottom' })
   }, [open, portalRoot, label, side, align, wrap])
 
   useEffect(() => {
     if (!open || !interactive) return
-    const hide = () => setOpen(false)
-    window.addEventListener('scroll', hide, true)
-    window.addEventListener('resize', hide)
+    const dismissOnMove = (): void => closeTip()
+    window.addEventListener('scroll', dismissOnMove, true)
+    window.addEventListener('resize', dismissOnMove)
     return () => {
-      window.removeEventListener('scroll', hide, true)
-      window.removeEventListener('resize', hide)
+      window.removeEventListener('scroll', dismissOnMove, true)
+      window.removeEventListener('resize', dismissOnMove)
     }
-  }, [open, interactive])
+  }, [open, interactive, closeTip])
 
   return (
     <span
       ref={anchorRef}
       className="my-tooltip-anchor relative inline-flex"
-      onMouseEnter={() => { if (interactive && !suppressRef.current) setOpen(true) }}
-      onMouseLeave={() => { suppressRef.current = false; setOpen(false) }}
-      onPointerDown={() => { suppressRef.current = true; setOpen(false) }}
-      onFocus={(e) => { if (interactive && !suppressRef.current && e.target instanceof HTMLElement && e.target.matches(':focus-visible')) setOpen(true) }}
-      onBlur={() => { suppressRef.current = false; setOpen(false) }}
+      onMouseEnter={() => {
+        if (!interactive || suppressRef.current) return
+        clearDelay()
+        // 同组连续探索 450ms 内免等待直显，首个悬停轻延 160ms 防划过误闪
+        if (Date.now() - lastTooltipClosedAt < 450) {
+          setOpen(true)
+          return
+        }
+        delayTimerRef.current = window.setTimeout(() => {
+          delayTimerRef.current = null
+          setOpen(true)
+        }, 160)
+      }}
+      onMouseLeave={() => { suppressRef.current = false; closeTip() }}
+      onPointerDown={() => { suppressRef.current = true; closeTip() }}
+      onFocus={(e) => { if (interactive && !suppressRef.current && e.target instanceof HTMLElement && e.target.matches(':focus-visible')) { clearDelay(); setOpen(true) } }}
+      onBlur={() => { suppressRef.current = false; closeTip() }}
       onKeyDown={guardComposingEscape}
       onClick={hide}
     >
       {children}
-      {open && interactive && portalRoot && createPortal(
+      {presence.mounted && renderedRoot && createPortal(
         <span
           ref={tipRef}
           role="tooltip"
           id={id}
           data-my-layer={parentScope.ids.join(' ')}
+          data-side={renderedPlace?.side ?? side}
+          data-state={renderedPlace ? presence.state : undefined}
           style={{
-            ...(place ?? { visibility: 'hidden' as const }),
+            ...(renderedPlace ? { top: renderedPlace.top, left: renderedPlace.left } : { visibility: 'hidden' as const }),
             ...(wrap ? { width: 'max-content', maxWidth: 'min(360px, calc(100vw - 24px))', whiteSpace: 'normal' as const } : {})
           }}
-          className="my-tooltip my-fade no-drag pointer-events-none fixed left-0 top-0 whitespace-nowrap border border-my-line px-2 py-1 text-my-xs text-my-secondary"
+          className="my-tooltip no-drag pointer-events-none fixed left-0 top-0 whitespace-nowrap border border-my-line px-2 py-1 text-my-xs text-my-secondary"
         >
           {label}
         </span>,
-        portalRoot
+        renderedRoot
       )}
     </span>
   )
@@ -695,11 +848,16 @@ export function Modal({
   const escId = useId()
   const parentScope = useContext(OverlayScope)
   const interactive = useInteractionActive()
+  const activeOpen = open && interactive
+  const presence = usePresence(activeOpen, MOTION_EXIT_MS)
   const anchorRef = useRef<HTMLSpanElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const canInteract = useInteractionGuard()
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
+  const lastRootRef = useRef<HTMLElement | null>(null)
+  if (portalRoot) lastRootRef.current = portalRoot
+  const renderedRoot = activeOpen ? portalRoot : lastRootRef.current
   useEscLayer(open, { kind: 'modal', id: `modal-${escId}`, onClose, retainUntilInactive: true })
 
   useLayoutEffect(() => {
@@ -737,13 +895,15 @@ export function Modal({
   return (
     <>
       <span ref={anchorRef} hidden />
-      {open && interactive && portalRoot && createPortal(
+      {presence.mounted && renderedRoot && createPortal(
         <OverlayScope.Provider value={{ ids: [...parentScope.ids, escId], modal: panelRef }}>
         <div
           data-my-layer={[...parentScope.ids, escId].join(' ')}
-          className={clsx('my-fade my-modal-backdrop no-drag fixed inset-0 flex justify-center', fullScreen ? 'my-modal-fullscreen-backdrop items-stretch' : clsx('px-[var(--my-page-inset)]', placement === 'center' ? 'items-center' : 'items-start pt-[var(--my-modal-top-inset)]'))}
+          data-state={presence.state}
+          aria-hidden={presence.state === 'closing' || undefined}
+          className={clsx('my-modal-backdrop no-drag fixed inset-0 flex justify-center', fullScreen ? 'my-modal-fullscreen-backdrop items-stretch' : clsx('px-[var(--my-page-inset)]', placement === 'center' ? 'items-center' : 'items-start pt-[var(--my-modal-top-inset)]'))}
           onKeyDown={guardComposingEscape}
-          onMouseDown={(e) => { e.stopPropagation(); if (e.button === 0 && e.target === e.currentTarget) onClose() }}
+          onMouseDown={(e) => { e.stopPropagation(); if (presence.state === 'open' && e.button === 0 && e.target === e.currentTarget) onClose() }}
           onClick={(e) => e.stopPropagation()}
         >
           <div
@@ -752,12 +912,14 @@ export function Modal({
             aria-modal="true"
             aria-label={ariaLabel}
             tabIndex={-1}
+            data-placement={placement}
+            data-state={presence.state}
             style={{ width: fullScreen ? '100%' : width ?? 'var(--my-modal-width)' }}
-            className={clsx('my-modal-panel overflow-hidden', fullScreen ? 'my-modal-fullscreen-panel h-full max-h-none' : 'my-peek-in max-h-[var(--my-modal-max-height)]')}
+            className={clsx('my-modal-panel overflow-hidden', fullScreen ? 'my-modal-fullscreen-panel h-full max-h-none' : 'max-h-[var(--my-modal-max-height)]')}
             onKeyDown={(e) => {
               if (e.key !== 'Tab' || e.defaultPrevented) return
-              if (topModal(portalRoot)?.panel !== panelRef.current) return
-              const controls = controlsIn(portalRoot).filter((el) => ownsOverlay(panelRef.current, el, escId))
+              if (topModal(renderedRoot)?.panel !== panelRef.current) return
+              const controls = controlsIn(renderedRoot).filter((el) => ownsOverlay(panelRef.current, el, escId))
               const first = controls[0]
               const last = controls[controls.length - 1]
               if (!first) { e.preventDefault(); e.currentTarget.focus(); return }
@@ -772,7 +934,7 @@ export function Modal({
           </div>
         </div>
         </OverlayScope.Provider>,
-        portalRoot
+        renderedRoot
       )}
     </>
   )
@@ -799,7 +961,7 @@ export function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v
       )}
     >
       {checked && (
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <svg className="my-checkbox-mark" width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d="M2 5.2 4.1 7.3 8 3.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
@@ -892,7 +1054,7 @@ export function SearchInput({
   )
 }
 
-/* ---------------- 页签（顶栏 tabs） ---------------- */
+/* ---------------- 页签（顶栏 tabs，带平滑滑动选中底托） ---------------- */
 
 export function Tabs<T extends string>({
   tabs,
@@ -907,8 +1069,40 @@ export function Tabs<T extends string>({
   className?: string
   ariaLabel?: string
 }): JSX.Element {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const measuredOnce = useRef(false)
+  const [pill, setPill] = useState<{ x: number; w: number; ready: boolean; instant: boolean }>({ x: 0, w: 0, ready: false, instant: true })
+
+  useLayoutEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    const sync = (instantOverride?: boolean): void => {
+      const selected = track.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      if (!selected) {
+        setPill((prev) => prev.ready ? { ...prev, ready: false } : prev)
+        return
+      }
+      const x = selected.offsetLeft
+      const w = selected.offsetWidth
+      const instant = instantOverride ?? !measuredOnce.current
+      measuredOnce.current = true
+      setPill((prev) => (prev.x === x && prev.w === w && prev.ready && prev.instant === instant ? prev : { x, w, ready: true, instant }))
+    }
+    sync()
+    const observer = new ResizeObserver(() => sync(true))
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [active, tabs])
+
   return (
-    <div className={clsx("flex items-center gap-1", className)} role="tablist" aria-label={ariaLabel}>
+    <div ref={trackRef} className={clsx('my-tabs-track', className)} role="tablist" aria-label={ariaLabel}>
+      <span
+        className="my-tabs-indicator"
+        data-ready={pill.ready || undefined}
+        data-instant={pill.instant || undefined}
+        style={{ '--my-tab-x': `${pill.x}px`, '--my-tab-w': `${pill.w}px` } as CSSProperties}
+        aria-hidden="true"
+      />
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -919,7 +1113,7 @@ export function Tabs<T extends string>({
           className={clsx(
             'my-control my-control-sm rounded-my-md font-medium transition-colors select-none',
             active === t.id
-              ? 'bg-[var(--my-bg-layer-transparent-active)] text-[var(--my-txt-primary)]'
+              ? 'text-[var(--my-txt-primary)]'
               : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]'
           )}
         >
@@ -937,19 +1131,20 @@ export function EmptyState({
   title,
   description,
   icon,
-  action
+  action,
+  size = 'page',
+  className
 }: {
   title: string
   description?: string
   icon?: ReactNode
   action?: ReactNode
+  size?: 'page' | 'compact'
+  className?: string
 }): JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center gap-1.5 px-6 py-14 text-center">
-      <div
-        className="mb-1 flex h-10 w-10 items-center justify-center rounded-my-lg border border-[var(--my-border-subtle)] bg-[var(--my-bg-layer-2)] text-[var(--my-txt-tertiary)]"
-        style={{ boxShadow: 'var(--my-surface-rim), var(--my-shadow-raised-100)' }}
-      >
+    <div className={clsx('my-empty-state', size === 'compact' && 'my-empty-state--compact', className)}>
+      <div className="my-empty-state-icon">
         {icon ?? (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
@@ -958,8 +1153,8 @@ export function EmptyState({
         )}
       </div>
       <div className="my-item-title">{title}</div>
-      {description && <div className="my-item-description max-w-[320px]">{description}</div>}
-      {action && <div className="mt-2">{action}</div>}
+      {description && <div className="my-item-description my-empty-state-description">{description}</div>}
+      {action && <div className="my-empty-state-actions">{action}</div>}
     </div>
   )
 }

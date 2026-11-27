@@ -1,0 +1,543 @@
+/* Unified motion language: page transitions, rail indicator, window chrome, overlays and tactile microinteractions. */
+/* All color/radius/timing values consume my-tokens.css; zero raw palette literals. */
+
+/* ---------------- 1. 纯净双页光学叠化（True Crossfade：零位移、零缩放、零亮度凹陷） ---------------- */
+
+@keyframes my-page-crossfade-over {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes my-page-crossfade-solo {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes my-subview-fade {
+  from {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.my-root .my-route-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 底层旧页面：原地完整垫底（不透明、不移动、不占位），被上方新页平滑溶解覆盖 */
+.my-root .my-route-stage[data-route-state='exiting'] {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 1;
+}
+
+/* 顶层新页面（有旧页垫底时）：0 → 1 严格光学线性插值，总不透明度恒为 100%，零闪白 */
+.my-root .my-route-stage[data-route-state='entering'] {
+  z-index: 2;
+  animation: my-page-crossfade-over var(--my-motion-fast) var(--my-ease-out) both;
+}
+
+/* 无旧页垫底时（例如跨外壳侧栏布局切换）：柔和淡入，不闪空、不位移 */
+.my-root .my-route-stage[data-route-state='entering-solo'] {
+  z-index: 2;
+  animation: my-page-crossfade-solo var(--my-motion-fast) var(--my-ease-out) both;
+}
+
+.my-root .my-subview-stage {
+  animation: my-subview-fade 125ms var(--my-ease-out) both;
+}
+
+/* 路由懒加载未完成时的顶部极细无干扰流光条（保留旧页面，杜绝白屏） */
+@keyframes my-route-progress-slide {
+  0% { transform: translateX(-100%) scaleX(0.35); }
+  50% { transform: translateX(35%) scaleX(0.65); }
+  100% { transform: translateX(120%) scaleX(0.35); }
+}
+
+.my-root .my-route-pending-bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: var(--my-z-inspector);
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-route-pending-bar[data-visible='true'] {
+  opacity: 1;
+}
+
+.my-root .my-route-pending-bar::after {
+  content: '';
+  display: block;
+  width: 52%;
+  height: 100%;
+  border-radius: var(--my-radius-full);
+  background: linear-gradient(90deg, transparent 0%, var(--my-txt-primary) 50%, transparent 100%);
+  opacity: 0.45;
+  animation: my-route-progress-slide 1.1s var(--my-ease-standard) infinite;
+}
+
+/* 延迟柔显的 PageLoading：140ms 内就绪则完全不露转圈，消除短加载闪烁 */
+@keyframes my-loading-reveal {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.my-root .my-page-loading {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  background: var(--my-bg-surface-1);
+  color: var(--my-txt-tertiary);
+}
+
+.my-root .my-page-loading-indicator {
+  opacity: 0;
+  animation: my-loading-reveal var(--my-motion-normal) var(--my-ease-out) 140ms forwards;
+}
+
+/* ---------------- 2. 顶栏上下文栏与主画布圆角平滑过渡 ---------------- */
+
+/* 顶栏上下文栏开关防跳动平滑收起 */
+.my-root .my-header-collapse {
+  overflow: hidden;
+  max-width: var(--my-space-36);
+  opacity: 1;
+  transition:
+    max-width var(--my-motion-normal) var(--my-ease-out),
+    opacity var(--my-motion-fast) var(--my-ease-out),
+    margin-inline-start var(--my-motion-normal) var(--my-ease-out);
+}
+
+.my-root .my-header-collapse.is-hidden {
+  max-width: 0;
+  opacity: 0;
+  margin-inline-start: 0;
+  pointer-events: none;
+}
+
+.my-root .my-workspace-center {
+  transition: border-radius var(--my-motion-normal) var(--my-ease-out);
+}
+
+/* ---------------- 3. 窗口级动效（最小化 / 最大化 / 失焦唤醒，无 Alt+Tab 整窗缩放） ---------------- */
+
+.my-root.my-app-window {
+  transition: opacity var(--my-motion-exit) var(--my-ease-out);
+}
+
+.my-root.my-app-window[data-window-maximized='true'] .my-shell-layout {
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.my-root.my-app-window[data-window-maximized='true'] .my-workspace-center {
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.my-root.my-app-window[data-window-maximized='true'] .my-shell-layout > .my-context-region > .my-context-sidebar {
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+}
+
+.my-root.my-app-window .my-shell-layout {
+  transition: padding var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root.my-app-window[data-window-phase='minimizing'] {
+  opacity: 0;
+  transition: opacity var(--my-motion-exit) var(--my-ease-exit);
+}
+
+.my-root.my-app-window[data-window-phase='closing'] {
+  opacity: 0;
+  transition: opacity var(--my-motion-exit) var(--my-ease-exit);
+}
+
+/* 窗口失焦时外壳控件柔和退让，聚焦时唤醒 */
+.my-root.my-app-window .my-window-header,
+.my-root.my-app-window .my-module-rail {
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root.my-app-window[data-window-focused='false'] .my-global-header-row > *:not(.my-window-controls),
+.my-root.my-app-window[data-window-focused='false'] .my-module-rail > nav,
+.my-root.my-app-window[data-window-focused='false'] .my-module-footer {
+  opacity: 0.72;
+}
+
+.my-root.my-app-window .my-global-header-row > *,
+.my-root.my-app-window .my-module-rail > nav,
+.my-root.my-app-window .my-module-footer {
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+/* 标题栏原生窗口按钮微反馈 */
+.my-root .my-window-button > svg {
+  transition: transform var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-window-button[data-win-action='minimize']:hover > svg {
+  transform: translateY(1px);
+}
+.my-root .my-window-button[data-win-action='maximize']:hover > svg {
+  transform: scale(1.08);
+}
+.my-root .my-window-button[data-win-action='close']:hover > svg {
+  transform: scale(1.06);
+}
+.my-root .my-window-button:active > svg {
+  transform: scale(0.92);
+  transition-duration: var(--my-dur-micro);
+}
+
+/* ---------------- 4. 弹窗 / 命令面板 / 快速预览 双态进退场 ---------------- */
+
+@keyframes my-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes my-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes my-modal-center-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--my-motion-shift-md), 0) scale(0.968);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes my-modal-center-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, var(--my-motion-shift-xs), 0) scale(0.978);
+  }
+}
+
+@keyframes my-modal-top-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, calc(var(--my-motion-shift-md) * -0.8), 0) scale(0.982);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes my-modal-top-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, calc(var(--my-motion-shift-sm) * -1), 0) scale(0.986);
+  }
+}
+
+.my-root .my-modal-backdrop {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.my-root .my-modal-backdrop[data-state='open'] {
+  animation: my-backdrop-in var(--my-motion-fast) var(--my-ease-out) both;
+}
+
+.my-root .my-modal-backdrop[data-state='closing'] {
+  pointer-events: none;
+  animation: my-backdrop-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+.my-root .my-modal-panel[data-placement='center'][data-state='open'] {
+  animation: my-modal-center-in var(--my-motion-normal) var(--my-ease-spring) both;
+}
+
+.my-root .my-modal-panel[data-placement='center'][data-state='closing'] {
+  animation: my-modal-center-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+.my-root .my-modal-panel[data-placement='top'][data-state='open'] {
+  animation: my-modal-top-in var(--my-motion-page) var(--my-ease-spring) both;
+}
+
+.my-root .my-modal-panel[data-placement='top'][data-state='closing'] {
+  animation: my-modal-top-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+.my-root .my-modal-fullscreen-panel[data-state='open'] {
+  animation: my-backdrop-in var(--my-motion-fast) var(--my-ease-out) both;
+}
+
+.my-root .my-modal-fullscreen-panel[data-state='closing'] {
+  animation: my-backdrop-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+/* ---------------- 5. 下拉菜单与工具提示 双态方向动效 ---------------- */
+
+@keyframes my-pop-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(var(--my-pop-offset-x, 0px), var(--my-pop-offset-y, 0px), 0) scale(0.975);
+  }
+}
+
+@keyframes my-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--my-tooltip-offset-y, 3px), 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes my-tooltip-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, var(--my-tooltip-offset-y, 3px), 0) scale(0.97);
+  }
+}
+
+.my-root .my-pop[data-state='closing'] {
+  pointer-events: none;
+  animation: my-pop-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+.my-root .my-tooltip[data-side='top'] {
+  --my-tooltip-offset-y: var(--my-motion-shift-xs);
+}
+
+.my-root .my-tooltip[data-side='bottom'] {
+  --my-tooltip-offset-y: calc(var(--my-motion-shift-xs) * -1);
+}
+
+.my-root .my-tooltip[data-state='open'] {
+  animation: my-tooltip-in var(--my-motion-fast) var(--my-ease-spring) both;
+}
+
+.my-root .my-tooltip[data-state='closing'] {
+  animation: my-tooltip-out var(--my-dur-micro) var(--my-ease-exit) both;
+}
+
+/* ---------------- 6. 任务右侧详情抽屉与全屏工作区 ---------------- */
+
+@keyframes my-drawer-right-in {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--my-motion-shift-drawer), 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes my-drawer-right-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(var(--my-motion-shift-drawer), 0, 0);
+  }
+}
+
+.my-root .my-task-surface[data-task-presentation='preview'][data-state='open'] {
+  animation: my-drawer-right-in var(--my-motion-normal) var(--my-ease-spring) both;
+}
+
+.my-root .my-task-surface[data-task-presentation='preview'][data-state='closing'] {
+  pointer-events: none;
+  animation: my-drawer-right-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+.my-root .my-task-surface[data-task-presentation='workspace'][data-state='open'] {
+  animation: my-page-enter-crossfade var(--my-motion-page) var(--my-ease-spring) both;
+}
+
+.my-root .my-task-surface[data-task-presentation='workspace'][data-state='closing'] {
+  pointer-events: none;
+  animation: my-backdrop-out var(--my-motion-exit) var(--my-ease-exit) both;
+}
+
+/* 侧栏内容随收起/展开平滑显隐，避免硬裁切感 */
+.my-root .my-context-region > * {
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+.my-root .my-context-region.is-collapsed > * {
+  opacity: 0;
+}
+
+/* 折叠分组子内容轻柔展开 */
+.my-root .my-navigation-group[open] > .my-navigation-children {
+  animation: my-subview-enter var(--my-motion-fast) var(--my-ease-spring) both;
+}
+
+/* ---------------- 7. 高频基础控件微交互（Switch / Checkbox / Tabs） ---------------- */
+
+/* Switch 液态按压微伸展 + 轻弹落位 */
+.my-root .my-switch > span {
+  transition:
+    transform var(--my-motion-fast) var(--my-ease-spring),
+    width var(--my-dur-micro) var(--my-ease-snappy),
+    background-color var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-switch:active:not(:disabled):not([aria-disabled='true']) > span {
+  width: calc(var(--my-switch-thumb-size) + 3px);
+}
+
+.my-root .my-switch[aria-checked='true']:active:not(:disabled):not([aria-disabled='true']) > span {
+  transform: translateX(calc(var(--my-switch-width) - var(--my-switch-inset) * 2 - var(--my-switch-thumb-size) - 3px));
+}
+
+/* Checkbox 对勾描边绘制 + 微弹 */
+@keyframes my-check-draw {
+  from {
+    stroke-dashoffset: 14;
+    opacity: 0.4;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes my-check-pop {
+  0% { transform: scale(0.75); }
+  65% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.my-root .my-checkbox {
+  transition:
+    background-color var(--my-motion-fast) var(--my-ease-out),
+    border-color var(--my-motion-fast) var(--my-ease-out),
+    transform var(--my-dur-micro) var(--my-ease-snappy);
+}
+
+.my-root .my-checkbox:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.my-root .my-checkbox-mark path {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 0;
+  animation: my-check-draw var(--my-motion-fast) var(--my-ease-spring) both;
+}
+
+/* Tabs 滑动选中底托 */
+.my-root .my-tabs-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+}
+
+.my-root .my-tabs-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: var(--my-control-radius);
+  background: var(--my-bg-layer-transparent-active);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(var(--my-tab-x, 0px), 0, 0);
+  width: var(--my-tab-w, 0px);
+  transition:
+    transform var(--my-motion-normal) var(--my-ease-spring),
+    width var(--my-motion-normal) var(--my-ease-spring),
+    opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-tabs-indicator[data-ready='true'] {
+  opacity: 1;
+}
+
+.my-root .my-tabs-indicator[data-instant='true'] {
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-tabs-track > [role='tab'] {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------- 8. 减少动态效果全局守卫 ---------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .my-root .my-route-stage,
+  .my-root .my-subview-stage,
+  .my-root .my-page-loading-indicator,
+  .my-root .my-modal-backdrop,
+  .my-root .my-modal-panel,
+  .my-root .my-pop,
+  .my-root .my-tooltip,
+  .my-root .my-task-surface,
+  .my-root.my-app-window,
+  .my-root .my-checkbox-mark path {
+    animation: none !important;
+  }
+
+  .my-root .my-page-loading-indicator {
+    opacity: 1;
+  }
+
+  .my-root .my-tabs-indicator,
+  .my-root .my-header-collapse,
+  .my-root .my-workspace-center,
+  .my-root .my-switch > span,
+  .my-root .my-window-button > svg {
+    transition: none !important;
+  }
+}
