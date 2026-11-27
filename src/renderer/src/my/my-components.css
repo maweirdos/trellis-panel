@@ -228,7 +228,7 @@
   height: 30px; min-height: 30px; padding: 0 var(--my-space-8);
   border-radius: var(--my-control-radius); text-align: left;
   font-size: var(--my-menu-option-size); color: var(--my-txt-primary);
-  background: transparent;
+  background: transparent; cursor: pointer;
   transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out);
 }
 .my-root .my-menu-icon {
