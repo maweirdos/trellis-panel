@@ -221,17 +221,25 @@ Example:
 
 ## Selection, hover and result presentation
 
-- `DropdownItem({ selected?, icon?, ... })` owns the selected check and renders it
-  at the trailing edge. Callers pass `selected`, not a leading Check component or
-  an empty placeholder icon. Semantic icons (avatar, priority, file type) may stay
-  at the leading edge; icon-free items begin directly with their label. The shared
-  `Select` follows the same trailing-check convention. Table bulk-selection and
-  form checkboxes retain their actual checkbox semantics.
+- `DropdownItem({ selected?, icon?, trailing?, ... })` owns the selected check and
+  renders it at the trailing edge. Callers pass `selected` (never a duplicate
+  `<Check />` inside `children`), pass leading semantic icons/avatars/org badges
+  through `icon`, and pass trailing status text/actions through `trailing`.
+  Because `DropdownItem` wraps single-line `children` in a `truncate` span (not
+  a flex row), placing leading badges or trailing checks inside `children` causes
+  text collision and wrapped double checks. Icon-free items begin directly with
+  their label. When a menu mixes `14px` line icons with `20px` avatars/badges,
+  give its items a shared modifier class that widens `.my-menu-icon` to `20px`
+  for a straight vertical label axis, and scope the default `14px` SVG rule to
+  direct children (`.my-menu-icon > svg`) so inner badge icons are not stretched.
+  The shared `Select` follows the same trailing-check convention. Table
+  bulk-selection and form checkboxes retain their actual checkbox semantics.
 - Menu captions use the shared `my-menu-header` role: `--my-menu-title-size`
-  (`--my-text-xs`, standard12px), `--my-menu-title-color` (tertiary), medium weight
+  (`--my-text-xs`, standard 12px), `--my-menu-title-color` (tertiary), medium weight
   and no option hover treatment. Options use `my-menu-item` / `my-select-option`:
-  `--my-menu-option-size` (`--my-text-sm`, standard13px),
-  `--my-menu-option-color` (primary), fixed `30px` row height and `0 8px` padding.
+  `--my-menu-option-size` (`--my-text-sm`, standard 13px),
+  `--my-menu-option-color` (primary), fixed `30px` row height and `0 8px` padding;
+  selected menu rows use medium weight (`--my-weight-medium`).
   Both scale through the same font preset; captions stay smaller (`12px` vs `13px`).
   Do not use secondary color and the same type size for both a caption and an enabled choice.
   Actual page/dialog headings and the selected strength value retain their own stronger heading/value roles.
@@ -239,11 +247,14 @@ Example:
   command lists and navigation sub-lists) must lay out options with
   `display: flex; flex-direction: column; gap: var(--my-space-2)` (2px) so
   selected, hovered and active pill backgrounds never collide edge-to-edge.
+  `.my-menu` uses `6px` outer padding, `.my-menu-divider` insets `4px` horizontally,
+  and `.my-menu-divider + .my-menu-header` removes extra top margin so section
+  gaps stay balanced; conditional trailing sections must keep their leading
+  `<DropdownDivider />` inside the same condition to avoid dangling dividers.
   `my-select-menu` uses `scrollbar-gutter: auto` and omits `my-fade-scroll` so short
   dropdowns do not wash out top/bottom items or reserve a blank trailing scrollbar column.
   `my-select-option` uses the same selected/hover background mixes as `my-menu-item`
-  (`6%` hover / `10%` selected / `12%` active) so selected rows stay clearly
-  distinguishable from hovered rows in both themes.
+  so selected rows stay clearly distinguishable from hovered rows in both themes.
   Focus uses a 3-tier neutral hierarchy: frameless editors/composers and
   `.my-command-search` opt out of focus rings (`.my-focus-none` / `[data-focus-ring='none']`);
   `.my-input` and `.my-select-trigger` emphasize their existing 1px border
@@ -363,11 +374,14 @@ The accent is neutral inversion: white on dark, dark ink on light. Filled accent
 controls use `text-my-on-accent`; danger/colored controls use `text-my-on-color`.
 Do not reuse constant white text on a white accent fill. Green is a success/
 completion or user-label semantic color, never an application brand setting.
-No legacy leaf variables/classes, private accent overrides or bundled Inter.
+No legacy leaf variables/classes, private accent overrides or `@fontsource-variable/inter` package imports.
 
-The default font is the platform system stack, including Segoe UI and Chinese
-fallbacks on Windows. Code uses the global mono stack; box-drawing content uses
-`--my-font-diagram` for its CJK character-width requirements. There is no font CDN.
+The default UI font stack is the local self-hosted variable pair `'Inter'` and
+`'Source Han Sans SC'` (loaded from `src/renderer/src/assets/fonts/`), falling
+back to platform system fonts including Segoe UI and Chinese fallbacks on Windows
+(or directly selectable via `[data-my-font='system']`). Code uses the global mono
+stack; box-drawing content uses `--my-font-diagram` for its CJK character-width
+requirements. There is no external font CDN.
 
 The persisted `small/standard/large` appearance values select Compact/Standard/
 Comfortable density with 13/14/15px UI/document/chat text. Missing or invalid values
@@ -382,13 +396,27 @@ primary text role. Chat lists use compact2px item gaps and4px inner-paragraph ga
 with deliberate nested-list spacing; do not stack full prose paragraph margins
 inside every list item. Document readers retain their own typography contract.
 The toolbar uses `--my-shell-chrome-size` (44/48/50px by density). The module rail
-is independent: width48/52/54px, target32/34/36px and glyph18/20/21px, with1.7
-icon stroke. The header brand slot
-shares rail width, not rail height; changing the rail must not raise the toolbar.
-Rail geometry follows the selected density preset. Its buttons inherit the shared
-control radius and existing neutral hover/selection colors. Short windows retain
-an independently scrollable primary nav and reachable footer controls. Fields
-and ordinary buttons use density-specific compact, regular and field height roles.
+is independent: width 48/52/54px, target 32/34/36px, glyph 16/17/18px, resting
+stroke 1.55 and active stroke 1.75 (retaining ~48–50% glyph-to-button breathing
+room). Rail buttons consume dedicated module tokens (`--my-module-icon-rest` for
+quiet resting icons, `--my-module-button-hover-bg` for hover, and
+`--my-module-button-active-bg/border/shadow` for the raised keycap selected
+surface); do not override resting ink with utility classes such as
+`text-my-icon-secondary`. Choose optically balanced icons of consistent density
+along the vertical rail (avoid mixing dense multi-pin glyphs like `Cpu`, tilted
+silhouettes like `Blocks`, or sparse two-bar glyphs like `Settings2`). Keep
+unread badges and status dots off the icon strokes: badges offset slightly
+outside the button (`top: -3px; right: -3px` with `overflow: visible` and a `2px`
+shell-colored ring), the rail nav reserves enough `padding-top` to avoid clipping
+while aligning the first rail button's vertical center (`24px` in standard) with
+the adjacent sidebar header row, and active-state status dots switch their ring
+color to `--my-module-button-active-bg`. The header brand slot shares rail width,
+not rail height; it stays frameless in `--my-txt-primary` (20/22/23px) with a
+centered `18px` bottom hairline divider so it is never confused with a rail
+button or dominated by a heavy inverted block. Short windows retain an
+independently scrollable primary nav (`scrollbar-gutter: auto`) and reachable
+footer controls. Fields and ordinary buttons use density-specific compact,
+regular and field height roles.
 
 ## 4. Interaction and validation matrix
 

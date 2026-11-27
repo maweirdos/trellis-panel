@@ -8,8 +8,14 @@ and operation-specific actions retain their existing meaning.
 
 ## Component signatures
 
-- `BrandMark({ size?, className? })`: static, decorative, canonical mark. Numeric
-  sizes and CSS lengths support density tokens without measuring the DOM.
+- `BrandMark({ size?, className?, compact? })`: static, decorative, canonical mark.
+  Numeric sizes and CSS lengths support density tokens without measuring the DOM.
+  Defaults to optical compact assets (`mark-16/20/compact`) for small inline marks;
+  pass `compact={false}` when pixel-accurate geometric centering is required
+  against a vertical icon rail or title-bar centerline (because `mark-16.svg` and
+  `mark-20.svg` shift `+0.5` grid unit toward bottom-right from integer rounding,
+  whereas `mark.svg` is centered at `(56, 56)` in `112×112` with `78.4%` visual
+  span).
 - `BrandWordmark({ width?, className? })`: static vector Crux wordmark.
 - `BrandMotion({ state, size?, active?, className?, label? })`: states are
   `observe | c | loading | waiting`; a stable square slot keeps adjacent text fixed.
@@ -65,6 +71,11 @@ and operation-specific actions retain their existing meaning.
 ## Usage
 
 Use `BrandMark` for a navigation identity and `BrandWordmark` for a brand lockup.
+In the desktop title bar's rail-aligned brand slot, keep `BrandMark` frameless in
+`--my-txt-primary` with a subtle centered hairline divider beneath it: do not wrap
+it in the same raised tile as module navigation buttons (which makes it read like
+an interactive button) and do not place a heavy high-contrast inverted black/white
+block beside the organization badge.
 Use `AgentActivityMark` beside an existing truthful Agent status. Ordinary local
 save/upload/pagination controls keep their compact operation feedback.
 

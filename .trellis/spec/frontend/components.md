@@ -56,8 +56,29 @@ requires a live renderer that can record its acknowledged conversation identity.
 
 Follow [CSS/design contracts](./css-design.md#selection-hover-and-result-presentation)
 when adding or changing choices, composer buttons and Hook/file-result feedback.
-Use `DropdownItem.selected` for a right-side check; do not reserve an empty leading
-check slot. Give enabled compact actions neutral rounded hover feedback.
+Use `DropdownItem.selected` for the single right-side check, `DropdownItem.icon`
+for leading icons/avatars/badges, and `DropdownItem.trailing` for trailing status
+copy; do not reserve an empty leading check slot, and never place leading icons
+or a second `<Check />` inside `DropdownItem` `children` (which renders inside a
+single-line `truncate` span and will misalign or double-render checks). Keep
+conditional trailing `<DropdownDivider />` elements inside the same condition so
+menus never end with a stray line.
+
+```tsx
+// Good - icon slot, plain text label, and single component-owned check
+<DropdownItem icon={<OrgIdentityIcon name={label} />} selected={isCurrent} onClick={onSelect}>
+  {label}
+</DropdownItem>
+
+// Bad - icon and duplicate Check inside truncated children span
+<DropdownItem selected={isCurrent} onClick={onSelect}>
+  <OrgIdentityIcon name={label} />
+  <span>{label}</span>
+  {isCurrent && <Check size={13} />}
+</DropdownItem>
+```
+
+Give enabled compact actions neutral rounded hover feedback.
 `ActivityResult` owns icon/content/trailing-action geometry; compose real actions
 without nested buttons or invented undo/completion facts. Severity never uses a
 colored left-edge border. Keep focus and disabled behavior accessible.
@@ -123,165 +144,24 @@ controls, and only when a native button cannot express the required layout.
 
 ## Empty State Visual Centering
 
-When displaying empty states in flex-column layouts with headers, use negative margin to achieve visual centering:
-
-```tsx
-// Good - Visual centering with negative margin offset
-{
-  !isLoading && items.length === 0 && (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="-mt-24">
-        <EmptyState />
-      </div>
-    </div>
-  );
-}
-
-// Bad - Mathematical centering looks "off" visually
-{
-  !isLoading && items.length === 0 && (
-    <div className="flex-1 flex items-center justify-center">
-      <EmptyState />
-    </div>
-  );
-}
-```
-
-**Why this pattern?**
-
-- `flex-1 items-center` centers content in the **remaining space** below the header
-- This creates mathematically correct but visually awkward positioning
-- Negative margin (`-mt-24` to `-mt-32`) offsets the content upward for better visual balance
-
-**Offset Guidelines:**
-
-| Page Type                   | Offset   | Reason                               |
-| --------------------------- | -------- | ------------------------------------ |
-| Standard page header        | `-mt-24` | Compensates for ~80px header         |
-| Header + action button/form | `-mt-32` | Additional offset for extra elements |
+Use the shared `EmptyState` primitive from `src/renderer/src/my/ui.tsx` (backed by
+`.my-empty-state` and `.my-empty-state--compact` in `my-components.css`), which
+already handles optical vertical centering and balanced copy width. Avoid ad-hoc
+negative-margin wrappers (`-mt-24`) unless a custom canvas cannot host `EmptyState`.
 
 ---
 
-## Preventing Scrollbar Layout Shift
+## Preventing Scrollbar Layout Shift & Auto-Hide
 
-When a scrollable container's content grows to require a scrollbar, the scrollbar appearance can cause layout shift (content "jumps" left as scrollbar takes up space).
+Use the shared `.my-scrollbar` class from `my-components.css` instead of writing
+custom `::-webkit-scrollbar` blocks or raw `hsl()` / `border-radius: 5px` rules
+(which fail `check:ui` token/radius checks).
 
-**Solution**: Use `scrollbar-gutter: stable` to reserve space for the scrollbar.
-
-```tsx
-// Good - Scrollbar space is always reserved
-<main
-  className="flex-1 overflow-y-auto p-6"
-  style={{ scrollbarGutter: 'stable' }}
->
-  {children}
-</main>
-
-// Bad - Content shifts when scrollbar appears/disappears
-<main className="flex-1 overflow-y-auto p-6">
-  {children}
-</main>
-```
-
-**When to use:**
-
-- Main content areas with `overflow-y-auto`
-- Containers where content dynamically expands (e.g., tree views, lists)
-- Any scrollable area where centered content (`mx-auto`) would shift
-
----
-
-## Scrollbar Auto-Hide (Notion-inspired)
-
-Scrollbars should be invisible by default and fade in/out smoothly on hover. This follows Notion's design language.
-
-**Implementation (CSS)**:
-
-```css
-/* Global scrollbar styles */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--foreground) / 0);
-  border-radius: 5px;
-  transition: background 0.4s ease;
-}
-
-/* Show on container hover */
-.scrollable:hover::-webkit-scrollbar-thumb {
-  background: hsl(var(--foreground) / 0.12);
-  transition: background 0.15s ease;
-}
-
-/* Darker on scrollbar hover */
-.scrollable::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.22);
-}
-
-/* Even darker when dragging */
-.scrollable::-webkit-scrollbar-thumb:active {
-  background: hsl(var(--foreground) / 0.32);
-}
-```
-
-**Behavior:**
-
-| State              | Opacity | Transition |
-| ------------------ | ------- | ---------- |
-| Default (hidden)   | 0%      | -          |
-| Hover on content   | 12%     | 0.15s in   |
-| Hover on scrollbar | 22%     | -          |
-| Dragging           | 32%     | -          |
-| Mouse leaves       | -> 0%   | 0.4s out   |
-
-**Scroll Detection Hook** (for showing scrollbar during active scroll):
-
-```tsx
-import { useRef, useEffect, useState } from 'react';
-
-function useScrolling<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout>();
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const handleScroll = () => {
-      setIsScrolling(true);
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => setIsScrolling(false), 1000);
-    };
-
-    element.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      element.removeEventListener('scroll', handleScroll);
-      clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  return { ref, isScrolling };
-}
-
-// Usage
-function MyScrollableList() {
-  const { ref, isScrolling } = useScrolling<HTMLDivElement>();
-
-  return (
-    <div ref={ref} className={`overflow-y-auto scrollable ${isScrolling ? 'is-scrolling' : ''}`}>
-      {/* content */}
-    </div>
-  );
-}
-```
+- `.my-scrollbar` provides `scrollbar-gutter: stable` and auto-revealing neutral
+  thumbs driven by `--my-scrollbar-thumb*` and `--my-radius-full`.
+- Short popovers and narrow icon rails (`.my-menu`, `.my-select-menu`,
+  `.my-module-rail > nav`) explicitly set `scrollbar-gutter: auto` so compact
+  containers do not reserve a blank trailing scrollbar column.
 
 ---
 
@@ -374,20 +254,15 @@ browser's normal order.
 
 ### Focus Ring
 
-Use consistent focus styles:
+Follow the shared 3-tier neutral focus hierarchy defined in `my-components.css`
+and `DESIGN.md` rather than raw `2px` colored outlines:
 
-```css
-/* Consistent focus ring */
-.focus-ring:focus-visible {
-  outline: 2px solid hsl(var(--color-primary));
-  outline-offset: 2px;
-}
-
-/* Remove default focus for mouse users */
-.focus-ring:focus:not(:focus-visible) {
-  outline: none;
-}
-```
+- **L1 (Frameless inputs/composers)**: opt out of outer focus rings via
+  `.my-focus-none` or `data-focus-ring="none"`.
+- **L2 (`.my-input`, `.my-select-trigger`)**: emphasize the existing `1px` border
+  with `--my-border-strong-1` and `--my-focus-shadow`.
+- **L3 (Buttons, nav items, switches, menu items)**: render a restrained
+  `--my-focus-width` (`1.5px`) `--my-focus-ring` outline on `:focus-visible` only.
 
 ### Focus Trapping
 
@@ -485,9 +360,9 @@ function Button({ isLoading, children, ...props }: ButtonProps) {
 | Pattern                    | When to Use                 |
 | -------------------------- | --------------------------- |
 | `role="button"` + tabIndex | A surface with no nested interactive controls when a native button cannot express the layout |
-| `-mt-24` offset            | Empty state centering       |
-| `scrollbar-gutter: stable` | Prevent layout shift        |
-| Auto-hide scrollbar        | Any scrollable container    |
+| `EmptyState` / `.my-empty-state` | Optical centering for empty panes |
+| `.my-scrollbar` (`scrollbar-gutter: stable`) | Prevent layout shift on scrolling regions (`auto` on compact popovers/rails) |
+| `DropdownItem.icon` + `selected` | Leading icon/badge alignment and single trailing check |
 | Toast notifications        | User feedback               |
 | Focus trap                 | Modals/dialogs              |
 | Skeleton loading           | Initial data fetch          |
