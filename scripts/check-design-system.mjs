@@ -60,7 +60,18 @@ for (const [theme, values] of Object.entries(themes)) {
 }
 const canonicalRadius = value => /^0(?:px|rem|em|%)?$/.test(value) || value === 'inherit' || radiusNames.has(value.match(/^var\((--my-[\w-]+)\)$/)?.[1])
 for (const file of globSync(root + '**/*.css')) {
-  postcss.parse(read(file)).walkDecls(declaration => {
+  const tree = postcss.parse(read(file))
+  tree.walkRules(rule => {
+    if (!/:(?:hover|focus|focus-within|focus-visible|active)\b/.test(rule.selector)) return
+    rule.walkDecls(decl => {
+      assert.doesNotMatch(
+        decl.prop,
+        /^(?:scrollbar-width|scrollbar-gutter|overflow|overflow-x|overflow-y)$/,
+        `interactive state must never mutate layout-shifting scroll properties (${decl.prop}): ${file}:${decl.source.start.line} ${rule.selector}`
+      )
+    })
+  })
+  tree.walkDecls(declaration => {
     if (/^--my-.*radius(?:-|$)/.test(declaration.prop)) {
       assert.equal(file.replace(/\\/g, '/'), root + 'my/my-tokens.css', `radius tokens belong only in my-tokens.css: ${file}:${declaration.source.start.line} ${declaration.prop}`)
     }

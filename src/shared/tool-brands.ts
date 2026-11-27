@@ -9,7 +9,7 @@ export interface ToolBrandDefinition {
 
 /** Assets and their exact upstream revisions/licenses are recorded in renderer assets/tool-brands/provenance.json. */
 export const TOOL_BRANDS = [
-  { id: 'codex', label: 'Codex', aliases: ['codex-cli', 'openai-codex'], assetKey: 'codex.svg', mode: 'mask' },
+  { id: 'codex', label: 'Codex', aliases: ['codex-cli', 'openai-codex'], assetKey: 'codex.svg', mode: 'image' },
   { id: 'claude-code', label: 'Claude Code', aliases: ['claude', 'claudecode', 'claude_code', 'claude-code-cli'], assetKey: 'claude-code.svg', mode: 'image' },
   { id: 'cursor', label: 'Cursor', aliases: ['cursor-agent'], assetKey: 'cursor.svg', mode: 'mask' },
   { id: 'windsurf', label: 'Windsurf', aliases: ['windsurf-editor'], assetKey: 'windsurf.svg', mode: 'mask' },

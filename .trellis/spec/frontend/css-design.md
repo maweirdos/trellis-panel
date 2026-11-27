@@ -507,3 +507,14 @@ Run static `npm run check:ui`, typecheck/build and inspect notification/navigati
 Wrong: each producer constructs `new Notification` or broadcasts a toast and also
 invokes native delivery. Correct: main producers call the common delivery route;
 local operation results use the same renderer queue and themed card.
+
+## 9. Zero layout shift & interactive hover contrast contract
+
+1. **Interactive state must never shift width or height (Zero Layout Shift)**:
+   - Never change `scrollbar-width`, `scrollbar-gutter`, `overflow`, `overflow-x` or `overflow-y` inside `:hover`, `:focus`, `:focus-within`, `:focus-visible` or `:active` rules (`npm run check:ui` statically rejects these).
+   - Scroll containers whose content height can toggle across overflow boundaries (multi-tab inspectors, expandable accordions, dynamic filtered lists) must use `scrollbar-gutter: stable` together with a constant `6px` transparent `::-webkit-scrollbar` track (never toggling `scrollbar-width: none ↔ thin`) and reveal the thumb solely by changing `::-webkit-scrollbar-thumb` background color on hover. That guarantees 0px width shift both on hover and when switching between overflowing and non-overflowing tabs.
+   - Inline click-to-edit controls (`.collab-inline-trigger` ↔ `.collab-inline-input`) must share identical `box-sizing: border-box`, fixed height, padding and `1px solid transparent` border at rest so toggling edit mode causes 0px shift on surrounding content.
+   - Hover-revealed card actions must overlay via absolute positioning (with a matching surface fade gradient) instead of expanding/collapsing flex flow width.
+2. **Single unified dropdown menu system & perceivable hover contrast**:
+   - Every dropdown menu across the application (organization switcher, action menus, runtime picker, task menus) must reuse the single shared `.my-menu` / `.my-menu-item` / `.my-menu-header` / `.my-menu-divider` primitives (30px row height, `--my-menu-option-size`, 6px container padding, 2px row gap) rather than creating parallel menu stylesheets.
+   - Never use `--my-bg-layer-2` alone as a hover surface inside `--my-bg-elevated` menus. `.my-menu-item` uses `color-mix(in oklab, var(--my-txt-primary) 9%, transparent)` on `:hover`, `8%` on selected (`12%` on selected `:hover`), `14%` on `:active`, and `color-mix(in oklab, var(--my-txt-danger-primary) 11%, transparent)` on danger `:hover`, with transparent rest backgrounds and `cursor: pointer`.
