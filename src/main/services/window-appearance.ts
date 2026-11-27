@@ -6,7 +6,7 @@ import type { Settings } from '../../shared/types'
 // Keep this mapping together when those semantic tokens change.
 const MAIN_WINDOW_COLORS = {
   light: { backgroundColor: '#ffffff', accentColor: '#e2e2e2' },
-  dark: { backgroundColor: '#0d0d0d', accentColor: '#232323' }
+  dark: { backgroundColor: '#121212', accentColor: '#2a2a2a' }
 } as const
 
 interface MainWindowAppearance {

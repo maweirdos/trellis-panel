@@ -25,7 +25,7 @@ export const TOOL_BRANDS = [
   { id: 'kilo-code', label: 'Kilo Code', aliases: ['kilo', 'kilocode', 'kilo_code'], assetKey: 'kilo-code.svg', mode: 'mask' },
   { id: 'amp', label: 'Amp', aliases: ['ampcode', 'amp-code'], assetKey: 'amp.svg', mode: 'image' },
   { id: 'antigravity', label: 'Antigravity', aliases: ['google-antigravity'], assetKey: 'antigravity.svg', mode: 'image' },
-  { id: 'openhands', label: 'OpenHands', aliases: ['open-hands'], assetKey: 'openhands.svg', mode: 'image' },
+  { id: 'openhands', label: 'OpenHands', aliases: ['open-hands'], assetKey: 'openhands.svg', mode: 'mask' },
   { id: 'goose', label: 'Goose', aliases: ['block-goose'], assetKey: 'goose.svg', mode: 'mask' },
   { id: 'replit', label: 'Replit', aliases: ['replit-agent'], assetKey: 'replit.svg', mode: 'image' },
   { id: 'devin', label: 'Devin', aliases: [], assetKey: 'devin.svg', mode: 'image' },

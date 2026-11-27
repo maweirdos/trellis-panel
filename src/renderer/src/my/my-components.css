@@ -145,9 +145,14 @@
 }
 .my-root .my-control-sm { height: var(--my-control-height-sm); padding-inline: var(--my-space-8); gap: var(--my-space-4); }
 .my-root .my-control-lg { height: var(--my-control-height-lg); }
-.my-root :where(.my-button-primary) { background: var(--my-bg-accent-primary); color: var(--my-txt-on-accent); }
-.my-root :where(.my-button-primary):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-hover); }
-.my-root :where(.my-button-primary):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-accent-primary-active); }
+.my-root :where(.my-button-primary) {
+  background: var(--my-button-primary-bg);
+  color: var(--my-button-primary-text);
+  border: 1px solid var(--my-button-primary-border);
+  box-shadow: var(--my-button-primary-shadow);
+}
+.my-root :where(.my-button-primary):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-button-primary-hover); }
+.my-root :where(.my-button-primary):active:not(:disabled):not([aria-disabled='true']) { background: var(--my-button-primary-active); }
 .my-root :where(.my-button-neutral) { background: var(--my-bg-panel-header); color: var(--my-txt-primary); box-shadow: inset 0 0 0 1px var(--my-border-input); }
 .my-root :where(.my-button-neutral):hover:not(:disabled):not([aria-disabled='true']) { background: var(--my-bg-layer-3-hover); }
 .my-root :where(.my-button-ghost) { background: var(--my-bg-layer-transparent); color: var(--my-txt-secondary); }
