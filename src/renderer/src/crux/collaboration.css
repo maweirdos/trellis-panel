@@ -342,3 +342,9 @@
   border-color: var(--my-border-accent-subtle);
   color: var(--my-txt-primary);
 }
+
+.collab-tone-solid[data-tone='indigo'] { background: var(--my-label-indigo-bg-strong); color: var(--my-txt-on-color); }
+.collab-tone-solid[data-tone='emerald'] { background: var(--my-label-emerald-bg-strong); color: var(--my-txt-on-color); }
+.collab-tone-solid[data-tone='purple'] { background: var(--my-label-purple-bg-strong); color: var(--my-txt-on-color); }
+.collab-tone-solid[data-tone='orange'] { background: var(--my-label-orange-bg-strong); color: var(--my-txt-on-color); }
+.collab-tone-solid[data-tone='pink'] { background: var(--my-label-pink-bg-strong); color: var(--my-txt-on-color); }
