@@ -1,21 +1,29 @@
-import { useEffect, useId, useMemo, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from 'react'
-import { Check, ChevronDown, History, LayoutGrid, Loader2, Search, Settings2, SlidersHorizontal, Sparkles, Star } from 'lucide-react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, ChevronDown, History, LayoutGrid, Loader2, Palette, RefreshCw, Search, Settings2, SlidersHorizontal, Star, X } from 'lucide-react'
 import { cleanModelDisplayName } from '@shared/model-selection'
-import { EFFORT_TRACK_TONES, findEffortStyleOption, useIsDarkTheme } from '../components/effort/effort-catalog'
+import { EFFORT_TRACK_TONES, findEffortStyleOption, isClassicMinimalStyle, useIsDarkTheme } from '../components/effort/effort-catalog'
 import { EffortDetentFader, EffortStylePickerPopover } from '../components/effort/EffortDetentFader'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
-import { useCollaborationPlatform } from '../crux/collaboration-platform-store'
-import { Dropdown } from '../my/ui'
+import { useCollaborationPlatform, type EffortEmblemStyle, type EffortTrackTone } from '../crux/collaboration-platform-store'
+import { MOTION_POP_EXIT_MS, usePresence } from '../my/motion'
+import { Dropdown, Tooltip } from '../my/ui'
+import { useEscLayer } from '../utils/use-esc-layer'
 import './model-selection-panel.css'
 
 const STORAGE_RECENT_KEY = 'my_recent_models'
 const STORAGE_FAVORITES_KEY = 'my_favorite_models'
+const OUTER_EFFORT_WIDTH = 312
+const OUTER_HOVER_OPEN_MS = 160
+const OUTER_HOVER_CLOSE_MS = 220
 
 export interface ModelSelectionOption {
   runtimeId: string
   modelId?: string
   name: string
   brand?: string
+  /** Optional provider/supplier name used to group models cleanly. */
+  providerLabel?: string
   /** Optional secondary source label shown only to disambiguate same-named models across runtimes. */
   sourceLabel?: string
   disabled?: boolean
@@ -122,6 +130,7 @@ function rankModelSearch(
         displayName,
         option.name.toLocaleLowerCase(),
         option.modelId?.toLocaleLowerCase() ?? '',
+        option.providerLabel?.toLocaleLowerCase() ?? '',
         option.sourceLabel?.toLocaleLowerCase() ?? '',
         option.runtimeId.toLocaleLowerCase(),
         runtimeNames.get(option.runtimeId) ?? ''
@@ -178,8 +187,118 @@ function TuningControls({
   )
 }
 
-function TriggerControl({
-  open,
+/* ---------------- 共享思考强度滑块区块（弹窗内部与外层快选共用一套外观与交互） ---------------- */
+
+function EffortTuningSection({
+  tuning,
+  modelName,
+  emblemStyle,
+  trackTone,
+  isDark,
+  onSelectStyle,
+  onSelectTone,
+  styleAnchorRef,
+  onStyleMenuOpenChange,
+  onDragStateChange,
+  className
+}: {
+  tuning: ModelSelectionTuning
+  modelName: string
+  emblemStyle: EffortEmblemStyle
+  trackTone: EffortTrackTone
+  isDark: boolean
+  onSelectStyle: (style: EffortEmblemStyle) => void
+  onSelectTone: (tone: EffortTrackTone) => void
+  styleAnchorRef?: RefObject<HTMLElement | null>
+  onStyleMenuOpenChange?: (open: boolean) => void
+  onDragStateChange?: (dragging: boolean) => void
+  className: string
+}): JSX.Element {
+  const [effortHover, setEffortHover] = useState<{ label: string; isPeak: boolean } | null>(null)
+  const selectedIndex = Math.max(0, tuning.options.findIndex((opt) => opt.value === tuning.value))
+  const currentChoice = tuning.options[selectedIndex] ?? tuning.options[0]
+  const toneSpec = EFFORT_TRACK_TONES[trackTone] ?? EFFORT_TRACK_TONES.obsidian
+  const toneAccent = isDark ? toneSpec.accentDark : toneSpec.accentLight
+  const currentStyleMeta = findEffortStyleOption(emblemStyle)
+  const showReadout = !isClassicMinimalStyle(emblemStyle)
+  const readoutLabel = effortHover?.label ?? currentChoice?.label ?? ''
+  const readoutPeak = effortHover
+    ? effortHover.isPeak
+    : tuning.options.length > 1 && selectedIndex === tuning.options.length - 1
+
+  return (
+    <div
+      className={className}
+      style={{ '--mc-tone-accent': toneAccent } as JSX.IntrinsicElements['div']['style']}
+    >
+      <div className="acp-unified-tuning-dock-head">
+        <div className="acp-unified-tuning-dock-title">
+          <span className="acp-unified-tuning-label">{tuning.label}</span>
+          <Dropdown
+            placement="left"
+            align="right"
+            width={316}
+            gap={8}
+            positionAnchorRef={styleAnchorRef}
+            onOpenChange={onStyleMenuOpenChange}
+            className="inline-flex"
+            trigger={({ toggle, open }) => (
+              <Tooltip label={`滑块外观：${currentStyleMeta.name}`} side="top">
+                <button
+                  type="button"
+                  className="ef-quiet-trigger"
+                  aria-expanded={open}
+                  aria-haspopup="menu"
+                  aria-label={`自定义${tuning.label}滑块外观（当前：${currentStyleMeta.name}）`}
+                  onClick={toggle}
+                >
+                  <Palette size={13} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
+          >
+            {(closeStyleMenu) => (
+              <EffortStylePickerPopover
+                emblemStyle={emblemStyle}
+                trackTone={trackTone}
+                isDark={isDark}
+                onSelectStyle={onSelectStyle}
+                onSelectTone={onSelectTone}
+                onClose={closeStyleMenu}
+              />
+            )}
+          </Dropdown>
+        </div>
+        {showReadout && (
+          <span
+            className={`mc-kreadout is-active acp-unified-tuning-readout${effortHover ? ' is-preview' : ''}${readoutPeak ? ' is-peak' : ''}`}
+          >
+            {readoutLabel}
+          </span>
+        )}
+      </div>
+      <EffortDetentFader
+        modelName={modelName}
+        ariaLabel={tuning.label}
+        choices={tuning.options}
+        selectedIndex={selectedIndex}
+        active={!tuning.disabled}
+        disabled={Boolean(tuning.disabled)}
+        emblemStyle={emblemStyle}
+        trackTone={trackTone}
+        isDark={isDark}
+        onSelect={(nextValue) => tuning.onChange(nextValue)}
+        onHoverPreview={(label, isPeak) => setEffortHover(label ? { label, isPeak } : null)}
+        onDragStateChange={onDragStateChange}
+      />
+    </div>
+  )
+}
+
+/* ---------------- 外层分体触发器 + 同款雕塑滑块快选弹层 ---------------- */
+
+function SplitTriggerWithEffortPopover({
+  modelMenuOpen,
   disabled,
   triggerRef,
   triggerLabel,
@@ -188,9 +307,14 @@ function TriggerControl({
   triggerLoading,
   descriptionId,
   tuning,
-  onToggle
+  emblemStyle,
+  trackTone,
+  isDark,
+  onSelectStyle,
+  onSelectTone,
+  onToggleModelMenu
 }: {
-  open: boolean
+  modelMenuOpen: boolean
   disabled: boolean
   triggerRef?: Ref<HTMLButtonElement>
   triggerLabel: string
@@ -198,96 +322,321 @@ function TriggerControl({
   triggerBrand?: string
   triggerLoading: boolean
   descriptionId: string
-  tuning?: ModelSelectionTuning
-  onToggle: () => void
+  tuning: ModelSelectionTuning
+  emblemStyle: EffortEmblemStyle
+  trackTone: EffortTrackTone
+  isDark: boolean
+  onSelectStyle: (style: EffortEmblemStyle) => void
+  onSelectTone: (tone: EffortTrackTone) => void
+  onToggleModelMenu: () => void
 }): JSX.Element {
-  if (tuning && tuning.options.length > 0) {
-    const currentChoice = tuning.options.find((opt) => opt.value === tuning.value) ?? tuning.options[0]
-    const shortLabel = currentChoice?.label ?? ''
-    const glyphLevel = tuningGlyphLevel(tuning.options, currentChoice?.value, shortLabel)
-    return (
-      <div
-        className="acp-model-trigger my-composer-control acp-split-trigger-pill"
-        aria-expanded={open}
-        data-disabled={disabled ? 'true' : undefined}
-      >
-        <button
-          ref={triggerRef}
-          type="button"
-          className="acp-split-trigger-left"
-          disabled={disabled}
-          aria-haspopup="true"
-          aria-expanded={open}
-          aria-label="选择模型"
-          aria-describedby={descriptionId}
-          onClick={onToggle}
-        >
-          {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
-          {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
-          <span className="acp-unified-pill-text">{triggerLabel}</span>
-          <span id={descriptionId} className="sr-only">{triggerDescription}</span>
-        </button>
-        <span className="acp-split-trigger-divider" aria-hidden="true" />
-        <div className="acp-split-trigger-right-wrap">
-          <button
-            type="button"
-            className="acp-split-trigger-right"
-            disabled={disabled}
-            aria-haspopup="true"
-            aria-expanded={open}
-            aria-label={`${tuning.label}：${shortLabel}，点击展开`}
-            onClick={onToggle}
-          >
-            <span className="acp-eff-glyph" aria-hidden="true">
-              <i className={glyphLevel >= 1 ? 'on' : undefined} />
-              <i className={glyphLevel >= 2 ? 'on' : undefined} />
-              <i className={glyphLevel >= 3 ? 'on' : undefined} />
-            </span>
-            <span>{shortLabel}</span>
-            <ChevronDown size={10} className="opacity-60" aria-hidden="true" />
-          </button>
-          {!open && !disabled && (
-            <div className="acp-quick-ruler" role="group" aria-label={`快捷调整${tuning.label}`}>
-              {tuning.options.map((choice) => (
-                <button
-                  key={choice.value}
-                  type="button"
-                  className="acp-quick-ruler-btn"
-                  aria-pressed={choice.value === tuning.value}
-                  disabled={tuning.disabled}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    tuning.onChange(choice.value)
-                  }}
-                >
-                  {choice.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    )
+  const pillRef = useRef<HTMLDivElement | null>(null)
+  const rightBtnRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+  const openTimerRef = useRef<number | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const lockedSideRef = useRef<'top' | 'bottom' | null>(null)
+  const keyboardOpenedRef = useRef(false)
+  const escId = useId()
+
+  const [hoverOpen, setHoverOpen] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [styleMenuOpen, setStyleMenuOpen] = useState(false)
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; side: 'top' | 'bottom' } | null>(null)
+  const lastPosRef = useRef<{ top: number; left: number; side: 'top' | 'bottom' } | null>(null)
+  const lastRootRef = useRef<HTMLElement | null>(null)
+
+  const outerOpen = !modelMenuOpen && !disabled && (pinned || hoverOpen || dragging || styleMenuOpen)
+  const presence = usePresence(outerOpen, MOTION_POP_EXIT_MS)
+
+  if (pos) lastPosRef.current = pos
+  if (portalRoot) lastRootRef.current = portalRoot
+  const renderedPos = outerOpen ? pos : lastPosRef.current
+  const renderedRoot = outerOpen ? portalRoot : lastRootRef.current
+
+  const clearTimers = useCallback((): void => {
+    if (openTimerRef.current !== null) {
+      window.clearTimeout(openTimerRef.current)
+      openTimerRef.current = null
+    }
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+
+  const closeOuter = useCallback((restoreFocus = false): void => {
+    clearTimers()
+    keyboardOpenedRef.current = false
+    setPinned(false)
+    setHoverOpen(false)
+    setDragging(false)
+    setStyleMenuOpen(false)
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => rightBtnRef.current?.focus({ preventScroll: true }))
+    }
+  }, [clearTimers])
+
+  useEffect(() => clearTimers, [clearTimers])
+
+  useEffect(() => {
+    if (modelMenuOpen || disabled) closeOuter(false)
+  }, [closeOuter, disabled, modelMenuOpen])
+
+  useEscLayer(outerOpen, {
+    kind: 'modal',
+    id: `outer-effort-${escId}`,
+    onClose: () => closeOuter(true)
+  })
+
+  useLayoutEffect(() => {
+    if (!outerOpen) {
+      lockedSideRef.current = null
+      setPos(null)
+      setPortalRoot(null)
+      return
+    }
+    setPortalRoot(pillRef.current?.closest<HTMLElement>('.my-root') ?? null)
+  }, [outerOpen])
+
+  useLayoutEffect(() => {
+    if (!outerOpen || !portalRoot) return
+    const pill = pillRef.current
+    const pop = popoverRef.current
+    if (!pill || !pop) return
+
+    const update = (allowReFlip: boolean): void => {
+      const anchorRect = pill.getBoundingClientRect()
+      if (anchorRect.width === 0 && anchorRect.height === 0) {
+        closeOuter(false)
+        return
+      }
+      const headerEl = portalRoot.querySelector<HTMLElement>('.my-window-header')
+      const headerBottom = headerEl ? Math.ceil(headerEl.getBoundingClientRect().bottom) : 0
+      const safeTop = headerBottom > 0 ? Math.max(8, headerBottom + 8) : 8
+      const gap = 8
+      const popH = pop.offsetHeight
+      const popW = pop.offsetWidth || Math.min(OUTER_EFFORT_WIDTH, innerWidth - 16)
+      const roomAbove = Math.max(0, anchorRect.top - gap - safeTop)
+      const roomBelow = Math.max(0, innerHeight - anchorRect.bottom - gap - 8)
+
+      let side = lockedSideRef.current
+      if (!side) {
+        side = roomAbove >= popH || roomAbove >= roomBelow ? 'top' : 'bottom'
+        lockedSideRef.current = side
+      } else if (allowReFlip) {
+        if (side === 'top' && roomAbove < popH && roomBelow > roomAbove) {
+          side = 'bottom'
+          lockedSideRef.current = side
+        } else if (side === 'bottom' && roomBelow < popH && roomAbove > roomBelow) {
+          side = 'top'
+          lockedSideRef.current = side
+        }
+      }
+
+      const rawTop = side === 'top' ? anchorRect.top - popH - gap : anchorRect.bottom + gap
+      const top = Math.max(safeTop, Math.min(rawTop, innerHeight - popH - 8))
+      const rawLeft = anchorRect.right - popW
+      const left = Math.max(8, Math.min(rawLeft, innerWidth - popW - 8))
+      setPos((old) => (old && old.top === top && old.left === left && old.side === side ? old : { top, left, side }))
+    }
+
+    update(false)
+    const onResize = (): void => update(true)
+    const onScroll = (event: Event): void => {
+      if (!(event.target instanceof Node) || !pop.contains(event.target)) update(true)
+    }
+    const observer = new ResizeObserver(() => update(false))
+    observer.observe(pop)
+    observer.observe(pill)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [closeOuter, outerOpen, portalRoot])
+
+  useEffect(() => {
+    if (!outerOpen || !pos || !keyboardOpenedRef.current) return
+    keyboardOpenedRef.current = false
+    const slider = popoverRef.current?.querySelector<HTMLElement>('[role="slider"]')
+    slider?.focus({ preventScroll: true })
+  }, [outerOpen, pos])
+
+  useEffect(() => {
+    if (!outerOpen) return
+    const onDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (rightBtnRef.current?.contains(target) || popoverRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('.ef-popover')) return
+      closeOuter(false)
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    return () => window.removeEventListener('pointerdown', onDown, true)
+  }, [closeOuter, outerOpen])
+
+  const scheduleHoverOpen = (): void => {
+    if (modelMenuOpen || disabled) return
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    if (outerOpen) return
+    if (openTimerRef.current !== null) window.clearTimeout(openTimerRef.current)
+    openTimerRef.current = window.setTimeout(() => {
+      openTimerRef.current = null
+      setHoverOpen(true)
+    }, OUTER_HOVER_OPEN_MS)
   }
 
+  const scheduleHoverClose = (): void => {
+    if (openTimerRef.current !== null) {
+      window.clearTimeout(openTimerRef.current)
+      openTimerRef.current = null
+    }
+    if (pinned || dragging || styleMenuOpen) return
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      setHoverOpen(false)
+    }, OUTER_HOVER_CLOSE_MS)
+  }
+
+  const cancelHoverClose = (): void => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const currentChoice = tuning.options.find((opt) => opt.value === tuning.value) ?? tuning.options[0]
+  const shortLabel = currentChoice?.label ?? ''
+  const glyphLevel = tuningGlyphLevel(tuning.options, currentChoice?.value, shortLabel)
+  const toneSpec = EFFORT_TRACK_TONES[trackTone] ?? EFFORT_TRACK_TONES.obsidian
+  const toneAccent = isDark ? toneSpec.accentDark : toneSpec.accentLight
+
   return (
-    <button
-      ref={triggerRef}
-      type="button"
-      disabled={disabled}
-      className="acp-model-trigger my-composer-control acp-unified-picker-pill"
-      aria-expanded={open}
-      aria-haspopup="true"
-      aria-label="选择模型"
-      aria-describedby={descriptionId}
-      onClick={onToggle}
+    <div
+      ref={pillRef}
+      className="acp-model-trigger my-composer-control acp-split-trigger-pill"
+      aria-expanded={modelMenuOpen || outerOpen}
+      data-disabled={disabled ? 'true' : undefined}
+      style={{ '--mc-tone-accent': toneAccent } as JSX.IntrinsicElements['div']['style']}
     >
-      {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
-      {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
-      <span className="acp-unified-pill-text">{triggerLabel}</span>
-      <span id={descriptionId} className="sr-only">{triggerDescription}</span>
-      <ChevronDown size={11} className="opacity-60" aria-hidden="true" />
-    </button>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="acp-split-trigger-left"
+        disabled={disabled}
+        aria-haspopup="true"
+        aria-expanded={modelMenuOpen}
+        aria-label="选择模型"
+        aria-describedby={descriptionId}
+        onClick={() => {
+          closeOuter(false)
+          onToggleModelMenu()
+        }}
+      >
+        {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
+        {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
+        <span className="acp-unified-pill-text">{triggerLabel}</span>
+        <span id={descriptionId} className="sr-only">{triggerDescription}</span>
+      </button>
+      <span className="acp-split-trigger-divider" aria-hidden="true" />
+      <div
+        className="acp-split-trigger-right-wrap"
+        onMouseEnter={scheduleHoverOpen}
+        onMouseLeave={scheduleHoverClose}
+      >
+        <button
+          ref={rightBtnRef}
+          type="button"
+          className="acp-split-trigger-right"
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={outerOpen}
+          aria-label={`${tuning.label}：${shortLabel}，点击或悬停调节`}
+          onClick={(event) => {
+            event.stopPropagation()
+            clearTimers()
+            if (modelMenuOpen) {
+              onToggleModelMenu()
+              setPinned(true)
+              return
+            }
+            if (pinned) {
+              closeOuter(false)
+            } else {
+              setPinned(true)
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+              if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                event.preventDefault()
+                event.stopPropagation()
+              }
+              keyboardOpenedRef.current = true
+              if (modelMenuOpen) onToggleModelMenu()
+              setPinned(true)
+            }
+          }}
+        >
+          <span className="acp-eff-glyph" aria-hidden="true">
+            <i className={glyphLevel >= 1 ? 'on' : undefined} />
+            <i className={glyphLevel >= 2 ? 'on' : undefined} />
+            <i className={glyphLevel >= 3 ? 'on' : undefined} />
+          </span>
+          <span>{shortLabel}</span>
+          <ChevronDown
+            size={10}
+            className={`acp-split-trigger-chevron${outerOpen ? ' is-open' : ''}`}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      {presence.mounted && renderedRoot && createPortal(
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label={`调节${tuning.label}`}
+          data-placement={renderedPos?.side}
+          data-align="right"
+          data-state={presence.state}
+          aria-hidden={presence.state === 'closing' || undefined}
+          style={{
+            top: renderedPos?.top ?? -9999,
+            left: renderedPos?.left ?? -9999,
+            width: `min(${OUTER_EFFORT_WIDTH}px, calc(100vw - 16px))`,
+            visibility: renderedPos ? 'visible' : 'hidden'
+          }}
+          className={`my-menu no-drag fixed acp-outer-effort-popover${renderedPos ? ' my-pop' : ''}`}
+          onMouseEnter={cancelHoverClose}
+          onMouseLeave={scheduleHoverClose}
+        >
+          <EffortTuningSection
+            tuning={tuning}
+            modelName={triggerLabel}
+            emblemStyle={emblemStyle}
+            trackTone={trackTone}
+            isDark={isDark}
+            onSelectStyle={onSelectStyle}
+            onSelectTone={onSelectTone}
+            styleAnchorRef={popoverRef}
+            onStyleMenuOpenChange={setStyleMenuOpen}
+            onDragStateChange={setDragging}
+            className="acp-outer-effort-body"
+          />
+        </div>,
+        renderedRoot
+      )}
+    </div>
   )
 }
 
@@ -355,11 +704,12 @@ export function ModelSelectionPanel({
   const [recentList, setRecentList] = useState<RecentModelItem[]>(loadRecentModels)
   const [localFavorites, setLocalFavorites] = useState<string[]>(loadFavorites)
   const [tuningOpen, setTuningOpen] = useState(false)
-  const [effortHover, setEffortHover] = useState<{ label: string; isPeak: boolean } | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set())
   const descriptionId = useId()
   const tuningId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const isDarkTheme = useIsDarkTheme()
   const effortEmblemStyle = useCollaborationPlatform((s) => s.effortEmblemStyle)
   const effortTrackTone = useCollaborationPlatform((s) => s.effortTrackTone)
@@ -367,31 +717,32 @@ export function ModelSelectionPanel({
   const setEffortTrackTone = useCollaborationPlatform((s) => s.setEffortTrackTone)
 
   const activeTuning = tuning && tuning.options.length > 0 ? tuning : undefined
-  const inlineTunings = useMemo(
-    () => [activeTuning, ...extraTunings.filter((item) => item.options.length > 0)].filter((item): item is ModelSelectionTuning => Boolean(item)),
-    [activeTuning, extraTunings]
+  const secondaryTunings = useMemo(
+    () => extraTunings.filter((item) => item.options.length > 0),
+    [extraTunings]
   )
   const favorites = favoriteKeys ?? localFavorites
-  const hasFooterActions = Boolean(defaultAction || onOpenModelSettings || onOpenRuntimeSettings || recoveryActions.length > 0 || triggerLoading)
-  const selectedTuningIndex = activeTuning
-    ? Math.max(0, activeTuning.options.findIndex((opt) => opt.value === activeTuning.value))
-    : 0
-  const currentTuningChoice = activeTuning?.options[selectedTuningIndex] ?? activeTuning?.options[0]
-  const effortToneSpec = EFFORT_TRACK_TONES[effortTrackTone] ?? EFFORT_TRACK_TONES.obsidian
-  const effortToneAccent = isDarkTheme ? effortToneSpec.accentDark : effortToneSpec.accentLight
-  const tuningReadoutLabel = effortHover?.label ?? currentTuningChoice?.label ?? ''
-  const tuningReadoutPeak = effortHover
-    ? effortHover.isPeak
-    : Boolean(activeTuning && activeTuning.options.length > 1 && selectedTuningIndex === activeTuning.options.length - 1)
+  const hasRecoveryRow = Boolean(defaultAction || onOpenModelSettings || onOpenRuntimeSettings || recoveryActions.length > 0)
 
   const switchTab = (tab: string): void => {
     setActiveTab(tab)
+    setCollapsedGroups(new Set())
     onActiveTabChange?.(tab)
   }
 
   const updateQuery = (nextQuery: string): void => {
     setQuery(nextQuery)
+    setCollapsedGroups(new Set())
     onQueryChange?.(nextQuery)
+  }
+
+  const toggleGroup = (groupKey: string): void => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) next.delete(groupKey)
+      else next.add(groupKey)
+      return next
+    })
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -414,14 +765,78 @@ export function ModelSelectionPanel({
     return rankModelSearch(scoped, runtimes, query)
   }, [activeTab, favorites, normalizedQuery, optionByKey, options, query, recentKeys, recentList, runtimes])
 
-  const duplicateNames = useMemo(() => {
-    const counts = new Map<string, number>()
+  const runtimeNameMap = useMemo(
+    () => new Map(runtimes.map((runtime) => [runtime.id, runtime.name])),
+    [runtimes]
+  )
+
+  const providerGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: ModelSelectionOption[] }[] = []
+    const byKey = new Map<string, { key: string; label: string; items: ModelSelectionOption[] }>()
     for (const option of filteredOptions) {
-      const display = option.modelId ? cleanModelDisplayName(option.name, option.runtimeId) : option.name
-      counts.set(display, (counts.get(display) ?? 0) + 1)
+      const label = option.providerLabel?.trim() || runtimeNameMap.get(option.runtimeId) || option.sourceLabel?.trim() || '其他'
+      const key = label.toLocaleLowerCase()
+      let group = byKey.get(key)
+      if (!group) {
+        group = { key, label, items: [] }
+        byKey.set(key, group)
+        groups.push(group)
+      }
+      group.items.push(option)
     }
-    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
-  }, [filteredOptions])
+    return groups
+  }, [filteredOptions, runtimeNameMap])
+
+  const sectionHeading = normalizedQuery
+    ? '匹配结果'
+    : activeTab === 'recent'
+      ? '最近使用'
+      : activeTab === 'favorites'
+        ? '我的收藏'
+        : activeTab === 'all'
+          ? '全部模型'
+          : runtimes.find((runtime) => runtime.id === activeTab)?.name ?? '执行引擎'
+
+  const useProviderGrouping =
+    !(activeTab === 'recent' && !normalizedQuery) &&
+    (providerGroups.length > 1 ||
+      (providerGroups.length === 1 &&
+        providerGroups[0].label.toLocaleLowerCase() !== sectionHeading.toLocaleLowerCase()))
+
+  const isSingleRuntimeTab = !normalizedQuery && activeTab !== 'all' && activeTab !== 'recent' && activeTab !== 'favorites'
+  const showRowBrandIcon = !isSingleRuntimeTab && runtimes.length > 1
+
+  const showContentHeader =
+    !useProviderGrouping ||
+    Boolean(normalizedQuery) ||
+    activeTab === 'favorites' ||
+    triggerLoading ||
+    loading ||
+    filteredOptions.length === 0
+
+  const ambiguousSourceKeys = useMemo(() => {
+    const runtimesByScopeAndName = new Map<string, Set<string>>()
+    const buckets = useProviderGrouping
+      ? providerGroups.map((group) => ({ scope: group.key, items: group.items }))
+      : [{ scope: '', items: filteredOptions }]
+    for (const bucket of buckets) {
+      for (const option of bucket.items) {
+        const display = option.modelId ? cleanModelDisplayName(option.name, option.runtimeId) : option.name
+        const scopeKey = `${bucket.scope}\0${display}`
+        let set = runtimesByScopeAndName.get(scopeKey)
+        if (!set) {
+          set = new Set()
+          runtimesByScopeAndName.set(scopeKey, set)
+        }
+        set.add(option.runtimeId)
+      }
+    }
+    return new Set(
+      [...runtimesByScopeAndName.entries()]
+        .filter(([, runtimeSet]) => runtimeSet.size > 1)
+        .map(([scopeKey]) => scopeKey)
+    )
+  }, [filteredOptions, providerGroups, useProviderGrouping])
 
   const handleToggleFavorite = (option: ModelSelectionOption): void => {
     if (onToggleFavorite) {
@@ -454,16 +869,6 @@ export function ModelSelectionPanel({
     buttons[next]?.scrollIntoView({ block: 'nearest' })
   }
 
-  const sectionHeading = normalizedQuery
-    ? `匹配结果 (${filteredOptions.length})`
-    : activeTab === 'recent'
-      ? '最近使用'
-      : activeTab === 'favorites'
-        ? '我的收藏'
-        : activeTab === 'all'
-          ? '全部模型'
-          : runtimes.find((runtime) => runtime.id === activeTab)?.name ?? '执行引擎'
-
   const emptyMessage = normalizedQuery
     ? '未找到匹配的模型'
     : activeTab === 'recent'
@@ -474,11 +879,11 @@ export function ModelSelectionPanel({
 
   return (
     <Dropdown
-      placement="top"
+      placement="bottom"
       align="right"
-      width={348}
+      width={368}
       gap={8}
-      layoutKey={loading ? 'loading' : `${runtimes.length}:${options.length}:${inlineTunings.length}`}
+      layoutKey={loading ? 'loading' : `${runtimes.length}:${options.length}:${secondaryTunings.length}:${Boolean(activeTuning)}`}
       disabled={disabled}
       positionAnchorRef={positionAnchorRef}
       className="min-w-0"
@@ -494,24 +899,52 @@ export function ModelSelectionPanel({
             if (!recentKeys) setRecentList(loadRecentModels())
             if (!favoriteKeys) setLocalFavorites(loadFavorites())
             setTuningOpen(false)
-            setEffortHover(null)
+            setCollapsedGroups(new Set())
           }
           onOpenChange?.(nextOpen)
           toggle()
         }
+
+        if (activeTuning) {
+          return (
+            <SplitTriggerWithEffortPopover
+              modelMenuOpen={open}
+              disabled={disabled}
+              triggerRef={triggerRef}
+              triggerLabel={triggerLabel}
+              triggerDescription={triggerDescription}
+              triggerBrand={triggerBrand}
+              triggerLoading={triggerLoading}
+              descriptionId={descriptionId}
+              tuning={activeTuning}
+              emblemStyle={effortEmblemStyle}
+              trackTone={effortTrackTone}
+              isDark={isDarkTheme}
+              onSelectStyle={setEffortEmblemStyle}
+              onSelectTone={setEffortTrackTone}
+              onToggleModelMenu={handleToggle}
+            />
+          )
+        }
+
         return (
-          <TriggerControl
-            open={open}
+          <button
+            ref={triggerRef}
+            type="button"
             disabled={disabled}
-            triggerRef={triggerRef}
-            triggerLabel={triggerLabel}
-            triggerDescription={triggerDescription}
-            triggerBrand={triggerBrand}
-            triggerLoading={triggerLoading}
-            descriptionId={descriptionId}
-            tuning={activeTuning}
-            onToggle={handleToggle}
-          />
+            className="acp-model-trigger my-composer-control acp-unified-picker-pill"
+            aria-expanded={open}
+            aria-haspopup="true"
+            aria-label="选择模型"
+            aria-describedby={descriptionId}
+            onClick={handleToggle}
+          >
+            {triggerLoading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
+            {triggerBrand && <ToolBrandIcon brand={triggerBrand} size={14} className="acp-unified-trigger-icon" />}
+            <span className="acp-unified-pill-text">{triggerLabel}</span>
+            <span id={descriptionId} className="sr-only">{triggerDescription}</span>
+            <ChevronDown size={11} className="opacity-60" aria-hidden="true" />
+          </button>
         )
       }}
     >
@@ -520,8 +953,90 @@ export function ModelSelectionPanel({
           onOpenChange?.(false)
           close()
         }
+        const renderModelRow = (option: ModelSelectionOption, groupKey = ''): JSX.Element => {
+          const key = modelSelectionKey(option.runtimeId, option.modelId)
+          const isSelected = selected && option.runtimeId === selectedRuntimeId && option.modelId === selectedModelId
+          const isStarred = favorites.includes(key)
+          const label = option.modelId ? cleanModelDisplayName(option.name, option.runtimeId) : option.name
+          const showSource = Boolean(option.sourceLabel && ambiguousSourceKeys.has(`${groupKey}\0${label}`))
+          const titleMeta = [option.providerLabel, option.sourceLabel]
+            .filter((part): part is string => Boolean(part))
+            .filter((part, idx, arr) => arr.findIndex((p) => p.toLocaleLowerCase() === part.toLocaleLowerCase()) === idx)
+            .join(' · ')
+          const rowTitle = option.disabledReason ?? (titleMeta ? `${label} · ${titleMeta}` : option.name)
+          const selectClass = showRowBrandIcon
+            ? 'acp-unified-model-select'
+            : groupKey
+              ? 'acp-unified-model-select is-iconless-grouped'
+              : 'acp-unified-model-select is-iconless'
+          return (
+            <li key={key}>
+              <div className={`acp-unified-model-row${isSelected ? ' is-selected' : ''}`} data-testid="model-row">
+                <button
+                  type="button"
+                  className={selectClass}
+                  aria-current={isSelected ? 'true' : undefined}
+                  aria-disabled={option.disabled || undefined}
+                  title={rowTitle}
+                  onClick={() => {
+                    if (option.disabled) return
+                    if (!recentKeys && option.modelId) saveRecentModel(option.modelId, option.runtimeId)
+                    onSelect(option, closePanel)
+                  }}
+                >
+                  {showRowBrandIcon && (
+                    <span className="acp-unified-model-icon"><ToolBrandIcon brand={option.brand ?? option.runtimeId} size={15} /></span>
+                  )}
+                  <span className="acp-unified-model-name-group">
+                    <span className="acp-unified-model-title">{label}</span>
+                    {showSource && <span className="acp-unified-model-source">{option.sourceLabel}</span>}
+                  </span>
+                  {option.disabled && <span className="acp-unified-model-badge">不可用</span>}
+                </button>
+                {(option.modelId || isSelected) && (
+                  <div className="acp-unified-model-actions">
+                    {option.modelId && (
+                      <button
+                        type="button"
+                        className={`acp-unified-star-btn${isStarred ? ' is-starred' : ''}`}
+                        title={isStarred ? '取消收藏' : '添加收藏'}
+                        aria-label={isStarred ? `取消收藏 ${label}` : `收藏 ${label}`}
+                        aria-pressed={isStarred}
+                        disabled={Boolean(option.disabled) && !isStarred}
+                        onClick={() => handleToggleFavorite(option)}
+                      >
+                        <Star size={13} fill={isStarred ? 'currentColor' : 'none'} aria-hidden="true" />
+                      </button>
+                    )}
+                    {option.modelId && secondaryTunings.length > 0 && isSelected && (
+                      <button
+                        type="button"
+                        className="acp-unified-tune-btn"
+                        title={secondaryTunings[0].label}
+                        aria-label={`${secondaryTunings[0].label}：${label}`}
+                        aria-expanded={tuningOpen}
+                        aria-controls={tuningOpen ? tuningId : undefined}
+                        onClick={() => setTuningOpen((prev) => !prev)}
+                      >
+                        <SlidersHorizontal size={13} aria-hidden="true" />
+                      </button>
+                    )}
+                    {isSelected && (
+                      <span className="acp-unified-check-slot" aria-hidden="true">
+                        <Check size={14} className="acp-unified-check-icon" />
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {secondaryTunings.length > 0 && isSelected && tuningOpen && (
+                <TuningControls tunings={secondaryTunings} tuningId={tuningId} />
+              )}
+            </li>
+          )
+        }
         return (
-          <div className="acp-unified-picker-panel" onKeyDown={handlePanelKeyDown}>
+          <div ref={panelRef} className="acp-unified-picker-panel" onKeyDown={handlePanelKeyDown}>
             <PanelUnmountSync onUnmount={() => onOpenChange?.(false)} />
             <div className="acp-unified-picker-header">
               <div className="acp-unified-search-box">
@@ -531,11 +1046,24 @@ export function ModelSelectionPanel({
                   type="text"
                   className="acp-unified-search-input"
                   aria-label="搜索模型"
-                  placeholder="搜索模型"
+                  placeholder="搜索模型或供应商…"
                   value={query}
                   onChange={(event) => updateQuery(event.target.value)}
                   autoFocus
                 />
+                {query && (
+                  <button
+                    type="button"
+                    className="acp-unified-search-clear"
+                    aria-label="清空搜索"
+                    onClick={() => {
+                      updateQuery('')
+                      searchInputRef.current?.focus({ preventScroll: true })
+                    }}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -560,171 +1088,134 @@ export function ModelSelectionPanel({
                 ))}
               </nav>
 
-              <div className="acp-unified-picker-content my-scrollbar">
-                <div className="acp-unified-content-header">
-                  <span className="acp-unified-section-title">{sectionHeading}</span>
-                </div>
+              <div className="acp-unified-picker-content">
+                {showContentHeader && (
+                  <div className="acp-unified-content-header">
+                    <span className="acp-unified-section-title">{sectionHeading}</span>
+                    <div className="acp-unified-content-meta">
+                      {triggerLoading && (
+                        <span role="status" className="acp-unified-panel-progress" aria-label="正在更新模型列表">
+                          <Loader2 size={11} className="acp-progress-spinner" aria-hidden="true" />
+                        </span>
+                      )}
+                      {!loading && filteredOptions.length > 0 && (
+                        <span className="acp-unified-section-count">{filteredOptions.length}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {loading && filteredOptions.length === 0 ? (
                   <div role="status" className="acp-unified-state"><Loader2 size={14} className="acp-progress-spinner" aria-hidden="true" /><span>正在读取模型…</span></div>
                 ) : errorText && filteredOptions.length === 0 ? (
-                  <div role="status" className="acp-unified-state"><span>{errorText}</span></div>
+                  <div role="status" className="acp-unified-state is-column">
+                    <span>{errorText}</span>
+                    {hasRecoveryRow && (
+                      <div className="acp-unified-state-actions">
+                        {onOpenModelSettings && (
+                          <button type="button" className="acp-unified-footer-btn" onClick={() => { closePanel(); onOpenModelSettings() }}>
+                            <Settings2 size={12} aria-hidden="true" /><span>配置模型</span>
+                          </button>
+                        )}
+                        {onOpenRuntimeSettings && (
+                          <button type="button" className="acp-unified-footer-btn" onClick={() => { closePanel(); onOpenRuntimeSettings() }}>
+                            <span>管理执行引擎</span>
+                          </button>
+                        )}
+                        {recoveryActions.map((action) => (
+                          <button key={action.key} type="button" className="acp-unified-footer-btn" disabled={action.disabled || action.loading} onClick={() => action.onClick()}>
+                            {action.loading
+                              ? <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />
+                              : action.key === 'refresh'
+                                ? <RefreshCw size={12} aria-hidden="true" />
+                                : null}
+                            <span>{action.label}</span>
+                          </button>
+                        ))}
+                        {defaultAction}
+                      </div>
+                    )}
+                  </div>
                 ) : filteredOptions.length === 0 ? (
-                  <div className="acp-unified-empty-state"><p>{emptyMessage}</p></div>
-                ) : (
-                  <ul ref={listRef} className="acp-unified-model-list" aria-label="模型">
-                    {filteredOptions.map((option) => {
-                      const key = modelSelectionKey(option.runtimeId, option.modelId)
-                      const isSelected = selected && option.runtimeId === selectedRuntimeId && option.modelId === selectedModelId
-                      const isStarred = favorites.includes(key)
-                      const label = option.modelId ? cleanModelDisplayName(option.name, option.runtimeId) : option.name
-                      const showSource = Boolean(option.sourceLabel && duplicateNames.has(label))
+                  <div className="acp-unified-empty-state is-column">
+                    <p>{emptyMessage}</p>
+                    {!normalizedQuery && activeTab === 'all' && hasRecoveryRow && (
+                      <div className="acp-unified-state-actions">
+                        {onOpenModelSettings && (
+                          <button type="button" className="acp-unified-footer-btn" onClick={() => { closePanel(); onOpenModelSettings() }}>
+                            <Settings2 size={12} aria-hidden="true" /><span>配置模型</span>
+                          </button>
+                        )}
+                        {onOpenRuntimeSettings && (
+                          <button type="button" className="acp-unified-footer-btn" onClick={() => { closePanel(); onOpenRuntimeSettings() }}>
+                            <span>管理执行引擎</span>
+                          </button>
+                        )}
+                        {recoveryActions.map((action) => (
+                          <button key={action.key} type="button" className="acp-unified-footer-btn" disabled={action.disabled || action.loading} onClick={() => action.onClick()}>
+                            {action.loading
+                              ? <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />
+                              : action.key === 'refresh'
+                                ? <RefreshCw size={12} aria-hidden="true" />
+                                : null}
+                            <span>{action.label}</span>
+                          </button>
+                        ))}
+                        {defaultAction}
+                      </div>
+                    )}
+                  </div>
+                ) : useProviderGrouping ? (
+                  <div ref={listRef} className="acp-unified-provider-groups">
+                    {providerGroups.map((group) => {
+                      const isCollapsed = collapsedGroups.has(group.key)
                       return (
-                        <li key={key}>
-                          <div className={`acp-unified-model-row${isSelected ? ' is-selected' : ''}`} data-testid="model-row">
-                            <button
-                              type="button"
-                              className="acp-unified-model-select"
-                              aria-current={isSelected ? 'true' : undefined}
-                              aria-disabled={option.disabled || undefined}
-                              title={option.disabledReason ?? (option.sourceLabel ? `${label} · ${option.sourceLabel}` : option.name)}
-                              onClick={() => {
-                                if (option.disabled) return
-                                if (!recentKeys && option.modelId) saveRecentModel(option.modelId, option.runtimeId)
-                                onSelect(option, closePanel)
-                              }}
-                            >
-                              <span className="acp-unified-model-icon"><ToolBrandIcon brand={option.brand ?? option.runtimeId} size={14} /></span>
-                              <span className="acp-unified-model-name-group">
-                                <span className="acp-unified-model-title">{label}</span>
-                                {showSource && <span className="acp-unified-model-source">{option.sourceLabel}</span>}
-                              </span>
-                              {option.disabled && <span className="acp-unified-model-badge">不可用</span>}
-                              {isSelected && <Check size={13} className="acp-unified-check-icon" aria-hidden="true" />}
-                            </button>
-                            {option.modelId && (
-                              <div className="acp-unified-model-actions">
-                                <button
-                                  type="button"
-                                  className={`acp-unified-star-btn${isStarred ? ' is-starred' : ''}`}
-                                  title={isStarred ? '取消收藏' : '添加收藏'}
-                                  aria-label={isStarred ? `取消收藏 ${label}` : `收藏 ${label}`}
-                                  aria-pressed={isStarred}
-                                  disabled={Boolean(option.disabled) && !isStarred}
-                                  onClick={() => handleToggleFavorite(option)}
-                                >
-                                  <Star size={13} fill={isStarred ? 'currentColor' : 'none'} aria-hidden="true" />
-                                </button>
-                                {inlineTunings.length > 0 && isSelected && (
-                                  <button
-                                    type="button"
-                                    className="acp-unified-tune-btn"
-                                    title={inlineTunings[0].label}
-                                    aria-label={`${inlineTunings[0].label}：${label}`}
-                                    aria-expanded={tuningOpen}
-                                    aria-controls={tuningOpen ? tuningId : undefined}
-                                    onClick={() => setTuningOpen((prev) => !prev)}
-                                  >
-                                    <SlidersHorizontal size={13} aria-hidden="true" />
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          {inlineTunings.length > 0 && isSelected && tuningOpen && (
-                            <TuningControls tunings={inlineTunings} tuningId={tuningId} />
+                        <section key={group.key} className="acp-unified-provider-group" aria-label={group.label}>
+                          <button
+                            type="button"
+                            className="acp-unified-provider-header"
+                            aria-expanded={!isCollapsed}
+                            onClick={() => toggleGroup(group.key)}
+                          >
+                            <ChevronDown
+                              size={11}
+                              className={`acp-unified-provider-chevron${isCollapsed ? ' is-collapsed' : ''}`}
+                              aria-hidden="true"
+                            />
+                            <span className="acp-unified-provider-name">{group.label}</span>
+                            <span className="acp-unified-provider-count">{group.items.length}</span>
+                          </button>
+                          {!isCollapsed && (
+                            <ul className="acp-unified-model-list" aria-label={group.label}>
+                              {group.items.map((option) => renderModelRow(option, group.key))}
+                            </ul>
                           )}
-                        </li>
+                        </section>
                       )
                     })}
-                  </ul>
+                  </div>
+                ) : (
+                  <div ref={listRef}>
+                    <ul className="acp-unified-model-list" aria-label="模型">
+                      {filteredOptions.map((option) => renderModelRow(option))}
+                    </ul>
+                  </div>
                 )}
               </div>
             </div>
 
             {activeTuning && (
-              <div
+              <EffortTuningSection
+                tuning={activeTuning}
+                modelName={triggerLabel}
+                emblemStyle={effortEmblemStyle}
+                trackTone={effortTrackTone}
+                isDark={isDarkTheme}
+                onSelectStyle={setEffortEmblemStyle}
+                onSelectTone={setEffortTrackTone}
+                styleAnchorRef={panelRef}
                 className="acp-unified-tuning-dock"
-                style={{ '--mc-tone-accent': effortToneAccent } as JSX.IntrinsicElements['div']['style']}
-              >
-                <div className="acp-unified-tuning-dock-head">
-                  <div className="acp-unified-tuning-dock-title">
-                    <span>{activeTuning.label}</span>
-                    <Dropdown
-                      placement="top"
-                      align="left"
-                      width={304}
-                      gap={6}
-                      className="inline-flex"
-                      trigger={({ toggle, open }) => (
-                        <button
-                          type="button"
-                          className="ef-quiet-trigger"
-                          aria-expanded={open}
-                          aria-haspopup="menu"
-                          aria-label={`自定义${activeTuning.label}滑块样式（当前：${findEffortStyleOption(effortEmblemStyle).name}）`}
-                          title={`滑块样式：${findEffortStyleOption(effortEmblemStyle).name}（也可在设置 → 外观预览）`}
-                          onClick={toggle}
-                        >
-                          <Sparkles size={12} aria-hidden="true" />
-                        </button>
-                      )}
-                    >
-                      {(closeStyleMenu) => (
-                        <EffortStylePickerPopover
-                          emblemStyle={effortEmblemStyle}
-                          trackTone={effortTrackTone}
-                          isDark={isDarkTheme}
-                          onSelectStyle={setEffortEmblemStyle}
-                          onSelectTone={setEffortTrackTone}
-                          onClose={closeStyleMenu}
-                        />
-                      )}
-                    </Dropdown>
-                  </div>
-                  <span
-                    className={`mc-kreadout is-active acp-unified-tuning-readout${effortHover ? ' is-preview' : ''}${tuningReadoutPeak ? ' is-peak' : ''}`}
-                  >
-                    {tuningReadoutLabel}
-                  </span>
-                </div>
-                <EffortDetentFader
-                  modelName={triggerLabel}
-                  ariaLabel={activeTuning.label}
-                  choices={activeTuning.options}
-                  selectedIndex={selectedTuningIndex}
-                  active={!activeTuning.disabled}
-                  disabled={Boolean(activeTuning.disabled)}
-                  emblemStyle={effortEmblemStyle}
-                  trackTone={effortTrackTone}
-                  isDark={isDarkTheme}
-                  onSelect={(nextValue) => activeTuning.onChange(nextValue)}
-                  onHoverPreview={(label, isPeak) => setEffortHover(label ? { label, isPeak } : null)}
-                />
-              </div>
-            )}
-
-            {hasFooterActions && (
-              <div className="acp-unified-picker-footer">
-                {onOpenModelSettings && (
-                  <button type="button" className="acp-unified-footer-btn acp-unified-model-settings" onClick={() => { closePanel(); onOpenModelSettings() }}>
-                    <Settings2 size={12} aria-hidden="true" /><span>配置模型</span>
-                  </button>
-                )}
-                {onOpenRuntimeSettings && (
-                  <button type="button" className="acp-unified-footer-btn" onClick={() => { closePanel(); onOpenRuntimeSettings() }}>
-                    <span>管理执行引擎</span>
-                  </button>
-                )}
-                {triggerLoading && <div role="status" className="acp-unified-panel-progress"><Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" /><span>更新中…</span></div>}
-                {recoveryActions.map((action) => (
-                  <button key={action.key} type="button" className="acp-unified-footer-btn" disabled={action.disabled || action.loading} onClick={() => action.onClick()}>
-                    {action.loading && <Loader2 size={12} className="acp-progress-spinner" aria-hidden="true" />}
-                    <span>{action.label}</span>
-                  </button>
-                ))}
-                {defaultAction}
-              </div>
+              />
             )}
           </div>
         )

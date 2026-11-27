@@ -52,14 +52,123 @@ const DRIVER_BRAND_MAP: Readonly<Record<string, string>> = {
 
 const EFFORT_LABELS: Readonly<Record<string, string>> = {
   off: '关',
-  none: '关闭',
-  minimal: '最低',
+  none: '关',
+  minimal: '极低',
   low: '低',
   medium: '中',
   high: '高',
-  xhigh: '极高',
+  xhigh: '超高',
   max: '最高',
+  highest: '最高',
+  ultra: '极限',
+  extreme: '极限',
   default: '默认'
+}
+
+const KNOWN_PROVIDER_LABELS: Readonly<Record<string, string>> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  claude: 'Anthropic',
+  google: 'Google',
+  'google-vertex': 'Google Vertex',
+  gemini: 'Google',
+  deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
+  xai: 'xAI',
+  qwen: 'Qwen',
+  dashscope: 'Qwen',
+  alibaba: 'Qwen',
+  zhipu: '智谱 AI',
+  zhipuai: '智谱 AI',
+  glm: '智谱 AI',
+  moonshot: 'Moonshot',
+  kimi: 'Moonshot',
+  minimax: 'MiniMax',
+  volcengine: '火山方舟',
+  ark: '火山方舟',
+  doubao: '火山方舟',
+  siliconflow: '硅基流动',
+  mistral: 'Mistral',
+  groq: 'Groq',
+  cohere: 'Cohere',
+  perplexity: 'Perplexity',
+  together: 'Together',
+  fireworks: 'Fireworks',
+  'amazon-bedrock': 'AWS Bedrock',
+  bedrock: 'AWS Bedrock',
+  azure: 'Azure OpenAI',
+  'github-copilot': 'GitHub Copilot',
+  copilot: 'GitHub Copilot',
+  ollama: 'Ollama',
+  lmstudio: 'LM Studio',
+  magpie: 'Magpie',
+  'cc-switch': 'CC Switch'
+}
+
+const GENERIC_MODEL_GROUPS = new Set(['native', 'custom', 'cc-switch', 'magpie'])
+
+function formatProviderName(raw: string, configuredProviders?: ReadonlyMap<string, string>): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  const configured = configuredProviders?.get(trimmed) ?? configuredProviders?.get(trimmed.toLowerCase())
+  if (configured) return configured
+  const known = KNOWN_PROVIDER_LABELS[trimmed.toLowerCase()]
+  if (known) return known
+  if (/^[a-z][a-z0-9_-]*$/.test(trimmed)) {
+    return trimmed
+      .split(/[-_]+/)
+      .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ''))
+      .join(' ')
+  }
+  return trimmed
+}
+
+function resolveModelProviderLabel(
+  model: { id: string; displayName: string; providerId?: string; group?: string; instanceId: string; driverKind?: string },
+  configuredProviders?: ReadonlyMap<string, string>
+): string {
+  const group = (model.group ?? '').trim()
+  const groupLower = group.toLowerCase()
+  const providerId = (model.providerId ?? '').trim()
+  const displayName = (model.displayName ?? '').trim()
+
+  if (/\s*·\s*routing\s*group$/i.test(displayName)) return '路由组'
+
+  if (group && !GENERIC_MODEL_GROUPS.has(groupLower)) {
+    return formatProviderName(group, configuredProviders)
+  }
+
+  const ccsCodex = /^ccs-([^/]+)\//i.exec(model.id)
+  const ccsClaude = /^ccs-claude-([^-]+)--/i.exec(model.id)
+  const ccsKey = ccsCodex?.[1] ?? ccsClaude?.[1]
+
+  if (groupLower === 'magpie' || /magpie/i.test(providerId) || /magpie/i.test(ccsKey ?? '') || /magpie/i.test(model.id)) {
+    return 'Magpie'
+  }
+
+  if (groupLower === 'cc-switch' || ccsKey) {
+    const channel = (providerId && providerId.toLowerCase() !== 'cc-switch' ? providerId : ccsKey) ?? ''
+    return channel ? formatProviderName(channel, configuredProviders) : 'CC Switch'
+  }
+
+  if (providerId) {
+    return formatProviderName(providerId, configuredProviders)
+  }
+
+  const slashMatch = /^([^/:]+)\/(.+)$/.exec(model.id)
+  if (slashMatch && !/^ccs-/i.test(slashMatch[1])) {
+    return formatProviderName(slashMatch[1], configuredProviders)
+  }
+
+  const colonIndex = model.id.indexOf(':')
+  if (colonIndex > 0) {
+    return formatProviderName(model.id.slice(0, colonIndex), configuredProviders)
+  }
+
+  if (model.driverKind === 'codex' || model.instanceId === 'codex') return 'OpenAI'
+  if (model.driverKind === 'claude' || model.driverKind === 'claudeAgent' || model.instanceId === 'claude' || model.instanceId === 'claudeAgent') return 'Anthropic'
+  if (model.driverKind === 'gemini' || model.instanceId === 'gemini') return 'Google'
+  return instanceLabel(model.instanceId)
 }
 
 const DEFAULT_CHOICE_VALUE = '__default__'
@@ -78,9 +187,10 @@ function resolveDriverBrand(driverKind?: string, instanceId?: string): string | 
   return undefined
 }
 
-function localizeChoiceLabel(label: string): string {
-  const key = label.trim().toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ')
-  return EFFORT_LABELS[key] ?? label
+function localizeChoiceLabel(label: string, value?: string): string {
+  const labelKey = label.trim().toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ')
+  const valueKey = (value ?? '').trim().toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ')
+  return EFFORT_LABELS[labelKey] ?? EFFORT_LABELS[valueKey] ?? label
 }
 
 function modelTurnOptions(catalog: ConversationModelCatalog, model: ComposerModel | null): readonly ConversationDriverOption[] {
@@ -110,7 +220,7 @@ function buildTuningItem(
   const includeDefaultChoice = !currentDefault
   const choices = [
     ...(includeDefaultChoice ? [{ value: DEFAULT_CHOICE_VALUE, label: '默认' }] : []),
-    ...option.choices.map((choice) => ({ value: choice.value, label: localizeChoiceLabel(choice.label) }))
+    ...option.choices.map((choice) => ({ value: choice.value, label: localizeChoiceLabel(choice.label, choice.value) }))
   ]
   const effectiveValue = chosen ?? currentDefault ?? DEFAULT_CHOICE_VALUE
 
@@ -197,6 +307,19 @@ export function ConversationModelPicker({
     [catalog.models, lockedInstanceId]
   )
 
+  const aiProviders = useApp((s) => s.settings?.ai?.providers)
+  const configuredProviderMap = useMemo(() => {
+    const map = new Map<string, string>()
+    if (!aiProviders?.length) return map
+    for (const provider of aiProviders) {
+      const label = provider.name?.trim()
+      if (!label) continue
+      map.set(provider.id, label)
+      map.set(provider.id.toLowerCase(), label)
+    }
+    return map
+  }, [aiProviders])
+
   const options = useMemo<ModelSelectionOption[]>(
     () => visibleModels.map((model) => {
       const reason = unavailableModelReason(catalog, model)
@@ -205,12 +328,13 @@ export function ConversationModelPicker({
         modelId: model.id,
         name: model.displayName,
         brand: resolveDriverBrand(model.driverKind, model.instanceId),
+        providerLabel: resolveModelProviderLabel(model, configuredProviderMap),
         sourceLabel: instanceLabel(model.instanceId),
         disabled: Boolean(reason),
         disabledReason: reason
       }
     }),
-    [catalog, visibleModels]
+    [catalog, configuredProviderMap, visibleModels]
   )
 
   const recentKeys = useMemo(
