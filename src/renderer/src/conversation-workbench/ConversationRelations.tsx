@@ -1,5 +1,5 @@
 import { useId, useState, type JSX } from 'react'
-import { ArrowUpRight, Bot, Check, ChevronRight, CircleAlert, CircleHelp, GitBranch, LoaderCircle, MessageSquare, Minus, X } from 'lucide-react'
+import { ArrowUpRight, Bot, Check, ChevronRight, CircleAlert, CircleHelp, GitBranch, LoaderCircle, MessageSquare, Minus, Square, X } from 'lucide-react'
 import type { ConversationThreadRelation, ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
 import { getToolBrand } from '../../../shared/tool-brands'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
@@ -60,9 +60,17 @@ function RelatedWorkDetails({ item, onClose }: {
   </Modal>
 }
 
-export function ConversationLifecycleCard({ item, onOpenRelatedThread, compact = false }: {
+function canStopChildAgent(item: ConversationThreadRelation): boolean {
+  return item.kind === 'delegated'
+    && Boolean(item.childThreadId)
+    && (item.status === 'queued' || item.status === 'running' || item.status === 'waiting')
+}
+
+export function ConversationLifecycleCard({ item, onOpenRelatedThread, onStopSubagent, stoppingChildThreadId, compact = false }: {
   readonly item: ConversationThreadRelation
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
+  readonly onStopSubagent?: (childThreadId: string, force?: boolean) => void
+  readonly stoppingChildThreadId?: string | null
   readonly compact?: boolean
 }): JSX.Element {
   const [details, setDetails] = useState(false)
@@ -70,6 +78,8 @@ export function ConversationLifecycleCard({ item, onOpenRelatedThread, compact =
   const Kind = item.kind === 'side-chat' ? MessageSquare : item.kind === 'fork' ? GitBranch : Bot
   const child = item.childThreadId
   const note = item.question?.title ?? (item.result && deliveryStatus[item.result.state])
+  const stoppable = Boolean(onStopSubagent && canStopChildAgent(item) && child)
+  const stopping = Boolean(child && stoppingChildThreadId === child)
   const contents = <>
     <Kind size={15} aria-hidden="true" className="conversation-related-kind" />
     <span className="conversation-related-title my-item-title">{item.title}</span>
@@ -81,25 +91,38 @@ export function ConversationLifecycleCard({ item, onOpenRelatedThread, compact =
   </>
   return <div className={compact ? 'conversation-related-entry' : 'conversation-related-card'}
     data-conversation-row-id={compact ? undefined : `relation:${item.id}`} data-related-work-id={item.id}>
-    <Button variant="ghost" size="sm" className="conversation-related-trigger"
-      aria-label={`${child && onOpenRelatedThread ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`}
-      onClick={() => child && onOpenRelatedThread ? onOpenRelatedThread(conversationThreadSurface(child)) : setDetails(true)}>
-      {contents}
-    </Button>
+    <div className="conversation-related-trigger-row">
+      <Button variant="ghost" size="sm" className="conversation-related-trigger"
+        aria-label={`${child && onOpenRelatedThread ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`}
+        onClick={() => child && onOpenRelatedThread ? onOpenRelatedThread(conversationThreadSurface(child)) : setDetails(true)}>
+        {contents}
+      </Button>
+      {stoppable && child && <button type="button" className="my-icon-control shrink-0"
+        title={`停止子代理：${item.title}`} aria-label={`停止子代理：${item.title}`}
+        disabled={stopping} onClick={() => onStopSubagent?.(child)}>
+        {stopping
+          ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          : <Square size={11} aria-hidden="true" />}
+      </button>}
+    </div>
     {!compact && note && <p className="my-item-description conversation-related-note">{note}</p>}
     {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
   </div>
 }
 
-export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
+export function ConversationTimelineRelationRow({ item, onOpenRelatedThread, onStopSubagent, stoppingChildThreadId }: {
   readonly item: ConversationThreadRelation
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
+  readonly onStopSubagent?: (childThreadId: string, force?: boolean) => void
+  readonly stoppingChildThreadId?: string | null
 }): JSX.Element {
   const [details, setDetails] = useState(false)
   const { label, icon: Status } = workStatus[item.status]
   const Kind = item.kind === 'side-chat' ? MessageSquare : item.kind === 'fork' ? GitBranch : Bot
   const child = item.childThreadId
   const canOpen = Boolean(child && onOpenRelatedThread)
+  const stoppable = Boolean(onStopSubagent && canStopChildAgent(item) && child)
+  const stopping = Boolean(child && stoppingChildThreadId === child)
   const elapsed = formatDayAwareTimestamp(item.updatedAt)
   const open = (): void => {
     if (child && onOpenRelatedThread) onOpenRelatedThread(conversationThreadSurface(child))
@@ -109,20 +132,29 @@ export function ConversationTimelineRelationRow({ item, onOpenRelatedThread }: {
     const brand = getToolBrand(item.instanceId)
     const detail = subagentCardDetail(item.result?.text ?? item.question?.title)
     return <div data-related-work-id={item.id} data-v2-item-type="subagent">
-      <button type="button" className="conversation-subagent-link" data-state={item.status}
-        aria-label={`${canOpen ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`} onClick={open}>
-        <span className="conversation-subagent-avatar" aria-hidden="true">
-          {brand ? <ToolBrandIcon brand={brand.id} size={14} /> : <Bot size={14} />}
-          <span className="conversation-subagent-dot" />
-        </span>
-        <span className="conversation-subagent-copy">
-          <span className="conversation-subagent-title">{item.title}</span>
-          <span className="conversation-subagent-detail">{detail ?? label}</span>
-        </span>
-        {detail && <span className="conversation-subagent-status">{label}</span>}
-        {elapsed && <span className="conversation-subagent-time">{elapsed}</span>}
-        <ChevronRight size={14} className="conversation-subagent-chevron" aria-hidden="true" />
-      </button>
+      <div className="conversation-related-trigger-row">
+        <button type="button" className="conversation-subagent-link" data-state={item.status}
+          aria-label={`${canOpen ? '打开子会话' : '查看活动详情'}：${item.title}，${label}`} onClick={open}>
+          <span className="conversation-subagent-avatar" aria-hidden="true">
+            {brand ? <ToolBrandIcon brand={brand.id} size={14} /> : <Bot size={14} />}
+            <span className="conversation-subagent-dot" />
+          </span>
+          <span className="conversation-subagent-copy">
+            <span className="conversation-subagent-title">{item.title}</span>
+            <span className="conversation-subagent-detail">{detail ?? label}</span>
+          </span>
+          {detail && <span className="conversation-subagent-status">{label}</span>}
+          {elapsed && <span className="conversation-subagent-time">{elapsed}</span>}
+          <ChevronRight size={14} className="conversation-subagent-chevron" aria-hidden="true" />
+        </button>
+        {stoppable && child && <button type="button" className="my-icon-control shrink-0"
+          title={`停止子代理：${item.title}`} aria-label={`停止子代理：${item.title}`}
+          disabled={stopping} onClick={() => onStopSubagent?.(child)}>
+          {stopping
+            ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <Square size={11} aria-hidden="true" />}
+        </button>}
+      </div>
       {details && <RelatedWorkDetails item={item} onClose={() => setDetails(false)} />}
     </div>
   }
@@ -154,9 +186,11 @@ function subagentCardDetail(detail: string | undefined): string | null {
     .trim() || null
 }
 
-export function ConversationRelations({ relations, onOpenRelatedThread }: {
+export function ConversationRelations({ relations, onOpenRelatedThread, onStopSubagent, stoppingChildThreadId }: {
   readonly relations?: ConversationThreadRelations
   readonly onOpenRelatedThread: (tab: ConversationThreadTab) => void
+  readonly onStopSubagent?: (childThreadId: string, force?: boolean) => void
+  readonly stoppingChildThreadId?: string | null
 }): JSX.Element | null {
   const historyId = useId()
   const children = relations?.children ?? []
@@ -167,7 +201,10 @@ export function ConversationRelations({ relations, onOpenRelatedThread }: {
   const failures = previous.filter(item => item.status === 'failed').length
   if (!current.length && !previous.length && !threads.length) return null
   const list = (items: readonly ConversationThreadRelation[]) => <ul className="conversation-related-list">
-    {items.map(item => <li key={item.id}><ConversationLifecycleCard compact item={item} onOpenRelatedThread={onOpenRelatedThread} /></li>)}
+    {items.map(item => <li key={item.id}>
+      <ConversationLifecycleCard compact item={item} onOpenRelatedThread={onOpenRelatedThread}
+        onStopSubagent={onStopSubagent} stoppingChildThreadId={stoppingChildThreadId} />
+    </li>)}
   </ul>
   return <section aria-label="会话关系" className="conversation-relations">
     {current.length > 0 && list(current)}

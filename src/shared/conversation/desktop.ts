@@ -1,4 +1,5 @@
 import type { OrchestrationV2DomainEventJson } from './orchestrationV2'
+import type { ConversationFailureClass } from './failure-taxonomy'
 import type { ConversationTaskBinding } from './task-scope'
 
 export interface ConversationCommandReceipt {
@@ -60,6 +61,8 @@ export interface ConversationRunEvidence {
   readonly outcomeUnknown?: true
   readonly outcomeUnknownAt?: string
   readonly failure?: string
+  readonly failureClass?: ConversationFailureClass
+  readonly retryAfterMs?: number
 }
 
 type ConversationHostEventBase = {

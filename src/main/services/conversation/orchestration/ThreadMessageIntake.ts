@@ -34,6 +34,7 @@ export interface NewThreadRequest extends ConversationAttachmentReferences {
   readonly title: string
   readonly text: string
   readonly role?: ConversationProjectRoleSelection
+  readonly tags?: readonly string[]
   readonly driverKind: ProviderDriverKind
   readonly modelSelection: ModelSelection
   readonly messageId?: string
@@ -101,6 +102,7 @@ export class ThreadMessageIntake {
       runtimeMode, interactionMode, branch: null, worktreePath: null, activeProviderThreadId: null,
       lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
       forkedFrom: null, createdAt: timestamp, updatedAt: timestamp, archivedAt: null, settledAt: null,
+      ...(input.tags?.length ? { tags: [...input.tags] } : {}),
       lastVisitedAt: null, deletedAt: null,
     })
     const run = decodeRunEvent({
@@ -222,7 +224,13 @@ export class ThreadMessageIntake {
   } {
     const runRows = this.database.prepare(`SELECT run.run_id, run.payload_json, attempt.foreground_ended, attempt.background_running,
       attempt.stop_requested, attempt.phase, terminal.status AS terminal_status, terminal.observed_at AS terminal_at,
-      terminal.native_turn_id AS terminal_turn_id FROM conversation_v2_projection_runs run
+      terminal.native_turn_id AS terminal_turn_id,
+      EXISTS(
+        SELECT 1 FROM conversation_v2_command_targets target
+        JOIN conversation_v2_command_receipts receipt ON receipt.command_id = target.command_id
+        WHERE target.run_id = run.run_id AND receipt.command_type = 'run.interrupt' AND receipt.status = 'accepted'
+      ) AS stop_command_accepted
+      FROM conversation_v2_projection_runs run
       LEFT JOIN conversation_v2_effect_outbox effect ON effect.thread_id = run.thread_id AND effect.effect_type = 'provider-turn.start'
         AND json_extract(effect.payload_json, '$.runId') = run.run_id
       LEFT JOIN conversation_v2_dispatch_attempts attempt ON attempt.effect_id = effect.effect_id
@@ -230,7 +238,7 @@ export class ThreadMessageIntake {
       WHERE run.thread_id = ? AND run.ordinal < ? ORDER BY run.ordinal DESC LIMIT ?`)
       .all(threadId, beforeRunOrdinal, limit + 1) as Array<{
       run_id: string; payload_json: string; foreground_ended: number | null; background_running: number | null
-      stop_requested: number | null; phase: string | null
+      stop_requested: number | null; phase: string | null; stop_command_accepted: number
       terminal_status: string | null; terminal_at: string | null; terminal_turn_id: string | null
     }>
     const messages: OrchestrationV2ConversationMessage[] = []
@@ -247,6 +255,8 @@ export class ThreadMessageIntake {
       runs.unshift({
         ...decodeRun(raw),
         ...(typeof raw.failure === 'string' ? { failure: raw.failure } : {}),
+        ...(typeof raw.failureClass === 'string' ? { failureClass: raw.failureClass as ConversationThreadSnapshot['runs'][number]['failureClass'] } : {}),
+        ...(typeof raw.retryAfterMs === 'number' && Number.isFinite(raw.retryAfterMs) ? { retryAfterMs: raw.retryAfterMs } : {}),
         ...(raw.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
         ...(typeof raw.outcomeUnknownAt === 'string' ? { outcomeUnknownAt: raw.outcomeUnknownAt } : {}),
         ...(typeof raw.nativeTurnId === 'string' ? { nativeTurnId: raw.nativeTurnId } : {}),
@@ -256,10 +266,10 @@ export class ThreadMessageIntake {
         ...(raw.usage ? { usage: raw.usage as ConversationThreadSnapshot['runs'][number]['usage'] } : {}),
         ...(raw.compaction ? { compaction: raw.compaction as ConversationThreadSnapshot['runs'][number]['compaction'] } : {}),
         ...(raw.handoff ? { handoff: raw.handoff as ConversationThreadSnapshot['runs'][number]['handoff'] } : {}),
-        ...(row.phase !== null ? { lifecycle: {
+        ...(row.phase !== null || row.stop_command_accepted === 1 ? { lifecycle: {
           foregroundEnded: row.foreground_ended === 1,
           backgroundRunning: row.background_running === 1 && row.phase !== 'settled',
-          stopRequested: row.stop_requested === 1,
+          stopRequested: row.stop_requested === 1 || row.stop_command_accepted === 1,
           ...(row.terminal_status && row.terminal_at ? { terminalEvidence: {
             status: row.terminal_status, observedAt: row.terminal_at,
             ...(row.terminal_turn_id ? { nativeTurnId: row.terminal_turn_id } : {}),

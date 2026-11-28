@@ -1,147 +1,71 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
 import type {
-  ConversationLifecycleEvent,
-  ConversationCompaction,
-  ConversationGoal,
-  ConversationHandoff,
-  ConversationProjectedWorkItem,
   ConversationRuntimeRequest,
   ConversationThreadCommand,
   ConversationThreadCommandState,
-  ConversationThreadEventPage,
   ConversationThreadHistoryCursor,
   ConversationThreadHistoryPage,
   ConversationThreadSnapshot,
-  ConversationTurnUsage,
 } from '../../../shared/conversation/command-runtime'
-import type { ConversationRunEvidence } from '../../../shared/conversation/desktop'
-import { IpcErrorCode, type IpcFail } from '../../../shared/ipc-errors'
 import { CONVERSATION_READ_PAGE_LIMIT } from '../../../shared/conversation/desktop'
-import type {
-  OrchestrationV2AppThread,
-  OrchestrationV2ConversationMessage,
-  OrchestrationV2Run,
-} from '../../../shared/conversation/orchestrationV2'
+import { IpcErrorCode } from '../../../shared/ipc-errors'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
-import type { ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
-import { ModelSelection } from '../../../shared/conversation/modelSelection'
 import { api } from '../api'
 import { conversationError } from './useComposerSend'
+import {
+  applyEventPage,
+  canResumeThread,
+  commandResult,
+  deriveResumableRunId,
+  deriveTimelineRows,
+  historyPageCursor,
+  isActiveRun,
+  isQueuedRun,
+  losesReadAccess,
+  prependHistory,
+  projectionCacheKey,
+  queuedRunsWithText,
+  runStartIso,
+  sameReadIdentity,
+  snapshotProjection,
+  wasNotAdmitted,
+  type ConversationApplyResult,
+  type ConversationMessage,
+  type ConversationRun,
+  type ConversationThread,
+  type ConversationThreadProjection,
+  type ConversationTimelineReasoningEntry,
+  type ConversationTimelineRow,
+  type ConversationTimelineWorkEntry,
+  type ThreadReadTarget,
+} from './threadProjectionModel'
 
-export type ConversationThread = Pick<OrchestrationV2AppThread, 'id' | 'title' | 'modelSelection'> &
-  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath'>>
-export type ConversationMessage = Pick<
-  OrchestrationV2ConversationMessage,
-  'role' | 'text' | 'runId' | 'streaming'
-> & {
-  readonly id: string
-  readonly createdAt?: OrchestrationV2ConversationMessage['createdAt'] | string
-  readonly updatedAt?: OrchestrationV2ConversationMessage['updatedAt'] | string
-}
-export type ConversationRun = Pick<OrchestrationV2Run, 'id' | 'ordinal' | 'status' | 'modelSelection' | 'userMessageId' | 'startedAt' | 'requestedAt'> & {
-  readonly completedAt?: OrchestrationV2Run['completedAt'] | string
-  readonly failure?: string
-  readonly outcomeUnknown?: boolean
-  readonly engineAcceptedAt?: string | null
-  readonly nativeTurnId?: string | null
-  readonly queuePosition?: number | null
-  readonly usage?: ConversationTurnUsage
-  readonly compaction?: ConversationCompaction
-  readonly handoff?: ConversationHandoff
-  readonly lifecycle?: {
-    readonly foregroundEnded: boolean
-    readonly backgroundRunning: boolean
-    readonly stopRequested: boolean
-    readonly terminalEvidence?: { readonly status: string; readonly observedAt: string; readonly nativeTurnId?: string }
-  }
-}
-
-type ConversationTimelineEntry =
-  | { readonly kind: 'message'; readonly id: string; readonly message: ConversationMessage
-      readonly forkRunId?: string; readonly showAssistantMeta?: boolean }
-  | {
-      readonly kind: 'work'
-      readonly id: string
-      readonly text: string
-      readonly toolName?: string | null
-      readonly state: 'running' | 'done' | 'failed' | 'cancelled'
-      readonly at?: string
-    }
-  | { readonly kind: 'plan'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'proposed_plan' | 'todo_list' }> }
-  | { readonly kind: 'file-change'; readonly id: string; readonly item: Extract<ConversationProjectedWorkItem, { readonly type: 'file_change' }> }
-  | { readonly kind: 'relation'; readonly id: string; readonly item: ConversationThreadRelations['children'][number] }
-
-export type ConversationTimelineRow = ConversationTimelineEntry | {
-  readonly kind: 'work-fold'
-  readonly id: string
-  readonly durationMs: number
-  readonly entries: readonly ConversationTimelineEntry[]
+export {
+  applyEventPage,
+  canResumeThread,
+  commandResult,
+  deriveResumableRunId,
+  deriveTimelineRows,
+  isActiveRun,
+  isQueuedRun,
+  queuedRunsWithText,
+  runStartIso,
+  type ConversationApplyResult,
+  type ConversationMessage,
+  type ConversationRun,
+  type ConversationThread,
+  type ConversationThreadProjection,
+  type ConversationTimelineReasoningEntry,
+  type ConversationTimelineRow,
+  type ConversationTimelineWorkEntry,
+  type ThreadReadTarget,
 }
 
-export interface ConversationThreadProjection {
-  readonly thread: ConversationThread
-  readonly messages: readonly ConversationMessage[]
-  readonly runs: readonly ConversationRun[]
-  readonly rows: readonly ConversationTimelineRow[]
-  readonly queuePaused: boolean
-  readonly runtimeRequests: readonly ConversationRuntimeRequest[]
-  readonly queuedRuns: readonly ConversationRun[]
-  readonly activeRun: ConversationRun | undefined
-  readonly cursor?: ConversationThreadSnapshot['cursor']
-  readonly turnItems?: readonly ConversationProjectedWorkItem[]
-  readonly historyCursor: ConversationThreadSnapshot['historyCursor']
-  readonly hasOlderHistory: boolean
-  readonly relations: ConversationThreadRelations
-  readonly goal: ConversationGoal | null
-}
-
-export interface ThreadReadTarget {
-  readonly threadId: string
-  readonly runId?: string
-}
-
-export type ConversationApplyResult =
-  | {
-      readonly ok: true
-      readonly uncertain: false
-      readonly commandId: string
-      readonly receipt: ConversationThreadCommandState
-      readonly source: 'apply' | 'reconcile'
-    }
-  | {
-      readonly ok: false
-      readonly uncertain: true
-      readonly commandId: string
-      readonly reason: string
-      readonly receipt?: ConversationThreadCommandState
-      readonly source: 'apply' | 'reconcile'
-    }
-  | {
-      readonly ok: false
-      readonly uncertain: false
-      readonly commandId?: string
-      readonly reason: string
-      readonly receipt?: ConversationThreadCommandState
-      readonly source: 'apply' | 'reconcile'
-    }
-
-const ACTIVE_RUNS = new Set<ConversationRun['status']>(['preparing', 'queued', 'starting', 'running', 'waiting'])
 const POLL_DELAY_MS = 450
 /** An open idle thread still re-reads deltas, so work started in another window shows up. */
 const IDLE_POLL_DELAY_MS = 5_000
 const READ_RETRY_MS = 1_800
 const CACHE_LIMIT = 32
-const decodeModelSelection = Schema.decodeUnknownOption(ModelSelection)
-
-export function isActiveRun(run: ConversationRun): boolean {
-  return !run.outcomeUnknown && ACTIVE_RUNS.has(run.status)
-}
-
-export function isQueuedRun(run: ConversationRun): boolean {
-  return run.status === 'queued' && !run.outcomeUnknown
-}
 
 interface CachedProjection {
   readonly projection: ConversationThreadProjection
@@ -149,31 +73,8 @@ interface CachedProjection {
 
 const projectionCache = new Map<string, CachedProjection>()
 
-/**
- * Cache identity is the caller's scope plus the physical root and thread. A task locator's
- * scopeKey keeps two spaces that happen to hold the same thread id from reading each other.
- */
 function cacheKey(scopeKey: string, root: string, threadId: string, task?: ConversationTaskLocator): string {
-  return JSON.stringify([scopeKey, root, threadId, task?.workspaceKey, task?.taskId, task?.taskCreatedAt, task?.scopeKey])
-}
-
-type ReadIdentity = Pick<ConversationThreadHistoryCursor, 'storageId' | 'threadId'>
-
-function sameReadIdentity(current: ReadIdentity | undefined | null, next: ReadIdentity): boolean {
-  return current?.storageId === next.storageId && current.threadId === next.threadId
-}
-
-function losesReadAccess(code: unknown): boolean {
-  return code === IpcErrorCode.Denied || code === IpcErrorCode.Unauthorized ||
-    code === IpcErrorCode.NotFound || code === IpcErrorCode.NoProject
-}
-
-function historyPageCursor(page: ConversationThreadHistoryPage, previous: ConversationThreadHistoryCursor): ConversationThreadHistoryCursor | null {
-  const next = page.historyCursor
-  if (next && (!sameReadIdentity(next, previous) || next.beforeRunOrdinal >= previous.beforeRunOrdinal)) {
-    throw Object.assign(new Error('对话历史游标已失效，请刷新快照。'), { code: IpcErrorCode.ResetRequired })
-  }
-  return next
+  return projectionCacheKey(scopeKey, root, threadId, task)
 }
 
 function remember(key: string, projection: ConversationThreadProjection): void {
@@ -194,30 +95,6 @@ function remember(key: string, projection: ConversationThreadProjection): void {
 
 function failureReason(error: unknown): string {
   return conversationError(error)
-}
-
-function wasNotAdmitted(failure: IpcFail): boolean {
-  return 'outcome' in failure && failure.outcome === 'not-admitted'
-}
-
-export function commandResult(
-  commandId: string,
-  receipt: ConversationThreadCommandState | null,
-  source: 'apply' | 'reconcile',
-): ConversationApplyResult {
-  if (!receipt || receipt.dispatch === 'pending-reconciliation') {
-    return {
-      ok: false, uncertain: true, commandId, source, ...(receipt && { receipt }),
-      reason: receipt?.detail ?? '操作结果待核对。',
-    }
-  }
-  if (receipt.dispatch === 'failed' || receipt.dispatch === 'cancelled') {
-    return {
-      ok: false, uncertain: false, commandId, receipt, source,
-      reason: receipt.detail ?? (receipt.dispatch === 'cancelled' ? '操作已取消。' : '操作未完成。'),
-    }
-  }
-  return { ok: true, uncertain: false, commandId, receipt, source }
 }
 
 export async function applyConversationCommand(
@@ -258,329 +135,6 @@ export async function readConversationCommandState(
   }
 }
 
-function upsertMessage(
-  messages: readonly ConversationMessage[],
-  next: ConversationMessage,
-): readonly ConversationMessage[] {
-  const index = messages.findIndex((message) => message.id === next.id)
-  if (index === -1) return [...messages, next]
-  if (messages[index] === next) return messages
-  const copy = messages.slice()
-  copy[index] = next
-  return copy
-}
-
-function applyMessageDelta(
-  messages: readonly ConversationMessage[],
-  messageId: string,
-  text: string,
-): readonly ConversationMessage[] {
-  const index = messages.findIndex((message) => message.id === messageId)
-  if (index === -1) return messages
-  const existing = messages[index]
-  const copy = messages.slice()
-  copy[index] = { ...existing, text: existing.text + text, streaming: true }
-  return copy
-}
-
-function upsertRequest(
-  requests: readonly ConversationRuntimeRequest[],
-  next: ConversationRuntimeRequest,
-): readonly ConversationRuntimeRequest[] {
-  const index = requests.findIndex((request) => request.requestId === next.requestId)
-  if (index === -1) return [...requests, next]
-  const copy = requests.slice()
-  copy[index] = next
-  return copy
-}
-
-function timelineTime(value: string | { readonly epochMilliseconds: number } | null | undefined): number | undefined {
-  const time = typeof value === 'string' ? Date.parse(value) : value?.epochMilliseconds
-  return time !== undefined && Number.isFinite(time) ? time : undefined
-}
-
-export function runStartIso(run: ConversationRun | undefined): string | null {
-  const time = timelineTime(run?.startedAt ?? run?.requestedAt)
-  if (time === undefined) return null
-  const date = new Date(time)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null
-}
-
-function completedWorkLog(
-  run: ConversationRun,
-  entries: readonly ConversationTimelineEntry[],
-  finalIndex: number,
-): readonly ConversationTimelineRow[] {
-  if (run.status !== 'completed' || run.outcomeUnknown || run.lifecycle?.backgroundRunning) return entries
-  const start = timelineTime(run.startedAt ?? run.requestedAt)
-  const end = timelineTime(run.completedAt)
-  if (start === undefined || end === undefined || end < start) return entries
-  const finalReply = entries[finalIndex]
-  if (finalReply?.kind !== 'message' || finalReply.message.streaming) return entries
-  const history = entries.slice(0, finalIndex)
-  if (!history.some(entry => entry.kind === 'work') ||
-    !history.every(entry => (entry.kind === 'message' && !entry.message.streaming) ||
-      (entry.kind === 'work' && entry.state === 'done'))) return entries
-  return [{ kind: 'work-fold', id: `work-fold:${run.id}`, durationMs: end - start, entries: history },
-    ...entries.slice(finalIndex)]
-}
-
-/** Projects snapshot + delta into rows; a repeated id replaces its own row instead of duplicating it. */
-export function deriveTimelineRows(
-  messages: readonly ConversationMessage[],
-  runs: readonly ConversationRun[],
-  turnItems: readonly ConversationProjectedWorkItem[],
-  relations: ConversationThreadRelations['children'] = [],
-): readonly ConversationTimelineRow[] {
-  const rows: ConversationTimelineRow[] = []
-  const place = (row: ConversationTimelineRow): void => {
-    const index = rows.findIndex((candidate) => candidate.id === row.id)
-    if (index === -1) rows.push(row)
-    else rows[index] = row
-  }
-  const assistantPlaced = new Set<string>()
-  const byParentRun = new Map<string, ConversationThreadRelations['children'][number][]>()
-  for (const item of relations) {
-    if (!item.parentRunId || (item.kind !== 'delegated' && item.kind !== 'native-activity')) continue
-    const current = byParentRun.get(item.parentRunId)
-    if (current) current.push(item)
-    else byParentRun.set(item.parentRunId, [item])
-  }
-  for (const run of runs) {
-    const prompt = messages.find((item) => item.id === run.userMessageId)
-    if (prompt) place({ kind: 'message', id: prompt.id, message: prompt })
-    const turn: Array<{ row: ConversationTimelineEntry; time?: number }> = []
-    const append = (row: ConversationTimelineEntry, startedAt: string | { readonly epochMilliseconds: number } | null | undefined): void => {
-      turn.push({ row, time: timelineTime(startedAt) })
-    }
-    for (const item of turnItems) {
-      if (item.runId !== run.id) continue
-      if (item.type === 'dynamic_tool' && item.title) {
-        const status = item.status
-        append({
-          kind: 'work',
-          id: item.id,
-          text: item.title,
-          toolName: item.toolName,
-          state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
-            : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
-          ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
-        }, item.startedAt)
-      } else if (item.type === 'proposed_plan' || item.type === 'todo_list') {
-        append({ kind: 'plan', id: item.id, item }, item.startedAt)
-      } else if (item.type === 'file_change') {
-        append({ kind: 'file-change', id: item.id, item }, item.startedAt)
-      }
-    }
-    for (const item of byParentRun.get(run.id) ?? []) append({ kind: 'relation', id: `relation:${item.id}`, item }, item.createdAt)
-    for (const message of messages) {
-      if (message.role !== 'assistant' || message.runId !== run.id || assistantPlaced.has(message.id)) continue
-      assistantPlaced.add(message.id)
-      const stable = !run.outcomeUnknown && ['completed', 'failed', 'cancelled', 'interrupted'].includes(run.status)
-      append({ kind: 'message', id: message.id, message, ...(stable && { forkRunId: run.id }) }, message.createdAt)
-    }
-    const dated = turn.flatMap(entry => entry.time === undefined ? [] : [{ row: entry.row, time: entry.time }])
-      .sort((left, right) => left.time - right.time)
-    let datedIndex = 0
-    const ordered = turn.map(entry => entry.time === undefined ? entry.row : dated[datedIndex++].row)
-    const finalIndex = ordered.reduce((last, entry, index) =>
-      entry.kind === 'message' && entry.message.text.trim() ? index : last, -1)
-    const entries = ordered.map((entry, index) => entry.kind === 'message'
-      ? { ...entry, showAssistantMeta: index === finalIndex && Boolean(entry.forkRunId) && !entry.message.streaming }
-      : entry)
-    for (const entry of completedWorkLog(run, entries, finalIndex)) place(entry)
-  }
-  const placed = new Set(rows.map((row) => row.id))
-  for (const message of messages) {
-    if (placed.has(message.id) || assistantPlaced.has(message.id)) continue
-    rows.push({ kind: 'message', id: message.id, message })
-  }
-  return rows
-}
-
-export function queuedRunsWithText(
-  runs: readonly ConversationRun[],
-  messages: readonly ConversationMessage[],
-): ReadonlyArray<{ readonly run: ConversationRun; readonly text: string }> {
-  return runs
-    .filter((run) => isQueuedRun(run))
-    .map((run) => ({
-      run,
-      text: messages.find((message) => message.id === run.userMessageId)?.text ?? '',
-    }))
-    .sort(
-      (left, right) =>
-        (left.run.queuePosition ?? Number.MAX_SAFE_INTEGER) - (right.run.queuePosition ?? Number.MAX_SAFE_INTEGER),
-    )
-}
-
-function snapshotProjection(snapshot: ConversationThreadSnapshot): ConversationThreadProjection {
-  const { thread, runs, messages, turnItems = [] } = snapshot
-  const relations = snapshot.relations ?? { parent: null, children: [] }
-  const activeRun = [...runs].reverse().find((run) => isActiveRun(run))
-  return {
-    thread,
-    messages,
-    runs,
-    turnItems,
-    rows: deriveTimelineRows(messages, runs, turnItems, relations.children),
-    relations,
-    goal: snapshot.goal ?? null,
-    queuePaused: snapshot.queuePaused,
-    runtimeRequests: snapshot.runtimeRequests,
-    queuedRuns: runs.filter((run) => isQueuedRun(run)),
-    activeRun,
-    cursor: snapshot.cursor,
-    historyCursor: snapshot.historyCursor,
-    hasOlderHistory: snapshot.historyCursor !== null,
-  }
-}
-
-function prependHistory(
-  projection: ConversationThreadProjection,
-  pages: readonly ConversationThreadHistoryPage[],
-): ConversationThreadProjection {
-  if (!pages.length) return projection
-  const mergeById = <Item extends { readonly id: string }>(older: readonly Item[], newer: readonly Item[]): Item[] =>
-    [...new Map([...older, ...newer].map(item => [item.id, item])).values()]
-  const messages = mergeById(pages.flatMap(page => page.messages), projection.messages)
-  const runs = mergeById(pages.flatMap(page => page.runs), projection.runs)
-  const turnItems = mergeById(pages.flatMap(page => page.turnItems ?? []), projection.turnItems ?? [])
-  const historyCursor = pages[0].historyCursor
-  return { ...projection, messages, runs, turnItems, rows: deriveTimelineRows(messages, runs, turnItems, projection.relations.children),
-    historyCursor, hasOlderHistory: historyCursor !== null }
-}
-
-export function applyEventPage(
-  projection: ConversationThreadProjection,
-  page: Extract<ConversationThreadEventPage, { readonly kind: 'events' }>,
-): { readonly projection: ConversationThreadProjection; readonly cursor: ConversationThreadSnapshot['cursor'] } {
-  const previous = projection.cursor
-  if (previous && sameReadIdentity(previous, page.cursor) && previous.sequence > page.cursor.sequence) {
-    return { projection, cursor: previous }
-  }
-  const events = page.events.filter(({ sequence }) => sequence > (projection.cursor?.sequence ?? -1))
-  if (!events.length && projection.cursor?.sequence === page.cursor.sequence) {
-    return { projection, cursor: page.cursor }
-  }
-  let messages = projection.messages
-  let thread = projection.thread
-  const runs = [...projection.runs]
-  let queuePaused = projection.queuePaused
-  let runtimeRequests = projection.runtimeRequests
-  let parent = projection.relations?.parent ?? null
-  let goal = projection.goal ?? null
-  const children = new Map((projection.relations?.children ?? []).map(item => [item.id, item]))
-  const items = new Map((projection.turnItems ?? []).map(item => [item.id, item]))
-  const updateRun = (id: unknown, update: (run: ConversationRun) => ConversationRun): void => {
-    const index = runs.findIndex(run => run.id === id)
-    if (index >= 0) runs[index] = update(runs[index])
-  }
-  for (const entry of events) {
-    const event = entry.event as Record<string, unknown> & { readonly type?: string }
-    const payload = event.payload as Record<string, unknown> | undefined
-    if (event.type === 'crux.lifecycle') {
-      if (entry.event.type !== 'crux.lifecycle') continue
-      const body = entry.event.payload
-      if (body.kind === 'relation') {
-        const { relation, removed } = body
-        if (event.threadId === projection.thread.id) {
-          if (relation.parentThreadId === projection.thread.id) {
-            if (removed) children.delete(relation.id)
-            else children.set(relation.id, relation)
-          } else if (relation.childThreadId === projection.thread.id) {
-            if (!removed) parent = relation
-            else if (parent?.id === relation.id) parent = null
-          }
-        }
-        continue
-      }
-      if (body.kind === 'goal') goal = body.goal
-      if (body.kind === 'usage') updateRun(event.runId, run => ({ ...run, usage: body.usage }))
-      if (body.kind === 'compaction') updateRun(event.runId, run => ({ ...run, compaction: body.compaction }))
-      if (body.kind === 'handoff') updateRun(event.runId, run => ({ ...run, handoff: body.handoff }))
-      const lifecycle = payload as ConversationLifecycleEvent['payload']
-      if (lifecycle.kind === 'queue') queuePaused = lifecycle.paused
-      if (lifecycle.kind === 'request') {
-        runtimeRequests =
-          lifecycle.request.status === 'resolved' || lifecycle.request.status === 'expired'
-            ? runtimeRequests.filter((request) => request.requestId !== lifecycle.request.requestId)
-            : upsertRequest(runtimeRequests, lifecycle.request)
-      }
-      if (lifecycle.kind === 'dispatch' && lifecycle.status === 'unknown') {
-        updateRun(event.runId, run => ({ ...run, outcomeUnknown: true }))
-      }
-      if (lifecycle.kind === 'run' || lifecycle.kind === 'terminal-evidence') {
-        updateRun(event.runId, run => {
-          const previous = run.lifecycle
-          const phase = lifecycle.kind === 'run' ? lifecycle.phase : undefined
-          const terminalEvidence = lifecycle.kind === 'terminal-evidence' ? lifecycle.evidence : previous?.terminalEvidence
-          return { ...run, lifecycle: {
-            foregroundEnded: phase === 'foreground-ended' || phase === 'settled' || Boolean(previous?.foregroundEnded),
-            backgroundRunning: phase === 'background-running' || (phase !== 'settled' && Boolean(previous?.backgroundRunning)),
-            stopRequested: phase === 'stop-requested' || phase === 'stop-unconfirmed' || Boolean(previous?.stopRequested),
-            ...(terminalEvidence && { terminalEvidence }),
-          } }
-        })
-      }
-      continue
-    }
-    if (event.type === 'crux.message-delta') {
-      if (payload && typeof payload.messageId === 'string' && typeof payload.text === 'string') {
-        messages = applyMessageDelta(messages, payload.messageId, payload.text)
-      }
-      continue
-    }
-    if (event.type === 'crux.run-evidence') {
-      updateRun(event.runId, run => ({ ...run, ...payload as ConversationRunEvidence }))
-      continue
-    }
-    if (event.type === 'message.updated' && payload) {
-      const message = payload as unknown as ConversationMessage
-      if (typeof message.id === 'string') messages = upsertMessage(messages, message)
-      continue
-    }
-    const wireEvent = entry.event
-    if (wireEvent.type === 'thread.metadata-updated' && wireEvent.threadId === thread.id) {
-      const { title, modelSelection } = wireEvent.payload
-      thread = { ...thread, title, modelSelection: Option.getOrElse(decodeModelSelection(modelSelection), () => thread.modelSelection) }
-      continue
-    }
-    if (wireEvent.type === 'turn-item.updated') {
-      const item = wireEvent.payload
-      if (item.type === 'dynamic_tool' || item.type === 'proposed_plan' || item.type === 'todo_list' || item.type === 'file_change') items.set(item.id, item)
-      continue
-    }
-    if ((event.type === 'run.created' || event.type === 'run.updated') && payload && typeof payload === 'object') {
-      const next = payload as unknown as ConversationRun
-      if (typeof next.id === 'string') {
-        const index = runs.findIndex((run) => run.id === next.id)
-        if (index === -1) runs.push(next)
-        else runs[index] = { ...runs[index], ...next }
-      }
-    }
-  }
-  const turnItems = [...items.values()]
-  const relations = { parent, children: [...children.values()] }
-  const activeRun = [...runs].reverse().find((run) => isActiveRun(run))
-  const next: ConversationThreadProjection = {
-    ...projection,
-    thread,
-    cursor: page.cursor,
-    messages,
-    runs,
-    queuePaused,
-    runtimeRequests,
-    turnItems,
-    relations,
-    goal,
-    rows: deriveTimelineRows(messages, runs, turnItems, relations.children),
-    queuedRuns: runs.filter((run) => isQueuedRun(run)),
-    activeRun,
-  }
-  return { projection: next, cursor: page.cursor }
-}
-
 export interface ConversationThreadReading {
   readonly projection: ConversationThreadProjection
   readonly error?: undefined
@@ -606,6 +160,16 @@ export interface ConversationThreadController {
     readonly resume: () => Promise<ConversationApplyResult>
   }
   readonly stop: (runId: string) => Promise<ConversationApplyResult>
+  readonly forceStop: (runId?: string) => Promise<ConversationApplyResult>
+  readonly stopSubagent: (childThreadId: string, force?: boolean) => Promise<ConversationApplyResult>
+  readonly cancelUsageLimitRecovery: () => Promise<ConversationApplyResult>
+  readonly retryUsageLimitRecoveryNow: () => Promise<ConversationApplyResult>
+  readonly resume: (input?: {
+    readonly sourceRunId: string
+    readonly instanceId: string
+    readonly model: string
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+  }) => Promise<ConversationApplyResult>
   readonly respond: (
     request: ConversationRuntimeRequest,
     response: ConversationRequestAnswer,
@@ -652,6 +216,10 @@ function commandAction(command: ConversationThreadCommand): string {
     case 'queued-run.reorder': return `reorder:${command.runId}`
     case 'queued-message.promote-to-steer': return `promote:${command.queuedRunId}`
     case 'run.interrupt': return `stop:${command.runId}`
+    case 'thread.stop': return command.runId ? `force-stop:${command.runId}` : 'force-stop'
+    case 'subagent.stop': return `subagent-stop:${command.childThreadId}`
+    case 'usage-limit-recovery.cancel': return 'usage-limit-recovery.cancel'
+    case 'usage-limit-recovery.retry-now': return 'usage-limit-recovery.retry-now'
     case 'runtime-request.respond': return `respond:${command.requestId}:${command.generation}`
     default: return `command:${command.commandId}`
   }
@@ -989,6 +557,81 @@ export function useConversationThread(
     [applyRemembered, threadId],
   )
 
+  const forceStop = useCallback(
+    (runId?: string) =>
+      threadId
+        ? applyRemembered(runId ? `force-stop:${runId}` : 'force-stop', () => ({
+          type: 'thread.stop',
+          threadId,
+          ...(runId ? { runId } : {}),
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const stopSubagent = useCallback(
+    (childThreadId: string, force?: boolean) =>
+      threadId
+        ? applyRemembered(`subagent-stop:${childThreadId}`, () => ({
+          type: 'subagent.stop',
+          threadId,
+          childThreadId,
+          ...(force ? { force: true } : {}),
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const cancelUsageLimitRecovery = useCallback(
+    () =>
+      threadId
+        ? applyRemembered('usage-limit-recovery.cancel', () => ({
+          type: 'usage-limit-recovery.cancel',
+          threadId,
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const retryUsageLimitRecoveryNow = useCallback(
+    () =>
+      threadId
+        ? applyRemembered('usage-limit-recovery.retry-now', () => ({
+          type: 'usage-limit-recovery.retry-now',
+          threadId,
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const resume = useCallback(
+    (input?: {
+      readonly sourceRunId: string
+      readonly instanceId: string
+      readonly model: string
+      readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+    }) => {
+      if (!threadId) return Promise.resolve(NO_THREAD_RESULT)
+      if (!input) return queue.resume()
+      return applyRemembered(`continue:${input.sourceRunId}`, () => ({
+        type: 'message.dispatch',
+        threadId,
+        commandId: crypto.randomUUID(),
+        messageId: `msg_${crypto.randomUUID()}`,
+        text: '',
+        instanceId: input.instanceId,
+        model: input.model,
+        ...(input.options?.length ? { options: input.options.map(option => ({ id: option.id, value: option.value })) } : {}),
+        manualContinuationOfRunId: input.sourceRunId,
+      }))
+    },
+    [applyRemembered, queue, threadId],
+  )
+
   const respond = useCallback(
     (
       request: ConversationRuntimeRequest,
@@ -1076,8 +719,14 @@ export function useConversationThread(
   const loadingEarlier = loadingEarlierScopes.has(scope)
   const commandFailure = interactive && commandIssue?.scope === scope ? commandIssue.failure : undefined
   return useMemo<ConversationThreadController>(
-    () => ({ scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands, commandFailure }),
-    [scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, respond, reconcile, checkCommand, pendingCommands, commandFailure],
+    () => ({
+      scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
+      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
+    }),
+    [
+      scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
+      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
+    ],
   )
 }
 

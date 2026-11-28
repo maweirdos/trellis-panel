@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, Bot, Check, ChevronDown, Cpu, FolderOpen, History, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Settings2, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Cpu, FolderOpen, History, ListFilter, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Search, Settings2, Sparkles, SquarePen, Trash2, X } from 'lucide-react'
+import {
+  displayConversationThreadTitle,
+  resolveConversationThreadAgent,
+  type ConversationAggregatedThread,
+  type ConversationKnownAgent,
+} from '../../../shared/conversation/agent-binding'
 import { conversationThreadCommandSchema, type ConversationThreadCommand } from '../../../shared/conversation/command-runtime'
 import type { ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
@@ -11,19 +17,20 @@ import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
 import { ManagedWorkflowRecovery } from '../acp/workflow/ManagedWorkflowRecovery'
 import { api, hasIpc } from '../api'
 import { ApplicationPanel } from '../applications/ApplicationPanel'
+import { AgentAvatar } from '../crux/AgentAvatar'
 import { useCrux } from '../crux/store'
 import { buildCruxAgentContext, listChatEligibleAgents, matchCatalogModelForRuntime, useAgentChatBridge } from '../crux/agent-chat-bridge'
-import { runtimeKindLabel } from '../crux/local-execution-slot'
+import { runtimeKindLabel, useLocalExecutionSlot } from '../crux/local-execution-slot'
 import { GitBranchControl } from '../git-workspace/GitBranchControl'
 import { closeGitWorkspace } from '../git-workspace/useGitWorkspace'
 import { ProjectConversationIntake } from '../knowledge/ProjectConversationIntake'
-import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
+import { FeedbackNotice, isDaemonOutdatedError, summarizeFeedbackMessage } from '../my/FeedbackNotice'
 import { ContextRegion } from '../my/layout/ContextRegion'
 import { ModuleLinks } from '../my/layout/ModuleLinks'
 import { useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { projectChoices, projectNameFromPath, projectRootKey } from '../my/navigation'
 import { useMy } from '../my/store'
-import { Button, Dropdown, DropdownHeader, DropdownItem, Modal, SearchInput, Tooltip } from '../my/ui'
+import { Button, Dropdown, DropdownDivider, DropdownHeader, DropdownItem, Modal, SearchInput, Tooltip } from '../my/ui'
 import { useApp } from '../store'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { useEscLayer } from '../utils/use-esc-layer'
@@ -33,19 +40,25 @@ import {
   reconcileOptimisticUserMessages,
   type OptimisticUserMessage,
 } from './optimisticUserMessages'
+import { ArtifactIntentBanner, ArtifactWakeBanner } from './ArtifactIntentBanner'
 import { ConversationComposer } from './ConversationComposer'
+import { OpenArtifactFrame } from '../open-artifact/OpenArtifactFrame'
+import { useConversationOpenArtifact } from './useConversationOpenArtifact'
 import { insertAssistantCitationIntoDraft, type CitationDraftHandle } from './assistantCitationDraft'
 import { ChatView } from './ChatView'
 import { ChatProjectFileLinks, type ChatProjectFile } from './chatProjectFileLinks'
 import { ConversationActivityControls } from './ConversationActivityControls'
 import { ConversationProjectSurfaces } from './ConversationProjectSurfaces'
 import { ConversationQueue } from './ConversationQueue'
+import { ConversationQuickSearchModal } from './ConversationQuickSearchModal'
 import { ConversationRelations } from './ConversationRelations'
 import { ConversationRightPanel, useNarrowConversationPanel } from './ConversationRightPanel'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
+import { ConversationSidebarList } from './ConversationSidebarList'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
-import { conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { useConversationNavigation } from './conversation-navigation-store'
+import { conversationArtifactSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
@@ -61,6 +74,7 @@ import {
   isActiveRun, prefetchConversationThread, queuedRunsWithText, runStartIso, useConversationThread,
   type ConversationApplyResult, type ConversationTimelineRow, type ThreadReadTarget,
 } from './useConversationThread'
+import { useThreadRecoveryActions } from './useThreadRecoveryActions'
 import '../acp/workspace.css'
 import './conversation-workbench.css'
 
@@ -143,19 +157,34 @@ function rememberProjectRole(key: string, role: ConversationProjectRole | undefi
   } catch {}
 }
 
-function readPendingThreadChange(key: string): ThreadChange | undefined {
+interface PendingThreadChangeRecord {
+  readonly cwd?: string
+  readonly command: ThreadChange
+}
+
+function readPendingThreadChange(key: string): PendingThreadChangeRecord | undefined {
   try {
     const saved = localStorage.getItem(`crux.conversation.pendingThreadChange:${key}`)
     if (!saved) return undefined
-    const parsed = conversationThreadCommandSchema.safeParse(JSON.parse(saved))
-    if (parsed.success && parsed.data.type.startsWith('thread.')) return parsed.data as ThreadChange
+    const parsedJson = JSON.parse(saved) as { cwd?: unknown; command?: unknown } | null
+    if (parsedJson && typeof parsedJson === 'object' && 'command' in parsedJson) {
+      const parsed = conversationThreadCommandSchema.safeParse(parsedJson.command)
+      if (parsed.success && parsed.data.type.startsWith('thread.')) {
+        return {
+          cwd: typeof parsedJson.cwd === 'string' && parsedJson.cwd.trim() ? parsedJson.cwd : undefined,
+          command: parsed.data as ThreadChange,
+        }
+      }
+    }
+    const legacy = conversationThreadCommandSchema.safeParse(parsedJson)
+    if (legacy.success && legacy.data.type.startsWith('thread.')) return { command: legacy.data as ThreadChange }
   } catch {}
 }
 
-function savePendingThreadChange(key: string, command?: ThreadChange): void {
+function savePendingThreadChange(key: string, record?: PendingThreadChangeRecord): void {
   try {
     const scope = `crux.conversation.pendingThreadChange:${key}`
-    if (command) localStorage.setItem(scope, JSON.stringify(command))
+    if (record) localStorage.setItem(scope, JSON.stringify(record))
     else localStorage.removeItem(scope)
   } catch {}
 }
@@ -183,15 +212,14 @@ function threadUpdatedAt(value: OrchestrationV2AppThread['updatedAt']): number |
   return Number.isFinite(time) ? time : undefined
 }
 
-function ConversationIssue({ title, reason, actions, uncertain = false }: {
+function ConversationIssue({ title, reason, actions, uncertain = false, variant = 'bar' }: {
   title: string
   reason?: string
   actions?: ReactNode
   uncertain?: boolean
+  variant?: 'bar' | 'bar-compact' | 'inline'
 }): JSX.Element {
-  const summary = reason ? normalizeFeedbackDiagnostic(reason).trim().split('\n')[0]?.slice(0, 240) : undefined
-  return <FeedbackNotice variant="inline" title={title} description={summary}
-    diagnostic={reason && summary !== reason.trim() ? reason : undefined}
+  return <FeedbackNotice variant={variant} title={title} description={reason}
     tone={uncertain ? 'warning' : 'error'} actions={actions} />
 }
 
@@ -225,22 +253,47 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const startChatNonce = useAgentChatBridge(state => state.startNonce)
   const lastHandledStartNonce = useRef(startChatNonce)
   const chatEligibleAgents = useMemo(() => listChatEligibleAgents(cruxSnapshot), [cruxSnapshot])
+  const knownAgents = useMemo<readonly ConversationKnownAgent[]>(() => {
+    if (!cruxSnapshot) return []
+    const spaceMap = new Map(cruxSnapshot.spaces.map((space) => [space.id, space]))
+    return cruxSnapshot.agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      spaceId: agent.spaceId,
+      spaceName: spaceMap.get(agent.spaceId)?.name,
+      avatarId: agent.avatarId,
+    }))
+  }, [cruxSnapshot])
   const activeAgentContext = useMemo(
     () => (source === 'work' || source === 'code') && !taskScope && !compact ? buildCruxAgentContext(cruxSnapshot, selectedAgentId) : null,
     [source, taskScope, compact, cruxSnapshot, selectedAgentId]
   )
+  const activeAgentAvatarId = activeAgentContext
+    ? cruxSnapshot?.agents.find((agent) => agent.id === activeAgentContext.id)?.avatarId
+    : undefined
   const task = taskScope?.locator
   const rootKey = taskScope ? JSON.stringify([
     source, taskScope.actorId, taskScope.spaceId, taskScope.locator, taskScope.binding.assigneeGeneration,
     taskScope.materialRevision, projectRootKey(root) ?? root,
   ]) : `${source}:${projectRootKey(root) ?? root}`
   const code = source === 'code'
+  const aggregatedMode = (source === 'work' || source === 'code') && !taskScope && !compact && !embeddedCrux
   const supportsProjectRole = code && !taskScope && !compact
   const workspaceLabel = taskScope ? '任务对话' : source === 'work' ? 'Work 对话' : code ? 'Code 对话' : '原生对话'
   const interactive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const writable = interactive && hasIpc && taskScope?.canSend !== false
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false)
+  const groupMode = useConversationNavigation((state) => state.groupMode)
+  const setGroupMode = useConversationNavigation((state) => state.setGroupMode)
+  const scopeFilter = useConversationNavigation((state) => state.scopeFilter)
+  const setScopeFilter = useConversationNavigation((state) => state.setScopeFilter)
+  const collapsedGroups = useConversationNavigation((state) => state.collapsedGroups)
+  const toggleGroupCollapsed = useConversationNavigation((state) => state.toggleGroupCollapsed)
+  const aggregatedThreads = useConversationNavigation((state) => state.aggregatedThreads)
+  const setAggregatedThreads = useConversationNavigation((state) => state.setAggregatedThreads)
+  const pendingOpen = useConversationNavigation((state) => state.pendingOpen)
   const [threadsByRoot, setThreadsByRoot] = useState<{ rootKey: string; items: readonly OrchestrationV2AppThread[] | undefined }>(() => ({
     rootKey,
     items: readCachedThreadList(rootKey),
@@ -249,7 +302,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const [query, setQuery] = useState('')
   const [listError, setListError] = useState('')
   const [listRevision, setListRevision] = useState(0)
-  const [management, setManagement] = useState<{ thread: OrchestrationV2AppThread; action: 'rename' | 'delete'; title: string }>()
+  const [management, setManagement] = useState<{ thread: OrchestrationV2AppThread; cwd: string; action: 'rename' | 'delete'; title: string }>()
   const [pendingChange, setPendingChange] = useState(() => readPendingThreadChange(rootKey))
   const [managementError, setManagementError] = useState('')
   const [cleanupPending, setCleanupPending] = useState(false)
@@ -257,6 +310,17 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const [queueEdit, setQueueEdit] = useState<{ threadId: string; runId: string; text: string }>()
   const changingThread = useRef(false)
   const [target, setTarget] = useState<ThreadReadTarget | null>(() => {
+    const pending = useConversationNavigation.getState().pendingOpen
+    if (
+      pending &&
+      Date.now() - pending.issuedAt < 15_000 &&
+      pending.source === source &&
+      (projectRootKey(pending.cwd) ?? pending.cwd) === (projectRootKey(root) ?? root)
+    ) {
+      useConversationNavigation.getState().consumePendingOpen()
+      rememberThread(rootKey, pending.threadId)
+      return { threadId: pending.threadId }
+    }
     const threadId = source === 'work' && initialThreadId ? initialThreadId : savedThread(rootKey)
     return threadId ? { threadId } : null
   })
@@ -433,10 +497,36 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   }
 
   useEffect(() => {
+    if (interactive && (source === 'work' || source === 'code') && !cruxSnapshot) {
+      void useCrux.getState().bootstrap()
+    }
+  }, [cruxSnapshot, interactive, source])
+
+  useEffect(() => {
     if (!interactive || !hasIpc) return
     let cancelled = false
+    const currentNormalizedRoot = projectRootKey(root) ?? root
     async function list(): Promise<void> {
       try {
+        if (aggregatedMode && typeof api.conversationListAll === 'function') {
+          const result = await api.conversationListAll()
+          if (cancelled) return
+          if (!result.ok) throw new Error(result.error)
+          setAggregatedThreads(result.items)
+          const currentThreads = result.items
+            .filter((item) => item.source === source && (projectRootKey(item.cwd) ?? item.cwd) === currentNormalizedRoot)
+            .map((item) => item.thread)
+          setThreadsByRoot({ rootKey, items: currentThreads })
+          writeCachedThreadList(rootKey, currentThreads)
+          const warmIds = new Set<string>()
+          if (targetRef.current?.threadId) warmIds.add(targetRef.current.threadId)
+          for (const item of currentThreads.slice(0, 2)) warmIds.add(item.id)
+          for (const warmId of warmIds) {
+            void prefetchConversationThread(root, warmId, readScopeKey)
+          }
+          setListError('')
+          return
+        }
         const result = await api.conversationList(root, { query, ...(task && { task }) })
         if (cancelled) return
         if (!result.ok) throw new Error(result.error)
@@ -453,7 +543,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         setListError('')
       } catch (error) {
         if (!cancelled) {
-          if (!query) {
+          if (!query && !aggregatedMode) {
             clearCachedThreadList(rootKey)
             setThreadsByRoot({ rootKey, items: undefined })
           }
@@ -461,13 +551,13 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         }
       }
     }
-    if (!query) {
+    if (aggregatedMode || !query) {
       void list()
       return () => { cancelled = true }
     }
     const timer = window.setTimeout(() => void list(), 160)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [interactive, listRevision, query, readScopeKey, root, rootKey, task, taskScope?.locator])
+  }, [aggregatedMode, interactive, listRevision, query, readScopeKey, recentProjects, root, rootKey, setAggregatedThreads, source, task, taskScope?.locator])
 
   function select(next: ThreadReadTarget | null): void {
     citationRouteGeneration.current += 1
@@ -479,6 +569,15 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setQueueEdit(undefined)
     setSidebarOpen(false)
   }
+
+  useEffect(() => {
+    if (!pendingOpen || Date.now() - pendingOpen.issuedAt >= 15_000) return
+    if (pendingOpen.source !== source || (projectRootKey(pendingOpen.cwd) ?? pendingOpen.cwd) !== (projectRootKey(root) ?? root)) return
+    useConversationNavigation.getState().consumePendingOpen()
+    if (targetRef.current?.threadId !== pendingOpen.threadId) {
+      select({ threadId: pendingOpen.threadId })
+    }
+  }, [pendingOpen, root, source])
 
   async function openAssistantCitation(citation: AssistantCitation): Promise<boolean> {
     if (!interactive || !hasIpc || !canInteract() || citation.environmentId !== LOCAL_ASSISTANT_CITATION_ENVIRONMENT) return false
@@ -580,15 +679,16 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setListRevision(value => value + 1)
   }
 
-  async function applyThreadChange(command: ThreadChange): Promise<void> {
+  async function applyThreadChange(command: ThreadChange, targetCwd = root): Promise<void> {
     if (changingThread.current || !writable || !canInteract()) return
-    const alreadyAdmitted = cleanupPending && pendingChange?.commandId === command.commandId
+    const alreadyAdmitted = cleanupPending && pendingChange?.command.commandId === command.commandId
     changingThread.current = true
-    savePendingThreadChange(rootKey, command)
-    setPendingChange(command)
+    const record: PendingThreadChangeRecord = { cwd: targetCwd, command }
+    savePendingThreadChange(rootKey, record)
+    setPendingChange(record)
     setManagementError('')
     try {
-      const result = await api.conversationApply({ cwd: root, command, ...(task && { task }) })
+      const result = await api.conversationApply({ cwd: targetCwd, command, ...(task && { task }) })
       if (!mounted.current || !canInteract()) return
       if (result.ok) {
         if (result.receipt.dispatch === 'completed') changeConfirmed(command)
@@ -609,16 +709,16 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     } finally { changingThread.current = false }
   }
 
-  function changeThread(intent: ThreadChangeIntent): void {
-    if (!pendingChange) void applyThreadChange({ ...intent, commandId: crypto.randomUUID() })
+  function changeThread(intent: ThreadChangeIntent, targetCwd = root): void {
+    if (!pendingChange) void applyThreadChange({ ...intent, commandId: crypto.randomUUID() }, targetCwd)
   }
 
   async function checkThreadChange(): Promise<void> {
     if (!pendingChange || changingThread.current || !canInteract()) return
-    const command = pendingChange
+    const { command, cwd: targetCwd = root } = pendingChange
     changingThread.current = true
     try {
-      const result = await api.conversationThreadCommand({ cwd: root, threadId: command.threadId, commandId: command.commandId, ...(task && { task }) })
+      const result = await api.conversationThreadCommand({ cwd: targetCwd, threadId: command.threadId, commandId: command.commandId, ...(task && { task }) })
       if (!mounted.current || !canInteract()) return
       if (result.ok && result.receipt?.dispatch === 'completed') changeConfirmed(command)
       else {
@@ -669,6 +769,57 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
     onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
   })
+  const [draftArtifact, setDraftArtifact] = useState<ConversationArtifactSurface | null>(null)
+  useEffect(() => {
+    if (hostThreadId) setDraftArtifact(null)
+  }, [hostThreadId])
+  const openArtifactSurface = useCallback((surface: ConversationArtifactSurface): void => {
+    if (panelKey) openPanel(surface)
+    else setDraftArtifact(surface)
+  }, [openPanel, panelKey])
+  const focusComposerStable = useCallback((): void => {
+    const threadId = targetRef.current?.threadId
+    requestAnimationFrame(() => {
+      if (targetRef.current?.threadId === threadId && canInteract()) composerRef.current?.focus()
+    })
+  }, [canInteract])
+  const handlePromptFromArtifact = useCallback((prompt: string): void => {
+    composer.setDraft(prompt)
+    focusComposerStable()
+  }, [composer.setDraft, focusComposerStable])
+  const openArtifact = useConversationOpenArtifact({
+    interactive,
+    writable,
+    root,
+    source,
+    threadId: hostThreadId,
+    agentName: activeAgentContext?.name,
+    agentRole: activeAgentContext?.description ?? draftRole?.name,
+    draft: composer.draft,
+    onOpenArtifactSurface: openArtifactSurface,
+    onSetDraft: composer.setDraft,
+    onFocusComposer: focusComposerStable
+  })
+  const artifactBanner = (openArtifact.pendingWake || openArtifact.suggestion) ? (
+    <div className="flex flex-col gap-2">
+      {openArtifact.pendingWake && (
+        <ArtifactWakeBanner
+          wake={openArtifact.pendingWake}
+          onApplyToDraft={openArtifact.applyWakeToDraft}
+          onDismiss={openArtifact.dismissWake}
+        />
+      )}
+      {openArtifact.suggestion && (
+        <ArtifactIntentBanner
+          suggestion={openArtifact.suggestion}
+          busy={openArtifact.enabling}
+          onAccept={() => { void openArtifact.acceptSuggestion() }}
+          onDismiss={openArtifact.dismissSuggestion}
+          onOpenExisting={(item) => { void openArtifact.openExisting(item) }}
+        />
+      )}
+    </div>
+  ) : undefined
   // 当从工作台点「小助手」或从 Agent 卡片点「发起对话」进入时，自动清草稿开新会话
   useEffect(() => {
     if (startChatNonce === lastHandledStartNonce.current) return
@@ -844,7 +995,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   }
 
   const runModel = run && modelLabel(run.modelSelection.model)
-  const previousPrompt = run && projection?.messages.find((message) => message.id === run.userMessageId)
+  const previousPrompt = projection
+    ? [...projection.messages].reverse().find((message) => message.role === 'user')
+    : undefined
   const deleteRun = management?.action === 'delete' && management.thread.id === visibleThreadId ? activeRun : undefined
 
   function focusComposer(): void {
@@ -870,24 +1023,214 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     })
   }
 
+  const {
+    resumableRunId,
+    hasHeldQueuedRuns,
+    canResume,
+    resumeLabel,
+    isResuming,
+    recoveringRunId,
+    isForceStopping,
+    stoppingSubagentId,
+    usageLimitRecovery,
+    usageLimitRemainingSeconds,
+    usageLimitActionPending,
+    failedRunIssue,
+    handleResume,
+    handleForceStop,
+    handleStopSubagent,
+    handleCancelUsageLimitRecovery,
+    handleRetryUsageLimitRecoveryNow,
+    handleFailedRunAction,
+  } = useThreadRecoveryActions({
+    controller,
+    projection,
+    visibleThreadId,
+    selectedModel,
+    latestRun: run,
+    latestRunModelLabel: runModel,
+    previousPrompt,
+    writable,
+    submitting,
+    archivedThread,
+    isTaskThread: Boolean(task),
+    outcomeUnknown,
+    controlFailureUncertain: Boolean(controlFailure?.uncertain),
+    mountedRef: mounted,
+    targetRef,
+    onApplyControl: applyControl,
+    onClearControlFailure: () => setControlFailure(undefined),
+    onBumpListRevision: () => setListRevision(value => value + 1),
+    onReload: reload,
+  })
+
   const controlNotice = controlFailure && <ConversationIssue
     title={controlFailure.uncertain ? '操作结果待核对' : '会话操作未完成'}
     reason={controlFailure.reason} uncertain={controlFailure.uncertain}
-    actions={controlFailure.uncertain && <Button size="sm" variant="ghost"
+    actions={controlFailure.uncertain && <Button size="sm" variant="outline"
       disabled={controller.pendingCommands.has(controlFailure.commandId)}
       onClick={() => applyControl(controller.checkCommand(controlFailure.commandId))}>查询回执</Button>}
   />
   const threadChangeActions = pendingChange && <>
-    <Button type="button" size="sm" variant="ghost" onClick={() => void checkThreadChange()}>查询回执</Button>
-    {cleanupPending && writable && <Button type="button" size="sm" variant="ghost"
-      onClick={() => void applyThreadChange(pendingChange)}>继续清理</Button>}
+    <Button type="button" size="sm" variant="outline" onClick={() => void checkThreadChange()}>查询回执</Button>
+    {cleanupPending && writable && <Button type="button" size="sm" variant="outline"
+      onClick={() => void applyThreadChange(pendingChange.command, pendingChange.cwd ?? root)}>继续清理</Button>}
   </>
-  const relatedWork = <ConversationRelations relations={projection?.relations} onOpenRelatedThread={openRelatedThread} />
+  const sidebarAggregatedItems = useMemo<readonly ConversationAggregatedThread[]>(() => {
+    if (aggregatedThreads) return aggregatedThreads
+    const fallbackSource: 'work' | 'code' = source === 'code' ? 'code' : 'work'
+    const fallbackProjectName = fallbackSource === 'code' ? projectNameFromPath(root) : '托管目录'
+    return (threads ?? []).map((thread) => ({
+      thread,
+      cwd: root,
+      source: fallbackSource,
+      projectName: fallbackProjectName,
+    }))
+  }, [aggregatedThreads, root, source, threads])
+
+  const openAggregatedThread = useCallback((item: ConversationAggregatedThread): void => {
+    const sameRoot = item.source === source && (projectRootKey(item.cwd) ?? item.cwd) === (projectRootKey(root) ?? root)
+    if (sameRoot) {
+      if (item.thread.id === targetRef.current?.threadId) setSidebarOpen(false)
+      else select({ threadId: item.thread.id })
+      return
+    }
+    const nextRootKey = `${item.source}:${projectRootKey(item.cwd) ?? item.cwd}`
+    rememberThread(nextRootKey, item.thread.id)
+    useConversationNavigation.getState().setPendingOpen({
+      cwd: item.cwd,
+      source: item.source,
+      threadId: item.thread.id,
+      issuedAt: Date.now(),
+    })
+    setSidebarOpen(false)
+    if (item.source === 'work') {
+      useMy.getState().setChatWorkdirMode('default')
+      return
+    }
+    const needSwitchProject = projectRootKey(item.cwd) !== projectRootKey(appRoot)
+    if (needSwitchProject) {
+      void useApp.getState().openProjectPath(item.cwd, { keepPage: true }).then(() => {
+        if (projectRootKey(useApp.getState().snapshot?.meta.root) === projectRootKey(item.cwd)) {
+          useMy.getState().setChatWorkdirMode('directory')
+        }
+      })
+    } else {
+      useMy.getState().setChatWorkdirMode('directory')
+    }
+  }, [appRoot, root, source])
+
+  const startNewConversation = useCallback((agentId?: string | null): void => {
+    if (agentId !== undefined) {
+      selectChatAgent(agentId)
+      appliedAgentModelRef.current = null
+      if (agentId && cruxSnapshot) {
+        const agent = cruxSnapshot.agents.find((item) => item.id === agentId)
+        if (agent) {
+          const { slot } = useLocalExecutionSlot.getState().resolveAgentSlot(agent.id, {
+            runtimeKind: agent.runtimeKind,
+            workingDirectory: agent.workingDirectory,
+          })
+          if (slot.workingDirectory === 'repo' && appRoot && source !== 'code') {
+            rememberThread(`code:${projectRootKey(appRoot) ?? appRoot}`, null)
+            useConversationNavigation.getState().setPendingOpen(null)
+            setSidebarOpen(false)
+            useMy.getState().setChatWorkdirMode('directory')
+            return
+          }
+          if (slot.workingDirectory === 'temp' && source === 'code') {
+            const workRootCached = localStorage.getItem('crux.conversation.workRoot.v1')
+            if (workRootCached) rememberThread(`work:${projectRootKey(workRootCached) ?? workRootCached}`, null)
+            useConversationNavigation.getState().setPendingOpen(null)
+            setSidebarOpen(false)
+            useMy.getState().setChatWorkdirMode('default')
+            return
+          }
+        }
+      }
+    }
+    openDraft()
+  }, [appRoot, cruxSnapshot, selectChatAgent, source])
+
+  const openLocalDirectoryForNewChat = useCallback((): void => {
+    if (!canOpenLocalProject) return
+    void useApp.getState().pickAndOpen({ keepPage: true }).then(() => {
+      const openedRoot = useApp.getState().snapshot?.meta.root
+      if (!openedRoot) return
+      rememberThread(`code:${projectRootKey(openedRoot) ?? openedRoot}`, null)
+      useConversationNavigation.getState().setPendingOpen(null)
+      if (source === 'code' && projectRootKey(openedRoot) === projectRootKey(root)) {
+        openDraft()
+      } else {
+        useMy.getState().setChatWorkdirMode('directory')
+      }
+    })
+  }, [canOpenLocalProject, root, source])
+
+  const searchRemoteAggregated = useCallback(async (searchQuery: string): Promise<readonly ConversationAggregatedThread[] | null> => {
+    if (!hasIpc || typeof api.conversationListAll !== 'function') return null
+    const result = await api.conversationListAll({ query: searchQuery })
+    return result.ok ? result.items : null
+  }, [])
+
+  useEffect(() => {
+    if (!aggregatedMode || !interactive) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.altKey) return
+      const mod = event.ctrlKey || event.metaKey
+      if (!mod) return
+      const targetEl = event.target instanceof HTMLElement ? event.target : null
+      const inEditor = Boolean(targetEl && (targetEl.isContentEditable || targetEl.closest('input, textarea, select, [role="textbox"]')))
+      const key = event.key.toLowerCase()
+      if ((key === 'f' && !event.shiftKey && !inEditor) || (key === 'k' && event.shiftKey)) {
+        event.preventDefault()
+        setQuickSearchOpen(true)
+        return
+      }
+      if (key === 'n' && !event.shiftKey && writable && !management && !queueEdit) {
+        event.preventDefault()
+        setQuickSearchOpen(false)
+        startNewConversation()
+        return
+      }
+      if (key === 'o' && !event.shiftKey && canOpenLocalProject && (quickSearchOpen || (!inEditor && !management && !queueEdit))) {
+        event.preventDefault()
+        setQuickSearchOpen(false)
+        openLocalDirectoryForNewChat()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [aggregatedMode, canOpenLocalProject, interactive, management, openLocalDirectoryForNewChat, queueEdit, quickSearchOpen, startNewConversation, writable])
+
+  const selectedThreadAgent = useMemo(
+    () => (selectedThread ? resolveConversationThreadAgent(selectedThread, knownAgents) : null),
+    [knownAgents, selectedThread],
+  )
+  const selectedThreadTitle = useMemo(
+    () => (selectedThread ? displayConversationThreadTitle(selectedThread, selectedThreadAgent) : undefined),
+    [selectedThread, selectedThreadAgent],
+  )
+  const embeddedFilteredThreads = useMemo(() => {
+    const list = threads ?? []
+    if (!embeddedCrux) return list
+    if (activeAgentContext) {
+      const matched = list.filter((thread) => resolveConversationThreadAgent(thread, knownAgents)?.id === activeAgentContext.id)
+      return matched.length > 0 || query.trim() ? matched : list
+    }
+    return list.filter((thread) => !resolveConversationThreadAgent(thread, knownAgents))
+  }, [activeAgentContext, embeddedCrux, knownAgents, query, threads])
+
+  const relatedWork = <ConversationRelations
+    relations={projection?.relations}
+    onOpenRelatedThread={openRelatedThread}
+    onStopSubagent={writable ? handleStopSubagent : undefined}
+    stoppingChildThreadId={stoppingSubagentId} />
   const agentPickerControl = (source === 'work' || source === 'code') && !taskScope && !compact && !target ? (
     <Dropdown width={300} trigger={({ open, toggle }) => (
       <button type="button" className="my-control my-control-ghost inline-flex max-w-52 shrink-0 items-center gap-1.5 text-my-xs text-my-primary"
         aria-label="选择对话对象" aria-expanded={open} onClick={toggle}>
-        {activeAgentContext ? <Bot size={14} aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+        {activeAgentContext ? <AgentAvatar avatarId={activeAgentAvatarId} size={18} /> : <Sparkles size={14} aria-hidden="true" />}
         <span className="truncate font-medium">{activeAgentContext ? activeAgentContext.name : '小助手'}</span>
         <ChevronDown size={12} aria-hidden="true" />
       </button>
@@ -908,7 +1251,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             return (
               <button key={agent.id} type="button" onClick={() => { selectChatAgent(agent.id); appliedAgentModelRef.current = null; close() }}
                 className="flex min-h-9 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary">
-                <Bot size={14} className="shrink-0" />
+                <AgentAvatar avatarId={agent.avatarId} size={20} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-my-primary">{agent.name}</span>
                   <span className="block truncate text-my-2xs text-my-tertiary">{spaceName} · {agent.skillIds.length} 项技能</span>
@@ -931,7 +1274,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       <Tooltip side="bottom" label="对话进行中，工作目录已固定。新建对话可切换其他目录。">
         <span tabIndex={0} className="my-chip inline-flex max-w-44 shrink-0 items-center gap-1 text-my-xs text-my-secondary">
           <Lock size={12} aria-hidden="true" />
-          <span className="truncate">{code ? projectNameFromPath(root) : '托管 workdir'}</span>
+          <span className="truncate">{code ? projectNameFromPath(root) : '托管目录'}</span>
         </span>
       </Tooltip>
     ) : (
@@ -972,9 +1315,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             <button type="button" disabled={!canOpenLocalProject}
               onClick={() => {
                 close()
-                void useApp.getState().pickAndOpen({ keepPage: true }).then(() => {
-                  if (useApp.getState().snapshot?.meta.root) useMy.getState().setChatWorkdirMode('directory')
-                })
+                openLocalDirectoryForNewChat()
               }}
               className="flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary disabled:text-my-disabled">
               <FolderOpen size={14} className="shrink-0" />
@@ -986,10 +1327,30 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     )
   ) : null
   const currentCleanup = sideCleanup?.owner === panelKey ? sideCleanup : pendingSideCleanup(sideCleanupKey)
+  const chatLinks = useMemo(() => (
+    fileLinks || openArtifact.artifactLinkHandler
+      ? { ...(fileLinks ?? {}), ...(openArtifact.artifactLinkHandler ? { artifact: openArtifact.artifactLinkHandler } : {}) }
+      : null
+  ), [fileLinks, openArtifact.artifactLinkHandler])
 
-  return <ChatProjectFileLinks.Provider value={fileLinks}><div className="acp-workspace conversation-workbench" style={sidebarWidth}>
+  return <ChatProjectFileLinks.Provider value={chatLinks}><div className="acp-workspace conversation-workbench" style={sidebarWidth}>
     {workTask.dialog}
     {code && codeTask.dialog}
+    {aggregatedMode && (
+      <ConversationQuickSearchModal
+        open={quickSearchOpen}
+        onClose={() => setQuickSearchOpen(false)}
+        items={sidebarAggregatedItems}
+        activeThreadId={target?.threadId}
+        writable={writable}
+        canOpenLocalProject={canOpenLocalProject}
+        knownAgents={knownAgents}
+        onSelectThread={openAggregatedThread}
+        onNewConversation={(agentId) => startNewConversation(agentId)}
+        onOpenLocalDirectory={openLocalDirectoryForNewChat}
+        onSearchRemote={searchRemoteAggregated}
+      />
+    )}
     <Modal open={Boolean(queueEdit)} onClose={() => setQueueEdit(undefined)} ariaLabel="编辑排队消息" width={500}>
       {queueEdit && <form className="space-y-4 p-4" onSubmit={event => {
         event.preventDefault()
@@ -1016,20 +1377,24 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         event.preventDefault()
         const threadId = management.thread.id
         if (management.action === 'rename') {
-          if (management.title.trim()) void changeThread({ type: 'thread.rename', threadId, title: management.title })
-        } else void changeThread({ type: 'thread.delete', threadId })
+          if (management.title.trim()) void changeThread({ type: 'thread.rename', threadId, title: management.title }, management.cwd)
+        } else void changeThread({ type: 'thread.delete', threadId }, management.cwd)
       }}>
         <h2 className="text-my-lg font-medium">{management.action === 'delete' ? '删除会话' : '重命名会话'}</h2>
         {management.action === 'rename' ? <input className="my-input w-full" aria-label="会话名称" maxLength={500} value={management.title}
           onChange={event => setManagement({ ...management, title: event.target.value })} />
-          : <p className="my-item-description">删除「{management.thread.title}」及其消息记录。</p>}
+          : <p className="my-item-description">删除「{management.title}」及其消息记录。</p>}
         {managementError && <ConversationIssue title={pendingChange ? '操作结果待核对' : '未能更新会话'} reason={managementError}
           actions={pendingChange
             ? threadChangeActions
-            : management.action === 'delete' && <Button type="button" size="sm" variant="ghost" onClick={() => {
+            : management.action === 'delete' && <Button type="button" size="sm" variant="outline" onClick={() => {
               const threadId = management.thread.id
               setManagement(undefined)
-              if (targetRef.current?.threadId !== threadId) select({ threadId })
+              if (targetRef.current?.threadId !== threadId) {
+                const matched = sidebarAggregatedItems.find((entry) => entry.thread.id === threadId)
+                if (matched && aggregatedMode) openAggregatedThread(matched)
+                else select({ threadId })
+              }
               else if (deleteRun) applyControl(stop(deleteRun.id))
             }}>{deleteRun ? '停止原回合' : '查看原会话'}</Button>} />}
         <div className="flex justify-end gap-2">
@@ -1046,27 +1411,133 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         <strong>{source === 'native' ? '原生对话' : '对话'}</strong><ChevronDown size={13} aria-hidden="true" />
       </button>}>{(close) => <div onClick={close}><ModuleLinks domain="agents" agentView={agentView === 'native' ? 'native' : 'conversation'} /></div>}</Dropdown>
         : <strong>对话</strong>}
-      primaryAction={<div className="grid gap-2">{writable && <button type="button" className="my-nav-item" onClick={() => openDraft()}><Plus size={15} aria-hidden="true" />新建对话</button>}
+      actions={aggregatedMode ? (
+        <div className="conversation-sidebar-toolbar">
+          <Dropdown
+            align="right"
+            width={184}
+            trigger={({ open, toggle }) => (
+              <Tooltip side="bottom" label="分组与范围">
+                <button
+                  type="button"
+                  className={open || groupMode !== 'auto' || scopeFilter !== 'all' ? 'conversation-sidebar-tool-btn my-icon-control is-active' : 'conversation-sidebar-tool-btn my-icon-control'}
+                  aria-label="分组与显示范围"
+                  aria-expanded={open}
+                  onClick={toggle}
+                >
+                  <ListFilter size={15} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
+          >
+            {(close) => (
+              <>
+                <DropdownHeader>分组方式</DropdownHeader>
+                <DropdownItem selected={groupMode === 'auto'} onClick={() => { setGroupMode('auto'); close() }}>自动分组</DropdownItem>
+                <DropdownItem selected={groupMode === 'agent'} onClick={() => { setGroupMode('agent'); close() }}>按智能体分组</DropdownItem>
+                <DropdownItem selected={groupMode === 'time'} onClick={() => { setGroupMode('time'); close() }}>按时间排序</DropdownItem>
+                <DropdownDivider />
+                <DropdownHeader>目录范围</DropdownHeader>
+                <DropdownItem selected={scopeFilter === 'all'} onClick={() => { setScopeFilter('all'); close() }}>全部目录</DropdownItem>
+                <DropdownItem selected={scopeFilter === 'current'} onClick={() => { setScopeFilter('current'); close() }}>仅当前目录</DropdownItem>
+              </>
+            )}
+          </Dropdown>
+        </div>
+      ) : undefined}
+      primaryAction={aggregatedMode ? (
+        <>
+          {writable && (
+            <button
+              type="button"
+              className="my-nav-item conversation-sidebar-action"
+              onClick={() => startNewConversation()}
+            >
+              <SquarePen size={15} aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">新建对话</span>
+              <kbd className="my-kbd">Ctrl N</kbd>
+            </button>
+          )}
+          <button
+            type="button"
+            className="my-nav-item conversation-sidebar-action"
+            onClick={() => setQuickSearchOpen(true)}
+          >
+            <Search size={15} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">搜索对话</span>
+            <kbd className="my-kbd">Ctrl F</kbd>
+          </button>
+        </>
+      ) : <div className="grid gap-2">{writable && <button type="button" className="my-nav-item" onClick={() => openDraft()}><Plus size={15} aria-hidden="true" />新建对话</button>}
         <SearchInput value={query} onChange={value => setQuery(value.slice(0, 160))} size="sm" placeholder="搜索对话" /></div>}>
-      {listError && <ConversationIssue title="无法读取会话列表" reason={listError}
-        actions={<Button size="sm" variant="ghost" onClick={() => setListRevision((value) => value + 1)}>重试</Button>} />}
-      {!management && (managementError || pendingChange) && <ConversationIssue title={pendingChange ? '操作结果待核对' : '未能更新会话'} reason={managementError}
-        actions={threadChangeActions} />}
-      {query.trim() && threads?.length === 0 && <p className="my-item-description p-2">没有匹配的会话</p>}
-      {(threads ?? []).map(thread => <ConversationListRow key={thread.id} id={thread.id} title={thread.title}
-        selected={thread.id === target?.threadId} pinned={Boolean(thread.pinnedAt)}
-        archived={Boolean(thread.archivedAt)} time={threadUpdatedAt(thread.updatedAt)}
-        busy={thread.id === hostThreadId && Boolean(activeRun)}
-        onSelect={() => thread.id === targetRef.current?.threadId ? setSidebarOpen(false) : select({ threadId: thread.id })}
-        onTogglePin={writable ? () => void changeThread({ type: 'thread.pin', threadId: thread.id, pinned: !thread.pinnedAt }) : undefined}
-        onToggleArchive={writable ? () => void changeThread({ type: 'thread.archive', threadId: thread.id, archived: !thread.archivedAt }) : undefined}
-        actions={writable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-recent-action-btn my-icon-control"
-          aria-label={`${thread.title}的更多操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} aria-hidden="true" /></button>}>
-          {close => <>
-            <DropdownItem icon={<Pencil size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'rename', title: thread.title }) }}>重命名</DropdownItem>
-            <DropdownItem danger icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, action: 'delete', title: thread.title }) }}>删除</DropdownItem>
-          </>}
-        </Dropdown>} />)}
+      {(() => {
+        const listMatchesMainReadError = Boolean(
+          listError && read?.error && summarizeFeedbackMessage(listError).summary === summarizeFeedbackMessage(read.error).summary,
+        )
+        const showSidebarListError = Boolean(listError) && !listMatchesMainReadError
+        const showSidebarManageError = !management && Boolean(managementError || pendingChange)
+        if (!showSidebarListError && !showSidebarManageError) return null
+        return <div className="mb-3 space-y-2">
+          {showSidebarListError && <ConversationIssue variant="bar-compact"
+            title={sidebarAggregatedItems.length > 0 ? '未能刷新会话列表' : '无法读取会话列表'}
+            reason={listError}
+            actions={<>
+              {isDaemonOutdatedError(listError) && <Button size="sm" variant="outline" onClick={() => useApp.getState().setPage('machines')}>运行状态</Button>}
+              <Button size="sm" variant="outline" onClick={() => setListRevision((value) => value + 1)}>重试</Button>
+            </>} />}
+          {showSidebarManageError && <ConversationIssue variant="bar-compact" title={pendingChange ? '操作结果待核对' : '未能更新会话'} reason={managementError}
+            actions={threadChangeActions} />}
+        </div>
+      })()}
+      {aggregatedMode ? (
+        <ConversationSidebarList
+          items={sidebarAggregatedItems}
+          knownAgents={knownAgents}
+          activeThreadId={target?.threadId}
+          activeRunThreadId={activeRun ? hostThreadId : undefined}
+          currentRoot={root}
+          currentSource={source === 'code' ? 'code' : 'work'}
+          groupMode={groupMode}
+          scopeFilter={scopeFilter}
+          collapsedGroups={collapsedGroups}
+          writable={writable}
+          onToggleGroup={toggleGroupCollapsed}
+          onResetScopeFilter={() => setScopeFilter('all')}
+          onSelectItem={openAggregatedThread}
+          onNewWithAgent={(agentId) => startNewConversation(agentId)}
+          onTogglePin={(item) => void changeThread({ type: 'thread.pin', threadId: item.thread.id, pinned: !item.thread.pinnedAt }, item.cwd)}
+          onToggleArchive={(item) => void changeThread({ type: 'thread.archive', threadId: item.thread.id, archived: !item.thread.archivedAt }, item.cwd)}
+          onRename={(item) => {
+            const binding = resolveConversationThreadAgent(item.thread, knownAgents)
+            setManagement({ thread: item.thread, cwd: item.cwd, action: 'rename', title: displayConversationThreadTitle(item.thread, binding) })
+          }}
+          onDelete={(item) => {
+            const binding = resolveConversationThreadAgent(item.thread, knownAgents)
+            setManagement({ thread: item.thread, cwd: item.cwd, action: 'delete', title: displayConversationThreadTitle(item.thread, binding) })
+          }}
+        />
+      ) : (
+        <>
+          {query.trim() && threads?.length === 0 && <p className="my-item-description p-2">没有匹配的会话</p>}
+          {(threads ?? []).map(thread => {
+            const cleanTitle = displayConversationThreadTitle(thread, null)
+            return <ConversationListRow key={thread.id} id={thread.id} title={cleanTitle}
+            selected={thread.id === target?.threadId} pinned={Boolean(thread.pinnedAt)}
+            archived={Boolean(thread.archivedAt)} time={threadUpdatedAt(thread.updatedAt)}
+            busy={thread.id === hostThreadId && Boolean(activeRun)}
+            onSelect={() => thread.id === targetRef.current?.threadId ? setSidebarOpen(false) : select({ threadId: thread.id })}
+            onTogglePin={writable ? () => void changeThread({ type: 'thread.pin', threadId: thread.id, pinned: !thread.pinnedAt }) : undefined}
+            onToggleArchive={writable ? () => void changeThread({ type: 'thread.archive', threadId: thread.id, archived: !thread.archivedAt }) : undefined}
+            actions={writable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-recent-action-btn my-icon-control"
+              aria-label={`${cleanTitle}的更多操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} aria-hidden="true" /></button>}>
+              {close => <>
+                <DropdownItem icon={<Pencil size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, cwd: root, action: 'rename', title: cleanTitle }) }}>重命名</DropdownItem>
+                <DropdownItem danger icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, cwd: root, action: 'delete', title: cleanTitle }) }}>删除</DropdownItem>
+              </>}
+            </Dropdown>} />
+          })}
+        </>
+      )}
     </ConversationSidebar>
     </div></ContextRegion>}
     <ChatView label={workspaceLabel} draftHero={draftIsEmpty}
@@ -1078,11 +1549,16 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           <span className="mx-0.5 h-3.5 w-px bg-my-line" aria-hidden="true" />
         </>}
         identity={<div className="flex min-w-0 items-center gap-1.5">
-          {agentPickerControl ?? <strong className="truncate">{activeAgentContext?.name ?? '小助手'}</strong>}
-          {selectedThread?.title && (
+          {agentPickerControl ?? (
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              {selectedThreadAgent ? <AgentAvatar avatarId={selectedThreadAgent.avatarId} size={18} /> : activeAgentContext ? <AgentAvatar avatarId={activeAgentAvatarId} size={18} /> : null}
+              <strong className="truncate">{selectedThreadAgent?.name ?? activeAgentContext?.name ?? '小助手'}</strong>
+            </span>
+          )}
+          {selectedThreadTitle && (
             <>
               <span className="text-my-tertiary">/</span>
-              <span className="max-w-[260px] truncate text-my-sm text-my-secondary">{selectedThread.title}</span>
+              <span className="max-w-[260px] truncate text-my-sm text-my-secondary">{selectedThreadTitle}</span>
             </>
           )}
           {writable && (
@@ -1104,7 +1580,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             {(close) => (
               <div className="flex flex-col gap-1.5 p-1">
                 <div className="flex items-center justify-between px-2 pt-1 pb-0.5">
-                  <span className="text-my-xs font-medium text-my-secondary">对话历史</span>
+                  <span className="text-my-xs font-medium text-my-secondary">
+                    {activeAgentContext ? `${activeAgentContext.name} 的对话历史` : '对话历史'}
+                  </span>
                   {writable && (
                     <button type="button" className="text-my-2xs text-my-secondary hover:text-my-primary" onClick={() => { close(); openDraft() }}>
                       + 新建
@@ -1113,21 +1591,25 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
                 </div>
                 <SearchInput value={query} onChange={value => setQuery(value.slice(0, 160))} size="sm" placeholder="搜索历史对话" />
                 <div className="collab-scroll max-h-64 space-y-0.5">
-                  {(threads ?? []).length === 0 ? (
+                  {embeddedFilteredThreads.length === 0 ? (
                     <div className="py-5 text-center text-my-xs text-my-tertiary">暂无历史会话</div>
                   ) : (
-                    (threads ?? []).slice(0, 20).map((thread) => (
-                      <button
-                        key={thread.id}
-                        type="button"
-                        data-selected={thread.id === target?.threadId || undefined}
-                        onClick={() => { close(); select({ threadId: thread.id }) }}
-                        className="my-menu-item justify-between"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-                        {thread.id === target?.threadId && <Check size={13} className="shrink-0 text-my-success-text" />}
-                      </button>
-                    ))
+                    embeddedFilteredThreads.slice(0, 20).map((thread) => {
+                      const binding = resolveConversationThreadAgent(thread, knownAgents)
+                      const cleanTitle = displayConversationThreadTitle(thread, binding)
+                      return (
+                        <button
+                          key={thread.id}
+                          type="button"
+                          data-selected={thread.id === target?.threadId || undefined}
+                          onClick={() => { close(); select({ threadId: thread.id }) }}
+                          className="my-menu-item justify-between"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{cleanTitle}</span>
+                          {thread.id === target?.threadId && <Check size={13} className="shrink-0 text-my-success-text" />}
+                        </button>
+                      )
+                    })
                   )}
                 </div>
               </div>
@@ -1143,7 +1625,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               <span>设置</span>
             </button>
           )}
-          {projection && (projectAvailable || projection.relations.children.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
+          {projection && (projectAvailable || projection.relations.children.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
               if (!canInteract()) return
@@ -1158,12 +1640,26 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         <button type="button" className="my-icon-control acp-mobile-only"
           aria-label="打开会话导航" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><PanelLeft size={16} aria-hidden="true" /></button>
       </>}
-        identity={<div className="flex min-w-0 items-center gap-2">{agentPickerControl ?? <strong className="truncate">{selectedThread?.title ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>}{workdirControl}</div>}
+        identity={<div className="flex min-w-0 items-center gap-2">
+          {agentPickerControl ?? (
+            selectedThreadAgent ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <AgentAvatar avatarId={selectedThreadAgent.avatarId} size={18} />
+                <span className="shrink-0 text-my-sm font-medium text-my-secondary">{selectedThreadAgent.name}</span>
+                <span className="shrink-0 text-my-tertiary" aria-hidden="true">/</span>
+                <strong className="truncate">{selectedThreadTitle}</strong>
+              </span>
+            ) : (
+              <strong className="truncate">{selectedThreadTitle ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>
+            )
+          )}
+          {workdirControl}
+        </div>}
         actions={<>
           {interactive && code && !compact && !taskScope && <><GitBranchControl /><ApplicationPanel /></>}
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
-          {projection && (projectAvailable || projection.relations.children.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
+          {projection && (projectAvailable || projection.relations.children.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
               if (!canInteract()) return
@@ -1186,6 +1682,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
           onOpenCitation={openAssistantCitation}
           onOpenRelatedThread={openRelatedThread}
+          onStopSubagent={writable ? handleStopSubagent : undefined}
+          stoppingChildThreadId={stoppingSubagentId}
           onForkFromRun={writable && projection && !archivedThread ? runId => {
             void sideChat.open({ sourcePoint: { type: 'run', runId } })
           } : undefined}
@@ -1214,70 +1712,106 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             focusComposer()
           } : undefined}
           emptyTitle={target ? '暂无消息' : activeAgentContext ? `与 ${activeAgentContext.name} 开始对话` : undefined}
-          footer={<>
-            {draftIsEmpty && activeAgentContext && (
-              <div className="mx-auto mb-3 flex w-full max-w-xl flex-col gap-2 rounded-my-base border border-my-line bg-my-panel p-3 text-my-xs text-my-secondary">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-my-primary">
-                    <Bot size={14} aria-hidden="true" />
-                    {activeAgentContext.name} · {activeAgentContext.spaceName}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-my-2xs text-my-tertiary">
-                    <Cpu size={12} aria-hidden="true" />本机偏好：{runtimeKindLabel(activeAgentContext.runtimeKind)}
-                  </span>
-                </div>
-                {activeAgentContext.description && <p className="m-0 text-my-xs text-my-secondary">{activeAgentContext.description}</p>}
-                <div className="flex flex-wrap items-center gap-1.5 text-my-2xs text-my-tertiary">
-                  <span>首轮发送将自动携带岗位指令</span>
-                  {activeAgentContext.skills.length > 0 && <span>· 附带 {activeAgentContext.skills.length} 项绑定技能（{activeAgentContext.skills.map((s) => s.name).join('、')}）</span>}
-                </div>
+          hideEmptyState={Boolean(read?.error)}
+          footer={draftIsEmpty && activeAgentContext ? (
+            <div className="mx-auto mb-3 flex w-full max-w-xl flex-col gap-2 rounded-my-base border border-my-line bg-my-panel p-3 text-my-xs text-my-secondary">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 font-medium text-my-primary">
+                  <AgentAvatar avatarId={activeAgentAvatarId} size={18} />
+                  {activeAgentContext.name} · {activeAgentContext.spaceName}
+                </span>
+                <span className="inline-flex items-center gap-1 text-my-2xs text-my-tertiary">
+                  <Cpu size={12} aria-hidden="true" />本机偏好：{runtimeKindLabel(activeAgentContext.runtimeKind)}
+                </span>
               </div>
-            )}
-            {!hasIpc && <ConversationIssue title="请在 Crux 桌面端使用原生对话" />}
-            {read?.error && <ConversationIssue title="无法读取会话" reason={read.error}
-              actions={<Button size="sm" variant="ghost" onClick={reload}>重新读取</Button>} />}
-            {run?.outcomeUnknown && <ConversationIssue title={`${runModel} 的送达或回复结果待核对`} reason={run.failure} uncertain
-              actions={<Button size="sm" variant="ghost" onClick={reload}>刷新结果</Button>} />}
-            {run?.status === 'failed' && !run.outcomeUnknown && <ConversationIssue title={`${runModel} 执行失败`} reason={run.failure}
-              actions={previousPrompt && !submitting && !outcomeUnknown && <Button size="sm" variant="ghost" onClick={() => openDraft(previousPrompt.text)}>更换模型</Button>} />}
-            {sideChat.failure && <ConversationIssue title={sideChat.failure.uncertain ? '侧聊结果待核对' : '无法开启侧聊'}
-              reason={sideChat.failure.reason} uncertain={sideChat.failure.uncertain}
-              actions={sideChat.failure.uncertain && <Button size="sm" variant="ghost" disabled={sideChat.pending}
-                onClick={() => void sideChat.check()}>查询回执</Button>} />}
-            {sideInputFailure?.owner === panelKey && <ConversationIssue title="无法从当前草稿开启侧聊" reason={sideInputFailure.reason} />}
-            {currentCleanup && <ConversationIssue title="侧聊清理结果待核对" reason={currentCleanup.reason} uncertain
-              actions={<Button size="sm" variant="ghost"
-                onClick={() => void settleSideCleanup(currentCleanup.threadId, currentCleanup.commandId, true)}>查询回执</Button>} />}
-            {!queueEdit && controlNotice}
-          </>} />
-        {projection && <div className="my-conversation-column conversation-controls">
-          <ConversationActivityControls controller={controller} projection={projection} disabled={!writable}
-            compactAvailable={descriptor?.actions.compact.state === 'verified' ||
-              (instance?.driverKind === 'codex' || !instance && instanceId === 'codex') && descriptor?.actions.compact.state !== 'unsupported'}
-            modelOptions={catalog.models} onHandoffAccepted={() => setListRevision(value => value + 1)}
-            comparisonModels={comparisonModels} onLoadComparisonModels={loadComparisonModels}
-            onCompareModels={sideChat.compare} />
-          <ConversationRuntimeRequests controller={controller} requests={projection.runtimeRequests} disabled={!writable}
-            cwd={root} threadId={projection.thread.id} task={task} />
-          <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!writable}
-            onEditRequested={controlFailure?.uncertain ? undefined : (queuedRun, text) => {
-              setControlFailure(undefined)
-              setQueueEdit({ threadId: visibleThreadId, runId: queuedRun.id, text })
-            }} />
-        </div>}
+              {activeAgentContext.description && <p className="m-0 text-my-xs text-my-secondary">{activeAgentContext.description}</p>}
+              <div className="flex flex-wrap items-center gap-1.5 text-my-2xs text-my-tertiary">
+                <span>首轮发送将自动携带岗位指令</span>
+                {activeAgentContext.skills.length > 0 && <span>· 附带 {activeAgentContext.skills.length} 项绑定技能（{activeAgentContext.skills.map((s) => s.name).join('、')}）</span>}
+              </div>
+            </div>
+          ) : undefined} />
+        <div className="my-conversation-column conversation-controls">
+          {projection && <>
+            <ConversationRuntimeRequests controller={controller} requests={projection.runtimeRequests} disabled={!writable}
+              cwd={root} threadId={projection.thread.id} task={task} />
+            <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!writable}
+              onEditRequested={controlFailure?.uncertain ? undefined : (queuedRun, text) => {
+                setControlFailure(undefined)
+                setQueueEdit({ threadId: visibleThreadId, runId: queuedRun.id, text })
+              }} />
+          </>}
+          {!hasIpc && <ConversationIssue title="请在 Crux 桌面端使用原生对话" />}
+          {read?.error && <ConversationIssue title="无法读取会话" reason={read.error}
+            actions={<>
+              {isDaemonOutdatedError(read.error) && <Button size="sm" variant="outline" onClick={() => useApp.getState().setPage('machines')}>运行状态</Button>}
+              <Button size="sm" variant="outline" onClick={reload}>重新读取</Button>
+            </>} />}
+          {usageLimitRecovery && <FeedbackNotice
+            variant="bar"
+            tone="warning"
+            title={`${runModel} 触发限流`}
+            description={usageLimitRemainingSeconds !== null && usageLimitRemainingSeconds > 0
+              ? `将于 ${usageLimitRemainingSeconds} 秒后自动重试（第 ${usageLimitRecovery.attempt}/${usageLimitRecovery.maxAttempts} 次）`
+              : '限流冷却已结束，正在准备或可立即重试。'}
+            actions={<>
+              <Button size="sm" variant="outline" disabled={!writable || usageLimitActionPending}
+                onClick={handleRetryUsageLimitRecoveryNow}>
+                {usageLimitActionPending ? '处理中…' : '立即重试'}
+              </Button>
+              <Button size="sm" variant="outline" disabled={!writable || usageLimitActionPending}
+                onClick={handleCancelUsageLimitRecovery}>
+                取消自动重试
+              </Button>
+            </>} />}
+          {run && failedRunIssue && <ConversationIssue
+            title={failedRunIssue.title}
+            reason={failedRunIssue.reason}
+            uncertain={failedRunIssue.uncertain}
+            actions={failedRunIssue.actionKind !== 'none' && failedRunIssue.actionLabel && <Button
+              size="sm"
+              variant="outline"
+              disabled={recoveringRunId === run.id}
+              onClick={() => handleFailedRunAction(run.id)}>
+              {recoveringRunId === run.id
+                ? (failedRunIssue.actionKind === 'handoff' ? '正在接力…' : '正在重试…')
+                : failedRunIssue.actionLabel}
+            </Button>} />}
+          {sideChat.failure && <ConversationIssue title={sideChat.failure.uncertain ? '侧聊结果待核对' : '无法开启侧聊'}
+            reason={sideChat.failure.reason} uncertain={sideChat.failure.uncertain}
+            actions={sideChat.failure.uncertain && <Button size="sm" variant="outline" disabled={sideChat.pending}
+              onClick={() => void sideChat.check()}>查询回执</Button>} />}
+          {sideInputFailure?.owner === panelKey && <ConversationIssue title="无法从当前草稿开启侧聊" reason={sideInputFailure.reason} />}
+          {currentCleanup && <ConversationIssue title="侧聊清理结果待核对" reason={currentCleanup.reason} uncertain
+            actions={<Button size="sm" variant="outline"
+              onClick={() => void settleSideCleanup(currentCleanup.threadId, currentCleanup.commandId, true)}>查询回执</Button>} />}
+          {!queueEdit && controlNotice}
+        </div>
         {taskScope?.canSend === false ? <div className="my-conversation-column acp-composer-region">
           <p className="my-item-description">{taskScope.reason ?? '当前任务会话仅供阅读。'}</p>
         </div> : <ConversationComposer
-          interactive={writable} send={composer} catalog={catalog} model={selectedModel}
+          interactive={writable && !read?.error} send={composer} catalog={catalog} model={selectedModel}
           root={root}
           onModelChange={composer.setModel} lockedInstanceId={instanceId}
-          running={Boolean(activeRun)} canStop={Boolean(activeRun) && descriptor?.actions.cancel.state !== 'unsupported'}
+          running={Boolean(activeRun)} activeRunId={activeRun?.id ?? null}
+          canStop={Boolean(activeRun) && descriptor?.actions.cancel.state !== 'unsupported'}
           onStop={() => { if (activeRun) applyControl(stop(activeRun.id)) }}
+          onForceStop={activeRun ? () => handleForceStop(activeRun.id) : undefined}
+          forceStopping={isForceStopping}
+          stopUnconfirmed={Boolean(activeRun?.lifecycle?.stopRequested)}
+          canResume={canResume} resuming={isResuming} resumeLabel={resumeLabel}
+          onResume={hasHeldQueuedRuns || resumableRunId !== null ? handleResume : undefined}
           queuePaused={Boolean(projection?.queuePaused)}
           canSteer={canSteer && activeRun?.modelSelection.model === selectedModel?.id}
           leadingControls={projection && !archivedThread && <button type="button" className="my-icon-control"
             aria-label="开启侧聊" title="开启侧聊" disabled={!writable || sideChat.pending || sideChat.failure?.uncertain}
             onClick={() => { setSideInputFailure(undefined); void sideChat.open() }}><MessageSquarePlus size={16} aria-hidden="true" /></button>}
+          contextControl={projection ? <ConversationActivityControls controller={controller} projection={projection} disabled={!writable}
+            compactAvailable={descriptor?.actions.compact.state === 'verified' ||
+              (instance?.driverKind === 'codex' || !instance && instanceId === 'codex') && descriptor?.actions.compact.state !== 'unsupported'}
+            modelOptions={catalog.models} onHandoffAccepted={() => setListRevision(value => value + 1)}
+            comparisonModels={comparisonModels} onLoadComparisonModels={loadComparisonModels}
+            onCompareModels={sideChat.compare} /> : undefined}
           taskSection={code ? codeTask.taskSection : source === 'work' ? {
             label: workTask.linkedTask ? `查看关联任务 · ${workTask.linkedTask.title}` : '当前会话',
             ...(workTask.linkedTask ? { onView: () => workTask.view() } : { actions: [
@@ -1291,18 +1825,28 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               }] : []),
             ] }),
           } : undefined}
-          disabledReason={target && !projection ? '正在读取原会话。' : undefined}
+          placeholder={read?.error ? '当前会话暂不可用，请先处理上方提示' : undefined}
+          disabledReason={target && !projection && !read?.error ? '正在读取原会话…' : undefined}
           editorRef={composerRef} previousPrompt={previousPrompt?.text}
           onOpenCitation={openAssistantCitation}
           projectPaths={code && projectAvailable && projection ? { cwd: root, threadId: projection.thread.id, task } : undefined}
+          artifactBanner={artifactBanner}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
             .map(({ id, title }) => ({ id, title }))}
         />}
     </ChatView>
-    {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId && panel.active &&
+    {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId &&
       <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} expanded={panelExpanded} onToggleExpand={() => setPanelExpanded((value) => !value)} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
-        {(surface, selected) => surface.kind === 'thread' ? selected && <SideThreadPane
+        {(surface, selected) => surface.kind === 'artifact' ? <OpenArtifactFrame
+          artifactId={surface.artifactId}
+          title={surface.title}
+          artifactType={surface.artifactType}
+          viewUrl={surface.viewUrl}
+          threadId={hostThreadId}
+          onResolved={(info) => openArtifactSurface(conversationArtifactSurface(info))}
+          onPromptFromPage={handlePromptFromArtifact}
+        /> : surface.kind === 'thread' ? selected && <SideThreadPane
           root={root} scopeKey={readScopeKey} hostThreadId={hostThreadId}
           threadId={surface.threadId} task={task} interactive={interactive && hasIpc} writable={writable}
           citationRef={sideCitationRef} onOpenCitation={openAssistantCitation}
@@ -1328,5 +1872,19 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             activeRun={Boolean(activeRun)} writable={writable && !archivedThread}>{relatedWork}</ConversationProjectSurfaces>
             : relatedWork}
       </ConversationRightPanel>}
+    {interactive && !hostThreadId && draftArtifact && (
+      <aside className="conversation-right-surface" aria-label="产物画布">
+        <OpenArtifactFrame
+          artifactId={draftArtifact.artifactId}
+          title={draftArtifact.title}
+          artifactType={draftArtifact.artifactType}
+          viewUrl={draftArtifact.viewUrl}
+          showBack
+          onBack={() => setDraftArtifact(null)}
+          onResolved={(info) => setDraftArtifact(conversationArtifactSurface(info))}
+          onPromptFromPage={handlePromptFromArtifact}
+        />
+      </aside>
+    )}
   </div></ChatProjectFileLinks.Provider>
 }

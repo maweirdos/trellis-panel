@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
 import { LegendList, type LegendListRef } from '@legendapp/list/react'
 import { flushSync } from 'react-dom'
-import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, Globe, ListChecks, LoaderCircle } from 'lucide-react'
+import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, Info, ListChecks, LoaderCircle, RotateCw } from 'lucide-react'
 import { Button } from '../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
@@ -22,9 +22,9 @@ import {
   TIMELINE_MINIMAP_TARGET_OFFSET,
 } from './timelineMinimapLogic'
 import { forwardWheelToTimeline } from './timelineMinimapWheel'
-import { WorkLogDisclosure, WorkLogRow } from './WorkLog'
+import { ReasoningDisclosureRow, WorkLogDisclosure, WorkLogGroup, WorkLogRow, classifyWorkEntry, workEntryIcon } from './WorkLog'
 import { resolveListMarkerSansEm } from './listMarker'
-import type { ConversationTimelineRow } from './useConversationThread'
+import type { ConversationTimelineRow, ConversationTimelineWorkEntry } from './useConversationThread'
 import './conversation-timeline-work.css'
 import './conversation-timeline.css'
 
@@ -59,8 +59,11 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly loadingEarlier: boolean
   readonly onLoadEarlier: () => Promise<boolean>
   readonly onOpenRelatedThread?: (tab: ConversationThreadTab) => void
+  readonly onStopSubagent?: (childThreadId: string, force?: boolean) => void
+  readonly stoppingChildThreadId?: string | null
   readonly footer?: ReactNode
   readonly emptyTitle?: string
+  readonly hideEmptyState?: boolean
   readonly citationRef?: RefObject<ConversationCitationNavigation | null>
 }
 
@@ -158,7 +161,7 @@ function hasActivityAfter(rows: readonly ConversationTimelineRow[], anchor: numb
     if (row.kind === 'message') {
       if (row.message.role === 'user') return false
       if (row.message.role === 'assistant' && row.message.text.trim()) return true
-    } else if (row.kind !== 'work-fold') return true
+    } else if (row.kind !== 'work-fold' && row.kind !== 'notice') return true
   }
   return false
 }
@@ -182,6 +185,8 @@ export function ConversationTimeline({
   onQuote,
   onEdit,
   onOpenRelatedThread,
+  onStopSubagent,
+  stoppingChildThreadId,
   onForkFromRun,
   sourceThreadId,
   onCite,
@@ -189,6 +194,7 @@ export function ConversationTimeline({
   citationRef,
   footer,
   emptyTitle,
+  hideEmptyState = false,
 }: ConversationTimelineProps): JSX.Element {
   const workingIndex = working && workingUserMessageId ? rows.findIndex(row => row.id === workingUserMessageId) : -1
   const workingAnchor = rows[workingIndex]?.id
@@ -316,7 +322,7 @@ export function ConversationTimeline({
     const position = restoring.current
     if (!position || !scrollElement || !listRef.current || seeking.current) return
     const index = rows.findIndex(row => row.id === position.anchorId ||
-      (row.kind === 'work-fold' && row.entries.some(entry => entry.id === position.anchorId)))
+      ((row.kind === 'work-fold' || row.kind === 'work-group') && row.entries.some(entry => entry.id === position.anchorId)))
     if (index < 0) {
       if (!hasOlderHistory || restorePages.current >= MAX_RESTORE_PAGES) {
         restoring.current = null
@@ -521,7 +527,7 @@ export function ConversationTimeline({
               </Button>
             </div>
           )}
-          {!rows.length && !working && (
+          {!rows.length && !working && !hideEmptyState && (
             <div className="acp-conversation-start">
               <h1>{emptyTitle ?? '开始一段对话'}</h1>
             </div>
@@ -544,12 +550,20 @@ export function ConversationTimeline({
             onMetricsChange={scheduleMinimapRefresh}
             onReady={restoreReadingPosition}
             renderItem={({ item }) => <div data-conversation-row-id={item.id} data-timeline-row-kind={item.kind}>
-              {item.kind === 'work-fold' ? <WorkLogDisclosure label={`工作了 ${formatDuration(item.durationMs)}`}
-                open={openWorkLogs.has(item.id)} onOpenChange={open => setWorkLogOpen(item.id, open)}>
-                {item.entries.map(entry => <ConversationRow key={entry.id} row={entry}
-                  sourceThreadId={sourceThreadId} />)}
-              </WorkLogDisclosure> : <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
-                onOpenRelatedThread={onOpenRelatedThread} onForkFromRun={onForkFromRun}
+              {item.kind === 'work-fold' ? <WorkLogDisclosure
+                label={item.durationMs > 0 ? `工作了 ${formatDuration(item.durationMs)}` : ''}
+                workEntries={item.entries.filter((entry): entry is ConversationTimelineWorkEntry => entry.kind === 'work')}
+                open={openWorkLogs.has(item.id)}
+                onOpenChange={open => setWorkLogOpen(item.id, open)}
+              >
+                <WorkFoldEntries entries={item.entries} sourceThreadId={sourceThreadId} />
+              </WorkLogDisclosure> : item.kind === 'work-group' ? <WorkLogGroup
+                entries={item.entries}
+                open={openWorkLogs.has(item.id)}
+                onOpenChange={open => setWorkLogOpen(item.id, open)}
+              /> : <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
+                onOpenRelatedThread={onOpenRelatedThread} onStopSubagent={onStopSubagent}
+                stoppingChildThreadId={stoppingChildThreadId} onForkFromRun={onForkFromRun}
                 onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined} />}
               {item.id === workingAnchor && workingRow}
             </div>}
@@ -580,51 +594,114 @@ export function ConversationTimeline({
   )
 }
 
+function NestedWorkBatch({ entries }: { readonly entries: readonly ConversationTimelineWorkEntry[] }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <WorkLogGroup entries={entries} open={open} onOpenChange={setOpen} variant="nested" />
+}
+
+function WorkFoldEntries({
+  entries,
+  sourceThreadId,
+}: {
+  readonly entries: readonly Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' }>[]
+  readonly sourceThreadId?: string
+}): JSX.Element {
+  const blocks: Array<
+    | { readonly kind: 'work-batch'; readonly id: string; readonly items: ConversationTimelineWorkEntry[] }
+    | { readonly kind: 'other'; readonly entry: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' | 'work' }> }
+  > = []
+  for (const entry of entries) {
+    if (entry.kind === 'work') {
+      const prev = blocks.at(-1)
+      if (prev && prev.kind === 'work-batch') prev.items.push(entry)
+      else blocks.push({ kind: 'work-batch', id: `batch:${entry.id}`, items: [entry] })
+    } else {
+      blocks.push({ kind: 'other', entry })
+    }
+  }
+  return (
+    <>
+      {blocks.map((block) =>
+        block.kind === 'work-batch' ? (
+          <NestedWorkBatch key={block.id} entries={block.items} />
+        ) : (
+          <ConversationRow key={block.entry.id} row={block.entry} sourceThreadId={sourceThreadId} />
+        ),
+      )}
+    </>
+  )
+}
+
 function ConversationRow({
   row,
   onQuote,
   onEdit,
   onOpenRelatedThread,
+  onStopSubagent,
+  stoppingChildThreadId,
   onForkFromRun,
   onCite,
   onOpenCitation,
   sourceThreadId,
 }: {
-  readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' }>
+  readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' }>
   readonly onQuote?: ConversationTimelineProps['onQuote']
   readonly onEdit?: ConversationTimelineProps['onEdit']
   readonly onOpenRelatedThread?: ConversationTimelineProps['onOpenRelatedThread']
+  readonly onStopSubagent?: ConversationTimelineProps['onStopSubagent']
+  readonly stoppingChildThreadId?: string | null
   readonly onForkFromRun?: ConversationTimelineProps['onForkFromRun']
   readonly onCite?: ConversationTimelineProps['onCite']
   readonly onOpenCitation?: ConversationTimelineProps['onOpenCitation']
   readonly sourceThreadId?: string
 }): JSX.Element {
-  if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread} />
+  if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread}
+    onStopSubagent={onStopSubagent} stoppingChildThreadId={stoppingChildThreadId} />
+  if (row.kind === 'reasoning') return <ReasoningDisclosureRow text={row.text} streaming={row.streaming} />
+  if (row.kind === 'notice') {
+    return (
+      <WorkLogRow
+        role="status"
+        wrapLabel
+        label={row.title}
+        icon={row.variant === 'continuation'
+          ? <RotateCw size={13} aria-hidden="true" />
+          : <Info size={13} aria-hidden="true" />}
+      />
+    )
+  }
   if (row.kind === 'file-change') return <Suspense fallback={<p className="my-item-description" role="status">正在加载文件差异：{row.item.fileName}</p>}>
     <ConversationTurnFileChange item={row.item} />
   </Suspense>
   if (row.kind === 'work') {
-    const { label, icon } = WORK_STATUS[row.state]
-    const Icon = row.state === 'done' && (row.toolName === 'web_search' || row.toolName === '搜索网页') ? Globe : icon
+    const { label } = WORK_STATUS[row.state]
     return (
       <WorkLogRow
         data-state={row.state}
         role="group"
-        aria-label={`${row.text}，${label}`}
+        aria-label={`${row.text}${row.detail ? ` ${row.detail}` : ''}，${label}`}
         label={row.text}
-        icon={<Icon size={14} aria-hidden="true" className={row.state === 'running' ? 'animate-spin motion-reduce:animate-none' : undefined} />}
-        wrapLabel
+        chip={row.detail}
+        chipMono={Boolean(row.detail && (row.mono || classifyWorkEntry(row) === 'command'))}
+        meta={row.state === 'failed' ? '未通过' : row.state === 'cancelled' ? '已取消' : undefined}
+        icon={workEntryIcon(row)}
       />
     )
   }
   if (row.kind === 'plan') {
     const item = row.item
+    const completedSteps = item.type === 'todo_list' ? item.steps.filter(step => step.status === 'completed').length : 0
+    const planLabel = item.type === 'proposed_plan'
+      ? '计划建议'
+      : item.steps.length > 0
+        ? `任务 ${completedSteps}/${item.steps.length}`
+        : '计划'
     return (
       <details className="conversation-timeline-plan">
         <summary className="my-item-title">
-          <ListChecks size={15} aria-hidden="true" />
-          {item.type === 'proposed_plan' ? '计划建议' : '计划'}
-          <ChevronRight className="conversation-timeline-plan-arrow" size={14} aria-hidden="true" />
+          <ListChecks size={14} aria-hidden="true" />
+          <span>{planLabel}</span>
+          <ChevronRight className="conversation-timeline-plan-arrow" size={13} aria-hidden="true" />
         </summary>
         <div className="conversation-timeline-plan-content">
           {item.type === 'proposed_plan' ? (

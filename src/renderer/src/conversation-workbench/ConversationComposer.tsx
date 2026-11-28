@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
-import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, ListEnd, LoaderCircle, Mic, MicOff, Quote, Square, X } from 'lucide-react'
+import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, LoaderCircle, Mic, MicOff, Play, Quote, Square, X } from 'lucide-react'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import type { ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
@@ -15,6 +15,10 @@ import { unavailableModelReason, type ConversationModelCatalog } from './useConv
 import { detectComposerTrigger, useComposerMenuItems, type ComposerMentionableThread, type ComposerMenuItem } from './useComposerMenuItems'
 import { conversationError, type ComposerModel, type useComposerSend } from './useComposerSend'
 import { useComposerSpeech } from './speech/useComposerSpeech'
+import { useDictationShortcut } from './speech/useDictationShortcut'
+import { VoiceInputSetupModal } from './speech/VoiceInputSetupModal'
+import { useApp } from '../store'
+import { useMy } from '../my/store'
 import { useComposerProjectPaths, type ComposerProjectPathTarget } from './useComposerProjectPaths'
 import { formatComposerFileLink } from './chatProjectFileLinks'
 
@@ -33,15 +37,26 @@ export interface ConversationComposerProps {
   readonly onModelChange: (model: ComposerModel | null) => void
   readonly lockedInstanceId?: string
   readonly running: boolean
+  readonly activeRunId?: string | null
   readonly canStop: boolean
   readonly onStop: () => void
+  readonly onForceStop?: () => void
+  readonly forceStopping?: boolean
+  readonly stopUnconfirmed?: boolean
+  readonly canResume?: boolean
+  readonly resuming?: boolean
+  readonly resumeLabel?: string
+  readonly onResume?: () => void
   readonly queuePaused: boolean
   readonly canSteer: boolean
   readonly disabledReason?: string | null
+  readonly placeholder?: string
   readonly editorRef?: RefObject<ComposerPromptEditorHandle | null>
   readonly leadingControls?: ReactNode
+  readonly contextControl?: ReactNode
   readonly taskSection?: ComposerTaskSection
   readonly draftReferences?: ReactNode
+  readonly artifactBanner?: ReactNode
   readonly onPaste?: React.ClipboardEventHandler<HTMLDivElement>
   readonly onDrop?: React.DragEventHandler<HTMLFormElement>
   readonly onDragOver?: React.DragEventHandler<HTMLFormElement>
@@ -51,14 +66,77 @@ export interface ConversationComposerProps {
   readonly projectPaths?: ComposerProjectPathTarget
 }
 
+const STOP_PENDING_MAX_MS = 10_000
+// 对齐 t3code：停止按钮切回继续图标后保留 500ms 防误触窗口，避免连点停止误触发继续。
+const STOP_LANDED_CLICK_GUARD_MS = 500
+
+type StopPhase = 'pending' | 'timedOut' | 'landed' | null
+
+function useStopPhase(input: {
+  readonly scopeKey: string
+  readonly runId: string | null
+  readonly canInterrupt: boolean
+  readonly interactive: boolean
+}) {
+  const { scopeKey, runId, canInterrupt, interactive } = input
+  const [state, setState] = useState<{
+    readonly scopeKey: string
+    readonly runId: string | null
+    readonly phase: StopPhase
+  }>({ scopeKey, runId, phase: null })
+
+  let phase = state.phase
+  if (state.scopeKey !== scopeKey) {
+    phase = null
+    setState({ scopeKey, runId, phase: null })
+  } else if (runId !== null && state.runId !== runId) {
+    phase = null
+    setState({ scopeKey, runId, phase: null })
+  } else if (interactive) {
+    if ((state.phase === 'pending' || state.phase === 'timedOut') && !canInterrupt) {
+      phase = 'landed'
+      setState({ scopeKey, runId, phase: 'landed' })
+    } else if (state.phase === 'landed' && canInterrupt) {
+      phase = null
+      setState({ scopeKey, runId, phase: null })
+    }
+  }
+
+  useEffect(() => {
+    if (phase === 'pending') {
+      const timeout = window.setTimeout(() => {
+        setState((current) => current.scopeKey === scopeKey && current.phase === 'pending'
+          ? { ...current, phase: 'timedOut' } : current)
+      }, STOP_PENDING_MAX_MS)
+      return () => window.clearTimeout(timeout)
+    }
+    if (phase === 'landed') {
+      const timeout = window.setTimeout(() => {
+        setState((current) => current.scopeKey === scopeKey && current.phase === 'landed'
+          ? { ...current, phase: null } : current)
+      }, STOP_LANDED_CLICK_GUARD_MS)
+      return () => window.clearTimeout(timeout)
+    }
+    return undefined
+  }, [phase, scopeKey])
+
+  const markPending = (): void => {
+    setState({ scopeKey, runId, phase: 'pending' })
+  }
+
+  return [phase, markPending] as const
+}
+
 function resolveComposerDispatchMode(running: boolean, canSteer: boolean, alternateModifier: boolean): 'auto' | 'steer' {
   if (!running || !canSteer) return 'auto'
   return alternateModifier ? 'steer' : 'auto'
 }
 
 export function ConversationComposer({
-  interactive, root, send, catalog, model, onModelChange, lockedInstanceId, running, canStop, onStop, queuePaused,
-  canSteer, disabledReason, editorRef, leadingControls, draftReferences, onPaste, onDrop, onDragOver, previousPrompt,
+  interactive, root, send, catalog, model, onModelChange, lockedInstanceId, running, activeRunId = null, canStop, onStop,
+  onForceStop, forceStopping = false, stopUnconfirmed = false,
+  canResume = false, resuming = false, resumeLabel = '继续对话', onResume, queuePaused,
+  canSteer, disabledReason, placeholder, editorRef, leadingControls, contextControl, draftReferences, artifactBanner, onPaste, onDrop, onDragOver, previousPrompt,
   taskSection, mentionableThreads = noThreads, onOpenCitation, projectPaths,
 }: ConversationComposerProps): JSX.Element {
   const toolbar = useRef<HTMLDivElement>(null)
@@ -108,8 +186,22 @@ export function ConversationComposer({
     if (selection.key === send.draftKey) promptRef.current?.setSelectionRange(selection.start, selection.end)
   }, [promptRef, send.draft, send.draftKey])
   const speechPhase = speech.state.phase
-  const speechBusy = speechPhase === 'preparing' || speechPhase === 'transcribing' || speechPhase === 'installing'
+  const speechBusy = speechPhase === 'preparing' || speechPhase === 'transcribing'
   const recording = speechPhase === 'recording'
+  const dictationShortcutLabel = useDictationShortcut({
+    enabled: interactive,
+    available: speech.available,
+    mode: speech.shortcutMode,
+    phase: speechPhase,
+    setupOpen: speech.setup.open,
+    start: speech.start,
+    stop: speech.stop,
+    cancel: speech.cancel,
+  })
+  const openVoiceSettings = (): void => {
+    useMy.getState().setSettingsView('voice')
+    useApp.getState().setPage('settings')
+  }
   const intake = send.attachmentIntake
   const attachmentPending = intake.state.pending
   const staleAttachment = send.attachments.some(item => item.expiresAt <= Date.now())
@@ -148,9 +240,34 @@ export function ConversationComposer({
   const allowSend = Boolean(interactive && !disabledReason && !missingModel && !overLimit && !attachmentPending && !findingReference && !staleAttachment &&
     model && send.hasSendableContent &&
     (state.phase === 'idle' || (state.phase === 'rejected' && state.restored)))
-  const sendLabel = running || queuePaused ? '加入队列' : '发送'
+  const canInterrupt = running && canStop
+  const [stopPhase, markStopPending] = useStopPhase({
+    scopeKey: send.draftKey,
+    runId: activeRunId,
+    canInterrupt,
+    interactive,
+  })
+  const stopPending = stopPhase === 'pending'
+  const showForceStop = Boolean(onForceStop && (canInterrupt || stopPhase === 'timedOut') && (stopPhase === 'timedOut' || stopUnconfirmed))
+  const showPrimaryStop = (canInterrupt || stopPhase === 'pending' || stopPhase === 'timedOut') && !send.hasSendableContent && !showForceStop
+  const showSecondaryStop = (canInterrupt || stopPhase === 'pending' || stopPhase === 'timedOut') && send.hasSendableContent && !showForceStop
+  const showResume = !showPrimaryStop && !showForceStop && !running && canResume && Boolean(onResume) && !send.hasSendableContent
+  const allowResume = Boolean(showResume && interactive && !disabledReason && !missingModel && !attachmentPending && !findingReference && !resuming &&
+    (state.phase === 'idle' || (state.phase === 'rejected' && state.restored)))
+  const sendLabel = running ? '发送并加入队列' : '发送'
+  const stopLabel = stopPending ? '正在停止…' : '停止当前回合'
+  const primaryResumeLabel = resuming ? '正在继续…' : resumeLabel
+  const triggerStop = (): void => {
+    if (!interactive || stopPending) return
+    markStopPending()
+    onStop()
+  }
+  const triggerResume = (): void => {
+    if (stopPhase === 'landed' || !allowResume) return
+    onResume?.()
+  }
   const submit = (alternate = false): void => {
-    if (!allowSend || !model) return
+    if (stopPhase === 'landed' || !allowSend || !model) return
     void send.send(model, { deliveryIntent: resolveComposerDispatchMode(running, canSteerDraft, alternate) })
   }
   const reason = disabledReason || (overLimit ? `消息最多 ${CONVERSATION_TEXT_LIMIT.toLocaleString('zh-CN')} 字符。` : missingModel)
@@ -166,6 +283,7 @@ export function ConversationComposer({
     const { rangeStart, rangeEnd } = activeTrigger
     const replacement = item.type === 'skill' ? `$${item.name} `
       : item.type === 'file' ? item.kind === 'directory' ? `@${item.path}/` : `${formatComposerFileLink(item.path)} `
+      : item.type === 'artifacts' ? item.commandText
       : item.type === 'side' ? `/${item.name} ` : ''
     const end = replacement.endsWith(' ') && source[rangeEnd] === ' ' ? rangeEnd + 1 : rangeEnd
     const next = source.slice(0, rangeStart) + replacement + source.slice(end)
@@ -202,33 +320,32 @@ export function ConversationComposer({
     if (item.type === 'model') modelTrigger.current?.click()
   }
   return <ComposerSurface.Shell>
-    {state.phase === 'unknown' && <FeedbackNotice variant="inline" tone="warning" title="发送结果待核对" description={summary}
+    {artifactBanner}
+    {state.phase === 'unknown' && <FeedbackNotice variant="bar" tone="warning" title="发送结果待核对" description={summary}
       diagnostic={summary !== diagnostic ? diagnostic : undefined}
-      actions={<Button size="sm" variant="ghost" disabled={!interactive || state.checking} onClick={() => void send.checkReceipt()}>
+      actions={<Button size="sm" variant="outline" disabled={!interactive || state.checking} onClick={() => void send.checkReceipt()}>
         {state.checking ? '正在查询…' : '查询回执'}
       </Button>} />}
-    {state.phase === 'rejected' && <FeedbackNotice variant="inline" tone="error" title="消息未受理" description={summary}
+    {state.phase === 'rejected' && <FeedbackNotice variant="bar" tone="error" title="消息未受理" description={summary}
       diagnostic={summary !== diagnostic ? diagnostic : undefined}
       actions={!state.restored && <>
-        <Button size="sm" variant="ghost"
+        <Button size="sm" variant="outline"
           disabled={!interactive || attachmentPending || Boolean(send.hasContent && send.stash)}
           onClick={() => { send.restore(send.hasContent); promptRef.current?.focus() }}>
           {send.hasContent ? '暂存当前草稿并取回原稿' : '取回原稿'}
         </Button>
-        {send.hasContent && state.submission.sourceText && <Button size="sm" variant="ghost" disabled={!interactive} onClick={() => {
+        {send.hasContent && state.submission.sourceText && <Button size="sm" variant="outline" disabled={!interactive} onClick={() => {
           setCopyFailure(undefined)
           void send.copyRejectedDraft().catch(() => setCopyFailure(state.submission.commandId))
         }}>复制原稿文字</Button>}
       </>} />}
     {state.phase === 'rejected' && state.submission.commandId === copyFailure &&
       <p className="my-activity-note" role="alert">无法复制原稿。暂存当前草稿后可以取回。</p>}
-    {speech.state.error && <FeedbackNotice variant="inline" title="语音输入失败" description={speech.state.error}
-      actions={speech.state.errorCode === 'missing-model' && <>
-        <Button type="button" variant="ghost" size="sm" disabled={!interactive} onClick={() => void speech.downloadModel()}>
-          下载转写模型（约 46 MB）
-        </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={!interactive} onClick={() => void speech.importModel()}>导入转写模型</Button>
-      </>} />}
+    {speech.state.error && <FeedbackNotice variant="bar" title="语音输入失败" description={speech.state.error}
+      actions={<Button type="button" variant="outline" size="sm" onClick={openVoiceSettings}>
+        语音设置
+      </Button>} />}
+    <VoiceInputSetupModal setup={speech.setup} />
     <ComposerSurface.Host onSubmit={event => { event.preventDefault(); submit() }}
       onDragOver={event => {
         onDragOver?.(event)
@@ -263,16 +380,16 @@ export function ConversationComposer({
         <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />正在准备附件…
       </p>}
       {intake.state.error && <div className="px-4 pt-2">
-        <FeedbackNotice variant="inline" title="未能准备附件" description={intake.state.error}
-          actions={intake.state.retry && <Button type="button" size="sm" variant="ghost"
+        <FeedbackNotice variant="bar" title="未能准备附件" description={intake.state.error}
+          actions={intake.state.retry && <Button type="button" size="sm" variant="outline"
             disabled={!attachmentAvailable} onClick={intake.state.retry}>重试</Button>} />
       </div>}
       {referenceError?.key === send.draftKey && <div className="px-4 pt-2">
-        <FeedbackNotice variant="inline" title="未能引用会话" description={referenceError.message} />
+        <FeedbackNotice variant="bar" title="未能引用会话" description={referenceError.message} />
       </div>}
       <ComposerPromptEditorTiptap editorRef={promptRef} anchorRef={menuAnchorRef} draftKey={send.draftKey}
-        value={send.draft} skills={skills} disabled={!interactive}
-        placeholder="想问什么都可以。@ 引用来源，$ 使用技能，/ 输入命令"
+        value={send.draft} skills={skills} allowSideChat={interactive && send.sideChatAvailable} disabled={!interactive}
+        placeholder={placeholder ?? '想问什么都可以。@ 引用来源，$ 使用技能，/ 输入命令'}
         describedBy={reason ? diagnosticId : undefined} invalid={overLimit}
         onOpenCitation={onOpenCitation}
         suggestionListId={menuOpen && menuItems.length ? menuId : undefined}
@@ -366,12 +483,12 @@ export function ConversationComposer({
           </>}
         </Dropdown>}
         <div className="spacer" />
-        {canStop && <button type="button" className="my-icon-control" title="停止当前回合" aria-label="停止当前回合"
-          disabled={!interactive} onClick={onStop}><Square size={15} aria-hidden="true" /></button>}
         <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
           onChange={onModelChange} disabled={!interactive} />
+        {contextControl}
         {speech.available && <button type="button" className="my-icon-control shrink-0"
-          title={recording ? '停止录音' : '语音输入'} aria-label={recording ? '停止录音' : '语音输入'}
+          title={recording ? `停止录音（${dictationShortcutLabel}）` : `语音输入（${dictationShortcutLabel}）`}
+          aria-label={recording ? '停止录音' : '语音输入'}
           aria-pressed={recording} disabled={!interactive || speechBusy}
           onClick={() => { if (recording) void speech.stop(); else void speech.start() }}>
           {speechBusy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" size={15} aria-hidden="true" />
@@ -381,13 +498,36 @@ export function ConversationComposer({
           disabled={!interactive} onClick={() => void speech.cancel()}><X size={14} aria-hidden="true" /></button>}
         {running && canSteerDraft && <button type="button" className="my-composer-control shrink-0 px-1.5 py-1 text-my-xs"
           title="插话（Alt+Enter）" disabled={!allowSend} onClick={() => submit(true)}>插话</button>}
-        <button type="submit" className="my-icon-control shrink-0" title={sendLabel} aria-label={sendLabel} disabled={!allowSend}>
-          {sendLabel === '加入队列' ? <ListEnd size={16} aria-hidden="true" /> : <ArrowUp size={16} aria-hidden="true" />}
-        </button>
+        {showForceStop && <Button type="button" size="sm" variant="outline" className="shrink-0"
+          title="引擎未响应停止请求，点击强制终止当前回合"
+          disabled={!interactive || forceStopping} onClick={() => onForceStop?.()}>
+          {forceStopping ? '正在强停…' : '强制停止'}
+        </Button>}
+        {showSecondaryStop && <button type="button" className="my-icon-control conversation-composer-secondary-stop shrink-0"
+          title={stopLabel} aria-label={stopLabel} disabled={!interactive || stopPending} onClick={triggerStop}>
+          <Square size={12} aria-hidden="true" />
+        </button>}
+        {showPrimaryStop ? (
+          <button type="button" className="my-icon-control conversation-composer-primary-stop shrink-0"
+            title={stopLabel} aria-label={stopLabel} disabled={!interactive || stopPending} onClick={triggerStop}>
+            <Square size={12} aria-hidden="true" />
+          </button>
+        ) : showResume ? (
+          <button type="button" className="my-icon-control conversation-composer-primary-resume shrink-0"
+            title={primaryResumeLabel} aria-label={primaryResumeLabel} aria-busy={resuming || undefined}
+            disabled={!allowResume} onClick={triggerResume}>
+            {resuming
+              ? <LoaderCircle className="animate-spin motion-reduce:animate-none" size={14} aria-hidden="true" />
+              : <Play size={13} aria-hidden="true" />}
+          </button>
+        ) : showForceStop ? null : (
+          <button type="submit" className="my-icon-control shrink-0" title={sendLabel} aria-label={sendLabel} disabled={!allowSend}>
+            <ArrowUp size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </ComposerSurface.Host>
     <span className="sr-only" role="status">{state.phase === 'submitting' ? '正在提交消息' : findingReference ? '正在读取所选会话' :
-      recording ? '正在录音' : speechPhase === 'transcribing' ? '正在转写' : speechPhase === 'preparing' ? '正在准备录音'
-        : speechPhase === 'installing' ? '正在安装转写模型' : ''}</span>
+      recording ? '正在录音' : speechPhase === 'transcribing' ? '正在转写' : speechPhase === 'preparing' ? '正在准备录音' : ''}</span>
   </ComposerSurface.Shell>
 }

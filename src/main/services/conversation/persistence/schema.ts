@@ -340,4 +340,16 @@ CREATE TABLE IF NOT EXISTS conversation_v2_native_terminal_evidence (
   observed_at TEXT NOT NULL,
   native_turn_id TEXT
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_usage_limit_recoveries (
+  thread_id TEXT PRIMARY KEY REFERENCES conversation_v2_projection_threads(thread_id),
+  run_id TEXT NOT NULL,
+  resume_at TEXT NOT NULL,
+  retry_after_ms INTEGER NOT NULL,
+  attempt INTEGER NOT NULL DEFAULT 1,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'triggered')),
+  reason TEXT,
+  updated_at TEXT NOT NULL
+) STRICT;
 `

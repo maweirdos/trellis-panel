@@ -27,6 +27,7 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
     ...base, ...conversationAttachmentReferenceFields, type: z.literal('message.dispatch'), messageId: id, text, model, instanceId,
     deliveryIntent: z.enum(['auto', 'steer']).optional(), options: conversationModelOptionsSchema.optional(),
     references: conversationHistoryReferencesSchema.optional(),
+    manualContinuationOfRunId: id.optional(),
   }).strict(),
   z.object({ ...base, type: z.literal('queue.resume') }).strict(),
   z.object({ ...base, type: z.literal('thread.rename'), title: z.string().trim().min(1).max(500) }).strict(),
@@ -52,13 +53,21 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
   z.object({ ...run, type: z.literal('queued-run.start') }).strict(),
   z.object({ ...run, type: z.literal('queued-run.reorder'), beforeRunId: id.nullable() }).strict(),
   z.object({ ...run, type: z.literal('run.interrupt') }).strict(),
+  z.object({ ...base, runId: id.optional(), type: z.literal('thread.stop') }).strict(),
+  z.object({ ...base, childThreadId: id, force: z.boolean().optional(), type: z.literal('subagent.stop') }).strict(),
+  z.object({ ...base, type: z.literal('usage-limit-recovery.cancel') }).strict(),
+  z.object({ ...base, type: z.literal('usage-limit-recovery.retry-now') }).strict(),
   z.object({ ...base, type: z.literal('queued-message.promote-to-steer'), queuedRunId: id, targetRunId: id }).strict(),
   z.object({
     ...base, ...conversationAttachmentReferenceFields, type: z.literal('runtime-request.respond'), requestId: id, generation: z.number().int().positive().safe(),
     decision: decision.optional(), answers: answers.optional(), attachmentQuestionId: id.optional(),
   }).strict(),
 ]).superRefine((input, context) => {
-  if ((input.type === 'message.dispatch' || input.type === 'queued-run.edit') && !input.text.trim() && !input.attachmentIds?.length) {
+  if (input.type === 'message.dispatch' && input.manualContinuationOfRunId) {
+    if (input.deliveryIntent === 'steer' || input.attachmentIds?.length || input.references?.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Manual continuation cannot steer or carry attachments/references.' })
+    }
+  } else if ((input.type === 'message.dispatch' || input.type === 'queued-run.edit') && !input.text.trim() && !input.attachmentIds?.length) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide text or an attachment.' })
   }
   if ('attachmentIds' in input && input.attachmentIds?.length && (!input.draftId || (input.type === 'runtime-request.respond' && !input.answers))) {
@@ -100,7 +109,12 @@ export interface ConversationRuntimeRequest {
   readonly responseAttachmentQuestionId?: string
   readonly payload:
     | { readonly kind: 'approval'; readonly title: string; readonly details?: string; readonly options: readonly { readonly decision: z.infer<typeof decision>; readonly label: string }[] }
-    | { readonly kind: 'user-input'; readonly title: string; readonly questions: readonly ConversationRuntimeQuestion[] }
+    | {
+        readonly kind: 'user-input'
+        readonly title: string
+        readonly questions: readonly ConversationRuntimeQuestion[]
+        readonly responseMode?: 'live' | 'message'
+      }
   readonly createdAt: string
   readonly expiresAt?: string
   readonly status: 'pending' | 'responding' | 'resolved' | 'expired' | 'pending-reconciliation'
@@ -108,8 +122,10 @@ export interface ConversationRuntimeRequest {
 
 export interface ConversationRuntimeQuestion {
   readonly id: string
+  readonly header?: string
   readonly prompt: string
-  readonly choices?: readonly { readonly value: string; readonly label: string }[]
+  readonly choices?: readonly { readonly value: string; readonly label: string; readonly description?: string }[]
+  readonly allowCustom?: boolean
   readonly acceptsTextAttachments?: true
 }
 
@@ -140,7 +156,7 @@ export interface ConversationNativeTerminalEvidence {
 
 export type ConversationProjectedWorkItem = Extract<
   Extract<ConversationWireEvent, { readonly type: 'turn-item.updated' }>['payload'],
-  { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' | 'file_change' }
+  { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' | 'file_change' | 'reasoning' | 'system_notice' }
 >
 
 export interface ConversationGoal {
@@ -174,6 +190,18 @@ export interface ConversationHandoff {
   readonly state: 'prepared' | 'accepted'
 }
 
+export interface ConversationUsageLimitRecovery {
+  readonly threadId: string
+  readonly runId: string
+  readonly resumeAt: string
+  readonly retryAfterMs: number
+  readonly attempt: number
+  readonly maxAttempts: number
+  readonly status: 'scheduled' | 'cancelled' | 'triggered'
+  readonly reason?: string
+  readonly updatedAt: string
+}
+
 export interface ConversationThreadSnapshot {
   readonly thread: OrchestrationV2AppThread
   readonly runs: ReadonlyArray<OrchestrationV2Run & ConversationRunEvidence & {
@@ -191,6 +219,7 @@ export interface ConversationThreadSnapshot {
   readonly runtimeRequests: readonly ConversationRuntimeRequest[]
   readonly relations?: ConversationThreadRelations
   readonly goal?: ConversationGoal | null
+  readonly usageLimitRecovery?: ConversationUsageLimitRecovery | null
 }
 
 export interface ConversationLifecycleEventPage extends Omit<ConversationEventPage, 'events'> {
@@ -223,6 +252,7 @@ type LifecyclePayload =
   | { readonly kind: 'usage'; readonly usage: ConversationTurnUsage }
   | { readonly kind: 'compaction'; readonly compaction: ConversationCompaction }
   | { readonly kind: 'handoff'; readonly handoff: ConversationHandoff }
+  | { readonly kind: 'usage-limit-recovery'; readonly recovery: ConversationUsageLimitRecovery | null }
 
 export interface ConversationLifecycleEvent {
   readonly id: string
