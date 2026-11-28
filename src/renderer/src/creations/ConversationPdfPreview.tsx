@@ -1,12 +1,23 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight, X } from 'lucide-react'
 import { AnnotationMode, getDocument, PDFWorker, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline'
 import { CONVERSATION_PDF_PREVIEW_MAX_BYTES, type ConversationFile } from '@shared/private-conversations'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
 import { offlinePdfResources } from './pdf-offline-resources'
 import './conversation-table-preview.css'
 import './conversation-pdf-preview.css'
+
+function PdfTextDisclosure({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div>
+    <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={open || undefined} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 const MAX_PAGES = 500
 const MAX_IMAGE_PIXELS = 16_000_000
@@ -198,6 +209,6 @@ function PdfReader({ bytes, onFailure }: { bytes: Uint8Array; onFailure: (messag
     </div>}
     <p role="status" className="my-item-description">{status}</p>
     {doc && <><p className="my-item-description">为限制资源，超大或不支持解码的内嵌图片可能被省略，页面可能显示不完整。</p><div className="conversation-pdf-page" ref={host} tabIndex={0} aria-label="PDF 页面" />
-      <details><summary>查看本页文本</summary><p className="my-item-description">文本按 PDF 提取顺序显示，可能与视觉阅读顺序不同；图片文字不会自动识别。</p><p role="status">{textStatus}</p><pre className="conversation-pdf-text" tabIndex={0} aria-label={`第 ${page} 页提取文本`}>{text}</pre></details></>}
+      <PdfTextDisclosure label="查看本页文本"><p className="my-item-description mt-2">文本按 PDF 提取顺序显示，可能与视觉阅读顺序不同；图片文字不会自动识别。</p><p role="status">{textStatus}</p><pre className="conversation-pdf-text" tabIndex={0} aria-label={`第 ${page} 页提取文本`}>{text}</pre></PdfTextDisclosure></>}
   </div>
 }

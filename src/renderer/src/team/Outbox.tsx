@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { CheckCheck, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { CheckCheck, ChevronRight, RefreshCw } from 'lucide-react'
 import type { DesktopTeamConnection, DesktopTeamOutbox } from '../../../shared/team-desktop'
 import { api } from '../api'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
 import { clearIntent, denied, errorText, outboxLabel, readIntents, timeLabel, valueOf, type SavedIntent } from './model'
 import { useTeamOwner } from './use-team-owner'
+
+function TeamDisclosure({ label, className, children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={open || undefined} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export function Outbox({ root, connection: c, active, onAccessLost }: { root: string; connection: DesktopTeamConnection; active: boolean; onAccessLost: (message: string) => void }): JSX.Element {
   const owner = useTeamOwner(JSON.stringify([root, c.connectionId, c.ownerId, c.projectId, c.state, c.accessLocked, active]))
@@ -63,8 +74,8 @@ export function Outbox({ root, connection: c, active, onAccessLost }: { root: st
   const remoteAllowed = c.state === 'active' && !c.accessLocked
   return <section className="team-outbox my-scrollbar" aria-label="待处理与回执"><header className="team-section-header"><div><h3>待处理与回执</h3><p>已存队列会在原授权可用时发送。不确定的原操作不会自动重试。</p></div><Button size="sm" variant="outline" disabled={busy === 'list'} onClick={() => { setError(''); void refresh() }}><RefreshCw size={14} />刷新记录</Button></header>
     {error && <p role="alert" className="team-notice">{error}</p>}
-    {references.length > 0 && <section className="team-pending-references"><h4>页面请求尚待核对</h4><p>这里只保留操作标识，不保存正文或凭据。先查找本机保存结果。</p>{references.map((item) => <div className="team-outbox-row" key={item.commandId}><div><strong>{item.kind === 'feedback' ? '反馈保存请求' : '文档保存请求'}</strong><small className="team-outbox-time">{timeLabel(item.createdAt)}</small><details><summary>原操作标识</summary><code>{item.commandId}</code></details></div><Button size="sm" variant="outline" disabled={locks.current.has(item.commandId)} onClick={() => { void inspectSaved(item) }}>核对本地记录</Button></div>)}</section>}
-    {rows.map((row) => <article className="team-outbox-row" key={row.commandId} data-command-id={row.commandId}><div className="team-outbox-description"><strong>{row.title ?? (row.kind === 'feedback' ? '固定版本反馈' : '文档发布')}</strong><span>{outboxLabel(row)}</span><small className="team-outbox-time">{timeLabel(row.updatedAt)}{row.version ? ` · v${row.version}` : ''}</small>{row.reconciliation === 'missing-at-read-point' && <p>上次核对未找到回执，不证明原请求以后不会提交。</p>}{row.lastErrorCode && <small>最近结果：{row.lastErrorCode}</small>}<details><summary>操作来源</summary><code>{row.commandId}</code><code>{row.payloadDigest}</code><p>已尝试 {row.attempts} 次；身份始终属于原连接。</p></details></div><div className="team-outbox-actions">{row.state === 'committed' && <CheckCheck size={17} aria-label="已有确定回执" />}{row.state === 'queued' && <Button size="sm" variant="ghost" disabled={locks.current.has(row.commandId)} onClick={() => { void act(row, 'cancel') }}>发送前取消</Button>}{(row.outcomeUnknown || row.state === 'acknowledgement-unknown' || row.state === 'dispatching') && <Button size="sm" variant="outline" disabled={!remoteAllowed || locks.current.has(row.commandId)} onClick={() => { void act(row, 'reconcile') }}>核对原操作</Button>}{row.state === 'acknowledgement-unknown' && row.reconciliation === 'missing-at-read-point' && <Button size="sm" variant="outline" disabled={!remoteAllowed || locks.current.has(row.commandId)} onClick={() => { void act(row, 'retry') }}>按原操作重试发送</Button>}</div></article>)}
+    {references.length > 0 && <section className="team-pending-references"><h4>页面请求尚待核对</h4><p>这里只保留操作标识，不保存正文或凭据。先查找本机保存结果。</p>{references.map((item) => <div className="team-outbox-row" key={item.commandId}><div><strong>{item.kind === 'feedback' ? '反馈保存请求' : '文档保存请求'}</strong><small className="team-outbox-time">{timeLabel(item.createdAt)}</small><TeamDisclosure label="原操作标识"><code className="mt-1 block">{item.commandId}</code></TeamDisclosure></div><Button size="sm" variant="outline" disabled={locks.current.has(item.commandId)} onClick={() => { void inspectSaved(item) }}>核对本地记录</Button></div>)}</section>}
+    {rows.map((row) => <article className="team-outbox-row" key={row.commandId} data-command-id={row.commandId}><div className="team-outbox-description"><strong>{row.title ?? (row.kind === 'feedback' ? '固定版本反馈' : '文档发布')}</strong><span>{outboxLabel(row)}</span><small className="team-outbox-time">{timeLabel(row.updatedAt)}{row.version ? ` · v${row.version}` : ''}</small>{row.reconciliation === 'missing-at-read-point' && <p>上次核对未找到回执，不证明原请求以后不会提交。</p>}{row.lastErrorCode && <small>最近结果：{row.lastErrorCode}</small>}<TeamDisclosure label="操作来源"><code className="mt-1 block">{row.commandId}</code><code>{row.payloadDigest}</code><p>已尝试 {row.attempts} 次；身份始终属于原连接。</p></TeamDisclosure></div><div className="team-outbox-actions">{row.state === 'committed' && <CheckCheck size={17} aria-label="已有确定回执" />}{row.state === 'queued' && <Button size="sm" variant="ghost" disabled={locks.current.has(row.commandId)} onClick={() => { void act(row, 'cancel') }}>发送前取消</Button>}{(row.outcomeUnknown || row.state === 'acknowledgement-unknown' || row.state === 'dispatching') && <Button size="sm" variant="outline" disabled={!remoteAllowed || locks.current.has(row.commandId)} onClick={() => { void act(row, 'reconcile') }}>核对原操作</Button>}{row.state === 'acknowledgement-unknown' && row.reconciliation === 'missing-at-read-point' && <Button size="sm" variant="outline" disabled={!remoteAllowed || locks.current.has(row.commandId)} onClick={() => { void act(row, 'retry') }}>按原操作重试发送</Button>}</div></article>)}
     {!rows.length && !references.length && <div className="team-empty"><CheckCheck size={26} /><p>{busy === 'list' ? '正在读取本机记录…' : hasMore ? '本页暂无匹配记录，可继续读取后续页面。' : '当前连接没有已加载的待处理记录。'}</p></div>}
     {hasMore && <Button variant="ghost" size="sm" disabled={busy === 'list'} onClick={() => { if (cursor) void refresh(cursor) }}>读取更多记录</Button>}
   </section>

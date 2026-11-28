@@ -102,7 +102,7 @@ function TeamPublishedKnowledgeBase({ embedded = false }: { embedded?: boolean }
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="组织固定版发布资料">
       <div className="my-page-toolbar-row flex-wrap">
         <div className="min-w-0">
-          {!embedded && <h2 className="text-my-md font-semibold text-my-primary">组织固定版发布</h2>}
+          {!embedded && <h2 className="text-my-md font-medium text-my-primary">组织固定版发布</h2>}
           <p className="my-item-description truncate" title={workspace.projectName ?? undefined}>
             {isLocalMode
               ? '本机模式下无需连接远端；登录团队组织后自动同步固定版本资料与版本反馈'

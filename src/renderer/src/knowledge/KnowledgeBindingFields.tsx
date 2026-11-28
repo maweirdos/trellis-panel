@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { IntegrationConnection } from '../../../shared/integrations'
 import type { KnowledgeCollection } from '../../../shared/knowledge-access'
-import { Button } from '../my/ui'
+import { Button, Checkbox } from '../my/ui'
 import { CollectionChoices } from './KnowledgeScopeControl'
 import { knowledgeBridge, knowledgeError, knowledgeUnavailable, requireKnowledge, useKnowledgeOwner, useProjectKnowledge } from './bridge'
 
@@ -23,7 +23,7 @@ export function KnowledgeBindingFields({ root, connection, selected, onChange }:
     }).catch((failure: unknown) => { if (!disposed && owner.current()) setError(knowledgeError(failure)) }).finally(() => { if (!disposed && owner.current()) setLoading(false) })
     return () => { disposed = true }
   }, [connection.id, connection.revision, owner.input, owner.current])
-  return <div className="space-y-2"><p className="my-item-title">项目默认知识库</p><p className="my-item-description leading-relaxed">每个项目只启用一个知识连接，可选多个库。启用后其他知识绑定停用；选择范围不授予远端权限。空范围不会查询全部库。</p>{loading ? <p role="status" className="my-item-description">读取可访问知识库…</p> : <CollectionChoices items={collections} selected={selected} onChange={onChange} />}{selected.filter((id) => !collections.some((item) => item.id === id)).map((id) => <label key={id} className="flex gap-2 text-my-xs text-my-warning-text"><input type="checkbox" checked onChange={() => onChange(selected.filter((item) => item !== id))} /><span className="break-all">已选但当前未列出：{id}（未确认可访问）</span></label>)}{more && <p className="text-my-xs text-my-warning-text">只显示服务返回的首批库，未列出的库不会自动选中。</p>}{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}</div>
+  return <div className="space-y-2"><p className="my-item-title">项目默认知识库</p><p className="my-item-description leading-relaxed">每个项目只启用一个知识连接，可选多个库。启用后其他知识绑定停用；选择范围不授予远端权限。空范围不会查询全部库。</p>{loading ? <p role="status" className="my-item-description">读取可访问知识库…</p> : <CollectionChoices items={collections} selected={selected} onChange={onChange} />}{selected.filter((id) => !collections.some((item) => item.id === id)).map((id) => <label key={id} className="flex cursor-pointer gap-2 text-my-xs text-my-warning-text"><Checkbox checked onChange={() => onChange(selected.filter((item) => item !== id))} ariaLabel={`移除未列出知识库 ${id}`} /><span className="break-all">已选但当前未列出：{id}（未确认可访问）</span></label>)}{more && <p className="text-my-xs text-my-warning-text">只显示服务返回的首批库，未列出的库不会自动选中。</p>}{error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}</div>
 }
 
 export function KnowledgeLegacyImport({ root, onSaved }: { root: string; onSaved: () => Promise<void> }): JSX.Element | null {
@@ -34,7 +34,7 @@ export function KnowledgeLegacyImport({ root, onSaved }: { root: string; onSaved
   if (state.error) return <div role="alert" className="space-y-3 text-my-sm"><p className="break-words text-my-danger-text">{state.error}</p><Button size="sm" disabled={busy || state.loading} onClick={() => { if (!busy && state.current()) void state.refresh() }}>{state.loading ? '读取中…' : '重试读取'}</Button></div>
   if (!state.context) return <p role="status" className="text-my-sm text-my-tertiary">正在检查已有配置…</p>
   if (!state.context.legacyImportAvailable) return <p role="status" className="text-my-sm text-my-tertiary">当前没有可导入的已有配置。</p>
-  return <section className="space-y-3 rounded-my-lg border border-my-line-warning p-4 text-my-sm"><h4 className="my-item-title">导入原有 WeKnora 配置</h4><p className="my-item-description leading-relaxed">仅由主进程迁移凭证，不显示明文；不会导入自动上传开关，也不会绑定其他项目。原有规范同步保留独立配置。</p><label className="flex gap-2 text-my-xs"><input type="checkbox" checked={bind} disabled={busy} onChange={(event) => setBind(event.target.checked)} />同时绑定当前项目及原选中知识库</label><Button size="sm" disabled={busy} onClick={() => {
+  return <section className="space-y-3 rounded-my-base border border-my-line-warning p-4 text-my-sm"><h4 className="my-item-title">导入原有 WeKnora 配置</h4><p className="my-item-description leading-relaxed">仅由主进程迁移凭证，不显示明文；不会导入自动上传开关，也不会绑定其他项目。原有规范同步保留独立配置。</p><label className="flex cursor-pointer gap-2 text-my-xs"><Checkbox checked={bind} disabled={busy} onChange={setBind} ariaLabel="同时绑定当前项目及原选中知识库" /><span>同时绑定当前项目及原选中知识库</span></label><Button size="sm" disabled={busy} onClick={() => {
     const bridge = knowledgeBridge(['importLegacy'])
     if (!bridge || busy || !state.current()) return
     setBusy(true); setError('')

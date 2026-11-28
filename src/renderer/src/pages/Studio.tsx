@@ -24,7 +24,7 @@ import {
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button, SearchInput } from '../my/ui'
+import { Button, Checkbox, DisclosureGrid, SearchInput } from '../my/ui'
 import { Select } from '../components/Select'
 import { fmtBytes, relTime } from '../utils/format'
 import { MarkdownView } from '../components/MarkdownView'
@@ -33,7 +33,18 @@ import { FlowStudio } from '../components/FlowStudio'
 import { errorMessage } from '../../../shared/errors'
 import { useKnowledgeOwner } from '../knowledge/bridge'
 import type { ExtEntry, ExtKind, StudioScan, WorkflowInfo } from '../../../shared/types'
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
+
+function StudioDisclosure({ label, className, children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-tertiary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className="my-disclosure-chevron shrink-0" data-open={open || undefined} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 type Section = 'flow' | 'workflow' | 'command' | 'agent' | 'skill' | 'hooks' | 'config' | 'platform'
 
@@ -151,7 +162,7 @@ function FileEditor({
         <span className="truncate font-mono text-my-xs text-my-tertiary">{path}</span>
         <div className="ml-auto flex items-center gap-2">
           {renderable && (
-            <div className="flex overflow-hidden rounded-my-md border border-my-line">
+            <div className="flex overflow-hidden rounded-my-base border border-my-line">
               {(
                 [
                   ['preview', '预览'],
@@ -384,7 +395,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
             value={body}
             onChange={(e) => setBody(e.target.value)}
             spellCheck={false}
-            className="h-full min-h-[320px] w-full resize-none rounded-my-md border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-primary outline-none"
+            className="h-full min-h-[320px] w-full resize-none rounded-my-base border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-primary outline-none"
           />
           </PageContent>
         ) : (
@@ -413,7 +424,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-1 flex items-center gap-2">
                 <span className="my-item-title font-mono">正文</span>
-                <div className="ml-auto flex overflow-hidden rounded-my-md border border-my-line">
+                <div className="ml-auto flex overflow-hidden rounded-my-base border border-my-line">
                   {(
                     [
                       ['preview', '预览'],
@@ -434,7 +445,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
                 </div>
               </div>
               {bodyView === 'preview' ? (
-                <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto rounded-my-md border border-my-line bg-my-canvas p-3">
+                <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto rounded-my-base border border-my-line bg-my-canvas p-3">
                   <MarkdownView content={body} />
                 </div>
               ) : (
@@ -442,7 +453,7 @@ function ExtensionEditor({ ext, onClose, onSaved }: { ext: ExtEntry; onClose: ()
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   spellCheck={false}
-                  className="min-h-0 flex-1 resize-none rounded-my-md border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-primary outline-none"
+                  className="min-h-0 flex-1 resize-none rounded-my-base border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-primary outline-none"
                 />
               )}
             </div>
@@ -533,10 +544,9 @@ function StudioWorkspace({ root }: { root: string }): JSX.Element {
       <AlertTriangle size={14} className="mt-1 shrink-0 text-my-danger-text" />
       <div className="min-w-0 flex-1">
         <div className="text-my-primary">{scan ? '刷新失败，保留上次扫描结果' : '无法扫描定制资源'}</div>
-        <details className="mt-1 text-my-tertiary">
-          <summary className="cursor-pointer">错误详情</summary>
+        <StudioDisclosure label="错误详情" className="mt-1 text-my-tertiary">
           <p className="mt-1 whitespace-pre-wrap break-words">{error}</p>
-        </details>
+        </StudioDisclosure>
       </div>
       <Button variant="outline" size="sm" disabled={loading} onClick={() => void reload()}>
         <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> {loading ? '扫描中' : '重试'}
@@ -1280,8 +1290,8 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
                 <input value={p.name} onChange={(e) => setPackages((lst) => lst.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="名称" className="my-input w-28 text-my-sm" />
                 <input value={p.path} onChange={(e) => setPackages((lst) => lst.map((x, j) => (j === i ? { ...x, path: e.target.value } : x)))} placeholder="packages/xxx 路径" className="my-input min-w-0 flex-1 font-mono text-my-sm" />
                 <input value={p.type} onChange={(e) => setPackages((lst) => lst.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))} placeholder="type（submodule）" className="my-input w-32 text-my-sm" />
-                <label className="flex shrink-0 items-center gap-1 text-my-xs text-my-tertiary">
-                  <input type="checkbox" checked={p.git} onChange={(e) => setPackages((lst) => lst.map((x, j) => (j === i ? { ...x, git: e.target.checked } : x)))} /> git
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-my-xs text-my-tertiary">
+                  <Checkbox checked={p.git} onChange={(checked) => setPackages((lst) => lst.map((x, j) => (j === i ? { ...x, git: checked } : x)))} ariaLabel={`包 ${p.name || i + 1} 是否 git 仓库`} /> git
                 </label>
                 <Button variant="ghost" size="sm" className="text-my-danger-text" onClick={() => setPackages((lst) => lst.filter((_, j) => j !== i))}>
                   <Trash2 size={12} />

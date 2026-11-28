@@ -33,7 +33,7 @@ export function DesignSourceDialog({ document, onClose }: { document: DesignDocu
     void read()
     return () => { cancelled = true }
   }, [document.id, document.conversationId, revision])
-  return <Modal open width={680} ariaLabel="设计来源会话" onClose={onClose}>
+  return <Modal open width={680} placement="center" ariaLabel="设计来源会话" onClose={onClose}>
     <section className="flex max-h-[70vh] min-h-0 flex-col gap-3 p-4">
       <h2 className="my-item-title">设计来源会话</h2>
       <p className="my-item-description">{document.title}</p>

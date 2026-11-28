@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
-import { Button } from '../my/ui'
+import { ChevronRight, FileText, Loader2 } from 'lucide-react'
+import { Button, DisclosureGrid } from '../my/ui'
 import { MarkdownView } from '../components/MarkdownView'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { knowledgeBridge, knowledgeError, knowledgeStatusLabel, knowledgeUnavailableFor, requireKnowledge, useKnowledgeOwner } from './bridge'
@@ -12,11 +12,12 @@ export function KnowledgeSourceView({ root, sessionId, initial, onUseSource }: {
   const [source, setSource] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const running = useRef(false)
   const generation = useRef(0)
   useLayoutEffect(() => {
     generation.current += 1
-    setSource(initial); setBusy(false); setError(''); running.current = false
+    setSource(initial); setBusy(false); setError(''); setDetailsOpen(false); running.current = false
     return () => { generation.current += 1 }
   }, [initial, owner.current])
   const read = async (): Promise<void> => {
@@ -34,12 +35,20 @@ export function KnowledgeSourceView({ root, sessionId, initial, onUseSource }: {
     } catch (failure) { if (requestGeneration === generation.current && owner.current()) setError(knowledgeError(failure)) }
     finally { if (requestGeneration === generation.current) { running.current = false; if (owner.current()) setBusy(false) } }
   }
-  return <article aria-label={`知识来源：${source.title}`} className="space-y-3 rounded-my-md border border-my-line bg-my-layer-1 p-3">
+  return <article aria-label={`知识来源：${source.title}`} className="space-y-3 rounded-my-base border border-my-line bg-my-layer-1 p-3">
     <div className="flex items-center gap-2"><FileText size={14} className="shrink-0 text-my-icon-accent" /><h3 className="my-item-title min-w-0 flex-1 break-words">{source.title}</h3></div>
     <p className="my-item-description leading-5">{source.historical ? '历史快照' : '本次读取'} · {source.mode === 'full' ? '全文' : source.mode === 'excerpt' ? '摘录' : '格式不支持'}{source.truncated ? ' · 已截断，不是完整文档' : ''} · {source.suppliedToAgent ? '已提供给 Agent' : '仅检索/阅读'}</p>
     {source.text ? <div className="my-scrollbar max-h-96 overflow-y-auto break-words"><MarkdownView content={source.text} /></div> : <p className="text-my-xs text-my-secondary">当前格式无可读取的文本；没有将其视为已读全文。</p>}
     <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || source.kind !== 'weknora'} onClick={() => void read()}>{busy && <Loader2 size={12} className="animate-spin" />}从当前授权范围读取正文</Button>{onUseSource && <Button size="sm" variant="outline" disabled={busy || source.mode === 'unsupported' || !source.text} onClick={() => onUseSource(source)}>引用到 Agent</Button>}</div>
-    <details className="my-item-description"><summary className="cursor-pointer">来源与版本详情</summary><p className="mt-2 break-all leading-5">{source.kind === 'weknora' ? `WeKnora · ${source.instanceId || '实例未知'} · 库 ${source.collectionId || '未知'}` : source.relativePath} · 文档 {source.documentId}<br />快照 {source.contentHash} · {new Date(source.fetchedAt).toLocaleString()}<br />{source.suppliedToAgent ? '已提供给 Agent；不等于输出已引用' : '仅检索/阅读，不声称模型已使用'}{source.turnId ? ` · 轮次 ${source.turnId}` : ''}</p></details>
+    <div className="my-item-description">
+      <button type="button" className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={detailsOpen || undefined} />
+        <span>来源与版本详情</span>
+      </button>
+      <DisclosureGrid open={detailsOpen}>
+        <p className="mt-2 break-all leading-5">{source.kind === 'weknora' ? `WeKnora · ${source.instanceId || '实例未知'} · 库 ${source.collectionId || '未知'}` : source.relativePath} · 文档 {source.documentId}<br />快照 {source.contentHash} · {new Date(source.fetchedAt).toLocaleString()}<br />{source.suppliedToAgent ? '已提供给 Agent；不等于输出已引用' : '仅检索/阅读，不声称模型已使用'}{source.turnId ? ` · 轮次 ${source.turnId}` : ''}</p>
+      </DisclosureGrid>
+    </div>
     {error && <p role="alert" className="text-my-xs text-my-warning-text">{error}</p>}
   </article>
 }

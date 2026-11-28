@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { Check, CircleAlert, CircleHelp, Lightbulb, Link2Off, MessageSquare, MessageSquarePlus, Send, X } from 'lucide-react'
+import { Check, ChevronRight, CircleAlert, CircleHelp, Lightbulb, Link2Off, MessageSquare, MessageSquarePlus, Send, X } from 'lucide-react'
 import type { CreationComment, CreationView } from '@shared/creations'
-import { Button, Dropdown, DropdownItem } from '../my/ui'
+import { Button, Checkbox, DisclosureGrid, Dropdown, DropdownItem } from '../my/ui'
 import { useCrux } from '../crux/store'
 import { targetLabel, type CreationTarget } from './creation-state'
 import type { useCreationCommands } from './hooks'
@@ -23,6 +23,7 @@ function ReviewComment({ comment, index, active, missing, selected, selectable, 
   const members = useCrux((state) => state.snapshot?.members)
   const [reply, setReply] = useState('')
   const [confirming, setConfirming] = useState(false)
+  const [repliesOpen, setRepliesOpen] = useState(false)
   const [finalRule, setFinalRule] = useState(comment.finalRule ?? comment.body)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
@@ -31,7 +32,7 @@ function ReviewComment({ comment, index, active, missing, selected, selectable, 
     <div className="creation-row creation-comment-heading">
       <Button variant="ghost" size="sm" aria-label={`定位批注 ${index}`} onClick={onSelect}><span className="creation-marker-number">{index}</span><span className="creation-truncate">{author}</span></Button>
       <span className="creation-grow" />
-      {selectable && <input type="checkbox" aria-label={`将批注 ${index} 用于 AI 修改`} checked={selected} onChange={onToggle} disabled={busy} />}
+      {selectable && <Checkbox ariaLabel={`将批注 ${index} 用于 AI 修改`} checked={selected} onChange={onToggle} disabled={busy} />}
     </div>
     <Button size="sm" variant="ghost" className="creation-comment-target" onClick={onSelect}>{missing ? <Link2Off size={13} /> : <MessageSquare size={13} />}<span className="creation-truncate">{targetLabel(comment.target)}</span></Button>
     {comment.revisionId !== displayedRevisionId && <Button size="sm" variant="ghost" title={comment.revisionId} onClick={onOpenOrigin}>来源 {origin}</Button>}
@@ -51,14 +52,20 @@ function ReviewComment({ comment, index, active, missing, selected, selectable, 
         void onCommand(disposition).then((result) => { if (result && mounted.current) setConfirming(false) })
       }}>确认</Button><Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>取消</Button></div>
     </div>}
-    <details className="creation-replies"><summary>回复{comment.replies.length ? ` (${comment.replies.length})` : ''}</summary>
-      {comment.replies.map((entry) => <div key={entry.replyId} className="creation-reply"><span className="creation-meta">{members?.find((member) => member.id === entry.authorId)?.name ?? entry.authorId}</span><p>{entry.body}</p></div>)}
-      {canReply && comment.replies.length < 12 && <div className="creation-form-grid"><textarea className="my-input" aria-label={`回复批注 ${index}`} placeholder="回复意见…" value={reply} maxLength={2000} rows={2} onChange={(event) => setReply(event.target.value)} /><Button size="sm" disabled={busy || !reply.trim()} onClick={() => {
-        const submitted = reply
-        void onCommand({ action: 'reply', commentId: comment.commentId, body: reply.trim() }).then((result) => { if (result && mounted.current) setReply((current) => current === submitted ? '' : current) })
-      }}><Send size={13} />回复</Button></div>}
-      {comment.replies.length >= 12 && <p className="creation-meta">已达到此批注的 12 条回复上限</p>}
-    </details>
+    <div className="creation-replies">
+      <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={repliesOpen} onClick={() => setRepliesOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={repliesOpen || undefined} />
+        <span>回复{comment.replies.length ? ` (${comment.replies.length})` : ''}</span>
+      </button>
+      <DisclosureGrid open={repliesOpen}>
+        {comment.replies.map((entry) => <div key={entry.replyId} className="creation-reply mt-2"><span className="creation-meta">{members?.find((member) => member.id === entry.authorId)?.name ?? entry.authorId}</span><p>{entry.body}</p></div>)}
+        {canReply && comment.replies.length < 12 && <div className="creation-form-grid mt-2"><textarea className="my-input" aria-label={`回复批注 ${index}`} placeholder="回复意见…" value={reply} maxLength={2000} rows={2} onChange={(event) => setReply(event.target.value)} /><Button size="sm" disabled={busy || !reply.trim()} onClick={() => {
+          const submitted = reply
+          void onCommand({ action: 'reply', commentId: comment.commentId, body: reply.trim() }).then((result) => { if (result && mounted.current) setReply((current) => current === submitted ? '' : current) })
+        }}><Send size={13} />回复</Button></div>}
+        {comment.replies.length >= 12 && <p className="creation-meta mt-2">已达到此批注的 12 条回复上限</p>}
+      </DisclosureGrid>
+    </div>
   </article>
 }
 

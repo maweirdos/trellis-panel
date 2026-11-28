@@ -351,7 +351,7 @@ export function SpecPage(): JSX.Element {
         <ModuleLinks domain="knowledge" />
       </div></ContextRegion>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
-        <div className="my-page-toolbar-row"><h1 className="text-my-md font-semibold text-my-primary">规范</h1></div>
+        <div className="my-page-toolbar-row"><h1 className="text-my-md font-medium text-my-primary">规范</h1></div>
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <SpecBrowser snapshot={snapshot} query={query} onQuery={(value) => { setQuery(value); setShowList(true) }} scope={scope} onScope={setScope} hits={hits} searching={searching} error={searchError} selectedPath={selected?.path} refCount={refCount} onRefreshReferences={loadBacklinks} onOpen={loadDoc} showList={showList} onBrowse={() => setShowList(true)} treeVisible={treeVisible}>
       <div ref={readerRef} tabIndex={-1} aria-label="文档阅读区" className="my-scrollbar relative h-full min-h-0 min-w-0 overflow-y-auto bg-my-surface-1 outline-none">

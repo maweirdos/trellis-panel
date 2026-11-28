@@ -96,13 +96,13 @@ export function DocumentAssetImage({ src, alt, title }: { src?: string; alt?: st
     return () => { alive = false; sequence.current++ }
   }, [scope, src])
   return <span className="my-3 block min-w-0 max-w-full" role="group" aria-label={alt || '文档图片'}>
-    {image ? <><img src={image.dataUrl} alt={alt ?? ''} title={title} width={image.width} height={image.height} className="mx-auto block h-auto max-h-[60vh] max-w-full rounded-my-md object-contain" onLoad={event => {
+    {image ? <><img src={image.dataUrl} alt={alt ?? ''} title={title} width={image.width} height={image.height} className="mx-auto block h-auto max-h-[60vh] max-w-full rounded-my-base object-contain" onLoad={event => {
       if (currentScope.current !== scope || !scope?.current()) return
       const node = event.currentTarget
       const sameSize = node.naturalWidth === image.width && node.naturalHeight === image.height || node.naturalWidth === image.height && node.naturalHeight === image.width
       if (!sameSize || node.naturalWidth > KNOWLEDGE_DOCUMENT_IMAGE_MAX_DIMENSION || node.naturalHeight > KNOWLEDGE_DOCUMENT_IMAGE_MAX_DIMENSION || node.naturalWidth * node.naturalHeight > KNOWLEDGE_DOCUMENT_IMAGE_MAX_PIXELS) { setImage(null); setError('图片实际尺寸与安全读取结果不符，未继续展示。') }
     }} onError={() => { if (currentScope.current === scope && scope?.current()) { setImage(null); setError('图片内容无法解码显示，请检查原始图片文件。') } }} /><span className="mt-1 block text-center text-my-xs text-my-tertiary" title={image.relativePath}>{alt ? `${alt} · ` : ''}本地图片 · 当前资源</span></>
-      : error ? <span role="alert" className="block rounded-my-md border border-my-line p-3 text-my-sm text-my-secondary">{alt && <strong className="mb-1 block font-medium">{alt}</strong>}{error}</span>
+      : error ? <span role="alert" className="block rounded-my-base border border-my-line p-3 text-my-sm text-my-secondary">{alt && <strong className="mb-1 block font-medium">{alt}</strong>}{error}</span>
       : scope?.interactive ? <span role="status" className="block py-3 text-my-xs text-my-tertiary">正在读取文档图片…</span> : null}
   </span>
 }

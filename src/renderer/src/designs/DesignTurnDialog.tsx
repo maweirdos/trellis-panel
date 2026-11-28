@@ -184,7 +184,7 @@ function DesignTurnForm({ owner, draftKey, medium, target, onClose }: Props & { 
     return () => { cancelled = true; clearTimeout(timer) }
   }, [conversationId, requestId, turnId, checkRevision])
 
-  return <Modal open width={520} onClose={() => { if (!lock.current) onClose() }} ariaLabel={title}>
+  return <Modal open width={520} placement="center" onClose={() => { if (!lock.current) onClose() }} ariaLabel={title}>
     <form className="space-y-3 p-4" onSubmit={event => { event.preventDefault(); void send() }}>
       <h2 className="my-item-title">{title}</h2>
       {target && <p className="my-item-description break-words">{target.title}{target.selection ? ` · ${target.selection.text || target.selection.selector}` : ''}</p>}

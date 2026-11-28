@@ -83,7 +83,7 @@ export function ReaderVersionBar({
                 type="button"
                 onClick={() => { setWidthPref(w); onWidthChange?.(w) }}
                 className={clsx(
-                  'rounded-my-sm px-1.5 text-my-2xs transition-colors',
+                  'rounded-my-base px-1.5 text-my-2xs transition-colors',
                   (width ?? widthPref) === w
                     ? 'bg-my-info-subtle font-medium text-my-info-text'
                     : 'text-my-secondary hover:text-my-primary'
@@ -107,7 +107,7 @@ export function ReaderVersionBar({
           <button
             type="button"
             onClick={(e) => onComparePending(e.currentTarget)}
-            className="rounded-my-md px-2 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+            className="rounded-my-base px-2 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
             title="比较基准：当前展示版本 → 最新候选（会话内比较，含未提交草稿）"
           >
             查看变化
@@ -115,14 +115,14 @@ export function ReaderVersionBar({
           <button
             type="button"
             onClick={(e) => onReadNew(e.currentTarget)}
-            className="rounded-my-md bg-my-accent px-2 py-0.5 text-my-xs font-medium text-my-on-accent transition-colors hover:bg-my-accent-hover"
+            className="rounded-my-base bg-my-accent px-2 py-0.5 text-my-xs font-medium text-my-on-accent transition-colors hover:bg-my-accent-hover"
           >
             阅读新版
           </button>
           <button
             type="button"
             onClick={onRebase}
-            className="rounded-my-md px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+            className="rounded-my-base px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
             title="以当前展示版作为新的「本次打开」基线（此后的会话比较以它为基准）"
           >
             <RotateCcw size={10} className="mr-0.5 inline align-[-1px]" />
@@ -158,7 +158,7 @@ export function ReaderNoticeStrip({
           <button
             type="button"
             onClick={onRetry}
-            className="rounded-my-md px-1.5 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+            className="rounded-my-base px-1.5 py-0.5 text-my-xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
           >
             <RefreshCw size={10} className="mr-1 inline align-[-1px]" />
             重试
@@ -176,7 +176,7 @@ export function ReaderNoticeStrip({
           <button
             type="button"
             onClick={onDismissAnchor}
-            className="rounded-my-md px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
+            className="rounded-my-base px-1.5 py-0.5 text-my-2xs font-medium text-my-secondary transition-colors hover:bg-my-layer-transparent-hover"
           >
             知道了
           </button>

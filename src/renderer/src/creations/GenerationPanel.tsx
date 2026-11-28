@@ -115,7 +115,7 @@ export function GenerationPanel({ view, selectedIds, dirty, commands, onUpdated,
         : <><span className="creation-meta">已选 {selectedIds.length}/8 条批注</span><span className="creation-grow" /><Button size="sm" disabled={selectedIds.length === 0 || dirty || commands.busy || commands.recoveryRequired} onClick={() => setOpen(true)}><Sparkles size={14} />AI 修改</Button></>}
     </div>
     {busy && !open && <div className="creation-notice" role="status"><Loader2 size={14} className="creation-spinner" />{phase === 'planning' ? '正在估算用量' : phase === 'recovering' ? '正在核对原操作' : '正在生成候选'}<Button variant="ghost" size="sm" onClick={() => setOpen(true)}>查看</Button></div>}
-    <Modal open={open} ariaLabel="AI 修改候选" width={560} onClose={() => setOpen(false)}><div className="creation-dialog">
+    <Modal open={open} placement="center" ariaLabel="AI 修改候选" width={560} onClose={() => setOpen(false)}><div className="creation-dialog">
       <div className="creation-section-heading"><h2><Sparkles size={17} />AI 修改候选</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={() => setOpen(false)}><X size={16} /></Button></div>
       <div className="creation-selected-comments my-scrollbar">{selectedIds.map((id) => { const comment = view.comments.find((entry) => entry.commentId === id); return comment ? <p key={id}>{comment.body}</p> : null })}</div>
       <label className="creation-form-grid">补充要求<textarea className="my-input" rows={3} value={instruction} maxLength={1000} disabled={busy} onChange={(event) => setInstruction(event.target.value)} /></label>

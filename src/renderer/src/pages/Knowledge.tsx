@@ -758,7 +758,7 @@ function KnowledgePageContent(): JSX.Element {
       {/* 右列：当前知识视图与阅读器 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-my-surface-1">
         <div className="my-page-toolbar-row flex-wrap">
-          <h1 className="text-my-md font-semibold text-my-primary">{knowledgeView === 'company' ? '企业知识库' : '当前目录资料'}</h1>
+          <h1 className="text-my-md font-medium text-my-primary">{knowledgeView === 'company' ? '企业知识库' : '当前目录资料'}</h1>
           <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={!snapshot?.meta.root} onClick={() => setScopeOpen(true)} title={`${scopeInfo?.connectionName ?? '项目知识'} · ${scopeSummary}`}><Cloud size={13} />知识范围</Button>
             <Button size="sm" variant="ghost" onClick={() => void runSearch(true)} disabled={!hasIpc || !snapshot?.meta.root || (scope !== 'company' && typeof api?.kbSearch !== 'function') || localRefreshing || loading || companyLoading} title="刷新当前视图"><RefreshCw size={13} />刷新</Button>
@@ -976,7 +976,7 @@ function KnowledgePageContent(): JSX.Element {
                           setAiSources([])
                           setAiRemoteSources([])
                         }}
-                        className="block w-full truncate rounded-my-md border border-my-line bg-my-layer-2 px-2.5 py-1.5 text-left text-my-xs text-my-secondary hover:border-my-line-strong hover:text-my-primary"
+                        className="block w-full truncate rounded-my-base border border-my-line bg-my-layer-2 px-2.5 py-1.5 text-left text-my-xs text-my-secondary transition-colors hover:border-my-line-strong hover:text-my-primary"
                         title={h.question}
                       >
                         <span className="text-my-placeholder">{relTime(h.createdAt)}</span> · {h.question}
@@ -1041,12 +1041,12 @@ function KnowledgePageContent(): JSX.Element {
       </div>
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}
-      <Modal open={scopeOpen && Boolean(snapshot?.meta.root)} onClose={() => setScopeOpen(false)} width={560} ariaLabel="项目知识范围">
-        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-semibold">项目知识范围</h2><Button size="sm" variant="ghost" onClick={() => setScopeOpen(false)} aria-label="关闭知识范围"><X size={15} /></Button></div>
+      <Modal open={scopeOpen && Boolean(snapshot?.meta.root)} onClose={() => setScopeOpen(false)} width={560} placement="center" ariaLabel="项目知识范围">
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">项目知识范围</h2><Button size="sm" variant="ghost" className="my-icon-control" onClick={() => setScopeOpen(false)} aria-label="关闭知识范围"><X size={15} /></Button></div>
         <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <KnowledgeScopeControl key={snapshot.meta.root} root={snapshot.meta.root} />}</div>
       </Modal>
-      <Modal open={showMaterials && Boolean(snapshot?.meta.root)} onClose={() => setShowMaterials(false)} width={760} ariaLabel="项目需求材料">
-        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-semibold">需求材料</h2><Button size="sm" variant="ghost" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></Button></div>
+      <Modal open={showMaterials && Boolean(snapshot?.meta.root)} onClose={() => setShowMaterials(false)} width={760} placement="center" ariaLabel="项目需求材料">
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">需求材料</h2><Button size="sm" variant="ghost" className="my-icon-control" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></Button></div>
         <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <ProductMaterialActions key={snapshot.meta.root} root={snapshot.meta.root} sources={[]} />}</div>
       </Modal>
     </div>

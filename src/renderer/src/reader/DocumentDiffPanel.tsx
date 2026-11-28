@@ -177,7 +177,8 @@ export function DocumentDiffPanel({
           ref={closeRef}
           type="button"
           onClick={onClose}
-          className="shrink-0 rounded-my-sm p-1 text-my-icon-secondary transition-colors hover:bg-my-layer-2-hover hover:text-my-icon-primary"
+          className="my-icon-control shrink-0"
+          aria-label="关闭对比"
           title="关闭对比 (Esc)"
         >
           <X size={14} />

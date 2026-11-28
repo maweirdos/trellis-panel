@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX } 
 import { ArrowUpRight, Check, ChevronDown, FileText, Link2, Loader2, Monitor, Upload, X } from 'lucide-react'
 import type { CreationCommandReply, CreationPrivateSource, CreationView } from '@shared/creations'
 import { CREATION_MAX_BODY_BYTES } from '@shared/creations'
-import { Button, Dropdown, DropdownItem, Modal } from '../my/ui'
+import { Button, Checkbox, Dropdown, DropdownItem, Modal } from '../my/ui'
 import { useCrux } from '../crux/store'
 import { bodySize, validateDraft } from './creation-state'
 import { useCreationCommands, useCreationOwner } from './hooks'
@@ -24,7 +24,7 @@ function PeoplePicker({ label, people, value, onChange, disabled }: {
   label: string; people: Array<{ id: string; name: string }>; value: string[]; onChange: (value: string[]) => void; disabled?: boolean
 }): JSX.Element {
   return <fieldset className="creation-people-picker" disabled={disabled}><legend>{label}</legend>
-    {people.length === 0 ? <p className="creation-meta">此空间暂无可选成员</p> : <div className="creation-people-list my-scrollbar">{people.map((person) => <label key={person.id}><input type="checkbox" checked={value.includes(person.id)} disabled={disabled || (!value.includes(person.id) && value.length >= 32)} onChange={(event) => onChange(event.target.checked ? [...value, person.id] : value.filter((id) => id !== person.id))} /><span>{person.name}</span></label>)}</div>}
+    {people.length === 0 ? <p className="creation-meta">此空间暂无可选成员</p> : <div className="creation-people-list my-scrollbar">{people.map((person) => <label key={person.id} className="cursor-pointer"><Checkbox checked={value.includes(person.id)} disabled={disabled || (!value.includes(person.id) && value.length >= 32)} onChange={(checked) => onChange(checked ? [...value, person.id] : value.filter((id) => id !== person.id))} ariaLabel={`选择成员 ${person.name}`} /><span>{person.name}</span></label>)}</div>}
   </fieldset>
 }
 
@@ -46,7 +46,7 @@ export function CreateCreationDialog(props: CreateCreationDialogProps): JSX.Elem
       && props.resume.identity.epoch === (context.epoch ?? null) && props.resume.identity.scope === props.scope
       && props.resume.identity.spaceId === (props.scope === 'team' ? props.spaceId ?? null : null)))
     && (props.scope === 'personal' || (space && !space.archived && space.memberIds.includes(context.actorId))))
-  if (!authorized || !context.actorId) return <Modal open ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
+  if (!authorized || !context.actorId) return <Modal open placement="center" ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
     <p role="alert">原工作区不可用或无权访问，表单已保留。请恢复原来源后继续。</p>
     <div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
   </div></Modal>
@@ -57,10 +57,10 @@ export function CreateCreationDialog(props: CreateCreationDialogProps): JSX.Elem
 
 function CreationFormEntry(props: CreateCreationDialogProps & { identity: CreationFormIdentity }): JSX.Element {
   const [form] = useState(() => props.resume ? readCreationForm(props.identity) : openCreationForm(props.identity, props.initialDraft))
-  if (props.resume && (!form || form.creationId !== props.resume.creationId || readCreationForm(props.identity) !== form)) return <Modal open ariaLabel="继续未完成" width={480} onClose={props.onClose}><div className="creation-dialog">
+  if (props.resume && (!form || form.creationId !== props.resume.creationId || readCreationForm(props.identity) !== form)) return <Modal open placement="center" ariaLabel="继续未完成" width={480} onClose={props.onClose}><div className="creation-dialog">
     <p role="alert">此表单已不可用，请返回列表。</p><div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
   </div></Modal>
-  if (!form) return <Modal open ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
+  if (!form) return <Modal open placement="center" ariaLabel="新建创作" width={480} onClose={props.onClose}><div className="creation-dialog">
     <p role="alert">待处理表单已达上限，请先返回并完成或取消其他表单。</p>
     <div className="creation-dialog-footer"><Button onClick={props.onClose}>关闭</Button></div>
   </div></Modal>
@@ -94,7 +94,7 @@ function CreationForm({ scope, spaceId, onClose, onCreated, form }: CreateCreati
     const result = await commands.run({ action: 'create', title: title.trim(), kind, home: scope, spaceId: scope === 'team' ? spaceId ?? null : null, body, scenarios: [], ...(scope === 'team' ? { editorIds: editors } : privateSource ? { privateSource } : {}) })
     if (result && valid() && result.result.action === 'create' && result.result.creationId === creationId) { settleCreationForm(form); onCreated(creationId) }
   }
-  return <Modal open ariaLabel="新建创作" width={720} onClose={close}>
+  return <Modal open placement="center" ariaLabel="新建创作" width={720} onClose={close}>
     <div className="creation-dialog"><div className="creation-section-heading"><h2>新建创作</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={close}><X size={16} /></Button></div>
       <div className="creation-form-grid"><label>标题<input autoFocus className="my-input" value={title} maxLength={200} disabled={locked} onChange={(event) => update({ title: event.target.value })} /></label>
         <div className="creation-row"><Dropdown trigger={({ toggle, open }) => <Button onClick={toggle} aria-expanded={open} disabled={locked}>{kind === 'prototype' ? <Monitor size={15} /> : <FileText size={15} />}{kind === 'prototype' ? '交互原型 · HTML' : '文档 · 纯文本'}<ChevronDown size={13} /></Button>}>
@@ -149,14 +149,14 @@ export function PublishCreationDialog({ view, commands, onClose, onPublished, on
   const validEditors = editors.filter((id) => allowed.includes(id) && id !== view.summary.ownerId)
   const [busy, setBusy] = useState(false)
   const { capture } = useCreationOwner(`publish:${view.summary.creationId}:${view.draft?.revisionId}`)
-  return <Modal open ariaLabel="发布评审版" width={540} onClose={onClose}><div className="creation-dialog">
+  return <Modal open placement="center" ariaLabel="发布评审版" width={540} onClose={onClose}><div className="creation-dialog">
     <div className="creation-section-heading"><h2>发布评审版 R{view.revisions.length + 1}</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={onClose}><X size={16} /></Button></div>
     <p>{view.summary.title}</p>
     <div className="creation-form-grid"><label>发布空间<Dropdown trigger={({ toggle, open }) => <Button variant="outline" className="creation-space-select" onClick={toggle} aria-expanded={open}>{space?.name ?? '选择空间'}<ChevronDown size={14} /></Button>}>
       {(close) => <>{spaces.map((entry) => <DropdownItem key={entry.id} selected={spaceId === entry.id} onClick={() => { setSpaceId(entry.id); setReviewers([]); setEditors([]); close() }}>{entry.name}</DropdownItem>)}</>}
     </Dropdown></label>
       <PeoplePicker label="邀请评审" people={people} value={validReviewers} onChange={setReviewers} disabled={commands.busy} />
-      {actorId === view.summary.ownerId && <><label className="creation-checkbox-label"><input type="checkbox" checked={changeEditors} onChange={(event) => setChangeEditors(event.target.checked)} />更新可编辑成员</label>
+      {actorId === view.summary.ownerId && <><label className="creation-checkbox-label cursor-pointer"><Checkbox checked={changeEditors} onChange={setChangeEditors} ariaLabel="更新可编辑成员" /><span>更新可编辑成员</span></label>
         {changeEditors && <PeoplePicker label="可编辑成员（替换原授权）" people={people.filter((person) => person.id !== actorId)} value={validEditors} onChange={setEditors} disabled={commands.busy} />}</>}
     </div>
     <OperationError commands={commands} onRecovered={(receipt) => { if (receipt?.result.action === 'publish') onPublished(receipt.result.revisionId ?? receipt.commandId); else onRefresh() }} onRefresh={onRefresh} />
@@ -182,7 +182,7 @@ export function AdoptCreationDialog({ view, commands, onClose, onAdopted, onLoad
   const selectedTask = tasks.find((task) => task.id === taskId)
   const requiredOpen = view.comments.some((comment) => comment.severity === 'required' && (comment.status === 'open' || (comment.status === 'confirmed' && (!comment.reviewedRevisionId || (view.revisions.find((revision) => revision.revisionId === comment.reviewedRevisionId)?.number ?? Infinity) > (view.selected.number ?? 0)))))
   const { capture } = useCreationOwner(`adopt:${view.summary.creationId}:${view.selected.revisionId}`)
-  return <Modal open ariaLabel="采纳到任务" width={560} onClose={onClose}><div className="creation-dialog">
+  return <Modal open placement="center" ariaLabel="采纳到任务" width={560} onClose={onClose}><div className="creation-dialog">
     <div className="creation-section-heading"><h2>采纳到任务</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={onClose}><X size={16} /></Button></div>
     <div className="creation-row"><span className="my-chip">R{view.selected.number}</span><span className="creation-truncate">{view.selected.title}</span><span className="creation-meta" title={view.selected.bodyDigest}>{view.selected.bodyDigest.slice(0, 10)}</span></div>
     <div className="creation-form-grid"><label>现有任务<Dropdown width={440} trigger={({ toggle, open }) => <Button variant="outline" className="creation-space-select" onClick={toggle} aria-expanded={open}>{selectedTask?.title ?? '选择同空间任务'}<ChevronDown size={14} /></Button>}>
@@ -193,7 +193,7 @@ export function AdoptCreationDialog({ view, commands, onClose, onAdopted, onLoad
       <fieldset className="creation-people-picker"><legend>已确认规则 · 选择本次采用的内容</legend>
         {rules.length === 0 && <p className="creation-meta">此修订暂无已确认规则</p>}
         {earlierRules > 0 && <p className="creation-meta">{earlierRules} 条规则需在 R{view.selected.number} 重新确认后采用</p>}
-        {rules.map((comment) => <label className="creation-rule-option" key={comment.commentId}><input type="checkbox" checked={ids.includes(comment.commentId)} onChange={(event) => setIds(event.target.checked ? [...ids, comment.commentId] : ids.filter((id) => id !== comment.commentId))} /><span>{comment.finalRule}<span className="creation-rule-source creation-meta">来源 R{view.revisions.find((entry) => entry.revisionId === comment.revisionId)?.number ?? '?'}{'reviewedRevisionId' in comment && typeof comment.reviewedRevisionId === 'string' ? ` · 确认于 R${view.revisions.find((entry) => entry.revisionId === comment.reviewedRevisionId)?.number ?? '?'}` : ''}</span></span></label>)}
+        {rules.map((comment) => <label className="creation-rule-option cursor-pointer" key={comment.commentId}><Checkbox checked={ids.includes(comment.commentId)} onChange={(checked) => setIds(checked ? [...ids, comment.commentId] : ids.filter((id) => id !== comment.commentId))} ariaLabel={`采用规则 ${comment.finalRule ?? ''}`} /><span>{comment.finalRule}<span className="creation-rule-source creation-meta">来源 R{view.revisions.find((entry) => entry.revisionId === comment.revisionId)?.number ?? '?'}{'reviewedRevisionId' in comment && typeof comment.reviewedRevisionId === 'string' ? ` · 确认于 R${view.revisions.find((entry) => entry.revisionId === comment.reviewedRevisionId)?.number ?? '?'}` : ''}</span></span></label>)}
       </fieldset>
       {view.nextCommentOffset !== null && <Button disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? '正在加载…' : '加载剩余批注后采纳'}</Button>}
       {requiredOpen && <p className="creation-inline-error">请先处理此修订的必须修改意见</p>}

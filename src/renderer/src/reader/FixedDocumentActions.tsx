@@ -78,8 +78,8 @@ export function FixedDocumentActions({ version, origin, unavailable }: { version
     }}><ExternalLink size={12} /> 独立窗口</Button>
     <Button size="sm" variant="ghost" disabled={!version || busy} onClick={() => void catalog()}><Columns2 size={12} /> 文档对照</Button>
     {!open && error && <span role="status" className="text-my-xs text-my-danger-text">{error}</span>}
-    <Modal open={open} onClose={close} width={1080} ariaLabel="选择两个文档版本对照">
-      <div className="flex items-center gap-2 border-b border-my-line px-4 py-3"><h2 className="min-w-0 flex-1 text-my-md font-semibold">选择两份材料或两个版本</h2><Button size="sm" variant="ghost" title="关闭" onClick={close}><X size={14} /></Button></div>
+    <Modal open={open} onClose={close} width={1080} placement="center" ariaLabel="选择两个文档版本对照">
+      <div className="flex items-center gap-2 border-b border-my-line px-4 py-3"><h2 className="min-w-0 flex-1 text-my-md font-medium">选择两份材料或两个版本</h2><Button size="sm" variant="ghost" className="my-icon-control" aria-label="关闭对照" title="关闭" onClick={close}><X size={14} /></Button></div>
       <div className="my-scrollbar max-h-[70vh] space-y-3 overflow-auto p-4">
         <p className="my-item-description">左侧是基准，右侧是对照版本。已保存版本保留原文；读取当前文件会另存一个版本。</p>
         <div className="grid gap-3 sm:grid-cols-2">{(['left', 'right'] as const).map((side) => <label key={side} className="min-w-0 space-y-1"><span className="my-item-title block">{side === 'left' ? '左：基准材料 / 版本' : '右：对照材料 / 版本'}</span><Select ariaLabel={side === 'left' ? '基准版本' : '对照版本'} className="w-full" value={side === 'left' ? left : right} onChange={(val) => { sequence.current++; setBusy(false); (side === 'left' ? setLeft : setRight)(val); setComparison(null) }} options={[{ value: '', label: '请选择固定版本' }, ...versions.map((item) => ({ value: item.token, label: label(item) }))]} /></label>)}</div>

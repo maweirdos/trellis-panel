@@ -65,7 +65,7 @@ export function ContextManifestView({ parsed }: { parsed: ContextManifestParsed 
       <div className="overflow-x-auto rounded-my-lg border border-my-line">
         <table className="min-w-full w-max border-collapse text-left text-my-sm">
           <thead>
-            <tr className="border-b border-my-line bg-my-layer-1 text-my-xs font-semibold tracking-wide text-my-secondary">
+            <tr className="border-b border-my-line bg-my-layer-1 text-my-xs font-medium tracking-wide text-my-secondary">
               <th className="w-12 px-2 py-2 text-right">行号</th>
               <th className="px-2 py-2">材料 / 用途</th>
               <th className="w-16 px-2 py-2">形态</th>
