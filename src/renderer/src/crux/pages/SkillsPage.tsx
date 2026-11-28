@@ -1,18 +1,19 @@
 import { useState, type JSX } from 'react'
-import { Bot, ChevronDown, Plus, Search, ShoppingBag, Trash2, Wrench, X } from 'lucide-react'
+import { ChevronDown, Plus, ShoppingBag, Trash2, Wrench, X } from 'lucide-react'
 import type { CruxSkill } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { Button, Dropdown, DropdownItem, EmptyState } from '../../my/ui'
+import { Button, Checkbox, Dropdown, DropdownItem, EmptyState, SearchInput, Tabs, Tooltip } from '../../my/ui'
+import { AgentAvatar } from '../AgentAvatar'
 import { SKILL_MARKET_PRESETS } from '../collaboration-platform-store'
 import { useCrux } from '../store'
-import { Field, inputClass, Select, textareaClass } from '../ui'
+import { Field, inputClass, PageHeader, Select, textareaClass } from '../ui'
 
 type SkillScopeFilter = 'all' | 'in_use' | 'unused' | 'space'
 
 /**
- * 1:1 复刻 HiFox「技能（组织中所有 Agent 都可以遵循的操作手册）」：
- * 胶囊筛选（全部 / 使用中 / 未使用 / 空间专属）+ 列表行 + 右侧 SKILL.md 详情与编辑抽屉。
+ * 技能库（SKILL.md 操作手册）：
+ * 统一页头 + 共享 Tabs 筛选 + 行列表 + 右侧 SKILL.md 详情与编辑抽屉。
  */
 export function SkillsPage(): JSX.Element | null {
   const { snapshot, currentSpaceId, busy, run, setModule } = useCrux()
@@ -22,13 +23,23 @@ export function SkillsPage(): JSX.Element | null {
 
   if (!snapshot) return null
 
+  const activeAgents = snapshot.agents.filter((a) => !a.archived)
   const allVisible = snapshot.skills.filter((skill) => !skill.spaceId || skill.spaceId === currentSpaceId)
+  const q = keyword.trim().toLowerCase()
+
+  const counts = {
+    all: allVisible.length,
+    in_use: allVisible.filter((skill) => activeAgents.some((a) => a.skillIds.includes(skill.id))).length,
+    unused: allVisible.filter((skill) => !activeAgents.some((a) => a.skillIds.includes(skill.id))).length,
+    space: allVisible.filter((skill) => skill.spaceId === currentSpaceId).length
+  }
+
   const skills = allVisible.filter((skill) => {
-    const usedCount = snapshot.agents.filter((a) => !a.archived && a.skillIds.includes(skill.id)).length
+    const usedCount = activeAgents.filter((a) => a.skillIds.includes(skill.id)).length
     if (scopeTab === 'in_use' && usedCount === 0) return false
     if (scopeTab === 'unused' && usedCount > 0) return false
     if (scopeTab === 'space' && skill.spaceId !== currentSpaceId) return false
-    return `${skill.name} ${skill.description ?? ''}`.toLowerCase().includes(keyword.trim().toLowerCase())
+    return `${skill.name} ${skill.description ?? ''}`.toLowerCase().includes(q)
   })
 
   const removeSkill = async (skill: CruxSkill): Promise<void> => {
@@ -44,20 +55,20 @@ export function SkillsPage(): JSX.Element | null {
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
-      <div className="my-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-1" style={{ scrollbarGutter: 'stable' }}>
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-my-lg font-semibold text-my-primary">技能</h1>
-            <p className="mt-0.5 text-my-xs text-my-tertiary">组织中所有 Agent 都可以遵循的操作手册（SKILL.md）。</p>
-          </div>
-          <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+        <PageHeader
+          title="技能"
+          description="组织中所有 Agent 都可以遵循的操作手册（SKILL.md）。"
+          actions={
             <Dropdown
               align="right"
               width={220}
               trigger={({ toggle, open }) => (
                 <Button size="sm" variant="primary" aria-expanded={open} onClick={toggle}>
-                  <Plus size={14} />添加技能<ChevronDown size={13} />
+                  <Plus size={14} />
+                  <span>添加技能</span>
+                  <ChevronDown size={13} />
                 </Button>
               )}
             >
@@ -78,110 +89,106 @@ export function SkillsPage(): JSX.Element | null {
                 </>
               )}
             </Dropdown>
-          </div>
-        </header>
+          }
+        />
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex flex-wrap items-center gap-0.5 rounded-full bg-my-layer-2 p-0.5" role="tablist" aria-label="技能筛选">
-            {([
-              ['all', '全部'],
-              ['in_use', '使用中'],
-              ['unused', '未使用'],
-              ['space', '当前空间']
-            ] as const).map(([id, label]) => {
-              const active = scopeTab === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setScopeTab(id)}
-                  className="collab-filter-pill"
-                >
-                  {label}
-                </button>
-              )
-            })}
-          </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <Tabs
+            tabs={[
+              { id: 'all' as SkillScopeFilter, label: '全部', count: counts.all },
+              { id: 'in_use' as SkillScopeFilter, label: '使用中', count: counts.in_use },
+              { id: 'unused' as SkillScopeFilter, label: '未使用', count: counts.unused },
+              { id: 'space' as SkillScopeFilter, label: '当前空间', count: counts.space }
+            ]}
+            active={scopeTab}
+            onChange={setScopeTab}
+            ariaLabel="技能筛选"
+          />
 
-          <div className="relative w-56 max-w-full">
-            <Search size={14} className="pointer-events-none absolute top-2.5 left-3 text-my-icon-tertiary" />
-            <input
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              placeholder="搜索技能…"
-              aria-label="搜索技能"
-              className={`${inputClass} pl-8`}
-            />
-          </div>
+          <SearchInput
+            size="sm"
+            value={keyword}
+            onChange={setKeyword}
+            placeholder="搜索技能名称或用途"
+            ariaLabel="搜索技能"
+            className="w-56"
+          />
         </div>
 
-        {skills.length === 0 ? (
-          <EmptyState
-            title="暂无技能"
-            description="创建技能或从市场导入，供空间内的 Agent 直接调用。"
-            action={(
-              <>
-                <Button size="sm" variant="primary" onClick={() => setSelected('new')}>
-                  <Plus size={14} />创建技能
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setModule('marketplace')}>
-                  <ShoppingBag size={14} />从市场安装公开技能
-                </Button>
-              </>
-            )}
-          />
-        ) : (
-          <div className="overflow-hidden rounded-my-base border border-my-line bg-my-panel">
-            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_100px] border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-2xs font-medium text-my-tertiary">
-              <span>名称</span>
-              <span>被谁使用</span>
-              <span className="text-right">范围</span>
-            </div>
-            <div className="divide-y divide-my-line">
-              {skills.map((skill) => {
-                const bound = snapshot.agents.filter((a) => !a.archived && a.skillIds.includes(skill.id))
-                const isSelected = selected !== 'new' && selected?.id === skill.id
-                return (
-                  <button
-                    key={skill.id}
-                    type="button"
-                    onClick={() => setSelected(skill)}
-                    className={`grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_100px] items-center gap-3 px-4 py-3 text-left transition-colors ${
-                      isSelected ? 'bg-my-layer-2' : 'hover:bg-my-layer-1'
-                    }`}
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <span className="collab-tone-avatar grid h-8 w-8 shrink-0 place-items-center rounded-my-base" data-tone="indigo">
-                        <Wrench size={15} />
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+          {skills.length === 0 ? (
+            <EmptyState
+              icon={<Wrench size={26} />}
+              title={keyword.trim() ? '未找到匹配技能' : '暂无技能'}
+              description={keyword.trim() ? '尝试调整搜索关键词或切换筛选标签。' : '创建技能或从市场导入，供空间内的 Agent 直接调用。'}
+              action={
+                !keyword.trim() ? (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="primary" onClick={() => setSelected('new')}>
+                      <Plus size={14} />
+                      <span>创建技能</span>
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setModule('marketplace')}>
+                      <ShoppingBag size={14} />
+                      <span>从市场安装公开技能</span>
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+            />
+          ) : (
+            <div key={scopeTab} className="my-subview-stage my-card overflow-hidden">
+              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_88px] border-b border-my-line bg-my-layer-1 px-4 py-2 text-my-2xs font-normal text-my-secondary">
+                <span>名称</span>
+                <span>被谁使用</span>
+                <span className="text-right">范围</span>
+              </div>
+              <div className="divide-y divide-my-line">
+                {skills.map((skill) => {
+                  const bound = activeAgents.filter((a) => a.skillIds.includes(skill.id))
+                  const isSelected = selected !== 'new' && selected?.id === skill.id
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() => setSelected(skill)}
+                      className={`grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_88px] items-center gap-3 px-4 py-3 text-left transition-colors duration-150 ease-out ${
+                        isSelected ? 'bg-my-layer-2' : 'hover:bg-my-layer-1'
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="collab-tone-avatar grid h-8 w-8 shrink-0 place-items-center rounded-my-base" data-tone="indigo">
+                          <Wrench size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="my-item-title block truncate text-my-sm font-medium text-my-primary">{skill.name}</span>
+                          <span className="block truncate text-my-2xs text-my-tertiary">{skill.description || '暂无描述'}</span>
+                        </span>
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-my-sm font-medium text-my-primary">{skill.name}</span>
-                        <span className="block truncate text-my-2xs text-my-tertiary">{skill.description || '暂无描述'}</span>
+                      <span className="flex flex-wrap items-center gap-1.5 text-my-xs text-my-secondary">
+                        {bound.length === 0 ? (
+                          <span className="text-my-tertiary">— 未使用</span>
+                        ) : (
+                          bound.slice(0, 3).map((ag) => (
+                            <span key={ag.id} className="my-chip gap-1.5">
+                              <AgentAvatar avatarId={ag.avatarId} size={15} />
+                              <span className="truncate">{ag.name}</span>
+                            </span>
+                          ))
+                        )}
                       </span>
-                    </span>
-                    <span className="flex flex-wrap items-center gap-1 text-my-xs text-my-secondary">
-                      {bound.length === 0 ? (
-                        <span className="text-my-tertiary">— 未使用</span>
-                      ) : (
-                        bound.slice(0, 3).map((ag) => (
-                          <span key={ag.id} className="my-chip"><Bot size={11} />{ag.name}</span>
-                        ))
-                      )}
-                    </span>
-                    <span className="text-right text-my-2xs text-my-tertiary">
-                      {skill.spaceId ? '空间技能' : '组织共享'}
-                    </span>
-                  </button>
-                )
-              })}
+                      <span className="text-right text-my-2xs text-my-tertiary">
+                        {skill.spaceId ? '空间技能' : '组织共享'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* 右侧 SKILL.md 详情与编辑抽屉 */}
       {selected && (
         <SkillInspectorDrawer
           key={selected === 'new' ? 'new' : selected.id}
@@ -221,6 +228,7 @@ function SkillInspectorDrawer({
       spaceId: ag.spaceId,
       name: ag.name,
       description: ag.description,
+      avatarId: ag.avatarId,
       instructions: ag.instructions,
       skillIds: nextSkillIds,
       repositories: ag.repositories,
@@ -244,34 +252,43 @@ function SkillInspectorDrawer({
   }
 
   const eligibleAgents = (snapshot?.agents ?? []).filter((a) => !a.archived && (!scope || a.spaceId === scope))
+  const disabledReason = !name.trim()
+    ? '请先输入技能名称'
+    : !content.trim()
+      ? '请先编写 SKILL.md 指令正文'
+      : null
 
   return (
-    <aside className="ml-4 flex h-full w-[420px] max-w-full shrink-0 flex-col rounded-my-base border border-my-line bg-my-canvas">
-      <header className="flex items-center justify-between border-b border-my-line px-4 py-2.5">
-        <h2 className="text-my-sm font-semibold text-my-primary">{skill ? skill.name : '创建新技能'}</h2>
-        <div className="flex items-center gap-1">
+    <aside className="my-card flex max-h-[52vh] w-full shrink-0 flex-col overflow-hidden lg:h-full lg:max-h-none lg:w-[400px]">
+      <header className="flex shrink-0 items-center justify-between border-b border-my-line px-4 py-2.5">
+        <h2 className="min-w-0 flex-1 truncate text-my-sm font-medium text-my-primary">
+          {skill ? skill.name : '创建新技能'}
+        </h2>
+        <div className="flex shrink-0 items-center gap-1">
           {onDelete && (
-            <button type="button" aria-label="删除技能" onClick={onDelete} className="grid h-7 w-7 place-items-center rounded-my-base text-my-tertiary hover:bg-my-layer-1 hover:text-my-danger-text">
-              <Trash2 size={14} />
-            </button>
+            <Tooltip label="删除技能">
+              <Button size="sm" variant="ghost" aria-label="删除技能" onClick={onDelete} className="text-my-danger-text">
+                <Trash2 size={14} />
+              </Button>
+            </Tooltip>
           )}
-          <button type="button" aria-label="关闭抽屉" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-my-base text-my-icon-secondary hover:bg-my-layer-1">
+          <Button size="sm" variant="ghost" aria-label="关闭抽屉" onClick={onClose}>
             <X size={15} />
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
+      <div className="my-scrollbar my-fade-scroll flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
         {!skill && (
           <div>
-            <div className="mb-1.5 text-my-2xs text-my-tertiary">快速套用预设模板</div>
+            <div className="mb-1.5 pl-0.5 text-my-2xs text-my-secondary">快速套用预设模板</div>
             <div className="flex flex-wrap gap-1.5">
               {SKILL_MARKET_PRESETS.slice(0, 3).map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => { setName(preset.name); setDescription(preset.description); setContent(preset.content) }}
-                  className="rounded-full border border-my-line bg-my-panel px-2.5 py-0.5 text-my-2xs text-my-secondary hover:border-my-line-strong hover:text-my-primary"
+                  className="rounded-my-sm border border-my-line bg-my-canvas px-2.5 py-1 text-my-2xs text-my-secondary transition-colors hover:border-my-line-strong hover:bg-my-layer-1 hover:text-my-primary"
                 >
                   {preset.name}
                 </button>
@@ -309,14 +326,22 @@ function SkillInspectorDrawer({
         </Field>
 
         {skill && eligibleAgents.length > 0 && (
-          <div className="border-t border-my-line pt-3 space-y-1.5">
-            <div className="text-my-xs font-medium text-my-primary">附加给 Agent（勾选立即生效）</div>
+          <div className="space-y-1.5 border-t border-my-line pt-3">
+            <div className="pl-0.5 text-my-xs text-my-secondary">附加给 Agent（勾选立即生效）</div>
             {eligibleAgents.map((ag) => {
               const checked = ag.skillIds.includes(skill.id)
               return (
-                <label key={ag.id} className="flex items-center gap-2 rounded-my-base border border-my-line bg-my-panel px-2.5 py-1.5 text-my-xs">
-                  <input type="checkbox" checked={checked} onChange={(e) => void toggleBindAgent(ag.id, e.target.checked)} />
-                  <Bot size={13} />
+                <label
+                  key={ag.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-my-base border border-my-line bg-my-canvas px-2.5 py-1.5 text-my-xs transition-colors hover:bg-my-layer-1"
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={busy}
+                    ariaLabel={`附加给 ${ag.name}`}
+                    onChange={(next) => void toggleBindAgent(ag.id, next)}
+                  />
+                  <AgentAvatar avatarId={ag.avatarId} size={18} />
                   <span className="truncate text-my-primary">{ag.name}</span>
                 </label>
               )
@@ -325,11 +350,21 @@ function SkillInspectorDrawer({
         )}
       </div>
 
-      <footer className="flex justify-end gap-2 border-t border-my-line px-4 py-3">
+      <footer className="flex shrink-0 justify-end gap-2 border-t border-my-line px-4 py-3">
         <Button size="sm" variant="ghost" onClick={onClose}>关闭</Button>
-        <Button size="sm" variant="primary" disabled={!name.trim() || !content.trim() || busy} onClick={() => void save()}>
-          {skill ? '保存修改' : '创建技能'}
-        </Button>
+        {disabledReason ? (
+          <Tooltip label={disabledReason} wrap>
+            <span className="inline-flex">
+              <Button size="sm" variant="primary" disabled>
+                {skill ? '保存修改' : '创建技能'}
+              </Button>
+            </span>
+          </Tooltip>
+        ) : (
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>
+            {skill ? '保存修改' : '创建技能'}
+          </Button>
+        )}
       </footer>
     </aside>
   )

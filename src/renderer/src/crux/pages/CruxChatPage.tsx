@@ -4,8 +4,8 @@ import { useAgentChatBridge } from '../agent-chat-bridge'
 import { useCrux } from '../store'
 
 /**
- * Crux 协作空间内嵌独立对话页（1:1 复刻 HiFox 图 1）：
- * 彻底隐藏冗余的内置会话侧栏与重复顶栏，保留单层极简顶栏（关闭 / Agent 切换 / 新对话 / 右上角历史下拉 / 设置），
+ * Crux 协作空间内嵌独立对话页：
+ * 隐藏内置会话侧栏与重复顶栏，保留单层极简顶栏（关闭 / Agent 切换 / 新对话 / 右上角历史下拉 / 设置），
  * 聊天流与底部圆角编写器纯净居中呈现。
  */
 export function CruxChatPage(): JSX.Element {
