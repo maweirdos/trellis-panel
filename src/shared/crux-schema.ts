@@ -27,6 +27,13 @@ export const cruxSpaceModulesPatchSchema = cruxSpaceModulesSchema.partial().stri
 const id = z.string().min(1)
 const ids = z.array(id)
 const record = z.object({ id }).passthrough()
+export const cruxAgentAvatarIdSchema = z.enum([
+  'assistant', 'research', 'design', 'engineering', 'quality', 'coordination',
+  'documentation', 'data', 'automation', 'operations'
+])
+export const cruxAgentAvatarPatchSchema = z.object({
+  id: id.max(256), avatarId: cruxAgentAvatarIdSchema.nullable()
+}).strict()
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
 export const cruxTaskWorkKindSchema = z.enum(['code', 'general'])
 const cruxWorkConversationLinkId = z.string().startsWith('thr_').refine(value => z.uuid().safeParse(value.slice(4)).success)
@@ -239,7 +246,7 @@ export const cruxSnapshotSchema = z.object({
     runs: z.array(record.extend({ at: z.string(), trigger: z.string(), outcome: z.enum(['done', 'waiting_runtime', 'skipped']), detail: z.string().optional() }))
   })),
   inbox: z.array(record.extend({ section: z.enum(['important', 'other']), kind: z.enum(['assign', 'mention', 'status', 'dispatch', 'automation', 'triage']), title: z.string(), body: z.string().optional(), taskId: id.optional(), spaceId: id.optional(), at: z.string(), read: z.boolean(), recipientIds: ids.optional(), snoozedUntil: z.string().optional(), cleared: z.boolean().optional() })),
-  agents: z.array(record.extend({ spaceId: id, name: z.string(), description: z.string().optional(), instructions: z.string(), skillIds: ids, repositories: z.array(z.object({ name: z.string(), url: z.string().optional() })), runtimeKind: z.enum(['claude-code', 'codex', 'custom']), workingDirectory: z.enum(['repo', 'temp']), enabled: z.boolean(), archived: z.boolean().optional(), exclusiveCrewId: id.optional(), createdAt: z.string() })),
+  agents: z.array(record.extend({ spaceId: id, name: z.string(), description: z.string().optional(), avatarId: cruxAgentAvatarIdSchema.optional(), instructions: z.string(), skillIds: ids, repositories: z.array(z.object({ name: z.string(), url: z.string().optional() })), runtimeKind: z.enum(['claude-code', 'codex', 'custom']), workingDirectory: z.enum(['repo', 'temp']), enabled: z.boolean(), archived: z.boolean().optional(), exclusiveCrewId: id.optional(), createdAt: z.string() })),
   skills: z.array(record.extend({ spaceId: id.optional(), name: z.string(), description: z.string().optional(), content: z.string(), createdAt: z.string() })),
   crews: z.array(record.extend({ spaceId: id, name: z.string(), description: z.string().optional(), instructions: z.string().optional(), ownerId: id.optional(), archived: z.boolean().optional(), captain: z.object({ kind: z.enum(['agent', 'member']), id, name: z.string() }), members: z.array(z.object({ kind: z.enum(['agent', 'member']), id, name: z.string() })), createdAt: z.string() }))
 }).passthrough()

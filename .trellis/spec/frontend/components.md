@@ -87,14 +87,45 @@ colored left-edge border. Keep focus and disabled behavior accessible.
 
 Use `Modal` from `my/ui.tsx` for modal tasks, including command palettes and
 imperative confirmations. It owns the themed portal, background isolation,
-focus containment/return and central Escape registration. A queued successor
-in `DialogHost` uses its request ID as the Modal key so Escape rearms.
-Nested and sibling confirmations must leave only the top modal interactive.
+focus containment/return, central Escape registration and dual-state enter/exit
+presence (`usePresence` in `my/motion.ts`). Closing immediately releases the
+Escape layer, background `inert` isolation and focus return without waiting for
+the `115ms` exit animation. **Never short-circuit `if (!open) return null` above
+`<Modal>`** (which bypasses the `115ms` exit animation): either render `<Modal
+open={open}>` directly or retain the outer wrapper via `usePresence(open,
+MOTION_EXIT_MS)` while keeping the closing state read-only. All overlay enter
+animations must end at `transform: none` so Windows ClearType text stays sharp.
+A queued successor in `DialogHost` uses its request ID as the Modal key so
+Escape rearms. Nested and sibling confirmations must leave only the top modal
+interactive.
 
-`Dropdown` owns portal positioning, focus entry/return and keyboard option
-navigation. Keep embedded text fields' editing keys and composition intact;
-custom form content does not acquire menu semantics. `Select` reuses this
-ownership and supplies listbox semantics, selected focus and typeahead.
+`Dropdown` owns portal positioning, focus entry/return, keyboard option
+navigation and directional enter/exit presence (`110ms` exit while holding its
+last measured coordinates). Pass `aria-expanded={open}` to dropdown triggers so
+buttons show expanded anchoring while open, and do not pair `<Tooltip>` with a
+native `title` attribute on the same button. Keep embedded text fields' editing
+keys and composition intact; custom form content does not acquire menu semantics.
+`Select` reuses this ownership and supplies listbox semantics, selected focus
+and typeahead. `Tooltip` adds a `160ms` hover entry debounce (instant within
+`450ms` across adjacent controls) and `95ms` directional exit.
+
+Collapsible side panels (`ContextRegion` on the left, `ConversationRightPanel`'s
+`.conversation-right-region` on the right) use persistent CSS Grid track
+transitions (`grid-template-columns: 0px ↔ target width`, `200ms`) with a fixed
+inner panel width, `inert` + `InteractionScope` isolation when collapsed, and
+`usePresence` retention during collapse so content never reflows mid-transition.
+In-page vertical disclosures use `<DisclosureGrid>` (`0fr ↔ 1fr`, `180ms`,
+single `<ChevronRight>` rotating `90deg`, with `animated={false}` above 40 rows).
+`Tabs` and `Segmented` in `my/ui.tsx` render a measured sliding pill indicator
+(`.my-tabs-indicator` / `.my-segmented-indicator`) tracked by `ResizeObserver`.
+
+Form drafts only set `hasDraft` while at least one field differs from its
+effective initial value (reverting back to empty clears the dirty state).
+Non-destructive close (`取消`/`Esc`) retains drafts silently; explicit destructive
+discard (`放弃草稿`) executes immediately with a 5–8s Undo Toast scoped to the
+same authority. Disabled primary submit controls and intercepted submit
+shortcuts (`Ctrl+Enter`/`⌘Enter`) must state the exact blocking reason and
+nudge/focus the first missing required field (`aria-invalid`).
 
 `useCopyFeedback(ownerKey)` returns `status` (`idle`, `copying`, `copied`, `error`)
 and `copy(text)`. Pass the displayed source's stable identity. Success follows
@@ -360,43 +391,28 @@ function useFocusTrap<T extends HTMLElement>() {
 
 ## Loading States
 
-### Skeleton Loading
+### Route & Lazy Module Loading
 
-```tsx
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-muted rounded ${className}`} />;
-}
+Do not flash white screens or instant full-page spinners when switching between desktop modules:
 
-// Usage
-function ListSkeleton() {
-  return (
-    <div className="space-y-2">
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-3/4" />
-    </div>
-  );
-}
-```
+- Register lazy route modules in `src/renderer/src/my/layout/page-registry.ts` so `scheduleCorePagePreload()` warms core routes during idle time and rail buttons prefetch chunks on pointer hover / keyboard focus.
+- While a cold route chunk is still loading, `MyApp` keeps the previous committed route visible and reveals only the top `2px` neutral `.my-route-pending-bar` after a `160ms` threshold.
+- Use `src/renderer/src/my/layout/PageLoading.tsx` as the `Suspense` fallback; its `.my-page-loading-indicator` delays visual reveal by `140ms` so fast cached chunks never flash a loading state.
+- For pages with asynchronous snapshot reads (such as `integrations`), cache the latest snapshot per canonical project root so returning to the tab renders cached data immediately while refreshing quietly in the background.
 
-### Loading Button
+### Inline Skeleton & Busy Controls
 
-```tsx
-function Button({ isLoading, children, ...props }: ButtonProps) {
-  return (
-    <button disabled={isLoading} {...props}>
-      {isLoading ? (
-        <span className="inline-flex items-center gap-2">
-          <Spinner className="h-4 w-4" />
-          Loading...
-        </span>
-      ) : (
-        children
-      )}
-    </button>
-  );
-}
-```
+When an in-page region is awaiting initial data, use design-system surface tokens (`bg-layer-2` / `rounded-my-base`) rather than undefined utility classes like `bg-muted`, and avoid raw English `Loading...` text in Chinese user-facing surfaces. Keep button widths stable while busy (`aria-busy` + `disabled` + semantic spinner + clear Chinese action label such as `保存中…`).
+
+---
+
+## Global Command Palette (`CommandPaletteSurface`)
+
+Both the global `Ctrl+K` palette (`src/renderer/src/my/CommandPalette.tsx`) and the collaboration workspace palette (`src/renderer/src/crux/CruxCommandPalette.tsx`) must render through the shared `CommandPaletteSurface` primitive (`src/renderer/src/my/CommandPaletteSurface.tsx`) rather than maintaining parallel modal markups or key handlers.
+
+- Always delegate visibility to `<Modal open={open} bare>` so `usePresence` exit animations (`115ms`) run intact; never short-circuit `if (!open) return null` outside `<Modal>`.
+- Provide category filtering via shared `Tabs` (`.my-tabs-indicator` spring pill), inline entity drill-down chips (`Tab` to enter entity actions, `Backspace` on empty query or first `Esc` to pop back, second `Esc` to close), IME composition guards on all key handlers, trailing active-row action verbs, and a compact `.my-kbd` shortcut footer.
+- Render structured entity previews in a detached right-side `.my-command-preview` card (`268px`, hidden `< 900px`) with `70ms` selection debounce, `130ms` `backwards` focus-fade ending strictly at `transform: none; filter: none`, and `ResizeObserver`-driven `170ms` results-container height morphing (disabled under `prefers-reduced-motion: reduce`).
 
 ---
 
@@ -408,9 +424,11 @@ function Button({ isLoading, children, ...props }: ButtonProps) {
 | `EmptyState` / `.my-empty-state` | Optical centering for empty panes |
 | `.my-scrollbar` (`scrollbar-gutter: stable`) | Prevent layout shift on scrolling regions (`auto` on compact popovers/rails) |
 | `DropdownItem.icon` + `selected` | Leading icon/badge alignment and single trailing check |
-| Toast notifications        | User feedback               |
+| `CommandPaletteSurface` | Global (`Ctrl+K`) and workspace command palettes with category tabs, drill-down chips and floating preview cards |
+| `usePresence` (`my/motion.ts`) | Dual-state enter/exit transitions for modals, menus, tooltips, drawers and collapsible panes |
+| `page-registry.ts` + `PageLoading` | Prefetched lazy routes with `160ms` top pending bar and `140ms` delayed fallback |
+| Toast notifications        | User feedback with `2px` pause-synced countdown and `.my-toast-slot` fold collapse |
 | Focus trap                 | Modals/dialogs              |
-| Skeleton loading           | Initial data fetch          |
 
 ---
 

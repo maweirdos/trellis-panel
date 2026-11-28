@@ -6,7 +6,7 @@ import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Search, X } from '
 import type { Label, Member } from './types'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
-import { MOTION_EXIT_MS, MOTION_POP_EXIT_MS, MOTION_TOOLTIP_EXIT_MS, usePresence } from './motion'
+import { MOTION_EXIT_MS, MOTION_POP_EXIT_MS, MOTION_TOOLTIP_EXIT_MS, prefersReducedMotion, usePresence } from './motion'
 
 /* ---------------- Avatar ---------------- */
 
@@ -60,7 +60,7 @@ export function AvatarStack({ members, max = 3, size = 20 }: { members: Member[]
 
 /* ---------------- Button ---------------- */
 
-type ButtonVariant = 'primary' | 'neutral' | 'ghost' | 'outline' | 'danger'
+export type ButtonVariant = 'primary' | 'soft' | 'surface' | 'neutral' | 'ghost' | 'outline' | 'danger'
 
 export function Button({
   children,
@@ -85,6 +85,8 @@ export function Button({
 }): JSX.Element {
   const variants: Record<ButtonVariant, string> = {
     primary: 'my-button-primary',
+    soft: 'my-button-soft',
+    surface: 'my-button-surface',
     neutral: 'my-button-neutral',
     ghost: 'my-button-ghost',
     outline: 'my-button-outline',
@@ -835,7 +837,8 @@ export function Modal({
   width,
   ariaLabel,
   placement = 'top',
-  fullScreen = false
+  fullScreen = false,
+  bare = false
 }: {
   open: boolean
   onClose: () => void
@@ -844,6 +847,8 @@ export function Modal({
   ariaLabel?: string
   placement?: 'top' | 'center'
   fullScreen?: boolean
+  /** 仅保留弹窗遮罩、进退场、焦点与 Esc 托管，移除默认外框底色，供分离式命令面板+悬浮预览卡组合布局使用。 */
+  bare?: boolean
 }): JSX.Element | null {
   const escId = useId()
   const parentScope = useContext(OverlayScope)
@@ -914,8 +919,12 @@ export function Modal({
             tabIndex={-1}
             data-placement={placement}
             data-state={presence.state}
-            style={{ width: fullScreen ? '100%' : width ?? 'var(--my-modal-width)' }}
-            className={clsx('my-modal-panel overflow-hidden', fullScreen ? 'my-modal-fullscreen-panel h-full max-h-none' : 'max-h-[var(--my-modal-max-height)]')}
+            style={{ width: fullScreen ? '100%' : bare ? width : width ?? 'var(--my-modal-width)' }}
+            className={clsx(
+              'my-modal-panel',
+              bare ? 'my-modal-panel-bare overflow-visible' : 'overflow-hidden',
+              fullScreen ? 'my-modal-fullscreen-panel h-full max-h-none' : 'max-h-[var(--my-modal-max-height)]'
+            )}
             onKeyDown={(e) => {
               if (e.key !== 'Tab' || e.defaultPrevented) return
               if (topModal(renderedRoot)?.panel !== panelRef.current) return
@@ -946,15 +955,28 @@ export function Switch({ checked, onChange, label, disabled = false }: { checked
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} title={label} disabled={disabled} onClick={() => onChange(!checked)} className="my-switch"><span /></button>
 }
 
-export function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }): JSX.Element {
+export function Checkbox({
+  checked,
+  onChange,
+  ariaLabel,
+  disabled = false
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  ariaLabel?: string
+  disabled?: boolean
+}): JSX.Element {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={clsx(
         'my-checkbox flex shrink-0 items-center justify-center border transition-colors',
+        disabled && 'opacity-50',
         checked
           ? 'border-my-line-accent bg-my-accent text-my-on-accent'
           : 'border-[var(--my-border-strong)] hover:border-[var(--my-border-accent-strong)]'
@@ -1111,10 +1133,10 @@ export function Tabs<T extends string>({
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={clsx(
-            'my-control my-control-sm rounded-my-md font-medium transition-colors select-none',
+            'my-control my-control-sm rounded-my-md transition-colors select-none',
             active === t.id
-              ? 'text-[var(--my-txt-primary)]'
-              : 'text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]'
+              ? 'font-medium text-[var(--my-txt-primary)]'
+              : 'font-normal text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]'
           )}
         >
           <span>{t.label}</span>
@@ -1417,5 +1439,186 @@ export function SignalMeter({
         />
       ))}
     </span>
+  )
+}
+
+/* ---------------- 纵向折叠展开（CSS Grid 0fr ↔ 1fr，支持中途打断与大列表直切降级） ---------------- */
+
+const DISCLOSURE_EXIT_MS = 185
+
+export function DisclosureGrid({
+  open,
+  animated = true,
+  className,
+  innerClassName,
+  children
+}: {
+  open: boolean
+  /** 列表分组超过 40 行时传 false，自动降级为无高度动画直切以保 60/120Hz 满帧。 */
+  animated?: boolean
+  className?: string
+  innerClassName?: string
+  children: ReactNode
+}): JSX.Element | null {
+  const shouldAnimate = animated && !prefersReducedMotion()
+  const presence = usePresence(open, shouldAnimate ? DISCLOSURE_EXIT_MS : 0)
+  const [expanded, setExpanded] = useState(open)
+  const [settled, setSettled] = useState(open)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
+  const wasMountedRef = useRef(open)
+
+  useLayoutEffect(() => {
+    innerRef.current?.toggleAttribute('inert', !open)
+  }, [open, presence.mounted])
+
+  useLayoutEffect(() => {
+    if (!shouldAnimate) {
+      setExpanded(open)
+      setSettled(open)
+      wasMountedRef.current = presence.mounted
+      return
+    }
+    let raf: number | null = null
+    let settleTimer: number | null = null
+    if (open) {
+      if (!wasMountedRef.current && presence.mounted) {
+        setExpanded(false)
+        setSettled(false)
+        // Flush initial 0fr layout before flipping to 1fr on next frame so height transitions cleanly.
+        void rootRef.current?.getBoundingClientRect()
+        raf = requestAnimationFrame(() => {
+          raf = null
+          setExpanded(true)
+        })
+      } else {
+        setExpanded(true)
+      }
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null
+        setSettled(true)
+      }, DISCLOSURE_EXIT_MS)
+    } else {
+      setSettled(false)
+      setExpanded(false)
+    }
+    wasMountedRef.current = presence.mounted
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf)
+      if (settleTimer !== null) window.clearTimeout(settleTimer)
+    }
+  }, [open, presence.mounted, shouldAnimate])
+
+  if (!presence.mounted) return null
+  if (!shouldAnimate) {
+    return (
+      <div className={className}>
+        <div className={innerClassName}>{children}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className={clsx('my-disclosure', className)}
+      data-open={expanded ? 'true' : 'false'}
+      data-animated="true"
+      data-settled={settled ? 'true' : undefined}
+    >
+      <div ref={innerRef} className={clsx('my-disclosure-inner', innerClassName)} aria-hidden={!open || undefined}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- 分段选择器（带测量式弹簧滑动底托） ---------------- */
+
+export function Segmented({
+  value,
+  size = 'md',
+  ariaLabel,
+  className,
+  children
+}: {
+  /** 当前选中标识，变化时平滑滑移选中底托。 */
+  value: string
+  size?: 'sm' | 'md'
+  ariaLabel?: string
+  className?: string
+  children: ReactNode
+}): JSX.Element {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const measuredOnce = useRef(false)
+  const [pill, setPill] = useState<{ x: number; y: number; w: number; h: number; ready: boolean; instant: boolean }>({
+    x: 0,
+    y: 2,
+    w: 0,
+    h: 0,
+    ready: false,
+    instant: true
+  })
+
+  useLayoutEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    const sync = (instantOverride?: boolean): void => {
+      const selected = track.querySelector<HTMLElement>('.my-segment[aria-pressed="true"], .my-segment[aria-selected="true"]')
+      if (!selected) {
+        setPill((prev) => (prev.ready ? { ...prev, ready: false } : prev))
+        return
+      }
+      const trackRect = track.getBoundingClientRect()
+      const selRect = selected.getBoundingClientRect()
+      if (trackRect.width <= 0 || selRect.width <= 0) return
+      // Divide out any ancestor transform scale (e.g. during modal enter animation) so local CSS coordinates stay exact.
+      const scaleX = track.offsetWidth > 0 ? trackRect.width / track.offsetWidth : 1
+      const scaleY = track.offsetHeight > 0 ? trackRect.height / track.offsetHeight : 1
+      const x = Math.round(((selRect.left - trackRect.left) / scaleX) * 10) / 10
+      const y = Math.round(((selRect.top - trackRect.top) / scaleY) * 10) / 10
+      const w = Math.round((selRect.width / scaleX) * 10) / 10
+      const h = Math.round((selRect.height / scaleY) * 10) / 10
+      const instant = instantOverride ?? !measuredOnce.current
+      measuredOnce.current = true
+      setPill((prev) =>
+        prev.x === x && prev.y === y && prev.w === w && prev.h === h && prev.ready && prev.instant === instant
+          ? prev
+          : { x, y, w, h, ready: true, instant }
+      )
+    }
+    sync()
+    const observer = new ResizeObserver(() => sync(true))
+    observer.observe(track)
+    const selected = track.querySelector<HTMLElement>('.my-segment[aria-pressed="true"], .my-segment[aria-selected="true"]')
+    if (selected) observer.observe(selected)
+    return () => observer.disconnect()
+  }, [value, size])
+
+  return (
+    <div
+      ref={trackRef}
+      role="group"
+      aria-label={ariaLabel}
+      data-sliding="true"
+      data-indicator-ready={pill.ready || undefined}
+      className={clsx('my-segmented', size === 'sm' && 'my-segmented-sm', className)}
+    >
+      <span
+        className="my-segmented-indicator"
+        data-ready={pill.ready || undefined}
+        data-instant={pill.instant || undefined}
+        style={
+          {
+            '--my-seg-x': `${pill.x}px`,
+            '--my-seg-y': `${pill.y}px`,
+            '--my-seg-w': `${pill.w}px`,
+            '--my-seg-h': `${pill.h}px`
+          } as CSSProperties
+        }
+        aria-hidden="true"
+      />
+      {children}
+    </div>
   )
 }

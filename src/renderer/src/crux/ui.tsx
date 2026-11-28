@@ -15,7 +15,7 @@ import type {
   CruxTaskLabel,
   CruxTaskStatus
 } from '@shared/crux'
-import { PRIORITY_ICON_CLASS, PRIORITY_LABEL, STATUS_CATEGORY_CLASS } from './store'
+import { PRIORITY_ICON_CLASS, PRIORITY_LABEL, STATUS_CATEGORY_CLASS, statusDisplayName } from './store'
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }): JSX.Element {
   return (
@@ -48,16 +48,16 @@ export function MemberChip({ member, size = 'md' }: { member?: CruxMember; size?
 export function StatusBadge({ status }: { status?: CruxTaskStatus }): JSX.Element {
   if (!status) return <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs text-my-tertiary">—</span>
   return (
-    <span className={`inline-flex items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-xs font-medium ${STATUS_CATEGORY_CLASS[status.category] ?? 'bg-my-layer-1 text-my-tertiary'}`}>
+    <span className={`inline-flex items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-xs font-normal ${STATUS_CATEGORY_CLASS[status.category] ?? 'bg-my-layer-1 text-my-tertiary'}`}>
       <FlowIcon name={(status.category === 'in_review' ? 'review' : status.category) as FlowIconName} size={13} semantic />
-      {status.name}
+      {statusDisplayName(status)}
     </span>
   )
 }
 
 export function PriorityBadge({ priority }: { priority: CruxPriority }): JSX.Element {
   return (
-    <span data-priority={priority} className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-medium text-my-secondary">
+    <span data-priority={priority} className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
       <PriorityIcon priority={priority} size={13} className={PRIORITY_ICON_CLASS[priority]} />
       {PRIORITY_LABEL[priority]}
     </span>
@@ -76,7 +76,7 @@ export function ExecutorBadge({ executor, dispatchNote }: { executor: { kind: 'a
   if (!executor) return null
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-medium text-my-secondary"
+      className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary"
       title={dispatchNote ?? `执行槽：${executor.name}（${executor.kind === 'agent' ? 'Agent' : '小队'}）`}
     >
       <FlowIcon name={executor.kind === 'agent' ? 'agents' : 'crews'} size={14} />{executor.name}
@@ -117,9 +117,9 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   const hintId = `${generatedId}-hint`
   return (
     <div className="flex min-w-0 flex-col gap-1.5 text-my-sm text-my-secondary" role={direct ? undefined : 'group'} aria-labelledby={direct ? undefined : labelId}>
-      <label id={labelId} htmlFor={controlId} className="my-item-title">{label}</label>
+      <label id={labelId} htmlFor={controlId} className="pl-0.5 text-my-xs font-normal text-my-secondary">{label}</label>
       {direct ? cloneElement(children, { id: controlId, 'aria-describedby': hint ? [children.props['aria-describedby'], hintId].filter(Boolean).join(' ') : children.props['aria-describedby'] }) : children}
-      {hint && <span id={hintId} className="my-item-description">{hint}</span>}
+      {hint && <span id={hintId} className="my-item-description pl-0.5">{hint}</span>}
     </div>
   )
 }
@@ -128,7 +128,7 @@ export { Select, type SelectOption }
 
 export const inputClass = 'my-input w-full'
 export const compactInputClass = inputClass.replace('w-full', 'w-auto')
-export const textareaClass = 'my-input h-auto w-full min-w-0 resize-y whitespace-pre-wrap break-words'
+export const textareaClass = 'my-input my-scrollbar h-auto w-full min-w-0 resize-none whitespace-pre-wrap break-words'
 
 export function formatCollaborationTime(value: string): string {
   const date = new Date(value)

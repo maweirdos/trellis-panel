@@ -8,8 +8,10 @@
   display: grid;
   flex: none;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   grid-template-columns: min(var(--my-sidebar-width), max(220px, calc(100vw - 360px)));
+  grid-template-rows: minmax(0, 1fr);
   transition: grid-template-columns var(--my-motion-normal) var(--my-ease-out);
 }
 .my-root .my-context-region.is-collapsed { grid-template-columns: 0px; }

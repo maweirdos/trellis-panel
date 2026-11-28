@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { clsx } from 'clsx'
-import { Bot, ChevronDown } from 'lucide-react'
+import { Bot, Calendar, ChevronDown, Folder, Tag } from 'lucide-react'
 import type { CruxSnapshot, CruxTask, CruxTaskPatchInput, CruxViewFilter } from '@shared/crux'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { api, hasIpc } from '../api'
@@ -9,15 +9,16 @@ import { useApp } from '../store'
 import { WorkItemsPage } from '../my/pages/WorkItemsPage'
 import type { WorkItemsSource, WorkItemsStore } from '../my/pages/work-items/work-items-context'
 import type { GroupBy, Issue, IssueFilters, OrderBy, StateGroup, WorkItemLayout } from '../my/types'
-import { Button, Dropdown, DropdownHeader, DropdownItem, EmptyState, LabelPill, SearchInput } from '../my/ui'
+import { Button, Dropdown, DropdownDivider, DropdownHeader, DropdownItem, EmptyState, LabelPill, SearchInput } from '../my/ui'
 import { PageToolbar } from '../my/layout/PageLayout'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from './collaboration-platform-store'
 import { applyTaskFilter, statusDisplayName, useCrux, type CruxTaskFilterState } from './store'
 import { isActiveRunStatus, RUN_STATUS_META, useTaskRuns } from './task-run-store'
+import { StateGroupIcon } from '../my/icons'
 import { LabelChip } from './ui'
 import { TaskOutputReviewBoardBadge } from './task-output-review/task-output-review'
-import { deriveTaskWorkspaceDataset, CRUX_STATE_GROUPS } from './task-workspace-adapter'
+import { deriveTaskWorkspaceDataset, CRUX_STATE_GROUPS, cruxStatusColor } from './task-workspace-adapter'
 import { MyNextSteps } from './cockpit/MyNextSteps'
 import { EmbeddedTaskPost } from './pages/TaskDetailDrawer'
 import { taskSourceKey } from './pages/task-detail/use-task-source'
@@ -348,19 +349,68 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
         }
       } : scope === 'mine' ? { tabs: [{ id: 'all' as const, label: '全部' }], matchesTab: () => true } : {}),
       additionalFilterCount: Number(Boolean(filter.keyword)) + (filter.typeIds?.length ?? 0) + (filter.statusIds?.length ?? 0) + Number(Boolean(filter.projectId)) + Number(Boolean(filter.iterationId)) + Number(Boolean(personalSpaceId)),
-      filterContent: <>
-        <div className="px-3 py-1.5"><SearchInput value={filter.keyword ?? ''} onChange={(keyword) => setFilter({ keyword })} placeholder="搜索任务编号或标题" /></div>
-        <DropdownHeader>任务类型</DropdownHeader>
-        {snapshot.taskTypes.filter((type) => !filterSpaceId || type.spaceId === filterSpaceId).map((type) =>
-          <DropdownItem key={type.id} selected={filter.typeIds?.includes(type.id)} onClick={() => setFilter({ typeIds: toggleValue(filter.typeIds ?? [], type.id) })}>{type.name}</DropdownItem>)}
-        <DropdownHeader>工作状态</DropdownHeader>
-        {snapshot.taskStatuses.filter((status) => !filterSpaceId || status.spaceId === filterSpaceId).map((status) =>
-          <DropdownItem key={status.id} selected={filter.statusIds?.includes(status.id)} onClick={() => setFilter({ statusIds: toggleValue(filter.statusIds ?? [], status.id) })}>{statusDisplayName(status)}</DropdownItem>)}
-        <DropdownHeader>版本</DropdownHeader>
-        {data.cycles.filter((version) => !filterSpaceId || version.projectId === filterSpaceId).map((version) => <DropdownItem key={version.id} selected={filter.iterationId === version.id} onClick={() => setFilter({ iterationId: filter.iterationId === version.id ? undefined : version.id })}>{version.name}</DropdownItem>)}
-        <DropdownHeader>专项</DropdownHeader>
-        {data.modules.filter((project) => !filterSpaceId || project.projectId === filterSpaceId).map((project) => <DropdownItem key={project.id} selected={filter.projectId === project.id} onClick={() => setFilter({ projectId: filter.projectId === project.id ? undefined : project.id })}>{project.name}</DropdownItem>)}
-      </>
+      detailOpen: Boolean(state.openTaskId && snapshot.tasks.some((task) => task.id === state.openTaskId && (scope === 'mine' || task.spaceId === spaceId))),
+      hideGenericStateGroupFilter: true,
+      filterSearch: (
+        <>
+          <div className="shrink-0 px-1 pt-0.5 pb-1">
+            <SearchInput size="sm" value={filter.keyword ?? ''} onChange={(keyword) => setFilter({ keyword })} placeholder="搜索任务编号或标题" />
+          </div>
+          <DropdownDivider />
+        </>
+      ),
+      filterHeader: (() => {
+        const visibleStatuses = snapshot.taskStatuses.filter((status) => !filterSpaceId || status.spaceId === filterSpaceId)
+        if (visibleStatuses.length === 0) return null
+        return <>
+          <DropdownHeader>状态</DropdownHeader>
+          {visibleStatuses.map((status) => {
+            const stateGroup = CRUX_STATE_GROUPS[status.category]
+            const stateColor = cruxStatusColor(status.category)
+            return (
+              <DropdownItem
+                key={status.id}
+                icon={<StateGroupIcon stateGroup={stateGroup} color={stateColor} size={13} />}
+                selected={filter.statusIds?.includes(status.id)}
+                onClick={() => setFilter({ statusIds: toggleValue(filter.statusIds ?? [], status.id) })}
+              >
+                {statusDisplayName(status)}
+              </DropdownItem>
+            )
+          })}
+        </>
+      })(),
+      filterContent: (() => {
+        const visibleTypes = snapshot.taskTypes.filter((type) => !filterSpaceId || type.spaceId === filterSpaceId)
+        const visibleVersions = data.cycles.filter((version) => !filterSpaceId || version.projectId === filterSpaceId)
+        const visibleProjects = data.modules.filter((project) => !filterSpaceId || project.projectId === filterSpaceId)
+        return <>
+          {visibleTypes.length > 0 && <>
+            <DropdownHeader>任务类型</DropdownHeader>
+            {visibleTypes.map((type) => (
+              <DropdownItem key={type.id} icon={<Tag size={12} />} selected={filter.typeIds?.includes(type.id)} onClick={() => setFilter({ typeIds: toggleValue(filter.typeIds ?? [], type.id) })}>
+                {type.name}
+              </DropdownItem>
+            ))}
+          </>}
+          {visibleVersions.length > 0 && <>
+            <DropdownHeader>版本</DropdownHeader>
+            {visibleVersions.map((version) => (
+              <DropdownItem key={version.id} icon={<Calendar size={12} />} selected={filter.iterationId === version.id} onClick={() => setFilter({ iterationId: filter.iterationId === version.id ? undefined : version.id })}>
+                {version.name}
+              </DropdownItem>
+            ))}
+          </>}
+          {visibleProjects.length > 0 && <>
+            <DropdownHeader>专项</DropdownHeader>
+            {visibleProjects.map((project) => (
+              <DropdownItem key={project.id} icon={<Folder size={12} />} selected={filter.projectId === project.id} onClick={() => setFilter({ projectId: filter.projectId === project.id ? undefined : project.id })}>
+                {project.name}
+              </DropdownItem>
+            ))}
+          </>}
+        </>
+      })()
     },
     store: {
       data, layout, groupBy, orderBy, filters, display, workItemsView: 'items', workItemsTab: tab,
@@ -401,9 +451,7 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
             onClick={toggle}
             className={clsx(
               'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
-              relation !== 'assigned'
-                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
-                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+              relation !== 'assigned' ? 'my-button-surface' : 'my-button-ghost'
             )}
           >
             <span>{PERSONAL_RELATIONS.find((item) => item.id === relation)?.label}</span>
@@ -420,9 +468,7 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
             onClick={toggle}
             className={clsx(
               'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
-              personalStatus?.id !== 'open'
-                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
-                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+              personalStatus?.id !== 'open' ? 'my-button-surface' : 'my-button-ghost'
             )}
           >
             <span>{personalStatus?.label ?? '已筛选状态'}</span>
@@ -439,9 +485,7 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
             onClick={toggle}
             className={clsx(
               'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
-              personalSpaceId
-                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
-                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+              personalSpaceId ? 'my-button-surface' : 'my-button-ghost'
             )}
           >
             <span className="max-w-40 truncate">{snapshot.spaces.find((space) => space.id === personalSpaceId)?.name ?? '全部空间'}</span>
@@ -461,9 +505,7 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
             onClick={toggle}
             className={clsx(
               'my-control my-control-sm flex items-center gap-1.5 rounded-my-base px-2.5 transition-colors',
-              filter.iterationId
-                ? 'border border-my-line-strong bg-my-layer-2 text-my-primary font-medium'
-                : 'border border-my-line bg-my-panel text-my-secondary hover:border-my-line-strong hover:text-my-primary'
+              filter.iterationId ? 'my-button-surface' : 'my-button-ghost'
             )}
           >
             <span className="max-w-40 truncate">{snapshot.iterations.find((version) => version.id === filter.iterationId)?.name ?? '全部版本'}</span>

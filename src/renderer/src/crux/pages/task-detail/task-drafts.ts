@@ -42,10 +42,29 @@ useCrux.subscribe(() => {
   if (changed) emit()
 })
 
+function sameDraftValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, index) => sameDraftValue(item, b[index]))
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+    const aObj = a as Record<string, unknown>
+    const bObj = b as Record<string, unknown>
+    const keysA = Object.keys(aObj)
+    const keysB = Object.keys(bObj)
+    if (keysA.length !== keysB.length) return false
+    return keysA.every((k) => Object.prototype.hasOwnProperty.call(bObj, k) && sameDraftValue(aObj[k], bObj[k]))
+  }
+  return false
+}
+
 export interface TaskDraft extends DraftScope {
   hasDraft: boolean
   stale: boolean
   discard(): void
+  /** Capture current dirty fields so a local undo toast can restore them under the same authority. */
+  snapshot(): ReadonlyMap<string, { value: unknown }> | null
+  restore(fields: ReadonlyMap<string, { value: unknown }>): boolean
   review(): void
   /** A known success clears only the exact submitted fields, including after a close. */
   acknowledge(fields?: readonly string[]): () => void
@@ -67,6 +86,18 @@ export function useTaskDraft(snapshot: CruxSnapshot, context: CruxWorkspaceConte
   return {
     ...captured, hasDraft: Boolean(entry?.fields.size), stale: Boolean(entry && entry.base !== scope.base),
     discard: () => { if (valid(captured) && drafts.delete(key)) emit() },
+    snapshot: () => {
+      const current = drafts.get(key)
+      return current?.fields.size ? new Map(current.fields) : null
+    },
+    restore: (fields) => {
+      if (!valid(captured) || !fields.size) return false
+      drafts.delete(key)
+      drafts.set(key, { ...captured, fields: new Map(fields) })
+      while (drafts.size > MAX_DRAFTS) { const oldest = drafts.keys().next(); if (oldest.done) break; drafts.delete(oldest.value) }
+      emit()
+      return true
+    },
     review: () => { if (valid(captured) && entry) { drafts.set(key, { ...entry, base: scope.base }); emit() } },
     acknowledge: (fields) => {
       const submitted = drafts.get(key)
@@ -96,7 +127,16 @@ export function useTaskDraftField<T>(scope: TaskDraft, field: string, initial: T
     const previous = drafts.get(scope.key)
     const stored = previous?.fields.get(field)
     const next = typeof action === 'function' ? (action as (previous: T) => T)(stored ? stored.value as T : fallback) : action
-    if (stored && Object.is(stored.value, next)) return
+    if (sameDraftValue(next, fallback)) {
+      if (!stored) return
+      const fields = new Map(previous?.fields)
+      fields.delete(field)
+      if (fields.size && previous) drafts.set(scope.key, { ...previous, fields })
+      else drafts.delete(scope.key)
+      emit()
+      return
+    }
+    if (stored && sameDraftValue(stored.value, next)) return
     const fields = new Map(previous?.fields)
     fields.set(field, { value: next })
     drafts.delete(scope.key)

@@ -101,7 +101,7 @@
 /* 延迟柔显的 PageLoading：140ms 内就绪则完全不露转圈，消除短加载闪烁 */
 @keyframes my-loading-reveal {
   from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  to { opacity: 1; transform: none; }
 }
 
 .my-root .my-page-loading {
@@ -236,7 +236,7 @@
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: none;
   }
 }
 
@@ -258,7 +258,7 @@
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: none;
   }
 }
 
@@ -288,7 +288,7 @@
 }
 
 .my-root .my-modal-panel[data-placement='center'][data-state='open'] {
-  animation: my-modal-center-in var(--my-motion-normal) var(--my-ease-spring) both;
+  animation: my-modal-center-in var(--my-motion-normal) var(--my-ease-spring) backwards;
 }
 
 .my-root .my-modal-panel[data-placement='center'][data-state='closing'] {
@@ -296,7 +296,7 @@
 }
 
 .my-root .my-modal-panel[data-placement='top'][data-state='open'] {
-  animation: my-modal-top-in var(--my-motion-page) var(--my-ease-spring) both;
+  animation: my-modal-top-in var(--my-motion-page) var(--my-ease-spring) backwards;
 }
 
 .my-root .my-modal-panel[data-placement='top'][data-state='closing'] {
@@ -331,7 +331,7 @@
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: none;
   }
 }
 
@@ -360,7 +360,7 @@
 }
 
 .my-root .my-tooltip[data-state='open'] {
-  animation: my-tooltip-in var(--my-motion-fast) var(--my-ease-spring) both;
+  animation: my-tooltip-in var(--my-motion-fast) var(--my-ease-spring) backwards;
 }
 
 .my-root .my-tooltip[data-state='closing'] {
@@ -376,7 +376,7 @@
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: none;
   }
 }
 
@@ -392,7 +392,7 @@
 }
 
 .my-root .my-task-surface[data-task-presentation='preview'][data-state='open'] {
-  animation: my-drawer-right-in var(--my-motion-normal) var(--my-ease-spring) both;
+  animation: my-drawer-right-in var(--my-motion-normal) var(--my-ease-spring) backwards;
 }
 
 .my-root .my-task-surface[data-task-presentation='preview'][data-state='closing'] {
@@ -455,7 +455,90 @@
 @keyframes my-check-pop {
   0% { transform: scale(0.75); }
   65% { transform: scale(1.08); }
-  100% { transform: scale(1); }
+  100% { transform: none; }
+}
+
+.my-root .my-star-pop {
+  animation: my-check-pop 220ms var(--my-ease-spring-subtle) both;
+}
+
+/* 纵向折叠展开（CSS Grid 0fr ↔ 1fr，支持中途打断，>40 行通过 data-animated='false' 降级） */
+.my-root .my-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--my-ease-out),
+    opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-disclosure[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.my-root .my-disclosure[data-animated='false'] {
+  transition: none;
+}
+
+.my-root .my-disclosure-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.my-root .my-disclosure[data-open='true'][data-settled='true'] > .my-disclosure-inner {
+  overflow: visible;
+}
+
+.my-root .my-disclosure-chevron {
+  flex-shrink: 0;
+  transition: transform var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-disclosure-chevron[data-open='true'] {
+  transform: rotate(90deg);
+}
+
+/* Segmented 分段器弹簧滑动选中底托 */
+.my-root .my-segmented[data-sliding='true'] {
+  position: relative;
+}
+
+.my-root .my-segmented[data-sliding='true'] > .my-segment,
+.my-root .my-segmented[data-sliding='true'] > .my-tooltip-anchor {
+  position: relative;
+  z-index: 1;
+}
+
+.my-root .my-segmented-indicator {
+  position: absolute;
+  top: var(--my-seg-y, var(--my-space-2));
+  left: 0;
+  height: var(--my-seg-h, calc(100% - var(--my-space-4)));
+  width: var(--my-seg-w, 0px);
+  border-radius: var(--my-control-radius);
+  background: var(--my-segment-active-bg);
+  box-shadow: var(--my-segment-active-shadow);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(var(--my-seg-x, 0px), 0, 0);
+  transition:
+    transform var(--my-motion-normal) var(--my-ease-spring),
+    width var(--my-motion-normal) var(--my-ease-spring),
+    opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-segmented-indicator[data-ready='true'] {
+  opacity: 1;
+}
+
+.my-root .my-segmented-indicator[data-instant='true'] {
+  transition: opacity var(--my-motion-fast) var(--my-ease-out);
+}
+
+.my-root .my-segmented[data-sliding='true'][data-indicator-ready='true'] .my-segment:is([aria-pressed='true'], [aria-selected='true']) {
+  background: transparent;
+  box-shadow: none;
 }
 
 .my-root .my-checkbox {
@@ -513,6 +596,41 @@
   z-index: 1;
 }
 
+/* 命令面板结果区平滑高度过渡、钻取胶囊进场与悬浮预览卡定焦淡入 */
+@keyframes my-command-chip-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-4px, 0, 0) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes my-command-preview-focus {
+  from {
+    opacity: 0.28;
+    transform: translate3d(0, 2px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.my-root .my-command-scope-chip {
+  animation: my-command-chip-in 140ms var(--my-ease-spring) backwards;
+}
+
+.my-root .my-command-results-wrap[data-ready='true'] {
+  transition: height 170ms var(--my-ease-out);
+}
+
+.my-root .my-command-preview-body {
+  animation: my-command-preview-focus 130ms var(--my-ease-out) backwards;
+}
+
 /* ---------------- 8. 减少动态效果全局守卫 ---------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -525,7 +643,10 @@
   .my-root .my-tooltip,
   .my-root .my-task-surface,
   .my-root.my-app-window,
-  .my-root .my-checkbox-mark path {
+  .my-root .my-checkbox-mark path,
+  .my-root .my-star-pop,
+  .my-root .my-command-scope-chip,
+  .my-root .my-command-preview-body {
     animation: none !important;
   }
 
@@ -534,6 +655,10 @@
   }
 
   .my-root .my-tabs-indicator,
+  .my-root .my-segmented-indicator,
+  .my-root .my-disclosure,
+  .my-root .my-disclosure-chevron,
+  .my-root .my-command-results-wrap,
   .my-root .my-header-collapse,
   .my-root .my-workspace-center,
   .my-root .my-switch > span,

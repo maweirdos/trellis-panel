@@ -22,6 +22,7 @@ export function BoardPage(): JSX.Element | null {
   const applyView = useCrux((s) => s.applySavedView)
   const setFilter = useCrux((s) => s.setTaskFilter)
   const openTask = useCrux((s) => s.openTask)
+  const openTaskId = useCrux((s) => s.openTaskId)
   const run = useCrux((s) => s.run)
   const busy = useCrux((s) => s.busy)
   const typeWorkflows = useCollaborationPlatform((s) => s.typeWorkflows)
@@ -68,13 +69,13 @@ export function BoardPage(): JSX.Element | null {
         onChange={(val) => { setGroupBy(val as GroupBy); applyView(null) }}
         options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({ value: g, label: GROUP_LABEL[g] }))}
       />
-      <Button size="sm" disabled={readOnly} onClick={() => setSaving(!saving)}><BookmarkPlus size={14} />保存视图</Button><Button size="sm" variant="primary" disabled={!spaceId || readOnly} onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button>
+      <Button size="sm" variant={saving ? 'surface' : 'ghost'} disabled={readOnly} onClick={() => setSaving(!saving)}><BookmarkPlus size={14} />保存视图</Button><span className="my-toolbar-divider" aria-hidden="true" /><Button size="sm" variant={openTaskId ? 'outline' : 'soft'} disabled={!spaceId || readOnly} onClick={() => setCreateOpen(true)}><Plus size={14} />新建任务</Button>
     </div>} />
     <TaskFilters />
     <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-my-xs text-my-tertiary"><input type="checkbox" checked={showTriage} onChange={(e) => setShowTriage(e.target.checked)} />显示待分拣</label>
       {savedViews.map((view) => <span key={view.id} className={`flex items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs ${view.id === activeViewId ? 'border-my-line-strong bg-my-layer-1-active text-my-primary' : 'border-my-line text-my-secondary'}`}><button type="button" aria-pressed={view.id === activeViewId} onClick={() => { setGroupBy(view.groupBy); applyView(view.id) }}>{view.name}</button><button type="button" disabled={busy || readOnly} aria-label={`删除视图 ${view.name}`} onClick={() => void run('删除视图', () => api.crux.removeView({ id: view.id })).then((r) => { if (r?.ok && activeViewId === view.id) applyView(null) })}><X size={14} /></button></span>)}
     </div>
-    {saving && <div className="flex items-center gap-2"><input aria-label="视图名称" autoFocus className={`${inputClass} max-w-64`} placeholder="视图名称" value={viewName} onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveView() }} /><Button size="sm" variant="primary" disabled={!viewName.trim() || busy} onClick={() => void saveView()}>保存筛选和分组</Button><Button size="sm" onClick={() => setSaving(false)}>取消</Button></div>}
+    {saving && <div className="flex items-center gap-2"><input aria-label="视图名称" autoFocus className={`${inputClass} max-w-64`} placeholder="视图名称" value={viewName} onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveView() }} /><Button size="sm" variant="primary" disabled={!viewName.trim() || busy} onClick={() => void saveView()}>保存筛选和分组</Button><Button size="sm" variant="ghost" onClick={() => setSaving(false)}>取消</Button></div>}
     <div className="my-scrollbar min-h-0 flex-1 overflow-x-auto">
       {columns.length === 0 ? <EmptyState title="暂无分组" description="先在空间配置中添加任务状态" /> : (() => {
         const hasPopulated = columns.some((column) => column.tasks.length > 0)

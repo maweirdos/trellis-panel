@@ -7,7 +7,7 @@ import type {
   cruxTaskWorkflowArtifactSchema, cruxTaskWorkflowEventSchema, cruxTaskWorkflowSchema,
   cruxTransitionTaskInputSchema, cruxVersionDeliverySchema, cruxRecordVersionDeliveryInputSchema,
   cruxMilestoneSchema, cruxSaveMilestoneInputSchema, cruxMilestoneCommandInputSchema, cruxInitialTaskTypeSchema,
-  cruxSpaceTemplateSchema, cruxSpaceModulesSchema,
+  cruxSpaceTemplateSchema, cruxSpaceModulesSchema, cruxAgentAvatarIdSchema, cruxAgentAvatarPatchSchema,
   cruxTaskOutputReviewSchema, cruxTaskOutputReviewPatchSchema, cruxTaskOutputReviewOutputSchema, cruxTaskOutputReviewRecordSchema, cruxTaskOutputReviewStatusSchema
 } from './crux-schema'
 
@@ -392,11 +392,15 @@ export type CruxRuntimeKind = 'claude-code' | 'codex' | 'custom'
 
 export type CruxWorkingDirectoryMode = 'repo' | 'temp'
 
+export type CruxAgentAvatarId = z.infer<typeof cruxAgentAvatarIdSchema>
+export type CruxSaveAgentInput = (CruxAgentInput & { id?: CruxID }) | z.infer<typeof cruxAgentAvatarPatchSchema>
+
 export interface CruxAgent {
   id: CruxID
   spaceId: CruxID
   name: string
   description?: string
+  avatarId?: CruxAgentAvatarId
   /** 职责与工作方式指令 */
   instructions: string
   skillIds: CruxID[]
@@ -549,6 +553,7 @@ export interface CruxAgentInput {
   spaceId: CruxID
   name: string
   description?: string
+  avatarId?: CruxAgentAvatarId
   instructions: string
   skillIds?: CruxID[]
   repositories?: Array<{ name: string; url?: string }>
@@ -659,7 +664,7 @@ export interface CruxApi {
   clearInbox: (input: { ids?: CruxID[]; all?: boolean; section?: CruxInboxSection }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   restoreInbox: (input: { id: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 
-  saveAgent: (input: CruxAgentInput & { id?: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
+  saveAgent: (input: CruxSaveAgentInput) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
   /** 归档 Agent，保留历史引用；saveAgent({ archived:false, ... }) 恢复。 */
   removeAgent: (input: { id: CruxID }) => Promise<{ ok: true; data: CruxSnapshot; context?: CruxWorkspaceContext } | CruxFailure>
 

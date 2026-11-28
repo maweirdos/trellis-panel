@@ -39,8 +39,12 @@ export interface WorkItemsSource {
     labelColor?: (label: Label) => string
     renderLabel?: (label: Label) => ReactNode
     renderBoardReview?: (issue: Issue) => ReactNode
+    filterSearch?: ReactNode
+    filterHeader?: ReactNode
     filterContent?: ReactNode
+    hideGenericStateGroupFilter?: boolean
     additionalFilterCount?: number
+    detailOpen?: boolean
     startDateLabel?: string
     dueDateLabel?: string
   }

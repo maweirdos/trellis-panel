@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ListTree,
-  MoreHorizontal,
   Plus,
   Settings2,
   SlidersHorizontal
@@ -24,11 +23,13 @@ import {
   Avatar,
   Button,
   Checkbox,
+  DisclosureGrid,
   Dropdown,
   DropdownHeader,
   DropdownItem,
   EmptyState,
   LabelPill,
+  Segmented,
   Tabs,
   Tooltip,
   formatDate
@@ -650,6 +651,7 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
   const source = useWorkItemsSource()
   const { data, openIssue, updateIssue, favorites, toggleFavorite } = useWorkItems()
   const isFav = favorites.includes(issue.id)
+  const [starPopTick, setStarPopTick] = useState(0)
   const state = data.states.find((s) => s.id === issue.stateId)
   const assignee = data.members.find((m) => m.id === issue.assigneeId)
   const labels = issue.labelIds
@@ -705,14 +707,15 @@ function ListRow({ issue, ident, focused, rowIdx }: { issue: Issue; ident: strin
         title={isFav ? '取消收藏' : '收藏'}
         onClick={(e) => {
           e.stopPropagation()
+          if (!isFav) setStarPopTick((t) => t + 1)
           toggleFavorite(issue.id)
         }}
         className={clsx(
-          'flex h-5 w-5 shrink-0 items-center justify-center rounded',
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-my-base transition-colors',
           isFav ? 'text-my-warning' : 'text-my-icon-tertiary opacity-0 group-hover:opacity-100 hover:text-my-warning'
         )}
       >
-        <Star size={12} className={isFav ? 'fill-current' : ''} />
+        <Star key={starPopTick} size={12} className={clsx(isFav && 'fill-current', starPopTick > 0 && isFav && 'my-star-pop')} />
       </button>
       <span className="ml-1 flex shrink-0 items-center">
         <IssueAssignees issue={issue} />
@@ -789,44 +792,39 @@ function ListLayout({
             <div className="group flex h-9 items-center gap-1.5 border-b border-my-line px-3">
               <button
                 type="button"
+                aria-expanded={!isCollapsed}
                 onClick={() => onToggleGroup(g.key)}
-                className="flex min-w-0 items-center gap-1.5 rounded text-left hover:bg-my-layer-1-hover"
+                className="flex min-w-0 items-center gap-1.5 rounded-my-base px-1 py-0.5 text-left transition-colors hover:bg-my-layer-1-hover"
               >
                 <ChevronRight
                   size={12}
-                  className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
+                  className="my-disclosure-chevron text-my-icon-tertiary"
+                  data-open={!isCollapsed || undefined}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="my-item-title truncate">{g.title}</span>
-                <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
+                <span className="truncate text-my-sm font-normal text-my-secondary">{g.title}</span>
+                <span className="shrink-0 text-my-xs tabular-nums text-my-tertiary">{g.issues.length}</span>
               </button>
-              <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                 <Tooltip label="新建任务">
                   <button
                     type="button"
+                    aria-label={`在${g.title}下新建任务`}
                     disabled={!source.capabilities.create}
                     onClick={onCreate}
-                    className="flex h-6 w-6 items-center justify-center rounded text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary"
+                    className="flex h-6 w-6 items-center justify-center rounded-my-base text-my-icon-tertiary transition-colors hover:bg-my-layer-1-hover hover:text-my-secondary"
                   >
                     <Plus size={13} />
                   </button>
                 </Tooltip>
-                <Tooltip label={isCollapsed ? '展开分组' : '折叠分组'}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleGroup(g.key)}
-                    className="flex h-6 w-6 items-center justify-center rounded text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary"
-                  >
-                    <MoreHorizontal size={13} />
-                  </button>
-                </Tooltip>
               </div>
             </div>
-            {!isCollapsed &&
-              g.issues.map((i, li) => {
+            <DisclosureGrid open={!isCollapsed} animated={g.issues.length <= 40}>
+              {g.issues.map((i, li) => {
                 const base = offsets.get(g.key) ?? 0
                 return <ListRow key={i.id} issue={i} ident={ident} focused={base + li === focusIdx} rowIdx={base + li} />
               })}
+            </DisclosureGrid>
           </section>
         )
       })}
@@ -966,7 +964,7 @@ function BoardLayout({
                   className={clsx('shrink-0 text-my-icon-tertiary transition-transform', !isCollapsed && 'rotate-90')}
                 />
                 <GroupBadge meta={g.meta} />
-                <span className="my-item-title truncate">{g.title}</span>
+                <span className="truncate text-my-sm font-normal text-my-secondary">{g.title}</span>
                 <span className="shrink-0 text-my-xs text-my-tertiary">{g.issues.length}</span>
               </button>
             </div>
@@ -986,9 +984,12 @@ function BoardLayout({
         )
       })}
       {collapsedEmpty.length > 0 && (
-        <aside className="collab-collapsed-columns m-2" aria-label="折叠的列">
-          <h2 className="collab-collapsed-columns-title">折叠的列</h2>
-          <div className="flex flex-col gap-1.5">
+        <aside className="collab-collapsed-columns" aria-label="折叠的列">
+          <div className="collab-collapsed-columns-header">
+            <h2 className="collab-collapsed-columns-title">折叠的列</h2>
+            <span className="collab-stat text-my-xs text-my-tertiary">{collapsedEmpty.length}</span>
+          </div>
+          <div className="collab-collapsed-columns-list">
             {collapsedEmpty.map((g) => (
               <button
                 key={g.key}
@@ -1010,7 +1011,8 @@ function BoardLayout({
               >
                 <GroupBadge meta={g.meta} />
                 <span className="min-w-0 flex-1 truncate">{g.title}</span>
-                <span className="text-my-2xs text-my-tertiary">0</span>
+                <span className="collab-collapsed-col-count collab-stat">0</span>
+                <Plus size={12} className="collab-collapsed-col-expand shrink-0" aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -1466,8 +1468,12 @@ function FilterCheckRow({
 
 /* ---------------- 保存视图表单 ---------------- */
 
-function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Element {
-  const [name, setName] = useState('')
+function SaveViewBody({ onSave, suggestedName }: { onSave: (name: string) => void; suggestedName?: string }): JSX.Element {
+  const [name, setName] = useState(suggestedName ?? '')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (suggestedName && inputRef.current) inputRef.current.select()
+  }, [suggestedName])
   const submit = (): void => {
     const n = name.trim()
     if (!n) return
@@ -1478,6 +1484,7 @@ function SaveViewBody({ onSave }: { onSave: (name: string) => void }): JSX.Eleme
       <div className="text-my-xs text-my-tertiary">保存当前筛选与分组，稍后在项目侧边栏「视图」区一键应用。</div>
       {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
       <input
+        ref={inputRef}
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -1683,44 +1690,64 @@ function WorkItemsPageInner(): JSX.Element {
     body = <CalendarLayout issues={tabbed} />
   }
 
+  const suggestedParts: string[] = []
+  if (tab !== 'all') {
+    const tabLabel = tabs.find((item) => item.id === tab)?.label
+    if (tabLabel) suggestedParts.push(tabLabel)
+  }
+  if (filters.priority.length === 1) suggestedParts.push(`${PRIORITY_LABELS[filters.priority[0]]}优先级`)
+  else if (filters.priority.length > 1) suggestedParts.push(`${filters.priority.length}项优先级`)
+  if (filters.stateGroup.length === 1) suggestedParts.push(STATE_GROUP_LABELS[filters.stateGroup[0]])
+  if (filters.assigneeIds.length === 1) {
+    const assigneeName = data.members.find((m) => m.id === filters.assigneeIds[0])?.name
+    if (assigneeName) suggestedParts.push(assigneeName)
+  }
+  const activeGroupLabel = groupBy === 'cycle' && source.presentation?.cycleMode === 'version'
+    ? '版本'
+    : groupBy === 'package' && source.kind === 'collaboration'
+      ? '专项'
+      : GROUP_BY_OPTIONS.find((o) => o.id === groupBy)?.label
+  const suggestedViewName = suggestedParts.length > 0
+    ? suggestedParts.join(' · ')
+    : activeGroupLabel && groupBy !== 'state'
+      ? `按${activeGroupLabel}分组`
+      : ''
+
   return (
     <PageLayout variant={PAGE_LAYOUTS.tasks}>
       <PageHeader className="my-work-items-header">
         <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{source.presentation?.title ?? (workItemsView === 'iterations' ? '迭代' : '全部')}</h1>
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
-        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-          {/* 布局切换器 */}
-          <div className="my-segmented" role="group" aria-label="工作项布局">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
+          {/* 布局切换器：保留原有 5 格切换布局，统一 28px 小号高度与弹簧滑动底托 */}
+          <Segmented value={layout} size="sm" ariaLabel="工作项布局" className="mr-1">
             {LAYOUTS.map((l) => (
               <Tooltip key={l.id} label={l.label} side="bottom">
                 <button
                   type="button"
                   aria-label={`布局：${l.label}`}
                   aria-pressed={layout === l.id}
-                  title={l.label}
                   onClick={() => store.setLayout(l.id)}
                   className={clsx(
                     'my-segment',
-                    layout === l.id
-                      ? 'bg-my-layer-1-active text-my-primary'
-                      : 'text-my-icon-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
+                    layout === l.id ? 'text-my-primary' : 'text-my-icon-tertiary hover:text-my-secondary'
                   )}
                 >
-                  <LayoutIcon layout={l.id} size={14} />
+                  <LayoutIcon layout={l.id} size={13} />
                 </button>
               </Tooltip>
             ))}
-          </div>
-          {/* Filters 下拉：状态组/优先级/负责人/标签 四段 */}
+          </Segmented>
+          {/* Filters 下拉：顶部搜索/自定义状态 + 优先级/负责人/标签 */}
           <Dropdown
             width={230}
             align="right"
-            trigger={({ toggle }) => (
-              <Button variant="neutral" onClick={toggle}>
-                <SlidersHorizontal size={13} className="text-my-icon-secondary" />
+            trigger={({ toggle, open }) => (
+              <Button variant={filterCount > 0 ? 'surface' : 'ghost'} size="sm" aria-expanded={open} onClick={toggle}>
+                <SlidersHorizontal size={13} />
                 筛选
                 {filterCount > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-my-md bg-my-accent px-1 text-my-2xs font-medium text-my-on-accent">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-my-sm bg-my-layer-3 px-1 text-my-2xs font-normal tabular-nums text-my-primary">
                     {filterCount}
                   </span>
                 )}
@@ -1729,52 +1756,60 @@ function WorkItemsPageInner(): JSX.Element {
           >
             {() => (
               <>
-                <DropdownHeader>状态</DropdownHeader>
-                {STATE_GROUPS.map((g) => (
-                  <FilterCheckRow
-                    key={g}
-                    checked={filters.stateGroup.includes(g)}
-                    onToggle={() => store.toggleFilter('stateGroup', g)}
-                    label={STATE_GROUP_LABELS[g]}
-                    icon={<StateGroupIcon stateGroup={g} size={12} />}
-                  />
-                ))}
-                <DropdownHeader>优先级</DropdownHeader>
-                {PRIORITIES.map((pr) => (
-                  <FilterCheckRow
-                    key={pr}
-                    checked={filters.priority.includes(pr)}
-                    onToggle={() => store.toggleFilter('priority', pr)}
-                    label={PRIORITY_LABELS[pr]}
-                    icon={<PriorityIcon priority={pr} size={12} />}
-                  />
-                ))}
-                <DropdownHeader>负责人</DropdownHeader>
-                {data.members.map((m) => (
-                  <FilterCheckRow
-                    key={m.id}
-                    checked={filters.assigneeIds.includes(m.id)}
-                    onToggle={() => store.toggleFilter('assigneeIds', m.id)}
-                    label={m.name}
-                    icon={<Avatar name={m.name} color={m.avatarColor} size={16} />}
-                  />
-                ))}
-                {/* 无标签数据时隐藏该筛选段 */}
-                {data.labels.length > 0 && (
-                  <>
-                    <DropdownHeader>标签</DropdownHeader>
-                    {data.labels.map((lb) => (
-                      <FilterCheckRow
-                        key={lb.id}
-                        checked={filters.labelIds.includes(lb.id)}
-                        onToggle={() => store.toggleFilter('labelIds', lb.id)}
-                        label={lb.name}
-                        icon={<LabelDot label={lb} />}
-                      />
-                    ))}
-                  </>
-                )}
-                {source.presentation?.filterContent}
+                {source.presentation?.filterSearch}
+                <div className="my-scrollbar my-fade-scroll flex min-h-0 flex-1 flex-col gap-0.5">
+                  {source.presentation?.filterHeader}
+                  {!source.presentation?.hideGenericStateGroupFilter && (
+                    <>
+                      <DropdownHeader>状态</DropdownHeader>
+                      {STATE_GROUPS.map((g) => (
+                        <FilterCheckRow
+                          key={g}
+                          checked={filters.stateGroup.includes(g)}
+                          onToggle={() => store.toggleFilter('stateGroup', g)}
+                          label={STATE_GROUP_LABELS[g]}
+                          icon={<StateGroupIcon stateGroup={g} size={12} />}
+                        />
+                      ))}
+                    </>
+                  )}
+                  <DropdownHeader>优先级</DropdownHeader>
+                  {PRIORITIES.map((pr) => (
+                    <FilterCheckRow
+                      key={pr}
+                      checked={filters.priority.includes(pr)}
+                      onToggle={() => store.toggleFilter('priority', pr)}
+                      label={PRIORITY_LABELS[pr]}
+                      icon={<PriorityIcon priority={pr} size={12} />}
+                    />
+                  ))}
+                  <DropdownHeader>负责人</DropdownHeader>
+                  {data.members.map((m) => (
+                    <FilterCheckRow
+                      key={m.id}
+                      checked={filters.assigneeIds.includes(m.id)}
+                      onToggle={() => store.toggleFilter('assigneeIds', m.id)}
+                      label={m.name}
+                      icon={<Avatar name={m.name} color={m.avatarColor} size={16} />}
+                    />
+                  ))}
+                  {/* 无标签数据时隐藏该筛选段 */}
+                  {data.labels.length > 0 && (
+                    <>
+                      <DropdownHeader>标签</DropdownHeader>
+                      {data.labels.map((lb) => (
+                        <FilterCheckRow
+                          key={lb.id}
+                          checked={filters.labelIds.includes(lb.id)}
+                          onToggle={() => store.toggleFilter('labelIds', lb.id)}
+                          label={lb.name}
+                          icon={<LabelDot label={lb} />}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {source.presentation?.filterContent}
+                </div>
                 {filterCount > 0 && (
                   <>
                     <div className="my-menu-divider" />
@@ -1786,24 +1821,32 @@ function WorkItemsPageInner(): JSX.Element {
           </Dropdown>
           {groupBy === 'cycle' && source.kind === 'native' && (
             <Tooltip label="当前周未完结项移入下一周">
-              <Button variant="neutral" onClick={carryOver}>
+              <Button variant="ghost" size="sm" onClick={carryOver}>
                 结转未完成
               </Button>
             </Tooltip>
           )}
-          {/* 存为视图：保存当前筛选+分组，项目侧边栏「视图」区可应用 */}
+          {/* 保存视图：保留原有位置与完整文字标签，统一全站文案为「保存视图」 */}
           <Dropdown
             width={230}
             align="right"
-            trigger={({ toggle }) => (
-              <Button variant="neutral" onClick={toggle} disabled={!source.capabilities.saveView} title={!source.capabilities.saveView ? '当前范围或分组不支持保存视图' : undefined}>
-                <Bookmark size={13} className="text-my-icon-secondary" />
-                存为视图
+            trigger={({ toggle, open }) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={open}
+                onClick={toggle}
+                disabled={!source.capabilities.saveView}
+                title={!source.capabilities.saveView ? '当前范围或分组不支持保存视图' : undefined}
+              >
+                <Bookmark size={13} />
+                保存视图
               </Button>
             )}
           >
             {(close) => (
               <SaveViewBody
+                suggestedName={suggestedViewName}
                 onSave={(name) => {
                   store.saveView(name, filters, groupBy)
                   close()
@@ -1811,13 +1854,13 @@ function WorkItemsPageInner(): JSX.Element {
               />
             )}
           </Dropdown>
-          {/* Display 下拉：布局/分组/排序/显示 */}
+          {/* Display 下拉：保留原有 布局/分组/排序/显示 四段 */}
           <Dropdown
             width={210}
             align="right"
-            trigger={({ toggle }) => (
-              <Button variant="neutral" onClick={toggle}>
-                <Settings2 size={13} className="text-my-icon-secondary" />
+            trigger={({ toggle, open }) => (
+              <Button variant="ghost" size="sm" aria-expanded={open} onClick={toggle}>
+                <Settings2 size={13} />
                 显示
               </Button>
             )}
@@ -1871,16 +1914,22 @@ function WorkItemsPageInner(): JSX.Element {
               </>
             )}
           </Dropdown>
-          {/* 主按钮 */}
-          <Button variant="primary" disabled={!source.capabilities.create} onClick={() => store.setCreateIssueOpen(true)}>
+          <span className="my-toolbar-divider hidden lg:block" aria-hidden="true" />
+          {/* 顶栏常驻主动作：微浮键帽 W3，右侧详情展开时退让为 outline */}
+          <Button
+            variant={source.presentation?.detailOpen ? 'outline' : 'soft'}
+            size="sm"
+            disabled={!source.capabilities.create}
+            onClick={() => store.setCreateIssueOpen(true)}
+          >
             <Plus size={13} />
             新建任务
           </Button>
         </div>
       </PageHeader>
       {cycleOverview}
-      {/* 布局主体 */}
-      <div className="min-h-0 flex-1 bg-my-surface-1">{body}</div>
+      {/* 布局主体：大布局视图切换使用 125ms 零位移轻叠化，筛选/页签保持零延迟直出 */}
+      <div key={layout} className="my-subview-stage flex min-h-0 flex-1 flex-col bg-my-surface-1">{body}</div>
     </PageLayout>
   )
 }

@@ -1,11 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { Bot, ChevronDown, PenLine, Sparkles, X } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { clsx } from 'clsx'
+import { Bot, ChevronRight, Loader2, PenLine, Sparkles, X } from 'lucide-react'
 import type { CruxID, CruxPriority, CruxSnapshot, CruxTaskInput, CruxTaskWorkKind } from '@shared/crux'
 import { cruxTaskWorkKindSchema } from '@shared/crux-schema'
 import type { TaskSourceFile } from '@shared/task-source-files'
 import { taskInputCanonical } from '@shared/team-canonical'
 import { api, hasIpc } from '../../api'
-import { Button, Modal, Tooltip } from '../../my/ui'
+import { MOTION_EXIT_MS, usePresence } from '../../my/motion'
+import { Button, Checkbox, DisclosureGrid, Modal, Segmented, Tooltip } from '../../my/ui'
+import { useApp } from '../../store'
 import { InteractionScope } from '../../utils/interaction-scope'
 import { observeCollaborationWorkspace, PRIORITY_LABEL, useCrux, visibleLabels } from '../store'
 import { useCollaborationPlatform, workflowKey } from '../collaboration-platform-store'
@@ -39,6 +42,10 @@ type TaskCreationIntent = 'triage' | 'schedule'
 type UnsentHandoffFields = TaskHandoffFields
 
 export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
+  const presence = usePresence(props.open, MOTION_EXIT_MS + 16)
+  const lastOpenPropsRef = useRef(props)
+  if (props.open) lastOpenPropsRef.current = props
+  const activeProps = props.open ? props : { ...lastOpenPropsRef.current, open: false }
   const snapshot = useCrux((state) => state.snapshot)
   const currentSpaceId = useCrux((state) => state.currentSpaceId)
   const context = useCrux((state) => state.workspaceContext)
@@ -65,7 +72,10 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
     const release = observeCollaborationWorkspace()
     return () => { checkRequest.current++; release() }
   }, [props.open, props.handoff?.id])
-  const generation = useTaskSurfaceGeneration(true)
+  const liveGeneration = useTaskSurfaceGeneration(true)
+  const lastOpenGenerationRef = useRef(liveGeneration)
+  if (props.open) lastOpenGenerationRef.current = liveGeneration
+  const generation = props.open ? liveGeneration : lastOpenGenerationRef.current
   const [, reloadRecovery] = useState(0)
   const [recoveryError, setRecoveryError] = useState('')
   const authority = snapshot ? taskSourceKey(snapshot, context) : ''
@@ -74,18 +84,18 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
   let retained: TaskHandoffIntent | null = null
   let readError = ''
   try {
-    if (props.handoff) {
-      recovery = readTaskHandoffRecovery(props.handoff)
-      retained = recovery?.intent ?? readTaskHandoffIntent(context, recovery?.source.id ?? props.handoff.id)
+    if (activeProps.handoff) {
+      recovery = readTaskHandoffRecovery(activeProps.handoff)
+      retained = recovery?.intent ?? readTaskHandoffIntent(context, recovery?.source.id ?? activeProps.handoff.id)
     }
   } catch (cause) { readError = cause instanceof Error ? cause.message : String(cause) }
-  const handoff = recovery?.source ?? props.handoff
+  const handoff = recovery?.source ?? activeProps.handoff
   const spaces = snapshot?.spaces.filter(space => !space.archived && context.actorId && space.memberIds.includes(context.actorId)) ?? []
   const handoffAvailable = ['local', 'connected'].includes(context.state) && (!recovery || recovery.authority === authority && recovery.authorityIdentity === actorId)
   const existingTask = handoff && snapshot?.tasks.find(task => task.handoff?.id === handoff.id && task.creatorId === context.actorId)
   const handoffSpace = recovery?.spaceId ?? existingTask?.spaceId ?? retained?.input.spaceId ?? (spaces.find(space => space.id === currentSpaceId)?.id || spaces[0]?.id)
-  const spaceId = props.handoff ? handoffSpace : props.spaceId ?? currentSpaceId
-  const initialCheck = Boolean(props.handoff && checkedHandoff !== props.handoff.id)
+  const spaceId = activeProps.handoff ? handoffSpace : activeProps.spaceId ?? currentSpaceId
+  const initialCheck = Boolean(activeProps.handoff && checkedHandoff !== activeProps.handoff.id)
   const waiting = checking || initialCheck || (busy && !snapshot)
   // Persist before admitting an editable form. A failed write leaves the source intact.
   useEffect(() => {
@@ -97,8 +107,8 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
       } catch (cause) { setRecoveryError(cause instanceof Error ? cause.message : String(cause)) }
     }
   }, [props.open, props.handoff?.id, waiting, loadError, readError, recoveryError, handoffAvailable, spaceId, authority])
-  if (!props.open) return null
-  if (props.handoff && (waiting || loadError || readError || recoveryError || !recovery || !handoffAvailable || !spaceId || !spaces.some(space => space.id === spaceId) || connectionOpen)) {
+  if (!presence.mounted) return null
+  if (activeProps.handoff && (waiting || loadError || readError || recoveryError || !recovery || !handoffAvailable || !spaceId || !spaces.some(space => space.id === spaceId) || connectionOpen)) {
     const message = waiting ? busy ? '正在连接团队工作区…' : '正在核对团队空间…'
       : readError || recoveryError ? readError || recoveryError
       : context.state === 'offline' ? '团队工作区离线，重新连接后继续原交接。'
@@ -115,19 +125,19 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
           <p role={waiting ? 'status' : 'alert'} className="my-item-description">{message}</p>
           {!waiting && (context.error || loadError) && <details className="my-item-description"><summary className="cursor-pointer">查看连接详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{context.error || loadError}</p></details>}
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={props.onClose}>关闭</Button>
+            <Button size="sm" variant="ghost" onClick={activeProps.onClose}>关闭</Button>
             {!waiting && <Button size="sm" variant="outline" disabled={!hasIpc} onClick={() => { setRecoveryError(''); void refresh() }}>重新核对</Button>}
             {!waiting && <Button size="sm" variant="primary" disabled={!hasIpc} onClick={() => setConnectionOpen(true)}>{context.state === 'access-revoked' ? '重新登录' : '账号与工作区'}</Button>}
           </div>
         </div>
     return <>
-      {props.handoff.draftId && props.triagePending ? !connectionOpen && content : <Modal open={!connectionOpen} onClose={props.onClose} ariaLabel="创建团队任务">{content}</Modal>}
+      {activeProps.handoff.draftId && activeProps.triagePending ? (props.open && !connectionOpen && content) : <Modal open={props.open && !connectionOpen} onClose={activeProps.onClose} ariaLabel="创建团队任务">{content}</Modal>}
       <ConnectionPanel open={connectionOpen} hideTrigger onOpenChange={open => { setConnectionOpen(open); if (!open) void refresh() }} />
     </>
   }
-  if (!snapshot || !spaceId || !canReadTaskSpace(snapshot, context, spaceId)) return <Modal open onClose={props.onClose} ariaLabel="无法创建任务"><div className="flex flex-col gap-3 p-5"><h2 className="text-my-md font-semibold text-my-primary">当前空间不可用</h2><p role="alert" className="text-my-sm text-my-secondary">请重新选择有访问权限的空间。</p><div className="flex justify-end"><Button onClick={props.onClose}>关闭</Button></div></div></Modal>
-  const key = JSON.stringify([authority, spaceId, props.projectId, props.iterationId, props.parentTaskId, props.triagePending, generation, handoff?.id])
-  return <InteractionScope key={key} active><TaskCreateForm {...props} handoff={handoff} retained={retained} unsent={recovery?.fields[spaceId]} onUnsentChange={fields => {
+  if (!snapshot || !spaceId || !canReadTaskSpace(snapshot, context, spaceId)) return <Modal open={props.open} onClose={activeProps.onClose} ariaLabel="无法创建任务"><div className="flex flex-col gap-3 p-5"><h2 className="text-my-md font-semibold text-my-primary">当前空间不可用</h2><p role="alert" className="text-my-sm text-my-secondary">请重新选择有访问权限的空间。</p><div className="flex justify-end"><Button onClick={activeProps.onClose}>关闭</Button></div></div></Modal>
+  const key = JSON.stringify([authority, spaceId, activeProps.projectId, activeProps.iterationId, activeProps.parentTaskId, activeProps.triagePending, generation, handoff?.id])
+  return <InteractionScope key={key} active={props.open}><TaskCreateForm {...activeProps} open={props.open} handoff={handoff} retained={retained} unsent={recovery?.fields[spaceId]} onUnsentChange={fields => {
     if (!handoff) return
     const latest = useCrux.getState()
     if (!latest.snapshot || !['local', 'connected'].includes(latest.workspaceContext.state) || taskSourceKey(latest.snapshot, latest.workspaceContext) !== authority || !canReadTaskSpace(latest.snapshot, latest.workspaceContext, spaceId)) throw Error('原交接当前不可保存，请恢复原账号和空间权限。')
@@ -140,7 +150,7 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
   }} /></InteractionScope>
 }
 
-function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapshot, spaceId, onClose, parentTaskId: initialParent, projectId: initialProject, iterationId: initialIteration, triagePending: explicitTriage, handoff, handoffSpaces, onSelectSpace, onCreated }: NewTaskModalProps & { retained: TaskHandoffIntent | null; unsent?: UnsentHandoffFields; onUnsentChange: (fields: UnsentHandoffFields | null) => void; snapshot: CruxSnapshot; spaceId: string; handoffSpaces: CruxSnapshot['spaces']; onSelectSpace: (id: string) => void }): JSX.Element | null {
+function TaskCreateForm({ open, unsent: cachedUnsent, retained, onUnsentChange, snapshot, spaceId, onClose, parentTaskId: initialParent, projectId: initialProject, iterationId: initialIteration, triagePending: explicitTriage, handoff, handoffSpaces, onSelectSpace, onCreated }: NewTaskModalProps & { retained: TaskHandoffIntent | null; unsent?: UnsentHandoffFields; onUnsentChange: (fields: UnsentHandoffFields | null) => void; snapshot: CruxSnapshot; spaceId: string; handoffSpaces: CruxSnapshot['spaces']; onSelectSpace: (id: string) => void }): JSX.Element | null {
   const context = useCrux((state) => state.workspaceContext)
   const busy = useCrux((state) => state.busy)
   const source = useTaskSource({ spaceId, taskId: initialParent, creating: true })
@@ -177,18 +187,28 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const [draftError, setDraftError] = useState('')
   const [discarding, setDiscarding] = useState(false)
   const [reconciliationRequired, setReconciliationRequired] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [titleInvalid, setTitleInvalid] = useState(false)
+  const [titleShaking, setTitleShaking] = useState(false)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const titleErrorId = useId()
+  useEffect(() => {
+    if (!titleShaking) return
+    const timer = window.setTimeout(() => setTitleShaking(false), 280)
+    return () => window.clearTimeout(timer)
+  }, [titleShaking])
   useLayoutEffect(() => {
-    if (!handoff || !source.available || !source.owns() || submitted || retained || reconciliationRequired || flight.current) return
+    if (!open || !handoff || !source.available || !source.owns() || submitted || retained || reconciliationRequired || flight.current) return
     try {
       onUnsentChange({ title, description, selectedFileIds, shareMaterial, criteria, workKind, staged, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent })
       setDraftError('')
     } catch (cause) { setDraftError(cause instanceof Error ? cause.message : String(cause)) }
-  }, [handoff?.id, source.available, submitted, retained, reconciliationRequired, title, description, selectedFileIds, shareMaterial, criteria, workKind, staged, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent, onUnsentChange])
+  }, [open, handoff?.id, source.available, submitted, retained, reconciliationRequired, title, description, selectedFileIds, shareMaterial, criteria, workKind, staged, typeId, priority, allocation, labelIds, projectId, iterationId, parentTaskId, creationIntent, onUnsentChange])
   const space = snapshot.spaces.find((candidate) => candidate.id === spaceId)
-  if (!space || !source.available) return null
+  if (!space || (open && !source.available)) return null
   const actorId = taskActorId(snapshot, context)
   const canAct = Boolean(actorId && space.memberIds.includes(actorId))
-  const disabled = busy || pending || !hasIpc || Boolean(space.archived) || !canAct
+  const disabled = !open || busy || pending || !hasIpc || Boolean(space.archived) || !canAct
   const triagePending = explicitTriage ?? creationIntent === 'triage'
   const labels = visibleLabels(snapshot, spaceId)
   const iterations = snapshot.iterations.filter((iteration) => iteration.spaceId === spaceId && iteration.status !== 'completed')
@@ -198,14 +218,29 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
   const locked = Boolean(submitted || retained || originalTask || reconciliationRequired)
   const requiresAssignee = Boolean(handoff && !triagePending && !allocation.assigneeIds.length)
   const canChooseIntent = !initialParent && explicitTriage === undefined
+  const submitBlockedReason =
+    space.archived ? '空间已停用，恢复后才能创建任务'
+    : !canAct ? '当前身份不是该空间成员，无法创建任务'
+    : !hasIpc ? '当前环境不支持创建任务'
+    : reconciliationRequired ? '原交接状态待确认，请核对创建结果'
+    : !locked && !title.trim() ? '请先输入任务标题'
+    : !locked && needsFallback ? '请为 Agent 或小队选择一名兜底处理人'
+    : !locked && requiresAssignee ? '请先选择负责人'
+    : null
+  const nudgeTitle = (): void => {
+    setTitleInvalid(true)
+    setTitleShaking(false)
+    requestAnimationFrame(() => setTitleShaking(true))
+    titleInputRef.current?.focus({ preventScroll: true })
+  }
   const chooseIntent = (intent: TaskCreationIntent): void => {
     if (!canChooseIntent || source.owns() === false) return
     setCreationIntent(intent)
     if (intent === 'triage') setIterationId('')
   }
-  const close = (): void => { if (source.owns()) onClose() }
+  const close = (): void => { if (open && source.owns()) onClose() }
   const discard = async (): Promise<void> => {
-    if (flight.current || busy || pending || locked || !source.owns()) return
+    if (!open || flight.current || busy || pending || locked || !source.owns()) return
     const ticket = source.ticket()
     flight.current = true
     setDiscarding(true)
@@ -222,8 +257,36 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
         }
         onUnsentChange(null)
       }
+      const capturedDraft = !handoff ? draft.snapshot() : null
+      const capturedTitle = title.trim()
       draft.discard()
       onClose()
+      if (capturedDraft && capturedDraft.size > 0) {
+        useApp.getState().pushToast({
+          kind: 'info',
+          title: '已放弃任务草稿',
+          body: capturedTitle ? `「${capturedTitle}」` : '点击撤销可恢复刚才填写的内容',
+          durationMs: 6000,
+          action: {
+            label: '撤销',
+            onClick: () => {
+              if (!draft.restore(capturedDraft)) {
+                useApp.getState().pushToast({ kind: 'warn', title: '无法恢复草稿', body: '当前账号或空间已变化。' })
+                return
+              }
+              if (!initialParent && !initialProject) {
+                useCrux.getState().beginCreateTask({
+                  spaceId,
+                  ...(initialIteration ? { iterationId: initialIteration } : {}),
+                  ...(explicitTriage !== undefined ? { triagePending: explicitTriage } : {})
+                })
+              } else {
+                useApp.getState().pushToast({ kind: 'success', title: '已恢复任务草稿', body: '重新打开新建弹窗即可继续编辑' })
+              }
+            }
+          }
+        })
+      }
     } catch (cause) {
       if (source.owns(ticket)) setDraftError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -232,7 +295,12 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
     }
   }
   const submit = async (): Promise<void> => {
-    if (flight.current || disabled || reconciliationRequired || !actorId || (!locked && (!title.trim() || needsFallback || requiresAssignee))) return
+    if (flight.current || disabled || reconciliationRequired || !actorId) return
+    if (!locked && !title.trim()) {
+      nudgeTitle()
+      return
+    }
+    if (!locked && (needsFallback || requiresAssignee)) return
     const typeWf = typeId ? typeWorkflows[workflowKey(spaceId, typeId)] : undefined
     const input: CruxTaskInput = submittedRef.current ?? {
       spaceId, creatorId: actorId, title: title.trim(), description: handoff?.draftId ? handoff.description : description.trim() || undefined,
@@ -380,35 +448,78 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
       useCrux.getState().openTask(result.taskId)
     }
   }
-  if (handoff?.draftId && explicitTriage) return <section className="flex flex-wrap items-center gap-2 border-b border-my-line bg-my-panel px-4 py-2" aria-label="交接需求">
-    <span className="my-item-title">{handoff.material?.versionLabel ?? handoff.title}</span>
-    <Select ariaLabel="目标空间" disabled={disabled || locked || savingMaterial} value={spaceId} onChange={onSelectSpace} options={handoffSpaces.map(item => ({ value: item.id, label: item.name }))} />
-    {context.state === 'connected' && <fieldset className="min-w-0 border-0" disabled={disabled || locked || savingMaterial}><PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} /></fieldset>}
-    <Button size="sm" variant="primary" disabled={disabled || savingMaterial || reconciliationRequired} onClick={() => void submit()}>{savingMaterial ? '正在交接…' : locked ? '核对原任务' : '创建任务'}</Button>
-    <Button size="sm" variant="ghost" onClick={close}>收起</Button>
-    {(handoffError || draftError || error) && <span role="alert" className="collab-inline-error">{handoffError || draftError || error}</span>}
-  </section>
-  if (!handoff && creationMode === 'ai' && actorId) return <div className="relative flex min-h-0 flex-1 flex-col bg-my-canvas">
-    <div className="z-10 flex shrink-0 items-center gap-2 border-b border-my-line bg-my-canvas px-4 py-2">
-      <span className="text-my-xs text-my-tertiary">创建方式</span>
-      <Button size="sm" variant="outline" aria-pressed={false} onClick={() => setCreationMode('manual')}><PenLine size={14} />手动创建</Button>
-      <Button size="sm" variant="neutral" aria-pressed><Bot size={14} />Agent 整理</Button>
+  if (handoff?.draftId && explicitTriage) {
+    if (!open) return null
+    return <section className="flex flex-wrap items-center gap-2 border-b border-my-line bg-my-panel px-4 py-2" aria-label="交接需求">
+      <span className="my-item-title">{handoff.material?.versionLabel ?? handoff.title}</span>
+      <Select ariaLabel="目标空间" disabled={disabled || locked || savingMaterial} value={spaceId} onChange={onSelectSpace} options={handoffSpaces.map(item => ({ value: item.id, label: item.name }))} />
+      {context.state === 'connected' && <fieldset className="min-w-0 border-0" disabled={disabled || locked || savingMaterial}><PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} /></fieldset>}
+      <Button size="sm" variant="primary" disabled={disabled || savingMaterial || reconciliationRequired} onClick={() => void submit()}>{savingMaterial ? '正在交接…' : locked ? '核对原任务' : '创建任务'}</Button>
+      <Button size="sm" variant="ghost" onClick={close}>收起</Button>
+      {(handoffError || draftError || error) && <span role="alert" className="collab-inline-error">{handoffError || draftError || error}</span>}
+    </section>
+  }
+  if (!handoff && creationMode === 'ai' && actorId) {
+    if (!open) return null
+    return <div className="relative flex min-h-0 flex-1 flex-col bg-my-canvas">
+      <div className="z-10 flex shrink-0 items-center gap-2 border-b border-my-line bg-my-canvas px-4 py-2">
+        <span className="text-my-xs text-my-tertiary">创建方式</span>
+        <Button size="sm" variant="outline" aria-pressed={false} onClick={() => setCreationMode('manual')}><PenLine size={14} />手动创建</Button>
+        <Button size="sm" variant="neutral" aria-pressed><Bot size={14} />Agent 整理</Button>
+      </div>
+      <div className="relative min-h-0 flex-1"><RequirementIntake snapshot={snapshot} spaceId={spaceId} actorId={actorId} draft={draft} onClose={close} onManual={() => {
+        if (!source.canWrite()) return
+        if (!title.trim() && intakeOriginal.trim()) setTitle(intakeOriginal.trim().split('\n')[0].slice(0, 160))
+        if (!description.trim() && (intakeOriginal.trim() || intakeFiles.length)) setDescription(discussionInput(intakeOriginal, intakeFiles, '', ''))
+        setCreationMode('manual')
+      }} /></div>
     </div>
-    <div className="relative min-h-0 flex-1"><RequirementIntake snapshot={snapshot} spaceId={spaceId} actorId={actorId} draft={draft} onClose={close} onManual={() => {
-      if (!source.canWrite()) return
-      if (!title.trim() && intakeOriginal.trim()) setTitle(intakeOriginal.trim().split('\n')[0].slice(0, 160))
-      if (!description.trim() && (intakeOriginal.trim() || intakeFiles.length)) setDescription(discussionInput(intakeOriginal, intakeFiles, '', ''))
-      setCreationMode('manual')
-    }} /></div>
-  </div>
-  return <Modal open onClose={close} ariaLabel={heading}>
-    <div className="flex max-h-[var(--my-modal-max-height)] flex-col bg-my-canvas">
-      <header className="flex h-my-header shrink-0 items-center gap-2 border-b border-my-line px-4"><h2 className="min-w-0 flex-1 truncate text-my-md font-semibold text-my-primary">{heading}</h2>{!handoff && !initialParent && context.state !== 'local' && <div className="flex items-center gap-1 rounded-my-md bg-my-layer-1 p-1" aria-label="创建方式"><Button size="sm" variant={creationMode === 'manual' ? 'neutral' : 'ghost'} aria-pressed={creationMode === 'manual'} onClick={() => setCreationMode('manual')}><PenLine size={14} />手动</Button><Button size="sm" variant={creationMode === 'ai' ? 'neutral' : 'ghost'} aria-pressed={creationMode === 'ai'} onClick={() => setCreationMode('ai')}><Sparkles size={14} />Agent</Button></div>}<span className="text-my-xs text-my-tertiary">{space.key}</span><Tooltip label="关闭新建任务"><Button size="sm" variant="ghost" aria-label="关闭新建任务" onClick={close}><X size={16} /></Button></Tooltip></header>
-      <div className="my-scrollbar min-h-0 overflow-y-auto p-4">
+  }
+  const submitting = pending || savingMaterial
+  const submitDisabled = disabled || savingMaterial || discarding || reconciliationRequired || (!locked && (!title.trim() || needsFallback || requiresAssignee || !triagePending && !canAct))
+  const submitTooltip = submitBlockedReason && !submitting
+    ? submitBlockedReason
+    : explicitTriage === true ? '先进入分拣，接纳后可安排版本' : 'Ctrl+Enter 或 Command+Enter 创建'
+  return <Modal open={open} onClose={close} ariaLabel={heading}>
+    <div className="flex max-h-[var(--my-modal-max-height)] flex-col bg-my-panel">
+      <header className="flex h-my-header shrink-0 items-center gap-3 border-b border-my-line px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <h2 className="truncate text-my-md font-semibold text-my-primary">{heading}</h2>
+          <span className="my-chip bg-my-layer-1 text-my-tertiary">{space.key}</span>
+        </div>
+        {!handoff && !initialParent && context.state !== 'local' && (
+          <Segmented value={creationMode} size="sm" ariaLabel="创建方式">
+            <button
+              type="button"
+              className={clsx('my-segment my-segment-label', creationMode === 'manual' ? 'text-my-primary' : 'text-my-secondary hover:text-my-primary')}
+              aria-pressed={creationMode === 'manual'}
+              onClick={() => setCreationMode('manual')}
+            >
+              <PenLine size={12} />
+              <span>手动</span>
+            </button>
+            <button
+              type="button"
+              className={clsx('my-segment my-segment-label', creationMode === 'ai' ? 'text-my-primary' : 'text-my-secondary hover:text-my-primary')}
+              aria-pressed={creationMode === 'ai'}
+              onClick={() => setCreationMode('ai')}
+            >
+              <Sparkles size={12} />
+              <span>Agent</span>
+            </button>
+          </Segmented>
+        )}
+        <Tooltip label="关闭新建任务">
+          <Button size="sm" variant="ghost" className="w-7 px-0" aria-label="关闭新建任务" onClick={close}>
+            <X size={15} />
+          </Button>
+        </Tooltip>
+      </header>
+      <div className="my-scrollbar min-h-0 overflow-y-auto px-6 py-5">
         {space.archived && <p role="alert" className="mb-3 text-my-sm text-my-secondary">空间已停用，恢复后才能创建任务。</p>}
         {!canAct && <p role="alert" className="mb-3 text-my-sm text-my-secondary">当前身份不是该空间成员，无法创建任务。</p>}
         {(error || handoffError || draftError) && <p role="alert" className="collab-inline-error mb-3">{handoffError || draftError || error}</p>}
-        <fieldset disabled={disabled || locked || savingMaterial || discarding} className="flex min-w-0 flex-col gap-4 border-0 p-0" onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}>
+        <fieldset disabled={disabled || locked || savingMaterial || discarding} className="flex min-w-0 flex-col gap-3.5 border-0 p-0" onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}>
           {handoff && <Field label="团队空间">
             <Select
               className="w-full"
@@ -417,24 +528,61 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
               options={handoffSpaces.map((item) => ({ value: item.id, label: item.name }))}
             />
           </Field>}
-          <Field label="任务标题"><input autoFocus required className={inputClass} value={title} onChange={event => setTitle(event.target.value)} /></Field>
+          <Field label="任务标题">
+            <input
+              ref={titleInputRef}
+              autoFocus
+              required
+              aria-invalid={titleInvalid || undefined}
+              aria-describedby={titleInvalid ? titleErrorId : undefined}
+              className={clsx(inputClass, titleShaking && 'my-shake')}
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value)
+                if (titleInvalid && event.target.value.trim()) setTitleInvalid(false)
+              }}
+            />
+            {titleInvalid && <span id={titleErrorId} role="alert" className="pl-0.5 text-my-xs text-my-danger-text">请输入任务标题</span>}
+          </Field>
           <Field label={handoff ? '共享的任务描述' : '描述'}><textarea className={textareaClass} rows={handoff ? 6 : 3} value={description} onChange={event => setDescription(event.target.value)} /></Field>
           {handoff && <PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} />}
           {selectedMaterial && <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><p className="text-my-sm text-my-primary">首次正文 · {selectedMaterial.versionLabel}</p><details className="mt-2 text-my-sm text-my-secondary"><summary className="cursor-pointer">查看共享正文</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></details></div>}
-          {handoff && !triagePending && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">负责人</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></section>}
+          {handoff && !triagePending && <Field label="负责人"><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></Field>}
           {!handoff && (
-            <section className="flex flex-col gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-3">
-              <h3 className="my-item-title">负责人与 AI 委派执行者</h3>
-              <TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled} />
-              {allocation.executor && !triagePending && (
-                <label className="flex items-center gap-2 text-my-xs text-my-secondary">
-                  <input type="checkbox" checked={autoEnqueueRun} onChange={(e) => setAutoEnqueueRun(e.target.checked)} />
-                  创建后立即派发给「{allocation.executor.name}」进入执行队列
-                </label>
-              )}
-            </section>
+            <Field label="负责人与 AI 委派执行者">
+              <div className="flex min-w-0 flex-col gap-2">
+                <TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled} />
+                {allocation.executor && !triagePending && (
+                  <div className="flex items-center gap-2 pl-0.5 text-my-xs text-my-secondary">
+                    <Checkbox
+                      checked={autoEnqueueRun}
+                      onChange={setAutoEnqueueRun}
+                      disabled={disabled || locked}
+                      ariaLabel={`创建后立即派发给「${allocation.executor.name}」进入执行队列`}
+                    />
+                    <span
+                      className="cursor-pointer select-none hover:text-my-primary"
+                      onClick={() => { if (!disabled && !locked) setAutoEnqueueRun((checked) => !checked) }}
+                    >
+                      创建后立即派发给「{allocation.executor.name}」进入执行队列
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Field>
           )}
-          <details><summary className="flex cursor-pointer items-center gap-2 text-my-xs font-medium text-my-secondary"><ChevronDown size={14} />完善任务属性</summary><div className="mt-3 flex flex-col gap-3">
+          <div className="pt-0.5">
+            <button
+              type="button"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              className="flex cursor-pointer items-center gap-1.5 pl-0.5 text-my-xs font-normal text-my-tertiary transition-colors hover:text-my-primary"
+            >
+              <ChevronRight size={13} className="my-disclosure-chevron" data-open={detailsOpen || undefined} />
+              <span>完善任务属性</span>
+            </button>
+            <DisclosureGrid open={detailsOpen} innerClassName="pt-3">
+              <div className="flex flex-col gap-3.5">
           {!initialParent && canChooseIntent && <Field label="安排"><Select value={creationIntent} onChange={value => chooseIntent(value as TaskCreationIntent)} options={[{ value: 'schedule', label: '加入看板' }, { value: 'triage', label: '交给分拣台' }]} /></Field>}
           {!triagePending && <Field label="版本">
             <Select
@@ -458,7 +606,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
                 />
               </Field>
             </>}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <Field label="类型">
                 <Select
                   className="w-full"
@@ -479,8 +627,7 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
                 />
               </Field>
             </div>
-          <div className="flex flex-col gap-3">
-            {!handoff && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">分工</h3><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled} /></section>}
+          <div className="flex flex-col gap-3.5">
             <Field label="专项">
               <Select
                 className="w-full"
@@ -503,13 +650,31 @@ function TaskCreateForm({ unsent: cachedUnsent, retained, onUnsentChange, snapsh
                 ]}
               />
             </Field>
-            {labels.length > 0 && <section><h3 className="mb-1 text-my-xs font-medium text-my-tertiary">标签</h3><div className="flex flex-wrap gap-1.5">{labels.map((label) => <Button key={label.id} size="sm" variant={labelIds.includes(label.id) ? 'neutral' : 'outline'} aria-pressed={labelIds.includes(label.id)} onClick={() => setLabelIds((current) => current.includes(label.id) ? current.filter((id) => id !== label.id) : [...current, label.id])}>{label.name}</Button>)}</div></section>}
-          </div></div></details>
+            {labels.length > 0 && <Field label="标签"><div className="flex flex-wrap gap-1.5">{labels.map((label) => <Button key={label.id} size="sm" variant={labelIds.includes(label.id) ? 'surface' : 'outline'} aria-pressed={labelIds.includes(label.id)} onClick={() => setLabelIds((current) => current.includes(label.id) ? current.filter((id) => id !== label.id) : [...current, label.id])}>{label.name}</Button>)}</div></Field>}
+          </div></div>
+            </DisclosureGrid>
+          </div>
         </fieldset>
         {originalTask && handoffError && <p role="status" className="mt-3 text-my-sm text-my-secondary">{originalTask.id} 已创建，需求材料待补挂。</p>}
         {needsFallback && <p role="alert" className="mt-3 text-my-xs text-my-secondary">请为 Agent 或小队选择一名兜底处理人。</p>}
       </div>
-      <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-my-line px-4 py-3">{(draft.hasDraft || handoff) && !locked && <Button size="sm" variant="ghost" className="mr-auto" disabled={busy || pending || discarding} onClick={() => void discard()}>{discarding ? '核对中…' : '放弃草稿'}</Button>}<Button size="sm" variant="ghost" onClick={close}>取消</Button><Tooltip label={explicitTriage === true ? '先进入分拣，接纳后可安排版本' : 'Ctrl+Enter 或 Command+Enter 创建'} wrap><Button size="sm" variant="primary" disabled={disabled || savingMaterial || discarding || reconciliationRequired || (!locked && (!title.trim() || needsFallback || requiresAssignee || !triagePending && !canAct))} onClick={() => void submit()}>{pending ? '创建中…' : savingMaterial ? '保存材料中…' : reconciliationRequired ? '需核对创建结果' : originalTask ? '核对任务和材料' : locked ? '核对并重试' : handoff ? '创建团队任务' : '创建任务'}</Button></Tooltip></footer>
+      <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-my-line px-6 py-3.5">
+        {(draft.hasDraft || handoff) && !locked && (
+          <div className="mr-auto flex items-center gap-2">
+            <Button size="sm" variant="ghost" className="text-my-tertiary hover:text-my-primary" disabled={busy || pending || discarding} onClick={() => void discard()}>
+              {discarding ? '核对中…' : '放弃草稿'}
+            </Button>
+            {draft.hasDraft && !handoff && <span className="text-my-2xs text-my-tertiary">已自动暂存</span>}
+          </div>
+        )}
+        <Button size="sm" variant="ghost" onClick={close}>取消</Button>
+        <Tooltip label={submitTooltip} wrap>
+          <Button size="sm" variant="primary" aria-busy={submitting || undefined} disabled={submitDisabled} onClick={() => void submit()}>
+            {submitting && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
+            {pending ? '创建中…' : savingMaterial ? '保存材料中…' : reconciliationRequired ? '需核对创建结果' : originalTask ? '核对任务和材料' : locked ? '核对并重试' : handoff ? '创建团队任务' : '创建任务'}
+          </Button>
+        </Tooltip>
+      </footer>
     </div>
   </Modal>
 }

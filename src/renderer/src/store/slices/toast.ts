@@ -10,7 +10,8 @@ export const toastSlice: AppSlice<ToastSlice> = (set) => ({
     set((s) => ({
       toasts: [...s.toasts.filter((item) => !(
         item.kind === t.kind && item.title === t.title && item.body === t.body &&
-        item.task?.projectRoot === t.task?.projectRoot && item.task?.dirName === t.task?.dirName
+        item.task?.projectRoot === t.task?.projectRoot && item.task?.dirName === t.task?.dirName &&
+        item.action?.label === t.action?.label
       )).slice(-2), { ...t, id }]
     }))
   },

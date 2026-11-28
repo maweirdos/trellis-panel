@@ -4,7 +4,7 @@
 .collab-sidebar nav { scrollbar-gutter: auto; }
 .collab-navigation { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: var(--my-space-12); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 var(--my-space-8) var(--my-space-16); }
 .collab-nav-section { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--my-space-2); }
-.collab-nav-section-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; min-height: var(--my-space-24); padding: 0 var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); font-weight: var(--my-weight-medium); letter-spacing: 0.03em; }
+.collab-nav-section-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; min-height: var(--my-space-24); padding: 0 var(--my-space-8); color: var(--my-txt-tertiary); font-size: var(--my-text-2xs); font-weight: var(--my-weight-normal); letter-spacing: 0.03em; }
 .collab-nav-section-heading button { display: grid; width: var(--my-space-24); height: var(--my-space-24); place-items: center; border-radius: var(--my-control-radius); color: var(--my-txt-tertiary); transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
 .collab-nav-item, .collab-nav-space-toggle { display: flex; width: 100%; min-width: 0; min-height: var(--my-space-30); align-items: center; gap: var(--my-space-8); padding: var(--my-space-4) var(--my-space-8); border-radius: var(--my-control-radius); color: var(--my-txt-secondary); font-size: var(--my-text-sm); text-align: left; transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
 .collab-nav-item > svg:first-child { color: var(--my-txt-icon-tertiary); transition: color var(--my-motion-fast) var(--my-ease-out); }
@@ -13,7 +13,7 @@
 .collab-nav-item.is-selected { background: var(--my-bg-navigation-selected); color: var(--my-txt-primary); font-weight: var(--my-weight-medium); }
 .collab-nav-space { display: flex; flex-direction: column; gap: var(--my-space-2); }
 .collab-nav-space-heading { display: flex; min-width: 0; align-items: center; gap: var(--my-space-2); }
-.collab-nav-space-toggle { flex: 1; min-width: 0; gap: var(--my-space-6); padding: var(--my-space-4) var(--my-space-6); color: var(--my-txt-primary); font-weight: var(--my-weight-semibold); }
+.collab-nav-space-toggle { flex: 1; min-width: 0; gap: var(--my-space-6); padding: var(--my-space-4) var(--my-space-6); color: var(--my-txt-item-title); font-weight: var(--my-weight-normal); }
 .collab-nav-space-chevron { color: var(--my-txt-icon-tertiary); flex-shrink: 0; }
 .collab-nav-space-badge { display: grid; width: var(--my-space-20); height: var(--my-space-20); flex: 0 0 auto; place-items: center; border: 1px solid var(--my-border-subtle); border-radius: var(--my-radius-base); background: var(--my-bg-panel); color: var(--my-txt-primary); }
 .collab-nav-space-create { display: grid; flex: 0 0 auto; width: var(--my-space-24); height: var(--my-space-24); place-items: center; border-radius: var(--my-control-radius); color: var(--my-txt-icon-secondary); transition: background-color var(--my-motion-fast) var(--my-ease-out), color var(--my-motion-fast) var(--my-ease-out); }
@@ -635,6 +635,25 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--my-space-12);
 }
+
+.collab-avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(5, var(--my-space-44));
+  gap: var(--my-space-4);
+}
+.my-root .collab-avatar-grid .my-menu-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--my-space-44);
+  height: var(--my-space-44);
+  min-height: var(--my-space-44);
+  padding: 0;
+  gap: 0;
+}
+.my-root .collab-avatar-grid .my-menu-item > span { grid-area: 1 / 1; }
+.my-root .collab-avatar-grid .my-menu-icon { width: var(--my-space-36); height: var(--my-space-36); }
+.my-root .collab-avatar-grid .my-menu-check { position: absolute; right: var(--my-space-2); bottom: var(--my-space-2); }
 
 /* 容器查询防挤压网格：仅列表可用宽度 >= 720px 时切双列，抽屉打开后自动单列舒展 */
 .collab-agent-list-canvas {

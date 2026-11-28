@@ -18,6 +18,9 @@ The only bootstrap imports are `my/my.css` then `styles.css` in `main.tsx`.
   `NotificationCard`; imported by the global `my.css` entry. Choose the
   surface with the [feedback mapping](./components.md#feedback-and-recovery).
 - `my-shell.css`: shell composition and responsive geometry using those tokens.
+- `my-motion.css`: unified motion choreography for True Crossfade route staging,
+  overlay/drawer presence exit transitions, window chrome states, and tactile
+  Switch/Checkbox/Tabs microinteractions, backed by `my/motion.ts`.
 
 `styles.css` owns Tailwind directives, reset/native-window rules and Markdown/
 architecture presentation. It consumes the same tokens; it is not another palette.
@@ -32,8 +35,9 @@ brand, typography or radius values. Keep theme values in `my-tokens.css` only.
 - Type: `text-my-2xs/xs/sm/md/lg/title/xl/display`; body roles are
   `--my-text-ui/chat/document/activity`, with matching line-height variables.
 - Interface names and supporting descriptions share `my-item-title` and
-  `my-item-description`. The standard preset uses 13px/500 for names and
-  12px/400 for descriptions; both follow the existing density step. Their size
+  `my-item-description`. The standard preset uses 13px/400 (crisp 1px CJK strokes
+  on Windows DirectWrite) for names and 12px/400 for descriptions; both follow the
+  existing density step. Their size
   tokens are `--my-text-item-title/description`, and their colors are
   `--my-txt-item-title/description`. Names use the equal Oklab mix of primary
   and secondary text; descriptions use tertiary text. Domain selectors consume
@@ -515,6 +519,11 @@ Windows owns native notification chrome; CSS tokens apply to renderer surfaces.
   including their task identities. Mounted items own cancellable timers: 5 seconds
   for info/success, 9 seconds for warn/error. Hover, descendant focus, expansion
   and hidden documents pause dismissal; resuming gives a full reading interval.
+- Toast cards include a bottom `2px` countdown bar synchronized with the pause state,
+  a subtle spring pop on success icons, and a rotating expand chevron. On dismissal
+  or timeout, the card slides/fades out to the right while its outer `.my-toast-slot`
+  CSS Grid wrapper smoothly collapses (`grid-template-rows: 1fr → 0fr`, `180ms`) so
+  remaining notifications settle down without a hard drop.
 
 ### Validation / error matrix
 
@@ -559,3 +568,51 @@ local operation results use the same renderer queue and themed card.
    - Card grids placed inside side-by-side workspaces or resizable drawers must use CSS container queries (`container-type: inline-size` + `@container (min-width: ...)`) rather than viewport breakpoints (`lg:` / `xl:` / `@media (min-width: ...)`), preventing multi-column crowding when an adjacent inspector drawer is open on a wide window.
 4. **Registered `rounded-my-*` Tailwind utilities**:
    - Every `rounded-my-*` class used in `src/renderer/src/**/*.{ts,tsx,css}` must be explicitly registered in `tailwind.config.js` `borderRadius` and map to a canonical `--my-radius-*` token in `my-tokens.css` (`npm run check:ui` statically rejects unregistered utilities so they never silently fall back to square corners).
+
+## 10. Global motion, True Crossfade routing & panel collapse contract
+
+Motion tokens live in `my-tokens.css`, presence/window hooks live in `src/renderer/src/my/motion.ts`, and keyframes/state rules live in `src/renderer/src/my/my-motion.css`.
+
+1. **Primary module switching (True Crossfade + keep-alive + prefetch)**:
+   - Lazy page chunks register in `src/renderer/src/my/layout/page-registry.ts` with idle batch preloading (`scheduleCorePagePreload`) plus hover/focus prefetch on `.my-module-rail` buttons.
+   - The six primary rail modules (`chat`, `crux`, `knowledge`, `machines`, `integrations`, `settings`) stay mounted after first visit with `hidden`, `aria-hidden`, `inert`, and `InteractionScope` isolation.
+   - When switching between modules with identical shell context (`hasShellContext(from) === hasShellContext(to)`), keep the outgoing module opaque underneath (`data-route-state="exiting"`, `z-index: 1`, `135ms`, `pointer-events: none`, `inert`) while the incoming module dissolves over it (`data-route-state="entering"`, `z-index: 2`, `opacity: 0 → 1`). Never apply vertical or horizontal whole-page translation/scaling on primary tab switches, and never keep persistent `will-change` on `.my-route-stage`.
+   - When switching across shell context layouts (`hasShellContext(from) !== hasShellContext(to)`), use non-overlapping `data-route-state="entering-solo"` and fade `ContextSidebar` in sync.
+   - Cold chunk loads exceeding `160ms` surface only the top `2px` `.my-route-pending-bar`; fallback `PageLoading` delays visual reveal by `140ms` (`my-page-loading-indicator`) to eliminate spinner flashes.
+   - In-module subviews use zero-displacement `.my-subview-stage` (`125ms` pure opacity fade).
+2. **Collapsible side panels (`ContextRegion` & `ConversationRightPanel`)**:
+   - Both left contextual sidebars (`.my-context-region`) and right conversation workbench inspector panes (`.conversation-right-region`) keep a persistent CSS Grid track (`grid-template-columns: 0px ↔ target-width`, `200ms var(--my-ease-out)`) with fixed inner content width and `usePresence` unmount delay so content never reflows or squashes during open/close. Disable transitions immediately while drag-resizing (`data-resizing="true"`).
+3. **Dual-state overlays, disclosures & controls**:
+   - `Modal` (including `DialogHost`, `CommandPalette`, `CruxCommandPalette`, `HelpOverlay`), `IssuePeek`, `Dropdown`/`Select`, `Tooltip` (with `160ms` initial hover delay / `450ms` warm group window), and `TaskDetail` drawer use `usePresence` for smooth enter/exit transitions while releasing Escape layers and focus guards immediately upon close. Callers must pass `open` into `<Modal>` (never short-circuit `if (!open) return null` above `<Modal>`). All resting enter keyframes (`my-pop-in`, `my-modal-center-in`, `my-modal-top-in`, `my-tooltip-in`, `my-drawer-right-in`, `my-peek-in`, `my-command-preview-focus`) terminate at `transform: none; filter: none` and use `animation-fill-mode: backwards` (keeping `both` only for exit animations) so Chromium drops the compositor transform layer completely (`getComputedStyle().transform === 'none'`) and Windows ClearType subpixel rendering stays crisp on text-heavy overlays; reserve `backdrop-filter` for backdrops and low-text floating stage bars.
+   - Global and workspace command palettes share one `CommandPaletteSurface` shell (`<Modal bare>` + `.my-command-stage` / `.my-command-panel` / `.my-command-preview`, canonical `10px` radius, opaque `--my-bg-elevated`), featuring `Tabs` category pill filtering, `Tab`/`Backspace`/first-`Esc` entity drill-down scope chips, `ResizeObserver`-measured `170ms` results-height morphing (disabled under reduced motion), trailing active-row action verbs with compact `.my-kbd` footer legends, and a detached `268px` right-side preview card (`70ms` selection debounce, auto-hidden `< 900px`).
+   - All `Dropdown` triggers bind `aria-expanded={open}` for subtle expanded anchoring; controls wrapped in `<Tooltip>` must not also set native `title` (prevents double tooltips).
+   - In-page vertical disclosures (sidebar groups, modal optional fields, list groups) use shared `<DisclosureGrid>` (`grid-template-rows: 0fr ↔ 1fr`, `180ms var(--my-ease-out)`, interruptible) with a single `<ChevronRight>` rotating `90deg`. List groups exceeding **40 rows** disable height animation (`animated={rows <= 40}`) to guarantee 60/120Hz frame pacing.
+   - `Switch` uses subtle pressed-thumb elongation; `Checkbox` uses stroke-draw checkmarks; `Tabs` (`.my-tabs-indicator`) and horizontal segmented controls (`Segmented` / `.my-segmented-indicator`) share a `ResizeObserver`-measured spring sliding pill indicator. High-frequency tab and filter switches stay instant with `tabular-nums`; major layout switches (`list`/`board`/`spreadsheet`/`gantt`/`calendar`) use `.my-subview-stage` (`125ms` zero-displacement fade).
+   - `.my-module-rail` relies solely on its raised keycap surface and icon stroke contrast for active selection; never add a left vertical bar or left border indicator to rail buttons.
+4. **Window chrome & reduced motion**:
+   - Maximized frameless windows smoothly flush edges via `data-window-maximized="true"`; unfocused windows soften top-bar/rail chrome (`opacity: 0.72`); minimize/close actions perform a brief `110ms` opacity fade before native IPC.
+   - **Never** scale the entire window on `Alt+Tab` / `visibilitychange` focus return or during maximize/unmaximize transitions.
+   - Under `prefers-reduced-motion: reduce`, compress transitions/animations (`0.01ms` / `0s`), skip crossfade overlap (`usePresence` exits immediately), and disable icon hover scaling.
+
+## 11. Global visual weight & emphasis contract (W0–W4)
+
+To prevent weight inflation across CJK (`Source Han Sans SC`) desktop workspaces, every text role, button, card, badge and icon maps to the five-tier visual weight scale defined in `DESIGN.md` (§2.5):
+
+1. **CJK anti-bold-snap ink & weight ladder**:
+   - On Windows DirectWrite, `13px` `Source Han Sans SC` snaps weights ≥ `450` into thick 2px strokes. Keep body copy, unselected navigation, inactive tabs, `my-item-title`, menu rows, `my-chip`, and `ghost`/`outline`/`surface`/`soft` buttons at `--my-weight-normal` (`400`) and establish hierarchy via ink luminance (`--my-txt-primary` > `--my-txt-item-title` > `--my-txt-secondary` > `--my-txt-tertiary`).
+   - Reserve `--my-weight-medium` (`500`) for active navigation/tab anchors, section/group headings, and `primary`/`danger` (W4) solid submit buttons.
+   - Reserve `--my-weight-semibold` (`600`) for page titles (`h1`), modal titles and display KPI metrics only.
+2. **Five-tier button emphasis (`ButtonVariant` in `my/ui.tsx`)**:
+   - `ghost` (**W1**): transparent rest, `400` weight, `--my-txt-secondary` (icons `--my-txt-icon-tertiary`, brightening on hover). Mandatory default for toolbar utility controls (`筛选`, `保存视图`, `显示`) and inline row actions.
+   - `outline` (**W2**): transparent rest + `1px` `--my-border-subtle-1` hairline, `400` weight, `--my-txt-secondary`. Used inside cards (`FeedbackNotice`), modal cancel actions and demoted background primary controls while a detail drawer is open.
+   - `surface` (**W2**, legacy alias `neutral`): `--my-button-surface-bg` + `1px` `--my-button-surface-border` + `--my-shadow-raised-100`, `400` weight, `--my-txt-primary`. Reserved for active stateful toolbar filters or standalone form triggers.
+   - `soft` (**W3**): raised keycap surface (`--my-button-soft-bg/border/shadow`: light crisp `#ffffff` + `14%` rim + subtle lift, dark `#2c2c2c` + `13%` rim; never flat `#ededed` selection gray), `400` weight, `--my-button-soft-text`. Standard primary creation trigger in persistent workspace page headers (`+ 新建任务`), paired with a `1px × 14px` `.my-toolbar-divider` separating view controls from creation actions.
+   - `primary` / `danger` (**W4**): high-contrast solid fill (`500` weight), strictly limited to ≤ 1 per visible viewport (modal submission, form save, empty-state sole CTA or approval gate).
+3. **Header height alignment & anti-box-in-box rule**:
+   - Preserve existing page layouts and control placements; align all controls inside a horizontal `PageHeader` (left `Tabs`, `.my-segmented-sm`, utility actions, primary `soft` button) to `size="sm"` (`--my-control-height-sm`: `26 / 28 / 30px`).
+   - Dropdown menus (`.my-menu`) use opaque `--my-bg-elevated` and release `transform` (`transform: none`) at the end of `my-pop-in` so Windows ClearType subpixel rendering stays crisp; unselected `.my-menu-item` / `.my-select-option` rows use `--my-txt-secondary` (icons `--my-txt-icon-tertiary`), brightening to `--my-txt-primary` on hover or selection. Composite filter menus pin `SearchInput size="sm"` at the top, avoid duplicating generic and space-specific status lists, reuse `StateGroupIcon` with the exact same semantic tokens as task list rows/headers, wrap scrollable option sections inside `.my-scrollbar.my-fade-scroll` (keeping short `.my-select-menu` lists fade-free), and keep leading icons aligned on one vertical text rail across all sections.
+   - Within one visual unit, never stack more than two nested explicit borders: inside a bordered card (`L2`), icons use borderless tonal wells and trailing buttons step down to `outline` or `ghost`.
+4. **Golden workspace & modal form baseline (diffusion standard)**:
+   - Lock left module rail, sidebar top header (`h-my-header`), and content `PageHeader` onto one horizontal baseline (`--my-workspace-header-height`: `44 / 48 / 50px`). Unify sidebar `+` triggers to borderless `.my-icon-control`, keep unselected space headings and low-frequency sidebar links at `400` weight, and keep list group headers at `400` `--my-txt-secondary` so `my-item-title` rows hold foreground priority.
+   - Creation/assignment modals inherit `bg-my-panel` with `px-6` (`24px`) horizontal inset and `gap-3.5` (`14px`) field spacing; read-only context chips sit beside the left heading rather than inside the top-right action group; header mode toggles reuse `.my-segmented.my-segmented-sm` + `.my-segment-label`.
+   - Shared `Field` labels use `12px` (`text-my-xs`), `400` weight, `--my-txt-secondary`, `pl-0.5`; dropdown form fields must use `.my-select-trigger` (`justify-content: space-between`, never centered `Button` or box-in-box section wrappers); textareas use `resize-none` + `.my-scrollbar` so native corner grips never clip the `10px` radius.

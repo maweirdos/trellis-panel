@@ -1,15 +1,17 @@
-import { useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { Check, TriangleAlert, Info, CircleX, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
+import { Check, TriangleAlert, Info, CircleX, X, ChevronDown } from 'lucide-react'
 import type { ToastEvent } from '@shared/types'
 
 const ICONS = { success: Check, warn: TriangleAlert, info: Info, error: CircleX }
 
 /** Shared notification surface; semantic color belongs to the icon, never its frame. */
-export function NotificationCard({ notification, onDismiss, action, onExpandedChange }: {
+export function NotificationCard({ notification, onDismiss, action, onExpandedChange, durationMs, paused }: {
   notification: ToastEvent
   onDismiss?: () => void
   action?: { label: string; onClick: () => void }
   onExpandedChange?: (expanded: boolean) => void
+  durationMs?: number
+  paused?: boolean
 }): JSX.Element {
   const Icon = ICONS[notification.kind]
   const contentId = useId()
@@ -36,7 +38,9 @@ export function NotificationCard({ notification, onDismiss, action, onExpandedCh
     onExpandedChange?.(next)
   }
 
-  return <article className="my-notification" data-kind={notification.kind} data-expanded={expanded}>
+  const hasDetail = Boolean(notification.body || action || overflowing || expanded)
+
+  return <article className="my-notification" data-kind={notification.kind} data-expanded={expanded} data-compact={!hasDetail || undefined}>
     <span className="my-notification-icon" aria-hidden="true"><Icon /></span>
     <div className="my-notification-content">
       <div id={contentId} className="my-notification-message my-scrollbar" role={notification.kind === 'error' ? 'alert' : 'status'} aria-atomic="true" tabIndex={expanded ? 0 : undefined}>
@@ -46,10 +50,19 @@ export function NotificationCard({ notification, onDismiss, action, onExpandedCh
       {(action || overflowing || expanded) && <div className="my-notification-actions">
         {action && <button type="button" className="my-notification-action" onClick={action.onClick}>{action.label}</button>}
         {(overflowing || expanded) && <button type="button" className="my-notification-action" aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
-          {expanded ? '收起' : '展开详情'}{expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          {expanded ? '收起' : '展开详情'}<ChevronDown className="my-notification-chevron" aria-hidden="true" />
         </button>}
       </div>}
     </div>
     {onDismiss && <button type="button" className="my-notification-dismiss" aria-label="关闭通知" onClick={onDismiss}><X aria-hidden="true" /></button>}
+    {durationMs !== undefined && durationMs > 0 && (
+      <span
+        key={paused ? 'paused' : 'running'}
+        className="my-notification-progress"
+        data-paused={paused || undefined}
+        style={{ '--my-notification-duration': `${durationMs}ms` } as CSSProperties}
+        aria-hidden="true"
+      />
+    )}
   </article>
 }

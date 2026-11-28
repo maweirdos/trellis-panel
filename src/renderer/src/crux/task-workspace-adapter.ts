@@ -2,10 +2,17 @@ import type { CruxSnapshot, CruxStatusCategory, CruxTask } from '@shared/crux'
 import type { MyDataset, StateGroup } from '../my/types'
 import { getCruxTaskStageMetadata } from '@shared/crux-domain/workflow'
 import { canRestoreLightweightTask } from '@shared/crux-domain/lightweight'
+import { statusDisplayName } from './store'
 
 export const CRUX_STATE_GROUPS: Record<CruxStatusCategory, StateGroup> = {
   backlog: 'backlog', todo: 'unstarted', in_progress: 'started', in_review: 'started',
   blocked: 'started', done: 'completed', cancelled: 'cancelled'
+}
+
+export function cruxStatusColor(category: CruxStatusCategory): string {
+  if (category === 'blocked') return 'var(--my-txt-danger-primary)'
+  if (category === 'in_review') return 'var(--my-txt-icon-states-monitoring)'
+  return `var(--my-txt-icon-states-${CRUX_STATE_GROUPS[category]})`
 }
 
 /** A read projection; collaboration records never enter useMy's native dataset. */
@@ -42,10 +49,11 @@ export function deriveTaskWorkspaceDataset(
     })),
     states: [...snapshot.taskStatuses.filter((status) => spaceIds.has(status.spaceId)).map((status) => {
       const group = CRUX_STATE_GROUPS[status.category]
+      const label = statusDisplayName(status)
       return {
         id: status.id,
-        name: spaceId ? status.name : `${spaces.find((space) => space.id === status.spaceId)?.key ?? ''} · ${status.name}`,
-        color: `var(--my-txt-icon-states-${status.category === 'in_review' ? 'monitoring' : group})`,
+        name: spaceId ? label : `${spaces.find((space) => space.id === status.spaceId)?.key ?? ''} · ${label}`,
+        color: cruxStatusColor(status.category),
         group, sequence: status.order
       }
     }), ...workflowStates],

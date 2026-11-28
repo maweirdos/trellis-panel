@@ -42,7 +42,19 @@ export type Page =
   | 'analytics'
   | 'devtools'
 
-export interface ToastItem extends ToastEvent {
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
+export interface RendererToastInput extends ToastEvent {
+  /** Renderer-only local action (such as Undo). Never serialized over IPC. */
+  action?: ToastAction
+  /** Optional custom auto-dismiss duration in ms. */
+  durationMs?: number
+}
+
+export interface ToastItem extends RendererToastInput {
   id: number
 }
 
@@ -120,7 +132,7 @@ export interface UiSlice {
 
 export interface ToastSlice {
   toasts: ToastItem[]
-  pushToast: (t: ToastEvent) => void
+  pushToast: (t: RendererToastInput) => void
   dismissToast: (id: number) => void
 }
 

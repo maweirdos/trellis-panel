@@ -120,14 +120,16 @@ export function GetStartedWidget({ variant = 'overview' }: { variant?: 'sidebar'
             <span className="collab-tone-avatar grid h-5 w-5 shrink-0 place-items-center rounded-my-sm" data-tone="indigo">
               <Rocket size={12} />
             </span>
-            <span className="truncate font-medium text-my-primary">新手指引</span>
-            <span className={`inline-grid h-4 w-4 shrink-0 place-items-center rounded-full border text-my-2xs tabular-nums ${
-              completedCount === steps.length
-                ? 'border-transparent bg-my-success-subtle text-my-success-text'
-                : 'border-my-line-strong text-my-tertiary'
-            }`} title={`已完成 ${percent}%`}>
-              {completedCount === steps.length ? <Check size={10} /> : ''}
-            </span>
+            <span className="truncate">新手指引</span>
+            {completedCount === steps.length ? (
+              <span className="inline-grid h-4 w-4 shrink-0 place-items-center rounded-full bg-my-success-subtle text-my-success-text" title="已全部完成">
+                <Check size={10} />
+              </span>
+            ) : (
+              <span className="shrink-0 text-my-2xs tabular-nums text-my-tertiary" title={`已完成 ${percent}%`}>
+                {completedCount}/{steps.length}
+              </span>
+            )}
           </span>
           <ChevronRight size={14} className="shrink-0 text-my-icon-tertiary" />
         </button>

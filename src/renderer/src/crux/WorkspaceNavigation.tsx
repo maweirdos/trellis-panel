@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Bot, ChevronDown, ChevronRight, MoreHorizontal, Plus, ShoppingBag, Sparkles, Star, Users2
+  ChevronRight, MoreHorizontal, Plus, ShoppingBag, Sparkles, Star, Users2
 } from 'lucide-react'
 import { resolveSpaceModules } from '@shared/crux-space-presets'
-import { Dropdown, DropdownDivider, DropdownHeader, DropdownItem, Modal } from '../my/ui'
+import { DisclosureGrid, Dropdown, DropdownDivider, DropdownHeader, DropdownItem, Modal } from '../my/ui'
+import { AgentAvatar } from './AgentAvatar'
 import { useAgentChatBridge } from './agent-chat-bridge'
 import { useCollaborationPlatform } from './collaboration-platform-store'
 import { GetStartedWidget } from './GetStartedWidget'
@@ -53,6 +54,7 @@ export function WorkspaceNavigation({
         key: `agent:${agent.id}`,
         kind: 'agent' as const,
         name: agent.name,
+        avatarId: agent.avatarId,
         tooltip: agent.description && agent.description.trim() !== agent.name.trim() ? agent.description : `与 ${agent.name} 开始对话`,
         presence: computeAgentPresence(agent.id, runs, agent.enabled),
         onClick: () => useAgentChatBridge.getState().startAgentChat(agent.id, { runtimeKind: agent.runtimeKind, workingDirectory: agent.workingDirectory })
@@ -97,7 +99,7 @@ export function WorkspaceNavigation({
   }
 
   return <>
-    <div className="flex shrink-0 items-center justify-between px-3 py-2">
+    <div className="flex h-my-header shrink-0 items-center justify-between px-3">
       <h1 className="text-my-md font-semibold text-my-primary">首页</h1>
       <Dropdown
         align="right"
@@ -108,9 +110,9 @@ export function WorkspaceNavigation({
             aria-label="新建任务或对话"
             aria-expanded={open}
             onClick={toggle}
-            className="grid h-7 w-7 place-items-center rounded-my-base border border-my-line-strong bg-my-layer-3 text-my-primary transition-colors hover:bg-my-layer-3-hover"
+            className="my-icon-control text-my-icon-secondary hover:text-my-primary"
           >
-            <Plus size={15} strokeWidth={2.2} />
+            <Plus size={15} strokeWidth={1.75} />
           </button>
         )}
       >
@@ -217,14 +219,14 @@ export function WorkspaceNavigation({
       <section aria-label="对话" className="collab-nav-section">
         <button
           type="button"
+          aria-expanded={chatsOpen}
           onClick={() => setChatsOpen((prev) => !prev)}
           className="collab-nav-section-heading w-full justify-start gap-1 text-left hover:text-my-primary"
         >
           <span>对话</span>
-          {chatsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          <ChevronRight size={11} className="my-disclosure-chevron" data-open={chatsOpen || undefined} />
         </button>
-        {chatsOpen && (
-          <div className="flex flex-col gap-0.5">
+        <DisclosureGrid open={chatsOpen} innerClassName="flex flex-col gap-0.5">
             {visibleChats.length === 0 ? (
               <button
                 type="button"
@@ -246,9 +248,11 @@ export function WorkspaceNavigation({
                     aria-current={isSelectedChat ? 'page' : undefined}
                     className={`collab-nav-item ${isSelectedChat ? 'is-selected' : ''}`}
                   >
-                    <span className="collab-tone-avatar grid h-5 w-5 shrink-0 place-items-center rounded-full" data-tone={identityTone(entry.name)}>
-                      {entry.kind === 'agent' ? <Bot size={11} /> : <Users2 size={11} />}
-                    </span>
+                    {entry.kind === 'agent' ? <AgentAvatar avatarId={entry.avatarId} size={20} /> : (
+                      <span className="collab-tone-avatar grid h-5 w-5 shrink-0 place-items-center rounded-full" data-tone={identityTone(entry.name)}>
+                        <Users2 size={11} />
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                     {entry.presence && (
                       <span className="collab-presence-dot" data-state={entry.presence.state} title={AGENT_PRESENCE_META[entry.presence.state].label} />
@@ -266,26 +270,27 @@ export function WorkspaceNavigation({
                 {showAllChats ? '收起' : `更多 (${hiddenChatCount})`}
               </button>
             )}
-          </div>
-        )}
+        </DisclosureGrid>
       </section>
 
       <section aria-label="我的空间" className="collab-nav-section">
         <div className="collab-nav-section-heading">
           <button
             type="button"
+            aria-expanded={mySpacesOpen}
             onClick={() => setMySpacesOpen((prev) => !prev)}
             className="collab-nav-collapse-btn"
           >
             <span>我的空间</span>
-            {mySpacesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <ChevronRight size={12} className="my-disclosure-chevron" data-open={mySpacesOpen || undefined} />
           </button>
           {workspaceContext.canManage && workspaceContext.state !== 'access-revoked' && (
             <button type="button" aria-label="新建空间" title="新建空间" onClick={() => setCreateSpaceOpen(true)}><Plus size={14} /></button>
           )}
         </div>
 
-        {mySpacesOpen && spaces.map((space) => {
+        <DisclosureGrid open={mySpacesOpen} innerClassName="flex flex-col gap-0.5">
+        {spaces.map((space) => {
           const open = expandedSpaceId === space.id
           const enabledModules = resolveSpaceModules(space)
           const starred = favorites.some((fav) => fav.kind === 'space' && fav.id === space.id)
@@ -302,7 +307,7 @@ export function WorkspaceNavigation({
                   aria-expanded={open}
                   onClick={() => setExpandedSpaceId((previous) => previous === space.id ? null : space.id)}
                 >
-                  {open ? <ChevronDown size={12} className="collab-nav-space-chevron" /> : <ChevronRight size={12} className="collab-nav-space-chevron" />}
+                  <ChevronRight size={12} className="collab-nav-space-chevron my-disclosure-chevron" data-open={open || undefined} />
                   <span className="collab-nav-space-badge" aria-hidden="true">
                     <FlowIcon name="projects" size={12} />
                   </span>
@@ -346,8 +351,7 @@ export function WorkspaceNavigation({
                 </Dropdown>
               </div>
 
-              {open && (
-                <div className="collab-nav-space-content">
+              <DisclosureGrid open={open} innerClassName="collab-nav-space-content">
                   <div className="collab-nav-branch">
                     <button
                       type="button"
@@ -379,8 +383,7 @@ export function WorkspaceNavigation({
                           <span className="min-w-0 flex-1 truncate">视图</span>
                         </button>
                       )}
-                      {moreExpanded && (
-                        <>
+                      <DisclosureGrid open={moreExpanded} innerClassName="flex flex-col gap-0.5">
                           {enabledModules.triage && (
                             <button
                               type="button"
@@ -410,10 +413,10 @@ export function WorkspaceNavigation({
                           >
                             <span className="min-w-0 flex-1 truncate">统计分析</span>
                           </button>
-                        </>
-                      )}
+                      </DisclosureGrid>
                       <button
                         type="button"
+                        aria-expanded={moreExpanded}
                         onClick={() => setTaskMoreOpen((prev) => ({ ...prev, [space.id]: !moreExpanded }))}
                         className="collab-nav-item text-my-tertiary"
                       >
@@ -495,17 +498,17 @@ export function WorkspaceNavigation({
                       </>
                     )}
                   </Dropdown>
-                </div>
-              )}
+              </DisclosureGrid>
             </section>
           )
         })}
-        {mySpacesOpen && spaces.length === 0 && (
+        {spaces.length === 0 && (
           <button type="button" className="collab-nav-item" onClick={() => setModule('spaces')}>
             <FlowIcon name="spaces" size={17} />
             <span>浏览与加入空间</span>
           </button>
         )}
+        </DisclosureGrid>
       </section>
 
       <section ref={orgSectionRef} aria-label="组织" className="collab-nav-section">
@@ -524,10 +527,9 @@ export function WorkspaceNavigation({
           className="collab-nav-section-heading w-full justify-start gap-1 text-left hover:text-my-primary"
         >
           <span>组织</span>
-          {orgOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          <ChevronRight size={11} className="my-disclosure-chevron" data-open={orgOpen || undefined} />
         </button>
-        {orgOpen && (
-          <div className="flex flex-col gap-0.5">
+        <DisclosureGrid open={orgOpen} innerClassName="flex flex-col gap-0.5">
             <button
               type="button"
               onClick={() => setModule('runtimes')}
@@ -556,8 +558,7 @@ export function WorkspaceNavigation({
               <FlowIcon name="spaces" size={16} />
               <span className="min-w-0 flex-1 truncate">设置</span>
             </button>
-          </div>
-        )}
+        </DisclosureGrid>
       </section>
     </nav>
 
