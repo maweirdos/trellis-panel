@@ -245,6 +245,13 @@ export class ThreadMessageIntake {
     const runs: Array<ConversationThreadSnapshot['runs'][number]> = []
     const readMessages = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_messages
       WHERE thread_id = ? AND run_id = ? ORDER BY created_at, message_id`)
+    if (beforeRunOrdinal === Number.MAX_SAFE_INTEGER) {
+      const detached = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_messages
+        WHERE thread_id = ? AND run_id IS NULL ORDER BY created_at, message_id`).all(threadId) as Array<{ payload_json: string }>
+      for (const entry of detached) {
+        messages.push(decodeMessage(JSON.parse(entry.payload_json)))
+      }
+    }
     let bytes = 0
     for (const row of runRows.slice(0, limit)) {
       const entries = readMessages.all(threadId, row.run_id) as Array<{ payload_json: string }>

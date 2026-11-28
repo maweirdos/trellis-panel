@@ -295,6 +295,38 @@ export class ThreadCommands {
     })
   }
 
+  switchProvider(
+    input: Extract<ConversationThreadCommand, { type: 'provider.switch' }>,
+    authority: ConversationAuthority,
+    selection: { readonly modelSelection: ModelSelection; readonly clearNativeBinding: boolean },
+    clearBinding: (occurredAt: string) => void,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json, archived_at FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string; archived_at: string | null } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    if (row.archived_at !== null) throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const next: Record<string, unknown> = {
+      ...current,
+      providerInstanceId: selection.modelSelection.instanceId,
+      modelSelection: selection.modelSelection,
+      ...(selection.clearNativeBinding ? { activeProviderThreadId: null } : {}),
+      updatedAt: occurredAt,
+    }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        this.database.prepare(
+          'UPDATE conversation_v2_projection_threads SET default_provider = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?',
+        ).run(selection.modelSelection.instanceId, occurredAt, JSON.stringify(next), input.threadId)
+        clearBinding(occurredAt)
+      },
+    })
+  }
+
   appendMessage(
     input: Extract<ConversationThreadCommand, { type: 'message.dispatch' | 'thread.handoff' }>, authority: ConversationAuthority, selection: DriverSelection,
     steer?: { targetRunId: string; targetAttemptId: string }, promptAttachments?: ConversationPromptAttachmentSupport,

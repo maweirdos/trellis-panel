@@ -73,6 +73,20 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
     text: text.refine(value => value.trim().length > 0), restoreFiles: z.boolean(), instanceId, model,
     options: conversationModelOptionsSchema.optional(),
   }),
+  z.strictObject({
+    ...base,
+    type: z.literal('provider.switch'),
+    instanceId,
+    model,
+    options: conversationModelOptionsSchema.optional(),
+  }),
+  z.strictObject({
+    ...base,
+    type: z.literal('thread.merge_back'),
+    sourceThreadId: id,
+    summary: z.string().trim().min(1).max(16_000).optional(),
+    messageIds: z.array(id).min(1).max(32).optional(),
+  }),
 ]).superRefine((input, context) => {
   if (input.type === 'message.dispatch' && input.manualContinuationOfRunId) {
     if (input.deliveryIntent === 'steer' || input.attachmentIds?.length || input.references?.length) {

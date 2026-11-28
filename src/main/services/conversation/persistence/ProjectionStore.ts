@@ -136,6 +136,13 @@ export class ConversationProjectionStore {
       payload_json = ? WHERE thread_id = ?`).run(instanceId, updatedAt, payloadJson, threadId)
   }
 
+  clearNativeBindingForSwitch(threadId: string, updatedAt: string): void {
+    this.database.prepare('DELETE FROM conversation_v2_native_bindings WHERE thread_id = ?').run(threadId)
+    this.database.prepare('UPDATE conversation_v2_projection_runs SET provider_thread_id = NULL WHERE thread_id = ?').run(threadId)
+    this.database.prepare('UPDATE conversation_v2_projection_threads SET active_provider_thread_id = NULL, updated_at = ? WHERE thread_id = ?')
+      .run(updatedAt, threadId)
+  }
+
   touchThread(threadId: string, updatedAt: string): void {
     this.database.prepare('UPDATE conversation_v2_projection_threads SET updated_at = ? WHERE thread_id = ?')
       .run(updatedAt, threadId)

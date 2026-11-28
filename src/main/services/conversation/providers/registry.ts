@@ -31,6 +31,14 @@ export interface ConversationResumeThreadInput {
   readonly artifactMcp?: OpenArtifactMcpGrant
 }
 
+export interface ConversationForkThreadInput {
+  readonly sourceNativeThreadId: string
+  readonly cwd: string
+  readonly model: string
+  readonly runtimeMode?: RuntimeMode
+  readonly lastTurnId?: string
+}
+
 export interface ConversationInterruptTurnInput {
   readonly nativeThreadId: string
   readonly turnId: string
@@ -173,6 +181,7 @@ export interface ConversationDriverSession {
   validatePromptAttachments?(attachments: readonly ChatAttachment[]): void
   startThread(model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode): Effect.Effect<string, Error>
   resumeThread?(input: ConversationResumeThreadInput): Effect.Effect<string, Error>
+  forkThread?(input: ConversationForkThreadInput): Effect.Effect<string, Error>
   detachThread?(input: { readonly nativeThreadId: string; assertCurrent(): void }): Effect.Effect<ConversationThreadDetachConfirmation, Error>
   rollbackThread?(input: { readonly nativeThreadId: string; readonly numTurns: number }): Effect.Effect<void, Error>
   canConfirmWindowsJobClose?(nativeThreadId: string): boolean

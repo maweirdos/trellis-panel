@@ -11,11 +11,21 @@ export interface PortableMessage {
   readonly text: string
 }
 
+export interface NativeForkMetadata {
+  readonly parentThreadId: string
+  readonly sourceInstanceId: string
+  readonly sourceNativeThreadId: string
+  readonly sourceNativeTurnId?: string
+  readonly isLatestParentRun: boolean
+  readonly configurationFingerprint?: string | null
+}
+
 export interface PortableHistory {
   readonly sourceThreadId: string
   readonly messages: readonly PortableMessage[]
   readonly omitted: number
   readonly attachmentsOmitted: number
+  readonly nativeFork?: NativeForkMetadata
 }
 
 type HistoryRow = Omit<PortableMessage, 'threadId'> & { attachment_count: number }
@@ -25,22 +35,29 @@ const MAX_HISTORY_ROWS = 48
 export class ContextHandoff {
   constructor(private readonly database: DatabaseSync, private readonly commands: ThreadCommands) {}
 
-  capture(reference: ConversationHistoryReference, authority: ConversationAuthority, sourceOrdinal?: number, includeInitialUser = false): PortableHistory {
+  capture(
+    reference: ConversationHistoryReference,
+    authority: ConversationAuthority,
+    sourceOrdinal?: number,
+    includeInitialUser = false,
+    includeInterrupted = false,
+  ): PortableHistory {
     const { threadId, messageIds } = reference
     this.assertSource(threadId, authority)
     const latest = sourceOrdinal ?? Number.MAX_SAFE_INTEGER
     const eligible = `FROM conversation_v2_projection_messages message
-      JOIN conversation_v2_projection_runs run ON run.run_id = message.run_id AND run.thread_id = message.thread_id
-      WHERE message.thread_id = ? AND run.ordinal <= ? AND message.streaming = 0
+      LEFT JOIN conversation_v2_projection_runs run ON run.run_id = message.run_id AND run.thread_id = message.thread_id
+      WHERE message.thread_id = ? AND message.streaming = 0
       AND message.role IN ('user','assistant')
-      AND ((run.status = 'completed' AND json_extract(run.payload_json, '$.outcomeUnknown') IS NOT 1)
-        OR (? AND run.ordinal = 1 AND message.role = 'user' AND run.status IN ('queued','preparing','starting','running','waiting')))
+      AND ((message.run_id IS NULL AND ?)
+        OR (run.ordinal <= ? AND (((run.status = 'completed' OR (? AND run.status IN ('cancelled', 'interrupted'))) AND json_extract(run.payload_json, '$.outcomeUnknown') IS NOT 1)
+          OR (? AND run.ordinal = 1 AND message.role = 'user' AND run.status IN ('queued','preparing','starting','running','waiting')))))
       ${messageIds ? `AND message.message_id IN (${messageIds.map(() => '?').join(',')})` : ''}`
-    const parameters = [threadId, latest, Number(includeInitialUser), ...(messageIds ?? [])]
+    const parameters = [threadId, Number(sourceOrdinal === undefined), latest, Number(includeInterrupted), Number(includeInitialUser), ...(messageIds ?? [])]
     const rows = this.database.prepare(`SELECT message.message_id AS messageId, message.role,
       substr(CAST(json_extract(message.payload_json, '$.text') AS TEXT), 1, ?) AS text,
       COALESCE(json_array_length(message.payload_json, '$.attachments'), 0) AS attachment_count
-      ${eligible} ORDER BY run.ordinal DESC, message.created_at DESC, message.message_id DESC LIMIT ?`)
+      ${eligible} ORDER BY COALESCE(run.ordinal, 999999999) DESC, message.created_at DESC, message.message_id DESC LIMIT ?`)
       .all(MAX_CONTEXT_BYTES + 1, ...parameters, MAX_HISTORY_ROWS) as HistoryRow[]
     const totals = this.database.prepare(`SELECT COUNT(*) AS count,
       COALESCE(SUM(json_array_length(message.payload_json, '$.attachments')), 0) AS attachments ${eligible}`)

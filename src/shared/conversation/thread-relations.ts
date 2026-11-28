@@ -59,6 +59,8 @@ export interface ConversationThreadRelation {
   readonly completionDelivery?: OrchestrationV2DelegatedCompletionTaskDelivery
   readonly result?: { readonly deliveryId: string; readonly state: 'available' | 'delivered' | 'read-only'; readonly text?: string }
   readonly continuation?: { readonly commandId: string; readonly runId: string }
+  readonly mergedBackAt?: string
+  readonly mergedBackMessageId?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

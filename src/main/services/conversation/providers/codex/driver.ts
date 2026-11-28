@@ -22,7 +22,10 @@ import type { V2ThreadStartResponse__SandboxPolicy } from './app-server/schema'
 import { codexArtifactTools, codexDelegationTools, CodexTurnTools } from './turn-tools'
 import { ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError } from '../registry'
 import type { ConversationDriverEventListener, ConversationDriverModel, ConversationDriverOpenInput, ConversationDriverSession, ConversationDriverTurnEvent } from '../registry'
-import type { ConversationCompactThreadInput, ConversationInterruptTurnInput, ConversationResumeThreadInput, ConversationStartTurnContext, ConversationSteerTurnInput } from '../registry'
+import type {
+  ConversationCompactThreadInput, ConversationForkThreadInput, ConversationInterruptTurnInput, ConversationResumeThreadInput,
+  ConversationStartTurnContext, ConversationSteerTurnInput,
+} from '../registry'
 import type { ConversationDriverDescriptor, ConversationDriverOption, ConversationDriverSkill, ConversationDriverSkillSource } from '../../../../../shared/conversation/driverCatalog'
 import { DaemonError } from '../../../../daemon/errors'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported, type MutableDriverActions } from '../core/catalog'
@@ -467,6 +470,35 @@ export class CodexDriver implements ConversationDriverSession {
           const original = this.verifyThread(response, model, cwd, nativeThreadId)
           this.actions.resume = { state: 'verified', source: 'native-session', detail: '原生恢复回执确认了同一线程。' }
           return original
+        },
+        catch: asError,
+      })),
+      Effect.flatMap(threadId => this.verifyTaskTools(threadId)),
+      Effect.mapError(asError),
+    )
+  }
+
+  readonly forkThread: NonNullable<ConversationDriverSession['forkThread']> = input => {
+    const policy = this.resolveThreadPolicy(input.runtimeMode)
+    return this.taskThreadConfig(input.cwd).pipe(
+      Effect.flatMap(config => this.guard(this.requireClient().request('thread/fork', {
+        threadId: input.sourceNativeThreadId,
+        model: input.model,
+        cwd: input.cwd,
+        approvalPolicy: policy.approvalPolicy,
+        sandbox: policy.sandbox,
+        excludeTurns: true,
+        ...(input.lastTurnId ? { lastTurnId: input.lastTurnId } : {}),
+        ...(config && { config }),
+      }))),
+      Effect.timeout(REQUEST_TIMEOUT),
+      Effect.flatMap(response => Effect.try({
+        try: () => {
+          const forkedId = this.verifyThread(response, input.model, input.cwd)
+          if (forkedId === input.sourceNativeThreadId) {
+            throw new Error('Codex 原生派生返回了与原线程相同的线程编号。')
+          }
+          return forkedId
         },
         catch: asError,
       })),

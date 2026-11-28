@@ -38,6 +38,7 @@ import {
 } from '../../services/conversation/orchestration/ProviderEventIngestor'
 import { RunFinalizationService } from '../../services/conversation/orchestration/RunFinalizationService'
 import { UsageLimitRecoveryWorker } from '../../services/conversation/orchestration/UsageLimitRecoveryWorker'
+import { IdleCompactionService } from '../../services/conversation/orchestration/IdleCompactionService'
 import { CheckpointService } from '../../services/conversation/orchestration/CheckpointService'
 import {
   RESTART_CONTINUATION_EFFECT_TYPE,
@@ -88,7 +89,7 @@ export interface ConversationRuntimePorts {
   directory: string
   driverRegistry?: ConversationDriverRegistry
   workcopies?: WorkcopyUseRegistry
-  deadlines?: Partial<{ open: number; thread: number; turn: number; control: number; close: number }>
+  deadlines?: Partial<{ open: number; thread: number; turn: number; control: number; close: number; idleCompaction: number }>
   assertOwner(): void
   shouldContinueThreadsAfterRestart?: () => boolean
 }
@@ -156,6 +157,7 @@ export class ConversationRuntime {
   private readonly ingestor: ProviderEventIngestor<ActiveTurn>
   private readonly turnControl: ProviderTurnControlService<ActiveTurn, CommandAuthority>
   private readonly usageLimitRecovery: UsageLimitRecoveryWorker<CommandAuthority>
+  private readonly idleCompaction: IdleCompactionService<CommandAuthority>
   private readonly finalization: RunFinalizationService<ActiveTurn, CommandAuthority>
   private readonly checkpoints: CheckpointService
   private readonly storageId: string
@@ -165,7 +167,6 @@ export class ConversationRuntime {
   private readonly authorizations = new Map<string, CommandAuthority>()
   private readonly threadArtifactMcps = new Map<string, OpenArtifactMcpGrant>()
   private readonly worktreePreparations = new Map<string, { runId: string; controller: AbortController }>()
-  private readonly idleCompactions = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly delegationCalls = new Map<string, { input: string; result: Promise<ConversationDelegationReply> }>()
   private readonly delegationContinuationParents = new Map<string, ActiveTurn>()
   private readonly unsettledTerminals = new Map<string, { turn: ActiveTurn; detail: string; terminal: ConversationNativeTerminalEvidence }>()
@@ -259,6 +260,28 @@ export class ConversationRuntime {
       ),
       dispatchAutoRetry: ({ threadId, failedRunId, commandId, authority }) => this.dispatchUsageLimitAutoRetry(threadId, failedRunId, commandId, authority),
     })
+    this.idleCompaction = new IdleCompactionService<CommandAuthority>({
+      ...(this.deadlines.idleCompaction !== undefined ? { delayMs: this.deadlines.idleCompaction } : {}),
+      isEligible: (threadId, authority) => {
+        if (this.closing || authority.binding.kind !== 'personal' || this.commands.isPaused(threadId)
+          || this.activeTurns.has(threadId) || this.commands.isArchived(threadId)
+          || !this.sessions.loadedThreads.get(threadId)?.driver.compactThread) {
+          return null
+        }
+        const run = this.continuation.idleCandidate(threadId)
+        return run ? { runId: run.run_id } : null
+      },
+      onTrigger: async (threadId, runId, authority) => {
+        await this.assertCurrent(threadId, authority)
+        if (this.closing || this.commands.isPaused(threadId) || this.activeTurns.has(threadId)
+          || this.continuation.idleCandidate(threadId)?.run_id !== runId
+          || this.relations.read(threadId).children.some(relation => ['queued', 'running', 'waiting', 'pending-reconciliation'].includes(relation.status))) {
+          return
+        }
+        const command = { type: 'thread.compact', threadId, commandId: `idle-compact:${runId}` } as const
+        if (!this.commands.replay(command, authority)) this.acceptCompaction(command, authority, 'idle')
+      },
+    })
     this.finalization = new RunFinalizationService<ActiveTurn, CommandAuthority>(
       this.relations,
       this.usageLimitRecovery,
@@ -269,6 +292,7 @@ export class ConversationRuntime {
         },
         offerDelegatedCompletionDelivery: (threadId, parentRunId) => this.offerDelegatedCompletionDelivery(threadId, parentRunId),
       },
+      (threadId, authority) => this.idleCompaction.schedule(threadId, authority),
     )
     this.checkpoints = new CheckpointService(
       this.projections,
@@ -508,6 +532,7 @@ export class ConversationRuntime {
       case 'thread.archive':
         if (command.type === 'thread.archive' && command.archived) {
           this.usageLimitRecovery.cancel(command.threadId, '会话已归档，取消自动重试。')
+          this.idleCompaction.cancel(command.threadId)
         }
         return this.commands.changeThread(command, authority)
       case 'thread.fork': {
@@ -539,6 +564,7 @@ export class ConversationRuntime {
         return this.acceptCompaction(command, authority, 'manual')
       case 'thread.handoff': {
         this.usageLimitRecovery.cancel(command.threadId, '用户已改由上下文接力继续。')
+        this.idleCompaction.cancel(command.threadId)
         const hasHeldQueue = this.commands.isPaused(command.threadId) && this.projections.hasQueuedRuns(command.threadId)
         if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId) ||
           this.activeTurns.has(command.threadId) || hasHeldQueue) {
@@ -547,8 +573,61 @@ export class ConversationRuntime {
         this.continuation.latestForHandoff(command.threadId)
         break
       }
+      case 'provider.switch': {
+        if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '仅可在未归档的个人会话中切换模型或引擎。')
+        }
+        const hasPendingWork = Boolean(active || this.activeTurns.has(command.threadId)
+          || this.projections.hasQueuedRuns(command.threadId)
+          || this.database.prepare(`SELECT 1 FROM conversation_v2_effect_outbox
+            WHERE thread_id = ? AND status IN ('pending', 'running') AND effect_type <> 'provider-runtime.continue'
+            UNION ALL SELECT 1 FROM conversation_v2_projection_runtime_requests
+            WHERE thread_id = ? AND status IN ('pending', 'responding', 'pending-reconciliation') LIMIT 1`)
+            .get(command.threadId, command.threadId))
+        if (hasPendingWork) {
+          throw new DaemonError('E_BUSY', '当前会话有运行中、排队中或待处理请求，无法切换模型或引擎。')
+        }
+        const registration = this.requireDriver(command.instanceId, false)
+        if (command.options?.length && !registration.turnModelOptions) {
+          throw new DaemonError('E_UNAVAILABLE', '所选引擎不支持此模型参数。')
+        }
+        const modelSelection = decodeModelSelection({ instanceId: registration.instanceId, model: command.model, options: command.options })
+        this.usageLimitRecovery.cancel(command.threadId, '用户已手动切换引擎或模型。')
+        this.idleCompaction.cancel(command.threadId)
+        this.runtimeRequests.clearSessionApprovals(command.threadId)
+        const existingBinding = this.projections.readNativeBindingOrRunFallback(command.threadId)
+        const targetFingerprint = this.bindingFingerprint(registration)
+        const currentThreadRow = this.database.prepare('SELECT default_provider FROM conversation_v2_projection_threads WHERE thread_id = ?')
+          .get(command.threadId) as { default_provider: string } | undefined
+        const clearNativeBinding = Boolean(
+          (existingBinding && (existingBinding.instance_id !== registration.instanceId
+            || (existingBinding.configuration_fingerprint && !this.bindingFingerprintMatches(existingBinding.configuration_fingerprint, targetFingerprint))))
+          || (currentThreadRow && currentThreadRow.default_provider !== registration.instanceId),
+        )
+        const receipt = this.commands.switchProvider(
+          command,
+          authority,
+          { modelSelection, clearNativeBinding },
+          occurredAt => {
+            if (clearNativeBinding) this.projections.clearNativeBindingForSwitch(command.threadId, occurredAt)
+          },
+        )
+        if (clearNativeBinding) this.sessions.loadedThreads.delete(command.threadId)
+        return receipt
+      }
+      case 'thread.merge_back': {
+        if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '仅可在未归档的个人会话中回并子会话结论。')
+        }
+        if (active || this.activeTurns.has(command.threadId)) {
+          throw new DaemonError('E_BUSY', '父会话正在执行回合，请等待完成后再回并子会话结论。')
+        }
+        this.idleCompaction.cancel(command.threadId)
+        return this.commands.commit(command, authority, this.relations.planMergeBack(command, authority))
+      }
       case 'message.dispatch': {
         this.usageLimitRecovery.cancel(command.threadId, '用户已手动发送新消息。')
+        this.idleCompaction.cancel(command.threadId)
         const registration = this.requireDriver(command.instanceId, this.isOrdinaryTask(authority))
         if (command.options?.length && (!registration.turnModelOptions || command.deliveryIntent === 'steer')) {
           throw new DaemonError('E_UNAVAILABLE', '此操作无法更改回合模型参数。')
@@ -617,8 +696,10 @@ export class ConversationRuntime {
       }
       case 'run.interrupt':
         this.usageLimitRecovery.cancel(command.threadId, '用户已请求停止当前回合。')
+        this.idleCompaction.cancel(command.threadId)
         return this.acceptStop(command, authority, active)
       case 'thread.stop':
+        this.idleCompaction.cancel(command.threadId)
         return this.turnControl.forceStopThread(command, authority)
       case 'subagent.stop':
         return this.turnControl.stopSubagent(command, authority)
@@ -657,6 +738,7 @@ export class ConversationRuntime {
           throw new DaemonError('E_BUSY', '当前会话正在运行中，请先停止后再回滚。')
         }
         this.usageLimitRecovery.cancel(command.threadId, '用户执行了会话回滚或编辑重跑。')
+        this.idleCompaction.cancel(command.threadId)
         this.runtimeRequests.clearSessionApprovals(command.threadId)
         const targetRun = this.commands.run(command.threadId, command.targetRunId)
         if (!targetRun) {
@@ -879,6 +961,7 @@ export class ConversationRuntime {
     const hasLiveTurn = this.activeTurns.has(threadId)
     if (original && hasLiveTurn) return original
     this.usageLimitRecovery.cancel(threadId, '会话已删除，取消自动重试。')
+    this.idleCompaction.cancel(threadId)
     this.runtimeRequests.clearSessionApprovals(threadId)
     const accepted = original ?? this.commands.changeThread(command, authority, {
       hasLiveTurn, hasLoadedThread: this.sessions.loadedThreads.has(threadId),
@@ -1226,38 +1309,16 @@ export class ConversationRuntime {
     if (this.closing) return
     const commandId = this.commands.nextCommand(threadId, command => this.authorizations.has(command))
     if (!commandId) {
-      this.scheduleIdleCompaction(threadId, current)
+      this.idleCompaction.schedule(threadId, current)
       return
     }
-    const idle = this.idleCompactions.get(threadId)
-    if (idle) {
-      clearTimeout(idle)
-      this.idleCompactions.delete(threadId)
-    }
+    this.idleCompaction.cancel(threadId)
     if (this.dispatches.has(commandId)) return
     const authority = this.authorizations.get(commandId) ?? current
     this.scheduleWork(commandId, authority, () => this.drainOne(commandId, authority), () => {
       this.authorizations.delete(commandId)
       this.scheduleNext(threadId, current)
     })
-  }
-
-  private scheduleIdleCompaction(threadId: string, authority: CommandAuthority): void {
-    if (authority.binding.kind !== 'personal' || this.idleCompactions.has(threadId) || this.commands.isPaused(threadId) ||
-      !this.sessions.loadedThreads.get(threadId)?.driver.compactThread) return
-    const run = this.continuation.idleCandidate(threadId)
-    if (!run) return
-    const timer = setTimeout(() => {
-      this.idleCompactions.delete(threadId)
-      void this.assertCurrent(threadId, authority).then(() => {
-        if (this.continuation.idleCandidate(threadId)?.run_id !== run.run_id ||
-          this.relations.read(threadId).children.some(relation => ['queued', 'running', 'waiting', 'pending-reconciliation'].includes(relation.status))) return
-        const command = { type: 'thread.compact', threadId, commandId: `idle-compact:${run.run_id}` } as const
-        if (!this.commands.replay(command, authority)) this.acceptCompaction(command, authority, 'idle')
-      }).catch(() => {})
-    }, 120_000)
-    timer.unref()
-    this.idleCompactions.set(threadId, timer)
   }
 
   private scheduleWork(commandId: string, authority: CommandAuthority, execute: () => Promise<void>, after?: () => void): void {
@@ -1505,7 +1566,7 @@ export class ConversationRuntime {
         throw new DaemonError('E_CONFLICT', '排队时选定的引擎配置已失效。')
       }
       const fork = compaction ? undefined : this.relations.forkContext(threadId, run.ordinal)
-      const histories = [...(intent.portableHistory ?? []), ...(fork ? [fork] : [])]
+      const histories: PortableHistory[] = [...(intent.portableHistory ?? []), ...(fork ? [fork] : [])]
       for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
       if (!intent.handoff) this.assertNativeBindingConfiguration(threadId, expectedFingerprint, selection.instanceId)
       const prepareFence = (): void => {
@@ -1570,15 +1631,57 @@ export class ConversationRuntime {
         fence()
       }
       const allowResumeFallback = !handoffSource && !compaction && !completion
-      const opened = await this.sessions.driverFence.run(fence, () =>
-        this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource), artifactMcp, allowResumeFallback, expectedFingerprint, threadModes.runtimeMode))
+      const nativeForkMeta = fork?.nativeFork
+      const canTryNativeFork = Boolean(
+        !compaction
+        && !intent.handoff
+        && !completion
+        && !hadExistingNativeBinding
+        && nativeForkMeta
+        && driver.forkThread
+        && nativeForkMeta.sourceInstanceId === selection.instanceId
+        && (!nativeForkMeta.configurationFingerprint || this.bindingFingerprintMatches(nativeForkMeta.configurationFingerprint, expectedFingerprint)),
+      )
+      let usedNativeFork = false
+      const opened = await this.sessions.driverFence.run(fence, async () => {
+        if (canTryNativeFork && nativeForkMeta && driver.forkThread) {
+          try {
+            const forkedId = await runBounded(
+              driver.forkThread({
+                sourceNativeThreadId: nativeForkMeta.sourceNativeThreadId,
+                cwd,
+                model: selection.model,
+                runtimeMode: threadModes.runtimeMode,
+                ...(!nativeForkMeta.isLatestParentRun && nativeForkMeta.sourceNativeTurnId
+                  ? { lastTurnId: nativeForkMeta.sourceNativeTurnId }
+                  : {}),
+              }),
+              this.deadlines.thread,
+              '派生原生会话',
+              this.shutdownController.signal,
+            )
+            if (forkedId && forkedId !== nativeForkMeta.sourceNativeThreadId) {
+              usedNativeFork = true
+              return { nativeThreadId: forkedId }
+            }
+          } catch (error) {
+            if (this.closing || this.shutdownController.signal.aborted) throw error
+            process.emitWarning(
+              `Native thread fork failed for ${threadId}; falling back to portable fork context: ${failureMessage(error)}`,
+              { code: 'CRUX_CONVERSATION_RECOVERY' },
+            )
+          }
+        }
+        return this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource), artifactMcp, allowResumeFallback, expectedFingerprint, threadModes.runtimeMode)
+      })
       const nativeThreadId = opened.nativeThreadId
       if (!nativeThreadId) throw new ConversationTurnRejectedError('引擎未返回接力会话身份。')
       if (completion && nativeThreadId !== completion.nativeThreadId) throw new ConversationTurnRejectedError('引擎没有接回原委派的父会话。')
+      const activeHistories = usedNativeFork && fork ? histories.filter(history => history !== fork) : histories
       if ((opened.recoveredFrom || (!intent.handoff && !compaction && !hadExistingNativeBinding && run.ordinal > 1))
-        && !histories.some(history => history.sourceThreadId === threadId)) {
+        && !activeHistories.some(history => history.sourceThreadId === threadId)) {
         const prior = this.contextHandoff.capture({ threadId }, authority, run.ordinal - 1, false, true)
-        if (prior.messages.length > 0) histories.unshift(prior)
+        if (prior.messages.length > 0) activeHistories.unshift(prior)
       }
       const effectiveHandoffSource = handoffSource ?? (opened.recoveredFrom?.previous_run_id ? {
         instance_id: opened.recoveredFrom.instance_id,
@@ -1592,9 +1695,10 @@ export class ConversationRuntime {
       await this.assertCurrent(threadId, authority)
       fence()
       assertKnowledgeCurrent()
-      for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
+      for (const history of activeHistories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
       const goal = compaction || completion ? null : this.continuation.readGoal(threadId)
-      const { text: contextText, ...coverage } = renderPortableHistory(histories)
+      const pendingMergeBacks = compaction || completion ? [] : this.relations.pendingMergeBacks(threadId)
+      const { text: contextText, ...coverage } = renderPortableHistory(activeHistories)
       const handoff: ConversationHandoff | undefined = effectiveHandoffSource ? {
         sourceRunId: effectiveHandoffSource.previous_run_id, sourceInstanceId: effectiveHandoffSource.instance_id,
         targetInstanceId: selection.instanceId, ...coverage, state: 'prepared',
@@ -1605,6 +1709,7 @@ export class ConversationRuntime {
         ...(roleInstructions?.trim() ? [`当前工程中用户选定的角色指令（Crux）\n${roleInstructions}`] : []),
         ...(artifactMcp ? ['当前会话已启用 Crux /artifacts（Open Artifact）交互产物工具。请先调用 Artifact(action="quickstart", intent=...) 匹配最佳产物类型（docs/slides/whiteboard/design 等）并检查可复用旧产物，再通过 Artifact(action="publish", ...) / ArtifactData / ArtifactComments 创建或更新产物，以便在右侧实时渲染。若遇到需要用户决定的关键业务场景、受众或设计方向分歧，且当前工具环境提供交互式提问工具（如 request_user_input），请优先调用该工具向用户发起结构化选择并等待回答，切勿只在正文中列举选项后自行假设并继续执行。'] : []),
         ...(goal?.status === 'active' ? [`当前会话的用户目标（Crux）\n${goal.objective}`] : []),
+        ...(pendingMergeBacks.length > 0 ? [`以下内容来自已回并到当前会话的子会话结论，请作为本轮参考：\n\n${pendingMergeBacks.map(item => item.summaryText).join('\n\n')}`] : []),
         `${contextText}${expandAssistantCitationsForProvider(message.text)}`,
       ].filter(Boolean).join('\n\n')
       const startedAt = new Date().toISOString()
@@ -1633,6 +1738,9 @@ export class ConversationRuntime {
         }
         if (recoveryNotice) this.projections.insertTurnItemIfAbsent(recoveryNotice, startedAt)
         this.projections.upsertNativeBinding(threadId, selection.instanceId, nativeThreadId, expectedFingerprint)
+        if (pendingMergeBacks.length > 0) {
+          this.relations.markMergeBacksDelivered(pendingMergeBacks.map(item => item.mergeId), runId)
+        }
         if (relation) relation.apply()
       }, undefined, [
         decodeEvent({ type: 'run.updated', id: randomUUID(), threadId, runId, occurredAt: startedAt, payload }),
@@ -2821,8 +2929,7 @@ export class ConversationRuntime {
   async shutdown(): Promise<void> {
     this.closing = true
     this.usageLimitRecovery.shutdown()
-    for (const timer of this.idleCompactions.values()) clearTimeout(timer)
-    this.idleCompactions.clear()
+    this.idleCompaction.shutdown()
     try {
       this.worker.prepareForShutdown({
         continueAfterRestart: this.shouldContinueAfterRestart(),

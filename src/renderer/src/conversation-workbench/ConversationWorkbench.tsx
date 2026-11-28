@@ -52,7 +52,7 @@ import { ConversationActivityControls } from './ConversationActivityControls'
 import { ConversationProjectSurfaces } from './ConversationProjectSurfaces'
 import { ConversationQueue } from './ConversationQueue'
 import { ConversationQuickSearchModal } from './ConversationQuickSearchModal'
-import { ConversationRelations } from './ConversationRelations'
+import { ConversationRelations, ConversationSubagentBar } from './ConversationRelations'
 import { ConversationRightPanel, useNarrowConversationPanel } from './ConversationRightPanel'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
 import { ConversationSidebarList } from './ConversationSidebarList'
@@ -1904,6 +1904,12 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           ) : undefined} />
         <div className="my-conversation-column conversation-controls">
           {projection && <>
+            <ConversationSubagentBar
+              relations={projection.relations}
+              onOpenRelatedThread={openRelatedThread}
+              onStopSubagent={writable ? handleStopSubagent : undefined}
+              stoppingChildThreadId={stoppingSubagentId}
+            />
             <ConversationRuntimeRequests controller={controller} requests={projection.runtimeRequests} disabled={!writable}
               cwd={root} threadId={projection.thread.id} task={task} />
             <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!writable}
@@ -1980,7 +1986,12 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           contextControl={projection ? <ConversationActivityControls controller={controller} projection={projection} disabled={!writable}
             compactAvailable={descriptor?.actions.compact.state === 'verified' ||
               (instance?.driverKind === 'codex' || !instance && instanceId === 'codex') && descriptor?.actions.compact.state !== 'unsupported'}
-            modelOptions={catalog.models} onHandoffAccepted={() => setListRevision(value => value + 1)}
+            modelOptions={catalog.models}
+            onHandoffAccepted={() => setListRevision(value => value + 1)}
+            onProviderSwitched={nextModel => {
+              composer.setModel(nextModel)
+              setListRevision(value => value + 1)
+            }}
             comparisonModels={comparisonModels} onLoadComparisonModels={loadComparisonModels}
             onCompareModels={sideChat.compare} /> : undefined}
           taskSection={code ? codeTask.taskSection : source === 'work' ? {
@@ -2039,6 +2050,13 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             sideCitationDraftRef.current?.insert(citation)
           } : undefined}
           onOpenParent={() => hidePanel()}
+          onMergeBackToParent={writable && !archivedThread && supportsPersonalModes
+            ? async ({ sourceThreadId }) => {
+              const result = await controller.mergeBackThread({ sourceThreadId })
+              if (result.ok) setListRevision(value => value + 1)
+              return result
+            }
+            : undefined}
           onAddToParentDraft={writable ? reference => {
             if (currentPanelOwner.current !== panelKey || targetRef.current?.threadId !== hostThreadId || !canInteract()) return
             composer.addReference({ ...reference, id: JSON.stringify([reference.threadId, reference.messageIds ?? []]) })

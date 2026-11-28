@@ -33,6 +33,7 @@ export class RunFinalizationService<
     private readonly relations: ThreadRelations,
     private readonly usageLimitRecovery: UsageLimitRecoveryWorker<TAuthority>,
     private readonly delegationHost: TurnFinalizationDelegationHost<TTurn>,
+    private readonly onIdleCompactionCheck?: (threadId: string, authority: TAuthority) => void,
   ) {}
 
   onTurnSettled(input: TurnFinalizedInput<TTurn, TAuthority>): void {
@@ -46,6 +47,10 @@ export class RunFinalizationService<
         authority: input.authority,
         isPersonal: input.isPersonal && !this.relations.restrictedParent(input.threadId),
       })
+    }
+
+    if (input.status === 'completed' && input.isPersonal && input.authority && !this.relations.restrictedParent(input.threadId)) {
+      this.onIdleCompactionCheck?.(input.threadId, input.authority)
     }
 
     if (

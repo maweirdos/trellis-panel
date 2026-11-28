@@ -181,6 +181,16 @@ export interface ConversationThreadController {
     readonly model: string
     readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
   }) => Promise<ConversationApplyResult>
+  readonly switchProvider: (input: {
+    readonly instanceId: string
+    readonly model: string
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+  }) => Promise<ConversationApplyResult>
+  readonly mergeBackThread: (input: {
+    readonly sourceThreadId: string
+    readonly summary?: string
+    readonly messageIds?: readonly string[]
+  }) => Promise<ConversationApplyResult>
   readonly resume: (input?: {
     readonly sourceRunId: string
     readonly instanceId: string
@@ -241,6 +251,8 @@ function commandAction(command: ConversationThreadCommand): string {
     case 'thread.interaction-mode.set': return 'interaction-mode'
     case 'checkpoint.rollback': return 'checkpoint.rollback'
     case 'message.edit-and-rerun': return 'message.edit-and-rerun'
+    case 'provider.switch': return 'provider.switch'
+    case 'thread.merge_back': return 'thread.merge_back'
     case 'runtime-request.respond': return `respond:${command.requestId}:${command.generation}`
     default: return `command:${command.commandId}`
   }
@@ -707,6 +719,50 @@ export function useConversationThread(
     [applyRemembered, reload, threadId],
   )
 
+  const switchProvider = useCallback(
+    (input: {
+      readonly instanceId: string
+      readonly model: string
+      readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+    }) =>
+      threadId
+        ? applyRemembered('provider.switch', () => ({
+          type: 'provider.switch',
+          threadId,
+          instanceId: input.instanceId,
+          model: input.model,
+          ...(input.options?.length ? { options: input.options.map(option => ({ id: option.id, value: option.value })) } : {}),
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
+  const mergeBackThread = useCallback(
+    (input: {
+      readonly sourceThreadId: string
+      readonly summary?: string
+      readonly messageIds?: readonly string[]
+    }) =>
+      threadId
+        ? applyRemembered('thread.merge_back', () => ({
+          type: 'thread.merge_back',
+          threadId,
+          sourceThreadId: input.sourceThreadId,
+          ...(input.summary ? { summary: input.summary } : {}),
+          ...(input.messageIds?.length ? { messageIds: [...input.messageIds] } : {}),
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
   const resume = useCallback(
     (input?: {
       readonly sourceRunId: string
@@ -821,13 +877,13 @@ export function useConversationThread(
     () => ({
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
-      rollbackCheckpoint, editAndRerun,
+      rollbackCheckpoint, editAndRerun, switchProvider, mergeBackThread,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     }),
     [
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
-      rollbackCheckpoint, editAndRerun,
+      rollbackCheckpoint, editAndRerun, switchProvider, mergeBackThread,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     ],
   )

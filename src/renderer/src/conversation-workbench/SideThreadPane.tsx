@@ -1,15 +1,16 @@
-import { useContext, useEffect, useMemo, type JSX, type ReactNode, type RefObject } from 'react'
-import { ArrowUpLeft, Link2, Square } from 'lucide-react'
+import { useContext, useEffect, useMemo, useState, type JSX, type ReactNode, type RefObject } from 'react'
+import { ArrowUpLeft, GitMerge, Link2, Square } from 'lucide-react'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { Button } from '../my/ui'
+import { FeedbackNotice } from '../my/FeedbackNotice'
 import { projectRootKey } from '../my/navigation'
 import { ChatProjectFileLinks } from './chatProjectFileLinks'
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
 import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ConversationQueue } from './ConversationQueue'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
-import { isActiveRun, queuedRunsWithText, runStartIso, useConversationThread, type ConversationThreadController } from './useConversationThread'
+import { isActiveRun, queuedRunsWithText, runStartIso, useConversationThread, type ConversationApplyResult, type ConversationThreadController } from './useConversationThread'
 
 export interface ParentDraftThreadReference {
   readonly threadId: string
@@ -30,13 +31,20 @@ export interface SideThreadPaneProps {
   readonly onCite?: (citation: AssistantCitation) => void
   readonly onOpenCitation?: OpenAssistantCitation
   readonly onAddToParentDraft?: (reference: ParentDraftThreadReference) => void
+  readonly onMergeBackToParent?: (input: { readonly sourceThreadId: string; readonly title: string }) => Promise<ConversationApplyResult>
   readonly onOpenParent?: (threadId: string) => void
   readonly renderComposer?: (input: { readonly threadId: string; readonly controller: ConversationThreadController }) => ReactNode
 }
 
 export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const { root, scopeKey, hostThreadId, threadId, task, interactive, writable = interactive,
-    citationRef, onCitationReady, onCite, onOpenCitation, onAddToParentDraft, onOpenParent, renderComposer } = props
+    citationRef, onCitationReady, onCite, onOpenCitation, onAddToParentDraft, onMergeBackToParent, onOpenParent, renderComposer } = props
+  const [merging, setMerging] = useState(false)
+  const [mergeFeedback, setMergeFeedback] = useState<{ readonly tone: 'success' | 'error'; readonly message: string } | null>(null)
+  useEffect(() => {
+    setMerging(false)
+    setMergeFeedback(null)
+  }, [threadId])
   const hostScope = JSON.stringify([scopeKey, root, hostThreadId])
   const target = useMemo(() => ({ threadId }), [threadId])
   const controller = useConversationThread(root, target, interactive, hostScope, task)
@@ -57,6 +65,14 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
   const queuedIds = new Set(queued.map(item => item.run.userMessageId as string))
   const rows = childrenReady ? projection.rows.filter(row => !queuedIds.has(row.id)) : []
   const canReference = canOperate && projection?.messages.some(message => message.role === 'user')
+  const hasSettledAssistant = Boolean(projection?.messages.some(message => message.role === 'assistant' && !message.streaming && message.text.trim()))
+  const canMergeBack = Boolean(
+    canOperate
+    && belongsToHost
+    && (relation?.kind === 'side-chat' || relation?.kind === 'fork')
+    && onMergeBackToParent
+    && hasSettledAssistant,
+  )
   const activeRun = projection?.activeRun
   const stopRunId = activeRun && relation?.childRunId === activeRun.id && isActiveRun(activeRun) ? activeRun.id : undefined
   const timelineKey = JSON.stringify([controller.scope, projection?.cursor?.storageId])
@@ -66,6 +82,22 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
     if (readSettled) onCitationReady?.(threadId, citationReadable)
   }, [citationReadable, onCitationReady, readSettled, threadId])
 
+  async function handleMergeBack(): Promise<void> {
+    if (!canMergeBack || !onMergeBackToParent || merging) return
+    setMerging(true)
+    setMergeFeedback(null)
+    try {
+      const outcome = await onMergeBackToParent({ sourceThreadId: threadId, title })
+      if (outcome.ok) {
+        setMergeFeedback({ tone: 'success', message: '已将最新结论回并到父会话。' })
+      } else {
+        setMergeFeedback({ tone: 'error', message: outcome.reason })
+      }
+    } finally {
+      setMerging(false)
+    }
+  }
+
   return <section className="my-conversation-frame conversation-side-thread" aria-label={title}>
     <header className="conversation-side-thread-heading">
       <strong className="my-item-title">{title}</strong>
@@ -73,11 +105,31 @@ export function SideThreadPane(props: SideThreadPaneProps): JSX.Element {
       {belongsToHost && onOpenParent && <Button size="sm" variant="ghost" onClick={() => onOpenParent(hostThreadId)}>
         <ArrowUpLeft size={14} aria-hidden="true" />父会话
       </Button>}
+      {belongsToHost && (relation?.kind === 'side-chat' || relation?.kind === 'fork') && onMergeBackToParent && (
+        <Button size="sm" variant="ghost" disabled={!canMergeBack || merging} onClick={() => void handleMergeBack()}>
+          <GitMerge size={14} aria-hidden="true" />
+          {merging ? '回并中…' : relation.mergedBackAt ? '再次回并' : '回并到父会话'}
+        </Button>
+      )}
       {relation?.kind === 'side-chat' && onAddToParentDraft && <Button size="sm" variant="ghost" disabled={!canReference}
         onClick={() => onAddToParentDraft({ threadId, label: title })}>
         <Link2 size={14} aria-hidden="true" />添加到对话
       </Button>}
     </header>
+    {mergeFeedback && (
+      <div className="conversation-side-thread-feedback">
+        {mergeFeedback.tone === 'error' ? (
+          <FeedbackNotice
+            variant="bar-compact"
+            tone="error"
+            title="未能回并到父会话"
+            description={mergeFeedback.message}
+          />
+        ) : (
+          <p className="my-item-description m-0" role="status">{mergeFeedback.message}</p>
+        )}
+      </div>
+    )}
     {result?.error && <p className="my-item-description conversation-side-thread-error" role="alert">{result.error}</p>}
     {projection && !belongsToHost && <p className="my-item-description conversation-side-thread-error" role="status">此会话与当前父会话无关联。</p>}
     <ChatProjectFileLinks.Provider value={fileLinks}>

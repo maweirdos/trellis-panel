@@ -11,7 +11,15 @@ import type { ContextHandoff, PortableHistory } from './ContextHandoff'
 import type { ConversationEventSink } from './EventSink'
 
 type ForkCommand = Extract<ConversationThreadCommand, { type: 'thread.fork' }>
-type ForkSourceRun = { run_id: string; ordinal: number; status: string; provider_instance_id: string }
+type MergeBackCommand = Extract<ConversationThreadCommand, { type: 'thread.merge_back' }>
+type ForkSourceRun = {
+  run_id: string
+  ordinal: number
+  status: string
+  provider_instance_id: string
+  provider_thread_id: string | null
+  native_turn_id: string | null
+}
 type ThreadRow = { payload_json: string }
 type RelationRow = { payload_json: string }
 const decodeEvent = Schema.decodeUnknownSync(OrchestrationV2DomainEventJson)
@@ -27,7 +35,20 @@ export class ThreadRelations {
       source_ordinal INTEGER, fork_context_json TEXT, payload_json TEXT NOT NULL
     ) STRICT;
     CREATE INDEX IF NOT EXISTS conversation_v2_thread_relations_parent
-      ON conversation_v2_thread_relations(parent_thread_id, created_at, relation_id);`)
+      ON conversation_v2_thread_relations(parent_thread_id, created_at, relation_id);
+    CREATE TABLE IF NOT EXISTS conversation_v2_thread_merge_backs (
+      merge_id TEXT PRIMARY KEY,
+      parent_thread_id TEXT NOT NULL REFERENCES conversation_v2_projection_threads(thread_id),
+      source_thread_id TEXT NOT NULL REFERENCES conversation_v2_projection_threads(thread_id),
+      relation_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary_text TEXT NOT NULL,
+      delivered_by_run_id TEXT,
+      created_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS conversation_v2_thread_merge_backs_pending
+      ON conversation_v2_thread_merge_backs(parent_thread_id, delivered_by_run_id, created_at);`)
   }
 
   read(threadId: string): ConversationThreadRelations {
@@ -75,9 +96,31 @@ export class ThreadRelations {
       throw new DaemonError('E_BUSY', '原会话的关联项已达上限。')
     }
     const sourceRun = this.forkRun(command)
-    const portable = this.context.capture({ threadId }, authority, sourceRun?.ordinal ?? 1, !sourceRun)
+    const captured = this.context.capture({ threadId }, authority, sourceRun?.ordinal ?? 1, !sourceRun)
     const at = new Date().toISOString()
     const selection = command.selection ?? source.modelSelection
+    const nativeFork = (() => {
+      if (!sourceRun || command.readOnly || !sourceRun.provider_thread_id || sourceRun.provider_instance_id !== selection.instanceId) {
+        return undefined
+      }
+      const hasLaterRun = Boolean(this.database.prepare(
+        'SELECT 1 FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal > ? LIMIT 1',
+      ).get(threadId, sourceRun.ordinal))
+      const isLatestParentRun = !hasLaterRun
+      if (!isLatestParentRun && !sourceRun.native_turn_id) return undefined
+      const binding = this.database.prepare(
+        'SELECT configuration_fingerprint FROM conversation_v2_native_bindings WHERE thread_id = ? AND instance_id = ? AND native_thread_id = ?',
+      ).get(threadId, sourceRun.provider_instance_id, sourceRun.provider_thread_id) as { configuration_fingerprint: string | null } | undefined
+      return {
+        parentThreadId: threadId,
+        sourceInstanceId: sourceRun.provider_instance_id,
+        sourceNativeThreadId: sourceRun.provider_thread_id,
+        ...(sourceRun.native_turn_id ? { sourceNativeTurnId: sourceRun.native_turn_id } : {}),
+        isLatestParentRun,
+        ...(binding ? { configurationFingerprint: binding.configuration_fingerprint } : {}),
+      }
+    })()
+    const portable = nativeFork ? { ...captured, nativeFork } : captured
     const title = command.title ?? (command.sideChat ? '侧聊' : `${source.title.slice(0, 490)} · 分支`)
     const isSideChat = command.sideChat === true
     const thread = {
@@ -237,7 +280,10 @@ export class ThreadRelations {
           relation.id, relation.result.deliveryId)
       const completionDelivery = relation.completionDelivery?.state === 'pending' || stoppedClaim
         ? { state: 'disposed' as const, observedByRunId: null } : relation.completionDelivery
-      const status = row.phase === 'unknown' ? 'pending-reconciliation' : row.run_status === 'queued' ? 'queued' : relation.status
+      const status = row.phase === 'unknown' ? 'pending-reconciliation'
+        : row.run_status === 'queued' ? 'queued'
+          : row.run_status === 'cancelled' ? 'cancelled'
+            : relation.status
       if (status === relation.status && result === relation.result && completionDelivery === relation.completionDelivery && !relation.question) return []
       return [this.update({ ...relation, question: undefined, result, completionDelivery, status, updatedAt: at })]
     })
@@ -248,7 +294,9 @@ export class ThreadRelations {
 
   private forkRun(command: ForkCommand): ForkSourceRun | undefined {
     const { threadId, sourcePoint } = command
-    const stable = this.database.prepare(`SELECT run_id, ordinal, status, provider_instance_id FROM conversation_v2_projection_runs
+    const stable = this.database.prepare(`SELECT run_id, ordinal, status, provider_instance_id, provider_thread_id,
+      json_extract(payload_json, '$.nativeTurnId') AS native_turn_id
+      FROM conversation_v2_projection_runs
       WHERE thread_id = ? AND status IN (${stableStatuses.map(() => '?').join(',')})
         AND json_extract(payload_json, '$.outcomeUnknown') IS NOT 1
         AND (status = 'completed' OR provider_thread_id IS NOT NULL)
@@ -260,6 +308,142 @@ export class ThreadRelations {
       throw new DaemonError('E_CONFLICT', '请选择同一会话中已经结算的来源回合。')
     }
     return stable
+  }
+
+  planMergeBack(command: MergeBackCommand, authority: ConversationAuthority) {
+    const { threadId, sourceThreadId } = command
+    if (sourceThreadId === threadId || !this.commands.hasThread(sourceThreadId, authority)) {
+      throw new DaemonError('E_DENIED', '回并来源会话不在当前授权范围。')
+    }
+    const row = this.database.prepare(`SELECT relation.payload_json FROM conversation_v2_thread_relations relation
+      JOIN conversation_v2_projection_threads child ON child.thread_id = relation.child_thread_id
+      WHERE relation.parent_thread_id = ? AND relation.child_thread_id = ? AND child.deleted_at IS NULL`)
+      .get(threadId, sourceThreadId) as RelationRow | undefined
+    const relation = row ? this.decode(row) : undefined
+    if (!relation || (relation.kind !== 'side-chat' && relation.kind !== 'fork')) {
+      throw new DaemonError('E_DENIED', '仅可将当前会话的侧聊或分支子会话回并到父会话。')
+    }
+
+    let rawBody = ''
+    if (command.summary?.trim()) {
+      rawBody = command.summary.trim()
+    } else if (command.messageIds?.length) {
+      const uniqueIds = [...new Set(command.messageIds)]
+      const placeholders = uniqueIds.map(() => '?').join(',')
+      const rows = this.database.prepare(`SELECT message_id, role, CAST(json_extract(payload_json, '$.text') AS TEXT) AS text
+        FROM conversation_v2_projection_messages
+        WHERE thread_id = ? AND streaming = 0 AND message_id IN (${placeholders})
+        ORDER BY created_at ASC, message_id ASC`).all(sourceThreadId, ...uniqueIds) as Array<{
+        message_id: string; role: string; text: string | null
+      }>
+      if (rows.length !== uniqueIds.length) {
+        throw new DaemonError('E_DENIED', '所选回并消息包含不存在或尚未结算的内容。')
+      }
+      rawBody = rows
+        .map(entry => {
+          const content = entry.text?.trim() ?? ''
+          if (!content) return ''
+          const speaker = entry.role === 'user' ? '用户提问' : entry.role === 'assistant' ? '模型回答' : '系统记录'
+          return rows.length > 1 ? `[${speaker}]\n${content}` : content
+        })
+        .filter(Boolean)
+        .join('\n\n')
+    } else {
+      const latest = this.database.prepare(`SELECT CAST(json_extract(payload_json, '$.text') AS TEXT) AS text
+        FROM conversation_v2_projection_messages
+        WHERE thread_id = ? AND role = 'assistant' AND streaming = 0
+        ORDER BY created_at DESC, message_id DESC LIMIT 1`).get(sourceThreadId) as { text: string | null } | undefined
+      rawBody = latest?.text?.trim() ?? ''
+    }
+
+    const body = rawBody.trim().slice(0, 15_000)
+    if (!body) {
+      throw new DaemonError('E_CONFLICT', '子会话还没有已完成的回复可供回并。')
+    }
+
+    const kindLabel = relation.kind === 'side-chat' ? '侧聊' : '分支'
+    const formattedText = `【来自${kindLabel}「${relation.title}」的回并结论】\n\n${body}`
+    const anchor = (this.database.prepare(`SELECT run_id FROM conversation_v2_projection_runs
+      WHERE thread_id = ? AND status IN ('completed', 'cancelled', 'interrupted')
+      ORDER BY ordinal DESC LIMIT 1`).get(threadId)
+      ?? this.database.prepare(`SELECT run_id FROM conversation_v2_projection_runs
+        WHERE thread_id = ? ORDER BY ordinal DESC LIMIT 1`).get(threadId)) as { run_id: string } | undefined
+
+    const messageId = `merge_${randomUUID()}`
+    const mergeId = `merge_${randomUUID()}`
+    const at = new Date().toISOString()
+    const anchorRunId = anchor?.run_id ?? null
+    const messagePayload = {
+      createdBy: 'user' as const,
+      creationSource: 'web' as const,
+      senderThreadId: sourceThreadId,
+      id: messageId,
+      threadId,
+      runId: anchorRunId,
+      nodeId: null,
+      role: 'assistant' as const,
+      text: formattedText,
+      attachments: [],
+      streaming: false,
+      createdAt: at,
+      updatedAt: at,
+    }
+    const nextRelation: ConversationThreadRelation = {
+      ...relation,
+      mergedBackAt: at,
+      mergedBackMessageId: messageId,
+      updatedAt: at,
+    }
+    return {
+      target: { message_id: messageId, ...(anchorRunId ? { run_id: anchorRunId } : {}) },
+      events: [decodeEvent({
+        id: randomUUID(),
+        threadId,
+        ...(anchorRunId ? { runId: anchorRunId } : {}),
+        occurredAt: at,
+        type: 'message.updated',
+        payload: messagePayload,
+      })],
+      hostEvents: [
+        lifecycleEvent(threadId, { kind: 'relation', relation: nextRelation }, relation.parentRunId, at),
+        lifecycleEvent(sourceThreadId, { kind: 'relation', relation: nextRelation }, relation.childRunId, at),
+      ],
+      apply: () => {
+        this.database.prepare(`INSERT INTO conversation_v2_projection_messages
+          (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
+          VALUES (?, ?, ?, NULL, 'assistant', 0, ?, ?, ?)`)
+          .run(messageId, threadId, anchorRunId, at, at, JSON.stringify(messagePayload))
+        this.database.prepare('UPDATE conversation_v2_projection_threads SET updated_at = ? WHERE thread_id = ?').run(at, threadId)
+        this.database.prepare('UPDATE conversation_v2_thread_relations SET payload_json = ? WHERE relation_id = ?')
+          .run(JSON.stringify(nextRelation), relation.id)
+        this.database.prepare(`INSERT INTO conversation_v2_thread_merge_backs
+          (merge_id, parent_thread_id, source_thread_id, relation_id, message_id, title, summary_text, delivered_by_run_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+          .run(mergeId, threadId, sourceThreadId, relation.id, messageId, relation.title, formattedText, at)
+      },
+    }
+  }
+
+  pendingMergeBacks(parentThreadId: string): readonly {
+    readonly mergeId: string
+    readonly sourceThreadId: string
+    readonly title: string
+    readonly summaryText: string
+  }[] {
+    return this.database.prepare(`SELECT merge_id AS mergeId, source_thread_id AS sourceThreadId, title, summary_text AS summaryText
+      FROM conversation_v2_thread_merge_backs
+      WHERE parent_thread_id = ? AND delivered_by_run_id IS NULL
+      ORDER BY created_at ASC LIMIT 8`).all(parentThreadId) as Array<{
+      mergeId: string; sourceThreadId: string; title: string; summaryText: string
+    }>
+  }
+
+  markMergeBacksDelivered(mergeIds: readonly string[], runId: string): void {
+    if (!mergeIds.length) return
+    const placeholders = mergeIds.map(() => '?').join(',')
+    this.database.prepare(`UPDATE conversation_v2_thread_merge_backs
+      SET delivered_by_run_id = ?
+      WHERE merge_id IN (${placeholders}) AND delivered_by_run_id IS NULL`).run(runId, ...mergeIds)
   }
 
   deletionEvents(threadId: string, authority: ConversationAuthority, onlyIfUnused: boolean) {

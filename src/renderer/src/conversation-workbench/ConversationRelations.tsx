@@ -221,3 +221,72 @@ export function ConversationRelations({ relations, onOpenRelatedThread, onStopSu
     {threads.length > 0 && list(threads)}
   </section>
 }
+
+export function ConversationSubagentBar({ relations, onOpenRelatedThread, onStopSubagent, stoppingChildThreadId }: {
+  readonly relations?: ConversationThreadRelations
+  readonly onOpenRelatedThread: (tab: ConversationThreadTab) => void
+  readonly onStopSubagent?: (childThreadId: string, force?: boolean) => void
+  readonly stoppingChildThreadId?: string | null
+}): JSX.Element | null {
+  const [expanded, setExpanded] = useState(false)
+  const panelId = useId()
+  const agents = (relations?.children ?? []).filter(isAgent)
+  if (!agents.length) return null
+
+  const runningCount = agents.filter(item => item.status === 'running' || item.status === 'queued').length
+  const waiting = agents.filter(item => item.status === 'waiting')
+  const completedCount = agents.filter(item => item.status === 'completed').length
+  const failedCount = agents.filter(item => item.status === 'failed' || item.status === 'pending-reconciliation').length
+  const cancelledCount = agents.filter(item => item.status === 'cancelled').length
+  const firstWaiting = waiting.find(item => Boolean(item.childThreadId))
+
+  return (
+    <section className="conversation-subagent-bar" aria-label="子代理运行状态汇总">
+      <div className="conversation-subagent-bar-summary">
+        <span className="conversation-subagent-bar-label">
+          <Bot size={14} aria-hidden="true" />
+          <span>子代理</span>
+        </span>
+        <div className="conversation-subagent-bar-counts">
+          {runningCount > 0 && <span className="conversation-subagent-count">执行中 {runningCount}</span>}
+          {waiting.length > 0 && <span className="conversation-subagent-count" data-tone="waiting">待答复 {waiting.length}</span>}
+          {completedCount > 0 && <span className="conversation-subagent-count">已完成 {completedCount}</span>}
+          {failedCount > 0 && <span className="conversation-subagent-count" data-tone="failed">异常 {failedCount}</span>}
+          {cancelledCount > 0 && <span className="conversation-subagent-count">已取消 {cancelledCount}</span>}
+        </div>
+        <div className="conversation-subagent-bar-actions">
+          {firstWaiting?.childThreadId && (
+            <Button size="sm" variant="outline" onClick={() => onOpenRelatedThread(conversationThreadSurface(firstWaiting.childThreadId!))}>
+              去答复
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            onClick={() => setExpanded(current => !current)}
+          >
+            <span>{expanded ? '收起' : `查看全部 (${agents.length})`}</span>
+            <ChevronRight size={13} className={expanded ? 'rotate-90' : undefined} aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+      {expanded && (
+        <ul id={panelId} className="conversation-related-list conversation-subagent-bar-list">
+          {agents.map(item => (
+            <li key={item.id}>
+              <ConversationLifecycleCard
+                compact
+                item={item}
+                onOpenRelatedThread={onOpenRelatedThread}
+                onStopSubagent={onStopSubagent}
+                stoppingChildThreadId={stoppingChildThreadId}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
