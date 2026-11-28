@@ -1,8 +1,10 @@
 import { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { BootstrapApi, BootstrapSnapshot, DaemonTakeoverDiagnostics, LegacyDaemonInspection, LegacyDaemonStopInput, WorkcopyOwner, WorkcopyRecoveryResult } from '@shared/bootstrap'
 import type { DaemonFailure } from '@shared/daemon'
 import { api, hasIpc } from '../api'
 import { BrandMark } from '../my/BrandMark'
+import { DisclosureGrid } from '../my/ui'
 import { StartupSplash } from './StartupSplash'
 import { startStartupBrandHandoff } from './startup-brand-handoff'
 import { StartupContext, type StartupContentSlot } from './StartupContext'
@@ -17,6 +19,31 @@ const blockerDomainLabels: Record<DaemonTakeoverDiagnostics['blockers'] extends 
   runtime: 'Runtime', workflow: '工作流', application: '应用', 'work-copy': '工作副本', scheduler: '后台任务', stop: '停止清理'
 }
 const evidenceLabels = { 'job-witness': '受控 Job 见证', 'kernel-transition': '内核代次转换', 'cleanup-receipt': '清理回执' } as const
+
+function StartupDetailsDisclosure({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="my-startup-details">
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-my-base text-left transition-colors hover:text-my-primary focus-visible:outline-[var(--my-focus-width)] focus-visible:outline-offset-2 focus-visible:outline-[var(--my-focus-ring)]">
+      <ChevronRight size={13} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
+
+function StartupWarningButton({ warning }: { warning: string }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="my-startup-warning">
+    <button type="button" className="my-icon-control" aria-expanded={open} aria-label="查看外观设置提示" title="查看外观设置提示" onClick={() => setOpen((v) => !v)}>
+      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      </svg>
+    </button>
+    <DisclosureGrid open={open}><p>{warning}</p></DisclosureGrid>
+  </div>
+}
 
 /** Read-only takeover facts. It deliberately has no recovery authority. */
 function DaemonTakeoverPanel({ bridge, snapshot, revision, onError }: {
@@ -83,8 +110,7 @@ function DaemonTakeoverPanel({ bridge, snapshot, revision, onError }: {
     <div className="my-startup-actions">
       <button disabled={pending} className="my-control my-button-neutral" onClick={() => void refresh()}>{pending ? '正在刷新…' : failed ? '重新检查状态' : '刷新状态'}</button>
     </div>
-    <details className="my-startup-details">
-      <summary>后台详情</summary>
+    <StartupDetailsDisclosure label="后台详情">
       <div className="my-startup-diagnostics">
         {status && <dl>
           <dt>后台状态</dt><dd>{running ? 'running' : 'stopping'}</dd>
@@ -117,7 +143,7 @@ function DaemonTakeoverPanel({ bridge, snapshot, revision, onError }: {
           })}
         </ul> : <p>当前没有额外的工作副本阻塞项。</p>}
       </div>
-    </details>
+    </StartupDetailsDisclosure>
   </section>
 }
 
@@ -287,8 +313,7 @@ function LegacyDaemonUpgrade({ bridge, revision, onBlocked, onStopped }: {
       {inspected?.canStop && <button disabled={pending !== null || uncertain || stopped} className="my-control my-button-primary" onClick={() => void stop()}>{pending === 'stop' ? '正在安全切换…' : '安全切换到新版后台'}</button>}
       {!stopped && <button disabled={pending !== null} className="my-control my-button-ghost" onClick={() => void stop(true)}>{pending === 'reconcile' ? '正在核对…' : uncertain ? '核对原停止结果' : '核对上次切换结果'}</button>}
     </div>
-    {inspected && <details className="my-startup-details">
-      <summary>检查详情</summary>
+    {inspected && <StartupDetailsDisclosure label="检查详情">
       <div className="my-startup-diagnostics"><dl>
         <dt>旧后台进程 PID</dt><dd>{inspected.owner.pid}</dd>
         <dt>进行中的后台任务</dt><dd>{inspected.activeJobs}</dd>
@@ -299,9 +324,8 @@ function LegacyDaemonUpgrade({ bridge, revision, onBlocked, onStopped }: {
         <dt>进程启动标识</dt><dd>{inspected.owner.startedAt}</dd>
         <dt>可执行文件</dt><dd>{inspected.owner.executable}</dd>
       </dl></div>
-    </details>}
-    {(failure || message) && <details className="my-startup-details">
-      <summary>操作详情</summary>
+    </StartupDetailsDisclosure>}
+    {(failure || message) && <StartupDetailsDisclosure label="操作详情">
       <div className="my-startup-diagnostics">
         {failure && <><p>{failure.error}</p><dl>
           <dt>错误代码</dt><dd>{failure.code}</dd>
@@ -310,7 +334,7 @@ function LegacyDaemonUpgrade({ bridge, revision, onBlocked, onStopped }: {
         </dl></>}
         {message && <p>{message}</p>}
       </div>
-    </details>}
+    </StartupDetailsDisclosure>}
   </div>
 }
 
@@ -527,8 +551,7 @@ export function BootstrapGate({ children, preloadApp }: { children: ReactNode; p
           {((error && !failure) || !bridge || workspaceFailure) && <button className="my-control my-button-primary" onClick={() => window.location.reload()}>重载桌面</button>}
           {bridge && <button className="my-control my-button-neutral" onClick={() => void action('exit')}>退出桌面</button>}
         </div>
-        {(failure || error || workspaceFailure || state?.ui.warning) && <details className="my-startup-details">
-          <summary>诊断详情</summary>
+        {(failure || error || workspaceFailure || state?.ui.warning) && <StartupDetailsDisclosure label="诊断详情">
           <div className="my-startup-diagnostics">
             {failure && <><p>{failure.message}</p><dl>
               <dt>错误代码</dt><dd>{failure.code}</dd>
@@ -543,20 +566,11 @@ export function BootstrapGate({ children, preloadApp }: { children: ReactNode; p
             {workspaceFailure && <pre>{workspaceFailure.error instanceof Error ? workspaceFailure.error.stack || workspaceFailure.error.message : String(workspaceFailure.error)}</pre>}
             {state?.ui.warning && <p>{state.ui.warning}</p>}
           </div>
-        </details>}
+        </StartupDetailsDisclosure>}
       </section>
         : <>
           <StartupSplash status={[labels[state?.phase ?? 'window-ready'], state?.ui.warning].filter(Boolean).join('。')} active={handoff === 'covered'} />
-          {state?.ui.warning && <details className="my-startup-warning">
-            <summary aria-label="查看外观设置提示" title="查看外观设置提示">
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 16v-4" />
-                <path d="M12 8h.01" />
-              </svg>
-            </summary>
-            <p>{state.ui.warning}</p>
-          </details>}
+          {state?.ui.warning && <StartupWarningButton warning={state.ui.warning} />}
         </>}
     </main>
   </div>

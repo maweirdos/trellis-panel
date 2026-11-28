@@ -87,7 +87,7 @@ function TaskJsonCard({ parsed, rawText }: { parsed: TaskJsonParsed; rawText: st
   const f = parsed.fields
   return (
     <div className="space-y-4">
-      <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-4 py-3">
+      <div className="rounded-my-base border border-my-line bg-my-layer-1 px-4 py-3">
         <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
           <FieldRow label="ID" value={f.id} />
           <FieldRow label="名称" value={f.name} />

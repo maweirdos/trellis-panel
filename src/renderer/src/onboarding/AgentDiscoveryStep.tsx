@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { AlertCircle, CheckCircle2, Download, FolderOpen, Loader2, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronRight, Download, FolderOpen, Loader2, RefreshCw } from 'lucide-react'
 import type { AcpAgentStatus, AcpConnectionProbeResult } from '../../../shared/types'
 import { api, hasIpc } from '../api'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
+
+function AgentDiagDisclosure({ messages }: { messages: string[] }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="mt-2 text-my-xs text-my-secondary">
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>检测记录</span>
+    </button>
+    <DisclosureGrid open={open}><ul className="mt-1 break-words">{messages.map((message, index) => <li key={index}>{message}</li>)}</ul></DisclosureGrid>
+  </div>
+}
 
 export interface AgentDiscoveryStepProps {
   onInventory?: (summary: { detected: number; total: number }) => void
@@ -129,14 +140,14 @@ export function AgentDiscoveryStep({ onInventory, onBusyChange }: AgentDiscovery
 
   return <section aria-label="本机 Agent 检测" className="w-full min-w-0">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-my-sm font-semibold text-my-primary">本机 Agent</h2>
+      <h2 className="text-my-sm font-medium text-my-primary">本机 Agent</h2>
       <div className="flex flex-wrap gap-2">
         <Button variant="ghost" size="sm" disabled={pending !== null || !hasIpc || typeof api.acpRuntimeNodePick !== 'function'} onClick={() => void run('node')}><FolderOpen size={14} aria-hidden="true" />选择 Node</Button>
         <Button variant="ghost" size="sm" disabled={pending !== null || !hasIpc || typeof api.acpRuntimeRefresh !== 'function'} onClick={() => void run('refresh')}><RefreshCw size={14} aria-hidden="true" />重新检测</Button>
       </div>
     </div>
     {feedback?.id === '' && <p role="status" className="mt-2 text-my-xs text-my-secondary">{feedback.message}</p>}
-    <div className="mt-2 rounded-my-lg border border-my-line bg-my-layer-2">
+    <div className="mt-2 rounded-my-base border border-my-line bg-my-layer-2">
       {(pending === 'inventory' || pending === 'refresh' || pending === 'node') && <p role="status" className="flex items-center gap-2 px-3 py-3 text-my-sm text-my-secondary"><Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" />{pending === 'node' ? '等待选择 Node…' : '正在检查本机环境…'}</p>}
       {error && <p role="alert" className="flex items-start gap-2 break-words px-3 py-3 text-my-sm text-my-danger-text"><AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
       {agents && agents.length === 0 && pending === null && <p className="px-3 py-3 text-my-sm text-my-secondary">没有可显示的 Agent，可稍后添加。</p>}
@@ -152,7 +163,7 @@ export function AgentDiscoveryStep({ onInventory, onBusyChange }: AgentDiscovery
         const rowPending = pending?.endsWith(`:${id}`) ? pending.split(':')[0] : null
         return <div key={id} className="border-t border-my-line px-3 py-3 first:border-t-0">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-my-md bg-my-layer-3"><ToolBrandIcon brand={agent.id} size={22} /></span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-my-base bg-my-layer-3"><ToolBrandIcon brand={agent.id} size={22} /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="my-item-title break-words">{agent.name}</span><span className={`text-my-xs ${rowFeedback?.error ? 'text-my-danger-text' : state.tone}`}>{rowPending ? '处理中' : rowFeedback?.error ? '操作失败' : state.label}</span></div>
               <p className={`my-item-description mt-1 break-words${state.tone === 'text-my-warning-text' || state.tone === 'text-my-danger-text' ? ' text-my-secondary' : ''}`}>{rowPending ? rowPending === 'setup' ? '正在安装，请等待结果…' : rowPending === 'path' ? '等待选择路径…' : '正在检查连接…' : state.detail}</p>
@@ -165,7 +176,7 @@ export function AgentDiscoveryStep({ onInventory, onBusyChange }: AgentDiscovery
           </div>
           {rowFeedback && <p role={rowFeedback.error ? 'alert' : 'status'} className={`mt-2 break-words text-my-xs ${rowFeedback.error ? 'text-my-danger-text' : 'text-my-secondary'}`}>{rowFeedback.message}</p>}
           {agent.setupBlockedReason && <p className="mt-2 break-words text-my-xs text-my-secondary">{agent.setupBlockedReason}</p>}
-          {(agent.diagnostics?.length ?? 0) > 0 && <details className="mt-2 text-my-xs text-my-secondary"><summary>检测记录</summary><ul className="mt-1 break-words">{agent.diagnostics?.map((message, index) => <li key={index}>{message}</li>)}</ul></details>}
+          {(agent.diagnostics?.length ?? 0) > 0 && <AgentDiagDisclosure messages={agent.diagnostics!} />}
         </div>
       })}
     </div>

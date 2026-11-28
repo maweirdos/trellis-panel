@@ -136,7 +136,7 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
                 <td className="px-3 py-2">{shared ? <span className="text-my-xs text-my-tertiary">账号与权限由团队服务管理</span> : <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" disabled={busy} aria-label={`编辑 ${member.name}`} onClick={() => setEditing(member)}><Pencil size={13} />编辑</Button>
                   <Tooltip label={lastOwner ? '需保留至少一位 Owner' : '移除同事'}>
-                    <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || lastOwner} aria-label={`移除 ${member.name}`} onClick={() => void remove(member)}><Trash2 size={13} /></Button>
+                    <button type="button" className="my-icon-control" disabled={busy || lastOwner} aria-label={`移除 ${member.name}`} onClick={() => void remove(member)}><Trash2 size={13} /></button>
                   </Tooltip>
                 </div>}</td>
               </tr>

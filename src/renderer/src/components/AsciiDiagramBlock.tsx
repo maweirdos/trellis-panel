@@ -67,20 +67,20 @@ export const AsciiDiagramBlock = React.memo(function AsciiDiagramBlock({ chart }
   const lines = useMemo(() => chart.split('\n'), [chart])
 
   return (
-    <div className="my-4 overflow-hidden rounded-my-lg border border-my-line bg-my-canvas shadow-xs">
+    <div className="my-4 overflow-hidden rounded-my-base border border-my-line bg-my-canvas shadow-xs">
       {/* 顶栏控制条 */}
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-1 border-b border-my-line bg-my-layer-2 px-3 text-my-xs">
         <div className="flex flex-wrap items-center gap-1.5 font-medium text-my-secondary">
           <LayoutTemplate size={13} className="text-my-icon-accent" />
           <span>UI 原型草图 · 线框图</span>
-          <span className="rounded-my-sm bg-my-layer-3 px-1 py-0.5 font-mono text-my-2xs text-my-tertiary">Wireframe</span>
+          <span className="rounded-my-base bg-my-layer-3 px-1 py-0.5 font-mono text-my-2xs text-my-tertiary">Wireframe</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => void copy(chart)}
             aria-disabled={status === 'copying'}
-            className="flex min-h-6 items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-2xs text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary transition-colors cursor-pointer"
+            className="flex min-h-6 items-center gap-1 rounded-my-base px-1.5 py-0.5 text-my-2xs text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary transition-colors cursor-pointer"
             title="复制线框图原文"
           >
             {status === 'copied' ? <Check size={11} aria-hidden="true" className="text-my-accent-text" /> : <Copy size={11} aria-hidden="true" />}

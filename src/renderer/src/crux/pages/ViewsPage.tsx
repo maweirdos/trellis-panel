@@ -154,10 +154,10 @@ export function ViewsPage(): JSX.Element | null {
                   <div className="min-w-0 flex-1 space-y-1">
                     <h2 className="my-item-title truncate text-my-sm font-medium text-my-primary">{view.name}</h2>
                     <div className="flex flex-wrap items-center gap-1.5 text-my-xs text-my-secondary">
-                      <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5">{GROUP_LABEL[view.groupBy]}</span>
+                      <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5">{GROUP_LABEL[view.groupBy]}</span>
                       <span className="tabular-nums text-my-tertiary">{matchedCount} 个任务</span>
                       {isActive && (
-                        <span className="rounded-my-sm bg-my-accent-subtle px-1.5 py-0.5 text-my-2xs text-my-accent">
+                        <span className="rounded-my-base bg-my-accent-subtle px-1.5 py-0.5 text-my-2xs text-my-accent">
                           当前生效
                         </span>
                       )}

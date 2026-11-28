@@ -21,7 +21,7 @@ const time = (at: number): string => new Date(at).toLocaleString('zh-CN', { mont
 
 export function TaskProgressPanel({ snapshot, task }: { snapshot: CruxSnapshot; task: CruxTask }): JSX.Element {
   const local = useCrux(state => state.workspaceContext.state === 'local')
-  if (local) return <section aria-label="任务执行进度" className="flex flex-wrap items-center gap-2 rounded-my-lg border border-my-line p-3 text-my-xs text-my-tertiary">
+  if (local) return <section aria-label="任务执行进度" className="flex flex-wrap items-center gap-2 rounded-my-base border border-my-line p-3 text-my-xs text-my-tertiary">
     <Activity size={15} /><span>连接团队服务后可同步执行动态</span><span className="ml-auto"><ConnectionPanel trigger="connect" /></span>
   </section>
   return <SharedTaskProgressPanel snapshot={snapshot} task={task} />
@@ -141,7 +141,7 @@ function SharedTaskProgressPanel({ snapshot, task }: { snapshot: CruxSnapshot; t
     setEditor(true)
   }
   const stale = Boolean(remote?.progress && remote.serverTime + Math.max(0, Date.now() - now) - remote.progress.updatedAt > 5 * 60_000)
-  return <section className="flex min-w-0 flex-col gap-3 rounded-my-lg border border-my-line bg-my-layer-1 p-3" aria-label="任务执行进度">
+  return <section className="flex min-w-0 flex-col gap-3 rounded-my-base border border-my-line bg-my-layer-1 p-3" aria-label="任务执行进度">
     <header className="flex flex-wrap items-center gap-2"><Activity size={16} className="text-my-icon-secondary" /><h3 className="text-my-sm font-medium text-my-primary">执行动态</h3><span className="my-chip text-my-tertiary" role="status">{stateLabel}</span><span className="flex-1" /><Tooltip label="核对最新进度"><Button size="sm" variant="ghost" aria-label="核对最新进度" disabled={loading || busy || !client || !handler} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={14} className={loading ? 'animate-spin motion-reduce:animate-none' : undefined} /></Button></Tooltip></header>
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-my-xs text-my-secondary"><span>负责人</span><MemberChip member={memberOf(snapshot, handler)} size="md" />{!handler && <span>待安排</span>}{remote?.progress && <><span className="my-chip">{ACTIVITY_LABELS[remote.progress.state]}</span><time dateTime={new Date(remote.progress.updatedAt).toISOString()}>更新 {time(remote.progress.updatedAt)}</time></>}</div>
     {remote?.progress ? <div className="flex flex-col gap-2 text-my-sm"><p className="whitespace-pre-wrap break-words text-my-primary">{remote.progress.step ?? '尚未记录最新步骤'}</p>{remote.progress.blockingReason && <p className="flex items-start gap-2 whitespace-pre-wrap break-words text-my-warning-text"><CircleAlert size={15} className="mt-0.5 shrink-0" /><span>阻塞：{remote.progress.blockingReason}</span></p>}</div> : <p className="text-my-sm text-my-tertiary">{inactive ? '此任务当前没有可更新的执行进度' : !client ? '当前环境暂不支持执行进度' : loading ? '正在核对执行进度…' : '尚未记录执行摘要'}</p>}
@@ -181,7 +181,7 @@ function ProgressEditor({ snapshot, task, value, busy, error, onClose, onSubmit 
     setValidation('')
     void onSubmit(parsed.data, draft.acknowledge(PROGRESS_FIELDS))
   }
-  return <Modal open onClose={onClose} ariaLabel="更新执行摘要" width={480}><div className="flex flex-col gap-4 p-5"><h2 className="text-my-lg font-semibold text-my-primary">更新执行摘要</h2>
+  return <Modal open placement="center" onClose={onClose} ariaLabel="更新执行摘要" width={480}><div className="flex flex-col gap-4 p-5"><h2 className="text-my-lg font-medium text-my-primary">更新执行摘要</h2>
     <Field label="活动状态">
       <Select className="w-full" ariaLabel="活动状态" value={activity} disabled={busy} onChange={val => setActivity(val as TeamTaskProgressState)}
         options={Object.entries(ACTIVITY_LABELS).map(([id, label]) => ({ value: id as TeamTaskProgressState, label }))} />

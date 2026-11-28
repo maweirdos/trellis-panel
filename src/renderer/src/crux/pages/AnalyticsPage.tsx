@@ -289,7 +289,7 @@ export function AnalyticsPage(): JSX.Element | null {
                         <AgentAvatar avatarId={agent.avatarId} size={24} />
                         <span className="min-w-0 flex-1 truncate text-my-sm text-my-primary">{agent.name}</span>
                         <span className="text-my-2xs text-my-tertiary">{agent.runtimeKind}</span>
-                        <span className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs ${toneClass}`}>{meta.label}</span>
+                        <span className={`rounded-my-base px-1.5 py-0.5 text-my-2xs ${toneClass}`}>{meta.label}</span>
                       </li>
                     )
                   })}

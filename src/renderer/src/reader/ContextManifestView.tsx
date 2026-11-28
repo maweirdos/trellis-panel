@@ -62,7 +62,7 @@ export function ContextManifestView({ parsed }: { parsed: ContextManifestParsed 
   return (
     <div className="space-y-3">
       <p className="text-my-sm text-my-tertiary">{MANIFEST_NOTE}</p>
-      <div className="overflow-x-auto rounded-my-lg border border-my-line">
+      <div className="overflow-x-auto rounded-my-base border border-my-line">
         <table className="min-w-full w-max border-collapse text-left text-my-sm">
           <thead>
             <tr className="border-b border-my-line bg-my-layer-1 text-my-xs font-medium tracking-wide text-my-secondary">

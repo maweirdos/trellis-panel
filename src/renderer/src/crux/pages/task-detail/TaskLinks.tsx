@@ -60,7 +60,7 @@ export function TaskLinks({ snapshot, task, disabled, source, mutate, onNewSubta
         return <li key={relation.taskId} className="flex items-center gap-2"><span className="shrink-0 text-my-xs text-my-tertiary">{incomingBlock ? '受阻于' : relation.kind === 'blocks' ? '阻塞' : relation.kind === 'duplicate' ? '重复' : '相关'}</span>{readable ? <><button type="button" className="min-w-0 flex-1 truncate text-left text-my-sm text-my-secondary hover:underline" onClick={() => navigate(target.id)}>{target.id} · {target.title}</button><StatusBadge status={statusOf(snapshot, target.statusId)} /></> : <span className="flex-1 text-my-xs text-my-tertiary">任务不可用</span>}<Tooltip label="移除关联"><Button size="sm" variant="ghost" disabled={disabled} aria-label={readable ? `移除关联 ${target.id}` : '移除不可用任务的关联'} onClick={() => void mutate('移除关联', () => api.crux.removeRelation({ taskId: task.id, targetTaskId: relation.taskId }))}><Trash2 size={14} /></Button></Tooltip></li>
       })}</ul>
       {!relations.length && <p className="text-my-xs text-my-tertiary">暂无关联任务</p>}
-      {adding && <fieldset disabled={disabled} className="mt-3 flex min-w-0 flex-col gap-2 rounded-my-md border border-my-line p-3">
+      {adding && <fieldset disabled={disabled} className="mt-3 flex min-w-0 flex-col gap-2 rounded-my-base border border-my-line p-3">
         <input className={inputClass} aria-label="搜索关联任务" placeholder="搜索任务编号或标题" value={search} onChange={(event) => { setSearch(event.target.value); setTargetId('') }} />
         <Select
           className="w-full"

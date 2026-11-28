@@ -1,6 +1,7 @@
 import { useState, type JSX } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { CruxTask, CruxTaskSharedMaterial } from '@shared/crux'
-import { Button } from '../../../my/ui'
+import { Button, DisclosureGrid } from '../../../my/ui'
 import { MarkdownView } from '../../../components/MarkdownView'
 import { useCrux } from '../../store'
 import { readTaskPostMaterial } from './task-post-documents'
@@ -15,6 +16,7 @@ export function TaskHandoffProvenance({ task, source: parentSource }: {
   const owner = parentSource ?? ownSource
   const [body, setBody] = useState<string | null>(null)
   const [openedMaterial, setOpenedMaterial] = useState('')
+  const [materialOpen, setMaterialOpen] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   if (!task.handoff && !task.sharedMaterials?.length) return null
@@ -29,6 +31,7 @@ export function TaskHandoffProvenance({ task, source: parentSource }: {
       if (!owner.owns(ticket)) return
       setOpenedMaterial(sharedMaterial ? `${sharedMaterial.title} · ${sharedMaterial.versionLabel}` : `交接需求 · ${task.handoff?.versionLabel}`)
       setBody(text)
+      setMaterialOpen(true)
     } catch (cause) { if (owner.owns(ticket)) setError(cause instanceof Error ? cause.message : String(cause)) }
     finally { if (owner.owns(ticket)) setBusy(false) }
   }
@@ -38,7 +41,13 @@ export function TaskHandoffProvenance({ task, source: parentSource }: {
         task.handoff?.versionLabel && <span className="text-my-sm text-my-secondary">{context.state === 'local' ? '首次正文' : '需求材料待补挂'} · {task.handoff.versionLabel}</span>}
       {task.sharedMaterials?.map(shared => <Button key={`${shared.documentId}:${shared.versionId}`} size="sm" variant="ghost" disabled={busy} onClick={() => void open(shared)}>{shared.title} · {shared.versionLabel}</Button>)}
     </div>
-    {body !== null && <details open><summary className="cursor-pointer text-my-xs text-my-secondary">{openedMaterial} · 固定需求版本</summary><div className="mt-2 my-chat-prose"><MarkdownView content={body} /></div></details>}
+    {body !== null && <div>
+      <button type="button" aria-expanded={materialOpen} onClick={() => setMaterialOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary">
+        <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${materialOpen ? 'rotate-90' : ''}`} />
+        <span>{openedMaterial} · 固定需求版本</span>
+      </button>
+      <DisclosureGrid open={materialOpen}><div className="mt-2 my-chat-prose"><MarkdownView content={body} /></div></DisclosureGrid>
+    </div>}
     {error && <p role="alert" className="collab-inline-error">{error}</p>}
   </section>
 }

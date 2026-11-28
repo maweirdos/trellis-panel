@@ -89,7 +89,7 @@ export function TaskFilters({
                   key={status.id}
                   type="button"
                   onClick={() => onChange({ statusIds: toggleListValue(value.statusIds, status.id) })}
-                  className={`inline-flex items-center gap-1.5 rounded-my-sm border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
+                  className={`inline-flex items-center gap-1.5 rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
                     selected
                       ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                       : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'
@@ -120,7 +120,7 @@ export function TaskFilters({
                     : [...current, priority]
                   onChange({ priorities: next.length ? next : undefined })
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-my-sm border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
+                className={`inline-flex items-center gap-1.5 rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
                   selected
                     ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                     : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'
@@ -145,7 +145,7 @@ export function TaskFilters({
                   key={type.id}
                   type="button"
                   onClick={() => onChange({ typeIds: toggleListValue(value.typeIds, type.id) })}
-                  className={`inline-flex items-center rounded-my-sm border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
+                  className={`inline-flex items-center rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
                     selected
                       ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                       : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'
@@ -170,7 +170,7 @@ export function TaskFilters({
                   key={member.id}
                   type="button"
                   onClick={() => onChange({ assigneeIds: toggleListValue(value.assigneeIds, member.id) })}
-                  className={`inline-flex items-center rounded-my-sm border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
+                  className={`inline-flex items-center rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
                     selected
                       ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                       : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'
@@ -195,7 +195,7 @@ export function TaskFilters({
                   key={label.id}
                   type="button"
                   onClick={() => onChange({ labelIds: toggleListValue(value.labelIds, label.id) })}
-                  className={`inline-flex items-center rounded-my-sm border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
+                  className={`inline-flex items-center rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-150 ease-out ${
                     selected
                       ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                       : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'

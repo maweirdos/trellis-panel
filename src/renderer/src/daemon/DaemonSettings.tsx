@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { api } from '../api'
 import { hasDaemonApi, type DaemonApi, type DaemonPreferences, type DaemonStatus } from '../../../shared/daemon'
 import { confirmDialog } from '../components/Dialogs'
 import { useInteractionSignal } from '../utils/interaction-scope'
-import { Button, Switch } from '../my/ui'
+import { Button, DisclosureGrid, Switch } from '../my/ui'
 import { Select } from '../components/Select'
 import { PreferenceRow, PreferenceSection } from '../pages/settings/PreferenceSection'
+
+function DaemonCommandDisclosure({ commandId }: { commandId: string }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="w-full text-my-xs text-my-tertiary">
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>原命令</span>
+    </button>
+    <DisclosureGrid open={open}><p className="mt-2 break-all">{commandId}</p></DisclosureGrid>
+  </div>
+}
 
 export function DaemonSettings(): JSX.Element {
   const instanceId = useId()
@@ -105,14 +117,14 @@ export function DaemonSettings(): JSX.Element {
             {typeof bridge.reconcileStartup === 'function'
               ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void action('reconcile')}>核对原启动注册</Button>
               : <span className="text-my-xs text-my-tertiary">请完整重启应用以加载核对接口。</span>}
-            <details className="w-full text-my-xs text-my-tertiary"><summary className="cursor-pointer">原命令</summary><p className="mt-2 break-all">{status.startupCommandId}</p></details>
+            <DaemonCommandDisclosure commandId={status.startupCommandId} />
           </>}
         </PreferenceRow>}
       </>}
       <PreferenceRow label="运行日志">
         <Button size="sm" variant="outline" disabled={busy || !status} onClick={() => void action('logs')}>查看日志</Button>
       </PreferenceRow>
-      {!!logs.length && <ol aria-label="后台运行日志" className="my-scrollbar max-h-44 overflow-auto rounded-my-md border border-my-line p-3 font-mono text-my-xs text-my-tertiary">{logs.map((entry, index) => <li key={`${entry.at}:${index}`}>{new Date(entry.at).toLocaleTimeString()} {entry.code}</li>)}</ol>}
+      {!!logs.length && <ol aria-label="后台运行日志" className="my-scrollbar max-h-44 overflow-auto rounded-my-base border border-my-line p-3 font-mono text-my-xs text-my-tertiary">{logs.map((entry, index) => <li key={`${entry.at}:${index}`}>{new Date(entry.at).toLocaleTimeString()} {entry.code}</li>)}</ol>}
     </>}
     {error && <p className="py-3 text-my-sm text-my-danger-text" role="alert">{error}</p>}
     <PreferenceRow label="应用">

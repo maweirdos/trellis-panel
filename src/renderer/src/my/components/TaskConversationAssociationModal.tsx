@@ -107,7 +107,7 @@ export function TaskConversationAssociationModal({ taskDir, taskTitle, controlle
     <div className="my-modal-content my-task-conversation-association">
       <header className="my-task-conversation-association__header">
         <div className="min-w-0"><h2 className="text-my-lg font-medium text-my-primary">修复执行入口</h2><p className="my-task-conversation-association__task">{taskTitle}</p></div>
-        <Button variant="ghost" size="sm" className="my-icon-control" aria-label="关闭执行入口修复" onClick={onClose}><X size={16} /></Button>
+        <button type="button" className="my-icon-control" aria-label="关闭执行入口修复" onClick={onClose}><X size={16} /></button>
       </header>
       {bindings.length > 0 && <section aria-label="已关联会话" className="my-task-conversation-association__section">
         <h3 className="text-my-xs font-medium text-my-secondary">当前执行入口</h3>

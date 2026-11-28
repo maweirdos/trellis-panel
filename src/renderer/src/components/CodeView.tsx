@@ -87,7 +87,7 @@ export function CodeView({ content, ext }: { content: string; ext: string }): JS
   }
 
   return (
-    <div className="overflow-x-auto rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5">
+    <div className="overflow-x-auto rounded-my-base border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5">
       {lines.map((toks, i) => (
         <div key={i} className="flex">
           <span className="w-9 shrink-0 select-none pr-2 text-right text-my-2xs text-my-placeholder">{i + 1}</span>

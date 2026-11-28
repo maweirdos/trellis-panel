@@ -218,8 +218,8 @@ export function KnowledgeBrowser(props: Props): JSX.Element {
         {!props.remote && searching && props.localSearchHasMore && <p role="status" className="pb-3 text-my-xs text-my-tertiary">匹配超过 80 条，请缩小关键词范围。</p>}
         {!props.remote && searching && !props.localSearchHasMore && props.localRows.length >= 80 && <p className="pb-3 text-my-xs text-my-tertiary">本地搜索最多返回 80 条结果，请缩小关键词范围。</p>}
         {!props.remote && searching && !folder && props.remoteSearchPending && <div role="status" className="pb-3 text-my-xs text-my-tertiary">正在检索远端知识…</div>}
-        {props.remoteSearchError && !folder && <div role="alert" className="mb-3 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">远端检索未完成：{props.remoteSearchError}</div>}
-        {props.error && <div role="alert" className="mb-3 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">{props.error}</div>}
+        {props.remoteSearchError && !folder && <div role="alert" className="mb-3 rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">远端检索未完成：{props.remoteSearchError}</div>}
+        {props.error && <div role="alert" className="mb-3 rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">{props.error}</div>}
         <div className="flex items-center border-b border-my-line px-3 pb-2 text-my-xs text-my-tertiary"><span className="flex-1">名称</span><span className="w-28 text-right">来源 / 更新</span></div>
         {visibleRows.map((row) => {
           if (!props.remote) {

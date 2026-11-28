@@ -157,7 +157,7 @@ export function TaskExecutionRunPanel({
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="my-item-title truncate">{effectiveName}</span>
                 <span className="my-chip">{task.executor ? '已委派执行者' : '默认可用助手'}</span>
-                <span className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs font-medium ${runtimeReady ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-warning-subtle text-my-warning-text'}`}>
+                <span className={`rounded-my-base px-1.5 py-0.5 text-my-2xs font-medium ${runtimeReady ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-warning-subtle text-my-warning-text'}`}>
                   {runtimeKindLabel(slot.runtimeKind)} · {matchedRuntime ? runtimeHealthLabel(matchedRuntime) : '待探测'}
                 </span>
               </div>
@@ -244,7 +244,7 @@ export function TaskExecutionRunPanel({
         </div>
       </section>
 
-      {/* AI 任务快捷动作栏（对标 HiFox ai-task-actions） */}
+      {/* AI 任务快捷动作栏 */}
       <section className="flex flex-col gap-2 rounded-my-base border border-my-line bg-my-panel p-3.5" aria-label="AI 任务快捷动作">
         <header className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
@@ -287,7 +287,7 @@ export function TaskExecutionRunPanel({
         <section className="flex flex-col gap-3 rounded-my-base border border-my-line-strong bg-my-panel p-3.5" aria-label="当前执行中 Run">
           <header className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className={`rounded-my-sm px-2 py-0.5 text-my-xs font-medium ${runToneClass(activeRun.status)}`}>
+              <span className={`rounded-my-base px-2 py-0.5 text-my-xs font-medium ${runToneClass(activeRun.status)}`}>
                 {RUN_STATUS_META[activeRun.status].label}
               </span>
               <span className="font-mono text-my-2xs text-my-tertiary">{activeRun.id}</span>
@@ -445,7 +445,7 @@ export function TaskExecutionRunPanel({
                       onClick={() => setExpandedRunId(expanded ? null : run.id)}
                     >
                       {expanded ? <ChevronDown size={14} className="text-my-icon-tertiary" /> : <ChevronRight size={14} className="text-my-icon-tertiary" />}
-                      <span className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs font-medium ${runToneClass(run.status)}`}>
+                      <span className={`rounded-my-base px-1.5 py-0.5 text-my-2xs font-medium ${runToneClass(run.status)}`}>
                         {RUN_STATUS_META[run.status].label}
                       </span>
                       <span className="my-item-title truncate">{run.actionTitle || run.executorName}</span>
@@ -519,9 +519,9 @@ function AiTaskActionManagerModal({
   }
 
   return (
-    <Modal open onClose={onClose} width={560} ariaLabel="管理 AI 任务快捷动作">
+    <Modal open placement="center" onClose={onClose} width={560} ariaLabel="管理 AI 任务快捷动作">
       <div className="flex max-h-[var(--my-modal-max-height)] flex-col gap-3 p-4">
-        <h2 className="text-my-md font-semibold text-my-primary">管理 AI 任务快捷动作</h2>
+        <h2 className="text-my-md font-medium text-my-primary">管理 AI 任务快捷动作</h2>
         <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           <div className="flex flex-col gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <h3 className="my-item-title">新增空间快捷动作</h3>

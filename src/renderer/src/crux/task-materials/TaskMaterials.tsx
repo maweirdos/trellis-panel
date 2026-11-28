@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { FileText, Plus, RefreshCw } from 'lucide-react'
+import { ChevronRight, FileText, Plus, RefreshCw } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { TeamTaskMaterialCommand, TeamTaskMaterialKind, TeamTaskMaterialList, TeamTaskMaterialMetadata, TeamTaskMaterialReceipt, TeamTaskMaterialView } from '@shared/team-task-materials'
 import type { CruxMaterialPending } from '@shared/crux-task-materials'
 import { api } from '../../api'
-import { Button, Switch } from '../../my/ui'
+import { Button, Checkbox, DisclosureGrid, Switch } from '../../my/ui'
+
+function DraftConflictDisclosure({ text }: { text: string }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>我的未提交正文</span>
+    </button>
+    <DisclosureGrid open={open}><pre className="my-scrollbar mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{text}</pre></DisclosureGrid>
+  </div>
+}
 import { useInteractionActive } from '../../utils/interaction-scope'
 import { useCrux } from '../store'
 import { Field, inputClass, textareaClass, Select } from '../ui'
@@ -273,8 +284,8 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
     }
   }
 
-  if (!isShared) return <section className="rounded-my-md border border-my-line p-3 text-my-xs text-my-tertiary" aria-label="任务共享材料">连接团队服务后，可共享需求、设计和实施文档；现有本机材料仍保留。</section>
-  return <section className="task-materials min-w-0 space-y-3 rounded-my-md border border-my-line p-3" aria-label="任务共享材料">
+  if (!isShared) return <section className="rounded-my-base border border-my-line p-3 text-my-xs text-my-tertiary" aria-label="任务共享材料">连接团队服务后，可共享需求、设计和实施文档；现有本机材料仍保留。</section>
+  return <section className="task-materials min-w-0 space-y-3 rounded-my-base border border-my-line p-3" aria-label="任务共享材料">
     <header className="flex flex-wrap items-center gap-2"><FileText size={16} /><h3 className="flex-1 text-my-sm font-medium text-my-primary">共享材料与评审</h3><Button size="sm" variant="ghost" aria-label="刷新任务材料" disabled={!bridge || loading || busy} onClick={() => void load()}><RefreshCw size={14} /></Button></header>
     {!bridge ? <p role="status" className="text-my-xs text-my-secondary">当前客户端尚未加载团队材料能力，请更新并重新打开。</p> : <>
       {error && <p role="alert" className="collab-inline-error">{error}</p>}{notice && <p role="status" className="text-my-xs text-my-secondary">{notice}</p>}
@@ -284,7 +295,7 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
         {canCreate && !list.page.hasMore && (Object.keys(TASK_MATERIAL_LABELS) as TeamTaskMaterialKind[]).filter((kind) => !list.page.items.some((item) => item.kind === kind)).map((kind) => <Button key={kind} size="sm" variant="ghost" disabled={busy || Boolean(creation) || changed} onClick={() => { setCreation({ kind, ...initialTaskMaterial(kind, task.title), approverId: '' }); editGeneration.current++ }}><Plus size={13} />{TASK_MATERIAL_LABELS[kind]}</Button>)}
       </div>}
       {list?.page.hasMore && <p role="status" className="text-my-xs text-my-warning-text">材料目录尚不完整，请重新核对后再创建同类材料。</p>}
-      {creation && <div className="space-y-3 rounded-my-md bg-my-layer-1 p-3">
+      {creation && <div className="space-y-3 rounded-my-base bg-my-layer-1 p-3">
         <h4 className="text-my-sm font-medium">创建{TASK_MATERIAL_LABELS[creation.kind]}共享草稿</h4>
         <Field label="标题"><input autoFocus className={inputClass} value={creation.title} disabled={busy} maxLength={300} onChange={(event) => { setCreation({ ...creation, title: event.target.value }); editGeneration.current++ }} /></Field>
         <Field label="正文"><textarea className={textareaClass} rows={12} value={creation.text} disabled={busy} onChange={(event) => { setCreation({ ...creation, text: event.target.value }); editGeneration.current++ }} /></Field>
@@ -293,14 +304,14 @@ function Materials({ snapshot, task, entryRequest, onReviewState, onCommitted }:
       </div>}
       {view && <>
         {(canCreate || view.document.ownerId === actor && writable) && <Button size="sm" variant="ghost" disabled={busy || Boolean(intent)} onClick={() => setAccess({ documentId: view.document.documentId, revision: view.document.revision, editors: [...view.document.editorIds], approvers: [...view.document.approverIds] })}>管理文档协作者</Button>}
-        {access?.documentId === view.document.documentId && <div className="space-y-3 rounded-my-md bg-my-layer-1 p-3" aria-label="文档协作者设置">
-          <fieldset className="min-w-0 space-y-2" disabled={busy || Boolean(intent)}><legend className="text-my-xs font-medium">可编辑草稿</legend><div className="flex flex-wrap gap-3">{members.map((member) => <label key={member.id} className="flex items-center gap-2 text-my-xs"><input type="checkbox" checked={access.editors.includes(member.id)} onChange={(event) => setAccess({ ...access, editors: event.target.checked ? [...access.editors, member.id] : access.editors.filter((id) => id !== member.id) })} />{member.name}</label>)}</div></fieldset>
-          <fieldset className="min-w-0 space-y-2" disabled={busy || Boolean(intent)}><legend className="text-my-xs font-medium">可批准或退回</legend><div className="flex flex-wrap gap-3">{members.map((member) => <label key={member.id} className="flex items-center gap-2 text-my-xs"><input type="checkbox" checked={access.approvers.includes(member.id)} onChange={(event) => setAccess({ ...access, approvers: event.target.checked ? [...access.approvers, member.id] : access.approvers.filter((id) => id !== member.id) })} />{member.name}</label>)}</div></fieldset>
+        {access?.documentId === view.document.documentId && <div className="space-y-3 rounded-my-base bg-my-layer-1 p-3" aria-label="文档协作者设置">
+          <fieldset className="min-w-0 space-y-2" disabled={busy || Boolean(intent)}><legend className="text-my-xs font-medium">可编辑草稿</legend><div className="flex flex-wrap gap-3">{members.map((member) => <label key={member.id} className="flex items-center gap-2 text-my-xs"><Checkbox checked={access.editors.includes(member.id)} onChange={(checked) => setAccess({ ...access, editors: checked ? [...access.editors, member.id] : access.editors.filter((id) => id !== member.id) })} />{member.name}</label>)}</div></fieldset>
+          <fieldset className="min-w-0 space-y-2" disabled={busy || Boolean(intent)}><legend className="text-my-xs font-medium">可批准或退回</legend><div className="flex flex-wrap gap-3">{members.map((member) => <label key={member.id} className="flex items-center gap-2 text-my-xs"><Checkbox checked={access.approvers.includes(member.id)} onChange={(checked) => setAccess({ ...access, approvers: checked ? [...access.approvers, member.id] : access.approvers.filter((id) => id !== member.id) })} />{member.name}</label>)}</div></fieldset>
           {access.revision !== view.document.revision && <p role="status" className="text-my-xs text-my-warning-text">协作者设置的原版本已变化，请重新打开并核对。</p>}
           <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" disabled={busy} onClick={() => setAccess(null)}>取消</Button><Button size="sm" disabled={!writable || busy || Boolean(intent) || !context.epoch || !access.editors.length || !access.approvers.length || access.revision !== view.document.revision} onClick={() => { if (context.epoch) void execute({ action: 'setAccess', commandId: crypto.randomUUID(), expectedEpoch: context.epoch, spaceId: task.spaceId, taskCreatedAt: task.createdAt, documentId: access.documentId, expectedRevision: access.revision, editorIds: access.editors, approverIds: access.approvers }) }}>保存协作者</Button></div>
         </div>}
         {view.document.editorIds.includes(actor) && <div className="flex items-center gap-2 text-my-xs text-my-secondary"><span>自动保存草稿</span><Switch label="自动保存共享草稿" checked={autoSave} disabled={!writable || busy || Boolean(intent) || stale || saveState === 'conflict'} onChange={setAutoSave} /></div>}
-        {(stale || saveState === 'conflict') && draft && <div className="space-y-2 rounded-my-md bg-my-warning-subtle p-3 text-my-xs text-my-warning-text"><p>共享草稿已变化，你的修改仍保留。先查看当前稿并合并，再重新确认编辑基线。</p><Button size="sm" disabled={busy} onClick={() => void open(view.document.documentId, view.document.draft.versionId, true)}>查看当前共享稿，保留我的修改</Button>{view.selected.versionId === view.document.draft.versionId && <Button size="sm" disabled={busy || Boolean(intent)} onClick={() => { setDraft({ ...draft, baseDraftRevision: view.document.draftRevision, baseVersionId: view.selected.versionId }); setSaveState('dirty'); setAutoSave(false) }}>已核对，按当前版本继续编辑</Button>}<details><summary>我的未提交正文</summary><pre className="my-scrollbar max-h-64 overflow-auto whitespace-pre-wrap break-words">{draft.text}</pre></details></div>}
+        {(stale || saveState === 'conflict') && draft && <div className="space-y-2 rounded-my-base bg-my-warning-subtle p-3 text-my-xs text-my-warning-text"><p>共享草稿已变化，你的修改仍保留。先查看当前稿并合并，再重新确认编辑基线。</p><Button size="sm" disabled={busy} onClick={() => void open(view.document.documentId, view.document.draft.versionId, true)}>查看当前共享稿，保留我的修改</Button>{view.selected.versionId === view.document.draft.versionId && <Button size="sm" disabled={busy || Boolean(intent)} onClick={() => { setDraft({ ...draft, baseDraftRevision: view.document.draftRevision, baseVersionId: view.selected.versionId }); setSaveState('dirty'); setAutoSave(false) }}>已核对，按当前版本继续编辑</Button>}<DraftConflictDisclosure text={draft.text} /></div>}
         <TaskMaterialDocument key={`${view.document.documentId}:${entryRequest?.requestId ?? 0}`} view={view} actorId={actor} initialMode={entryRequest?.kind === view.document.kind && entryRequest.mode !== 'review' ? 'edit' : 'read'} title={draft?.documentId === view.document.documentId ? draft.title : view.selected.title}
           text={draft?.documentId === view.document.documentId ? draft.text : view.text} saveState={saveState} busy={busy} writable={writable} changed={changed}
           onChange={(value) => { if (!currentOwner.current.canWrite()) return; setDraft({ documentId: view.document.documentId, baseDraftRevision: draft?.baseDraftRevision ?? view.document.draftRevision, baseVersionId: draft?.baseVersionId ?? view.selected.versionId, ...value }); editGeneration.current++; setSaveState('dirty') }}

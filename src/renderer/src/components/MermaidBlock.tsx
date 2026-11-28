@@ -96,14 +96,14 @@ export const MermaidBlock = React.memo(function MermaidBlock({ chart }: { chart:
 
   if (error) {
     return (
-      <div className="my-3 rounded-my-md border border-my-line-danger bg-my-danger-subtle p-3">
+      <div className="my-3 rounded-my-base border border-my-line-danger bg-my-danger-subtle p-3">
         <div className="mb-1 text-my-xs text-my-danger-text">Mermaid 语法错误</div>
         <pre className="overflow-x-auto font-mono text-my-xs text-my-secondary">{chart}</pre>
       </div>
     )
   }
   return (
-    <div className="my-3 overflow-x-auto rounded-my-md border border-my-line bg-my-canvas p-3 text-center [&_svg]:mx-auto [&_svg]:max-w-full">
+    <div className="my-3 overflow-x-auto rounded-my-base border border-my-line bg-my-canvas p-3 text-center [&_svg]:mx-auto [&_svg]:max-w-full">
       {svg === null ? (
         <div className="py-4 text-my-xs text-my-tertiary">Mermaid 渲染中…</div>
       ) : (

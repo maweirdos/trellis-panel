@@ -33,7 +33,7 @@ const CORE_RUNTIMES: ReadonlyArray<{ id: string; runtimeKind: CruxRuntimeKind; l
 ]
 
 /**
- * 1:1 复刻 HiFox 图 6 分组 Runtime 选择器：
+ * 分组 Runtime 选择器：
  * - 数据 100% 来自主进程 api.acpAgents() / api.acpRuntimeRefresh() 对本机 CLI 与内置引擎的真实扫描
  * - 触发按钮与列表项逐行使用各自官方彩色品牌图标，支持一键现场重新探测
  */
@@ -152,7 +152,7 @@ export function RuntimePicker({
       {(close) => (
         <>
           <div className="flex items-center justify-between px-2 pt-1 pb-0.5">
-            <span className="text-my-sm font-semibold text-my-primary">选择 Runtime</span>
+            <span className="text-my-sm font-medium text-my-primary">选择 Runtime</span>
             {hasIpc && (
               <button
                 type="button"

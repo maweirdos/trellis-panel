@@ -128,7 +128,7 @@ export function AutomationsPage(): JSX.Element | null {
                 <h2 className="my-item-title flex flex-wrap items-center gap-2 text-my-sm font-medium text-my-primary">
                   <FlowIcon name="automations" size={16} />
                   <span className="truncate">{automation.name}</span>
-                  <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs font-normal text-my-secondary">
+                  <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-2xs font-normal text-my-secondary">
                     {TRIGGER_LABEL[automation.trigger.kind]}
                     {automation.trigger.kind === 'schedule' && ` ${automation.trigger.value}${automation.trigger.days?.length ? ` · 周${automation.trigger.days.join('、')}` : ' · 每天'}`}
                     {automation.trigger.kind === 'task_status' && ` → ${statusDisplayName(statuses.find((s) => s.id === automation.trigger.value))}`}
@@ -221,7 +221,7 @@ export function AutomationsPage(): JSX.Element | null {
                 <li key={entry.id} className="my-card px-3 py-2.5 text-my-xs">
                   <p className="flex items-center gap-2">
                     <span
-                      className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs ${
+                      className={`rounded-my-base px-1.5 py-0.5 text-my-2xs ${
                         entry.outcome === 'done'
                           ? 'bg-my-success-subtle text-my-success-text'
                           : entry.outcome === 'waiting_runtime'
@@ -422,7 +422,7 @@ function AutomationEditorForm({
                     key={day}
                     aria-pressed={selected}
                     onClick={() => setDays(selected ? days.filter((value) => value !== day) : [...days, day].sort())}
-                    className={`rounded-my-sm border px-2 py-1 text-my-xs transition-colors ${
+                    className={`rounded-my-base border px-2 py-1 text-my-xs transition-colors ${
                       selected
                         ? 'border-my-accent bg-my-accent-subtle text-my-primary'
                         : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'

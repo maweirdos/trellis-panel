@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { api, hasIpc } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { Button } from '../../my/ui'
+import { Button, Checkbox } from '../../my/ui'
 import { ConversationArchiveManager } from '../../conversation-workbench/ConversationArchiveManager'
 import { useInteractionSignal } from '../../utils/interaction-scope'
 import { PreferenceRow, PreferenceSection } from './PreferenceSection'
@@ -122,7 +122,7 @@ export function StorageSettings(): JSX.Element {
         const checked = selected.includes(item.id)
         return <PreferenceRow key={item.id} label={content.label} hint={<>{content.hint}{item.reason && <> {item.reason}</>}</>}>
           <span className="text-my-sm text-my-secondary">{item.status === 'available' ? sizeLabel(item.bytes) : item.status === 'error' ? '读取失败' : '暂不可清理'}</span>
-          <label className="text-my-sm text-my-secondary"><input type="checkbox" aria-label={`选择${content.label}`} checked={checked} disabled={Boolean(busy) || item.status !== 'available' || item.bytes === 0} onChange={event => { const enabled = event.target.checked; setSelected(previous => enabled ? [...previous, item.id] : previous.filter(id => id !== item.id)) }} />选择</label>
+          <label className="flex items-center gap-2 text-my-sm text-my-secondary"><Checkbox ariaLabel={`选择${content.label}`} checked={checked} disabled={Boolean(busy) || item.status !== 'available' || item.bytes === 0} onChange={enabled => { setSelected(previous => enabled ? [...previous, item.id] : previous.filter(id => id !== item.id)) }} />选择</label>
         </PreferenceRow>
       })}
       {scan && <div className="preference-actions"><span className="my-item-description mr-auto">扫描不会删除文件。</span><Button size="sm" variant="outline" disabled={Boolean(busy) || selected.length === 0} onClick={() => void clean()}>{busy === 'clean' ? '处理中…' : '清理所选'}</Button></div>}

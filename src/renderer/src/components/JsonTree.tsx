@@ -61,7 +61,7 @@ function JsonNode({ name, value, depth, expandToken, comma }: JsonNodeProps): JS
     <div className="leading-5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="group flex items-start gap-1.5 rounded-my-sm px-0.5 py-px text-left hover:bg-my-layer-1"
+        className="group flex items-start gap-1.5 rounded-my-base px-0.5 py-px text-left hover:bg-my-layer-1"
       >
         <span className="mt-0.5 shrink-0 text-my-tertiary">
           {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
@@ -75,7 +75,7 @@ function JsonNode({ name, value, depth, expandToken, comma }: JsonNodeProps): JS
         <span className="text-my-secondary">{openBrace}</span>
         {!open && (
           <span className="flex items-center gap-1 text-my-tertiary">
-            <span className="rounded-my-sm bg-my-layer-2 px-1 text-my-2xs">{entries.length} 项</span>
+            <span className="rounded-my-base bg-my-layer-2 px-1 text-my-2xs">{entries.length} 项</span>
             <span>{closeBrace}</span>
             {comma && <span>,</span>}
           </span>
@@ -112,7 +112,7 @@ export function JsonTree({ data }: { data: unknown }): JSX.Element {
           折叠全部
         </button>
       </div>
-      <div className="rounded-my-lg border border-my-line bg-my-canvas p-3">
+      <div className="rounded-my-base border border-my-line bg-my-canvas p-3">
         <JsonNode name={null} value={data} depth={0} expandToken={expandToken} comma={false} />
       </div>
     </div>

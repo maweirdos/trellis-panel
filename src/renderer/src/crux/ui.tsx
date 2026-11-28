@@ -50,9 +50,9 @@ export function MemberChip({ member, size = 'md' }: { member?: CruxMember; size?
 }
 
 export function StatusBadge({ status }: { status?: CruxTaskStatus }): JSX.Element {
-  if (!status) return <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs text-my-tertiary">—</span>
+  if (!status) return <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-xs text-my-tertiary">—</span>
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
+    <span className="inline-flex items-center gap-1.5 rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
       <StateGroupIcon stateGroup={CRUX_STATE_GROUPS[status.category]} size={13} color={cruxStatusColor(status.category)} />
       {statusDisplayName(status)}
     </span>
@@ -61,7 +61,7 @@ export function StatusBadge({ status }: { status?: CruxTaskStatus }): JSX.Elemen
 
 export function PriorityBadge({ priority }: { priority: CruxPriority }): JSX.Element {
   return (
-    <span data-priority={priority} className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
+    <span data-priority={priority} className="inline-flex items-center gap-1.5 rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
       <MyPriorityIcon priority={priority} size={13} className={PRIORITY_ICON_CLASS[priority]} />
       {PRIORITY_LABEL[priority]}
     </span>
@@ -70,7 +70,7 @@ export function PriorityBadge({ priority }: { priority: CruxPriority }): JSX.Ele
 
 export function LabelChip({ label }: { label: CruxTaskLabel }): JSX.Element {
   return (
-    <span className="inline-flex items-center rounded-my-sm px-1.5 py-0.5 text-my-xs" style={{ backgroundColor: `color-mix(in srgb, ${label.color} 13%, transparent)`, color: label.color }}>
+    <span className="inline-flex items-center rounded-my-base px-1.5 py-0.5 text-my-xs" style={{ backgroundColor: `color-mix(in srgb, ${label.color} 13%, transparent)`, color: label.color }}>
       {label.name}
     </span>
   )
@@ -80,7 +80,7 @@ export function ExecutorBadge({ executor, dispatchNote }: { executor: { kind: 'a
   if (!executor) return null
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary"
+      className="inline-flex items-center gap-1 rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary"
       title={dispatchNote ?? `执行槽：${executor.name}（${executor.kind === 'agent' ? 'Agent' : '小队'}）`}
     >
       <FlowIcon name={executor.kind === 'agent' ? 'agents' : 'crews'} size={14} />{executor.name}
@@ -92,7 +92,7 @@ export function DispatchNote({ dispatch }: { dispatch?: { status: string; since:
   if (!dispatch) return null
   const waiting = dispatch.status === 'waiting_runtime'
   return (
-    <Tooltip label={dispatch.note ?? (waiting ? '实际执行等待运行环境接入' : '任务已进入待安排队列')} side="bottom" wrap><span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-my-md bg-my-layer-1 px-2.5 py-1.5 text-my-xs text-my-secondary"><FlowIcon name={waiting ? 'agents' : 'backlog'} size={14} /><span>{waiting ? '等待运行环境' : '待安排'}</span></span></Tooltip>
+    <Tooltip label={dispatch.note ?? (waiting ? '实际执行等待运行环境接入' : '任务已进入待安排队列')} side="bottom" wrap><span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-my-base bg-my-layer-1 px-2.5 py-1.5 text-my-xs text-my-secondary"><FlowIcon name={waiting ? 'agents' : 'backlog'} size={14} /><span>{waiting ? '等待运行环境' : '待安排'}</span></span></Tooltip>
   )
 }
 

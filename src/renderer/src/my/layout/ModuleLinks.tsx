@@ -4,7 +4,7 @@ import { useApp, type Page } from '../../store'
 import { useMy } from '../store'
 import type { AgentView, KnowledgeView } from '../navigation'
 
-export const contextButtonClass = (selected: boolean): string => `my-context-button my-nav-item flex min-h-8 w-full items-center gap-2 rounded-my-md px-2.5 py-1.5 text-left text-my-sm transition-colors ${selected ? 'is-selected font-medium text-my-primary' : 'text-my-secondary'}`
+export const contextButtonClass = (selected: boolean): string => `my-context-button my-nav-item flex min-h-8 w-full items-center gap-2 rounded-my-base px-2.5 py-1.5 text-left text-my-sm transition-colors ${selected ? 'is-selected font-medium text-my-primary' : 'text-my-secondary'}`
 
 /** Embedded in the existing source browser: one sidebar, one route authority. */
 export function ModuleLinks({ domain, agentView }: {

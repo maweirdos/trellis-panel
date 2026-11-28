@@ -102,7 +102,7 @@ export function DocumentReaderSurface({
   if (relativePath === null) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <div className="-mt-16 max-w-md rounded-my-lg border border-my-line bg-my-layer-1 p-5 text-center">
+        <div className="-mt-16 max-w-md rounded-my-base border border-my-line bg-my-layer-1 p-5 text-center">
           <CircleAlert size={22} className="mx-auto text-my-icon-secondary" />
           <p className="mt-2 text-my-sm text-my-tertiary">
             该文件在当前项目根之外，共享阅读器无法读取；可在文件查看器中查看。

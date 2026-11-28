@@ -99,7 +99,7 @@ export function ReaderVersionBar({
       </div>
 
       {pending && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-3 py-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-3 py-1.5">
           <span className="text-my-sm text-my-warning-text">发现新版本</span>
           <span className="font-mono text-my-2xs text-my-warning-text opacity-80">
             {shortRev(displayedRevision)} → {shortRev(latestRevision)}
@@ -152,7 +152,7 @@ export function ReaderNoticeStrip({
   return (
     <>
       {requestError !== null && (
-        <div className="mt-2 flex items-center gap-2 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-3 py-1.5 text-my-sm text-my-danger-text">
+        <div className="mt-2 flex items-center gap-2 rounded-my-base border border-my-line-danger bg-my-danger-subtle px-3 py-1.5 text-my-sm text-my-danger-text">
           <CircleAlert size={13} className="shrink-0" />
           <span className="min-w-0 flex-1">读取失败：{requestError}（已保留当前展示内容）</span>
           <button
@@ -166,12 +166,12 @@ export function ReaderNoticeStrip({
         </div>
       )}
       {unreadableNotice !== null && (
-        <div className="mt-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-sm text-my-warning-text">
+        <div className="mt-2 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-sm text-my-warning-text">
           {unreadableNotice}
         </div>
       )}
       {anchorNotice !== null && (
-        <div className="mt-2 flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-1.5 text-my-sm text-my-tertiary">
+        <div className="mt-2 flex items-center gap-2 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-1.5 text-my-sm text-my-tertiary">
           <span className="min-w-0 flex-1">{anchorNotice}</span>
           <button
             type="button"

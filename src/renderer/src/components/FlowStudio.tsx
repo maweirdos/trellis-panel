@@ -242,7 +242,7 @@ export function FlowStudio(): JSX.Element {
     <div className="flex h-full min-w-0">
       {/* 左列：工作流列表 + 模板 */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-my-line">
-        <div className="flex items-center gap-1.5 border-b border-my-line px-3 py-2 text-my-xs font-semibold text-my-primary">
+        <div className="flex items-center gap-1.5 border-b border-my-line px-3 py-2 text-my-xs font-medium text-my-primary">
           <Wand2 size={13} /> 我的工作流
           <span className="flex-1" />
           <Button variant="ghost" size="sm" className="px-1.5" onClick={() => { setPanel('design'); setSelected(null); }} title="新建：用一句话描述让 AI 设计">
@@ -259,7 +259,7 @@ export function FlowStudio(): JSX.Element {
             <div
               key={f.id}
               className={clsx(
-                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-lg px-2 py-1.5 text-my-xs transition-colors',
+                'group mb-0.5 flex cursor-pointer items-center gap-1 rounded-my-base px-2 py-1.5 text-my-xs transition-colors',
                 selected?.id === f.id ? 'bg-my-accent-subtle text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover'
               )}
               onClick={() => void openFlow(f.id)}
@@ -271,7 +271,7 @@ export function FlowStudio(): JSX.Element {
                   e.stopPropagation()
                   void removeFlow(f.id, f.name)
                 }}
-                className="shrink-0 rounded-my-sm p-0.5 text-my-placeholder opacity-0 hover:text-my-danger-text group-hover:opacity-100"
+                className="shrink-0 rounded-my-base p-0.5 text-my-placeholder opacity-0 hover:text-my-danger-text group-hover:opacity-100"
                 title="删除"
               >
                 <Trash2 size={11} />
@@ -280,7 +280,7 @@ export function FlowStudio(): JSX.Element {
           ))}
 
           <div className="mt-3 border-t border-my-line pt-2">
-            <div className="px-2 pb-1.5 text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">模板库（一键安装）</div>
+            <div className="px-2 pb-1.5 text-my-2xs font-medium uppercase tracking-wide text-my-tertiary">模板库（一键安装）</div>
             {templates.map((t) => {
               const installed = flows.some((f) => f.id === t.id)
               return (
@@ -288,7 +288,7 @@ export function FlowStudio(): JSX.Element {
                   key={t.id}
                   disabled={installed}
                   onClick={() => void installTemplate(t)}
-                  className="mb-0.5 flex w-full items-center gap-1 rounded-my-lg px-2 py-1.5 text-left text-my-xs text-my-secondary transition-colors hover:bg-my-layer-1-hover disabled:opacity-40"
+                  className="mb-0.5 flex w-full items-center gap-1 rounded-my-base px-2 py-1.5 text-left text-my-xs text-my-secondary transition-colors hover:bg-my-layer-1-hover disabled:opacity-40"
                   title={t.description}
                 >
                   <Sparkles size={11} className="shrink-0 text-my-accent-text" />
@@ -300,14 +300,14 @@ export function FlowStudio(): JSX.Element {
           </div>
 
           <div className="mt-3 border-t border-my-line pt-2">
-            <div className="px-2 pb-1.5 text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">最近运行</div>
+            <div className="px-2 pb-1.5 text-my-2xs font-medium uppercase tracking-wide text-my-tertiary">最近运行</div>
             {history.length === 0 && <p className="px-2 py-1 text-my-2xs text-my-placeholder">暂无运行记录</p>}
             {history.slice(0, 8).map((r) => (
               <button
                 key={r.runId}
                 onClick={() => openRun(r)}
                 className={clsx(
-                  'mb-0.5 flex w-full items-center gap-1 rounded-my-lg px-2 py-1 text-left text-my-xs transition-colors hover:bg-my-layer-1-hover',
+                  'mb-0.5 flex w-full items-center gap-1 rounded-my-base px-2 py-1 text-left text-my-xs transition-colors hover:bg-my-layer-1-hover',
                   viewedRun?.runId === r.runId ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary'
                 )}
               >
@@ -332,7 +332,7 @@ export function FlowStudio(): JSX.Element {
           <div className="my-scrollbar min-h-0 flex-1">
             <PageContent variant="centered" className="space-y-4">
               <div>
-                <h2 className="flex items-center gap-2 text-my-sm font-semibold text-my-primary">
+                <h2 className="flex items-center gap-2 text-my-sm font-medium text-my-primary">
                   <Wand2 size={15} className="text-my-accent-text" /> 用一句话让 AI 设计工作流
                 </h2>
                 <p className="my-item-description mt-1 leading-5">
@@ -341,11 +341,11 @@ export function FlowStudio(): JSX.Element {
                 </p>
               </div>
               {!aiEnabled && (
-                <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">
+                <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">
                   应用内 AI 未启用——请先到「设置 → AI 模型」接入模型。
                 </div>
               )}
-              <div className="rounded-my-xl border border-my-line bg-my-layer-2 p-4">
+              <div className="rounded-my-base border border-my-line bg-my-layer-2 p-4">
                 <textarea
                   value={idea}
                   onChange={(e) => setIdea(e.target.value)}
@@ -363,9 +363,9 @@ export function FlowStudio(): JSX.Element {
               </div>
 
               {draft && (
-                <div className="rounded-my-xl border border-my-line-accent-subtle bg-my-layer-2">
+                <div className="rounded-my-base border border-my-line-accent-subtle bg-my-layer-2">
                   <div className="flex items-center gap-2 border-b border-my-line px-4 py-2.5">
-                    <span className="text-my-xs font-semibold text-my-primary">{draft.name}</span>
+                    <span className="text-my-xs font-medium text-my-primary">{draft.name}</span>
                     <span className="my-item-description flex-1 truncate">{draft.description}</span>
                     <Button variant="ghost" size="sm" className="px-1.5 text-my-2xs" onClick={() => setShowJson((v) => !v)} title="查看/编辑 DSL JSON">
                       <FileJson size={11} /> {showJson ? '可视化' : 'JSON'}
@@ -398,7 +398,7 @@ export function FlowStudio(): JSX.Element {
             <PageContent variant="centered" className="space-y-4">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" className="text-my-xs" onClick={() => { setSelected(null); setPanel('design') }}>← 返回</Button>
-                <h2 className="text-my-sm font-semibold text-my-primary">{selected.name}</h2>
+                <h2 className="text-my-sm font-medium text-my-primary">{selected.name}</h2>
                 <span className="flex-1" />
                 <Button variant="primary" onClick={() => void run()} disabled={runStatus === 'running'} className="text-my-xs">
                   <Play size={12} /> 运行
@@ -407,8 +407,8 @@ export function FlowStudio(): JSX.Element {
               <p className="my-item-description">{selected.description}</p>
 
               {(selected.inputs?.length ?? 0) > 0 && (
-                <div className="rounded-my-xl border border-my-line bg-my-layer-2 p-4 space-y-3">
-                  <div className="text-my-xs font-semibold text-my-primary">运行前需要你提供：</div>
+                <div className="rounded-my-base border border-my-line bg-my-layer-2 p-4 space-y-3">
+                  <div className="text-my-xs font-medium text-my-primary">运行前需要你提供：</div>
                   {selected.inputs.map((i) => (
                     <div key={i.name}>
                       <label className="my-item-title mb-1 block">
@@ -434,7 +434,7 @@ export function FlowStudio(): JSX.Element {
         {panel === 'run' && (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex items-center gap-2 border-b border-my-line px-4 py-2">
-              <span className="text-my-xs font-semibold text-my-primary">
+              <span className="text-my-xs font-medium text-my-primary">
                 {runStatus === 'running' ? '正在运行' : viewedRun ? `运行回看 · ${viewedRun.flowName}` : '运行结束'}
               </span>
               {runStatus === 'running' && activeRunId && (
@@ -451,7 +451,7 @@ export function FlowStudio(): JSX.Element {
             </div>
 
             {runError && (
-              <div className="mx-4 mt-3 rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-2.5 text-my-xs text-my-danger-text">{runError}</div>
+              <div className="mx-4 mt-3 rounded-my-base border border-my-line-danger bg-my-danger-subtle p-2.5 text-my-xs text-my-danger-text">{runError}</div>
             )}
 
             <div className="my-scrollbar min-h-0 flex-1">
@@ -463,13 +463,13 @@ export function FlowStudio(): JSX.Element {
                     <div
                       key={`${e.runId}-${i}`}
                       className={clsx(
-                        'flex items-start gap-2 rounded-my-lg px-2.5 py-1.5 text-my-xs',
+                        'flex items-start gap-2 rounded-my-base px-2.5 py-1.5 text-my-xs',
                         isPhase ? 'mt-2 bg-my-accent-subtle text-my-primary' : e.kind === 'step-error' ? 'bg-my-danger-subtle text-my-danger-text' : 'text-my-secondary'
                       )}
                     >
                       <span className="mt-0.5 shrink-0">{eventIcon(e.kind)}</span>
                       <div className="min-w-0 flex-1">
-                        <span className={clsx(isPhase && 'font-semibold')}>{e.text ?? e.kind}</span>
+                        <span className={clsx(isPhase && 'font-medium')}>{e.text ?? e.kind}</span>
                         {e.output && (
                           <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-my-2xs leading-4 text-my-tertiary">{e.output}</p>
                         )}
@@ -489,8 +489,8 @@ export function FlowStudio(): JSX.Element {
                 {viewedRun && viewedRun.status === 'completed' && Object.keys(viewedRun.vars).length > 0 && (
                   <div className="mt-4 space-y-3">
                     {Object.entries(viewedRun.vars).map(([k, v]) => (
-                      <div key={k} className="rounded-my-xl border border-my-line bg-my-layer-2">
-                        <div className="border-b border-my-line px-3 py-2 text-my-xs font-semibold text-my-primary">产物 · {k}</div>
+                      <div key={k} className="rounded-my-base border border-my-line bg-my-layer-2">
+                        <div className="border-b border-my-line px-3 py-2 text-my-xs font-medium text-my-primary">产物 · {k}</div>
                         <div className="max-h-72 overflow-y-auto px-3 py-2 text-my-xs">
                           <MarkdownView content={v} />
                         </div>
@@ -525,14 +525,14 @@ function FlowVisual({ def }: { def: FlowDef }): JSX.Element {
   return (
     <div className="space-y-3">
       {def.phases.map((p, pi) => (
-        <div key={p.id} className="rounded-my-xl border border-my-line bg-my-layer-2">
+        <div key={p.id} className="rounded-my-base border border-my-line bg-my-layer-2">
           <div className="flex items-center gap-2 border-b border-my-line px-3.5 py-2">
-            <span className="grid h-5 w-5 place-items-center rounded-my-md bg-my-accent-subtle text-my-2xs font-semibold text-my-accent-text">{pi + 1}</span>
-            <span className="text-my-xs font-semibold text-my-primary">{p.name}</span>
+            <span className="grid h-5 w-5 place-items-center rounded-my-base bg-my-accent-subtle text-my-2xs font-medium text-my-accent-text">{pi + 1}</span>
+            <span className="text-my-xs font-medium text-my-primary">{p.name}</span>
           </div>
           <div className="space-y-1.5 p-3">
             {p.steps.map((s) => (
-              <div key={s.id} className="flex items-start gap-2 rounded-my-lg border border-my-line bg-my-surface-1 px-3 py-2">
+              <div key={s.id} className="flex items-start gap-2 rounded-my-base border border-my-line bg-my-surface-1 px-3 py-2">
                 <span className="mt-0.5 shrink-0">{stepIcon(s)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -561,7 +561,7 @@ function FlowVisual({ def }: { def: FlowDef }): JSX.Element {
                   )}
                 </div>
                 {'saveOutputAs' in s && s.saveOutputAs && (
-                  <span className="shrink-0 rounded-my-sm bg-my-layer-3 px-1.5 py-0.5 font-mono text-my-2xs text-my-secondary" title="产出保存为变量，供后续步骤引用">
+                  <span className="shrink-0 rounded-my-base bg-my-layer-3 px-1.5 py-0.5 font-mono text-my-2xs text-my-secondary" title="产出保存为变量，供后续步骤引用">
                     → {s.saveOutputAs}
                   </span>
                 )}
@@ -572,12 +572,12 @@ function FlowVisual({ def }: { def: FlowDef }): JSX.Element {
         </div>
       ))}
       {def.hooks?.onStart && (
-        <div className="flex items-center gap-2 rounded-my-lg border border-dashed border-my-line px-3 py-2 text-my-2xs text-my-tertiary">
+        <div className="flex items-center gap-2 rounded-my-base border border-dashed border-my-line px-3 py-2 text-my-2xs text-my-tertiary">
           <History size={11} /> 开始钩子：{def.hooks.onStart}
         </div>
       )}
       {def.hooks?.onComplete?.saveNote && (
-        <div className="flex items-center gap-2 rounded-my-lg border border-dashed border-my-line px-3 py-2 text-my-2xs text-my-tertiary">
+        <div className="flex items-center gap-2 rounded-my-base border border-dashed border-my-line px-3 py-2 text-my-2xs text-my-tertiary">
           <ChevronRight size={11} /> 完成后自动沉淀到「我的笔记」知识库
         </div>
       )}

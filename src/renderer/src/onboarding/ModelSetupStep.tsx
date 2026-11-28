@@ -221,7 +221,7 @@ export function ModelSetupStep({ onContinue, onSkip, onBusyChange, footerSlot }:
       </div>
       <p className="text-my-xs text-my-secondary">密钥使用系统保护；系统加密不可用时可能以明文保存在本机。</p>
     </div>
-    {selected && <div className="rounded-my-lg border border-my-line bg-my-layer-2 p-4 space-y-4">
+    {selected && <div className="rounded-my-base border border-my-line bg-my-layer-2 p-4 space-y-4">
       <div className="flex items-center gap-3"><ProviderIdentity name={selected.name} local={selected.apiFormat === 'ollama'} /><div className="min-w-0"><p className="my-item-title">{selected.name}</p><p className="text-my-xs text-my-secondary">{selected.enabled ? selected.apiKeyEncrypted ? '密钥已保存' : selected.apiKey ? '密钥已保存（未加密）' : selected.apiFormat === 'ollama' ? '本地服务' : '尚未配置密钥' : '供应商已停用，请编辑后启用'}</p></div></div>
       <div className="space-y-2"><label htmlFor="onboarding-model" className="my-item-title block">模型</label>
         <div className="flex flex-wrap gap-2">

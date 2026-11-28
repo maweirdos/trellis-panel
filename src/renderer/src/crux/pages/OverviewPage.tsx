@@ -158,7 +158,7 @@ export function OverviewPage(): JSX.Element | null {
                   <li key={agent.id} className="flex items-center gap-2.5 rounded-my-base px-2 py-1.5 transition-colors hover:bg-my-layer-1">
                     <AgentAvatar avatarId={agent.avatarId} size={24} />
                     <span className="min-w-0 flex-1 truncate text-my-sm text-my-primary">{agent.name}</span>
-                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-2xs ${toneClass}`}>
+                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-my-base px-1.5 py-0.5 text-my-2xs ${toneClass}`}>
                       <Bot size={11} />
                       <span>{meta.label}</span>
                     </span>
@@ -183,7 +183,7 @@ export function OverviewPage(): JSX.Element | null {
                   <button
                     type="button"
                     onClick={() => openTask(task.id)}
-                    className="flex w-full items-center gap-2 rounded-my-sm px-2 py-1.5 text-left transition-colors hover:bg-my-layer-1"
+                    className="flex w-full items-center gap-2 rounded-my-base px-2 py-1.5 text-left transition-colors hover:bg-my-layer-1"
                   >
                     <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span>
                     <span className="min-w-0 flex-1 truncate text-my-sm text-my-primary">{task.title}</span>
@@ -209,7 +209,7 @@ export function OverviewPage(): JSX.Element | null {
                   <button
                     type="button"
                     onClick={() => openTask(activity.taskId)}
-                    className="shrink-0 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 font-mono text-my-2xs text-my-secondary transition-colors hover:bg-my-layer-2 hover:text-my-primary"
+                    className="shrink-0 rounded-my-base bg-my-layer-1 px-1.5 py-0.5 font-mono text-my-2xs text-my-secondary transition-colors hover:bg-my-layer-2 hover:text-my-primary"
                   >
                     {activity.taskId}
                   </button>

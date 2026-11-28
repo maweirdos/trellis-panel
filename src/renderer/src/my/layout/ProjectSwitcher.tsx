@@ -21,7 +21,7 @@ export function ProjectSwitcher({ keepPage = false }: { keepPage?: boolean }): J
     <Dropdown width={340} className="no-drag min-w-0" trigger={({ open, toggle }) => (
       <button type="button" aria-label={root ? `选择本机工程，当前${name}` : '选择本机工程'} aria-expanded={open} onClick={toggle}
         title={root ?? '未绑定本地项目'}
-        className="my-project-switcher flex h-my-control min-w-0 items-center gap-2 rounded-my-md px-2.5 text-my-md text-my-primary transition-colors hover:bg-my-layer-transparent-hover">
+        className="my-project-switcher flex h-my-control min-w-0 items-center gap-2 rounded-my-base px-2.5 text-my-md text-my-primary transition-colors hover:bg-my-layer-transparent-hover">
         <span className="my-project-switcher-name max-w-[260px] truncate font-medium">{name}</span>
         <ChevronDown size={14} strokeWidth={1.7} className={clsx('shrink-0 text-my-icon-tertiary transition-transform', open && 'rotate-180')} />
       </button>
@@ -33,7 +33,7 @@ export function ProjectSwitcher({ keepPage = false }: { keepPage?: boolean }): J
             {choices.length === 0 && <p className="my-item-description px-2.5 py-3">尚无项目记录</p>}
             {choices.map((path) => (
               <button key={projectRootKey(path)} type="button" disabled={!canOpen}
-                className={clsx('flex w-full shrink-0 items-center gap-3 rounded-my-md px-2.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:text-my-disabled',
+                className={clsx('flex w-full shrink-0 items-center gap-3 rounded-my-base px-2.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:text-my-disabled',
                   projectRootKey(path) === projectRootKey(root) ? 'bg-my-layer-1-selected text-my-primary' : 'text-my-secondary hover:bg-my-layer-1-hover hover:text-my-primary')}
                 onClick={() => { if (projectRootKey(path) !== projectRootKey(root)) void openProjectPath(path, { keepPage }); close() }}>
                 <FolderOpen size={17} strokeWidth={1.7} className="shrink-0 text-my-icon-secondary" />
@@ -48,7 +48,7 @@ export function ProjectSwitcher({ keepPage = false }: { keepPage?: boolean }): J
           <div className="my-menu-divider" role="separator" />
           <div className="flex flex-col gap-0.5 px-1">
             <button type="button" disabled={!canOpen} onClick={() => { void pickAndOpen({ keepPage }); close() }}
-              className="flex min-h-9 w-full items-center gap-3 rounded-my-md px-2.5 py-2 text-left text-my-md text-my-secondary transition-colors hover:bg-my-layer-1-hover hover:text-my-primary disabled:cursor-not-allowed disabled:text-my-disabled">
+              className="flex min-h-9 w-full items-center gap-3 rounded-my-base px-2.5 py-2 text-left text-my-md text-my-secondary transition-colors hover:bg-my-layer-1-hover hover:text-my-primary disabled:cursor-not-allowed disabled:text-my-disabled">
               <FolderOpen size={17} strokeWidth={1.7} />打开本机工程…
             </button>
           </div>

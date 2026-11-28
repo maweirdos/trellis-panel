@@ -32,7 +32,7 @@ function OrgIdentityIcon({ name, local = false }: { name: string; local?: boolea
   const monogram = orgMonogram(name)
   return (
     <span
-      className="collab-tone-solid inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-my-2xs font-semibold leading-none tracking-tight"
+      className="collab-tone-solid inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-my-2xs font-medium leading-none tracking-tight"
       data-tone={identityTone(name)}
       aria-hidden="true"
     >
@@ -41,7 +41,7 @@ function OrgIdentityIcon({ name, local = false }: { name: string; local?: boolea
   )
 }
 
-/** 顶栏组织切换器（对标 HiFox 左上角 [HO] honsky v：设置 -> 切换组织列表 -> + 创建组织）。 */
+/** 顶栏组织切换器（[HO] 组织名 -> 设置 -> 切换组织列表 -> + 创建组织）。 */
 export function TeamContextSwitcher({ variant = 'default', selectOpensTasks = true, onManageSpaces }: {
   variant?: 'default' | 'global'
   selectOpensTasks?: boolean

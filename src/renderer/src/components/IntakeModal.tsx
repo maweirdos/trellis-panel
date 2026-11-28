@@ -127,12 +127,12 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
       <div className="flex max-h-[var(--my-modal-max-height)] flex-col overflow-hidden">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-my-line px-5 py-3.5">
           <Sparkles size={15} className="text-my-icon-accent" />
-          <span className="text-my-md font-semibold text-my-primary">新建待办</span>
+          <span className="text-my-md font-medium text-my-primary">新建待办</span>
           <span className="my-chip border border-my-line-warning bg-my-warning-subtle text-my-warning-text">记录需求，不启动 AI</span>
           <button
             type="button"
             onClick={close}
-            className="ml-auto rounded-my-md p-1.5 text-my-icon-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary"
+            className="my-icon-control ml-auto"
             title="关闭"
             aria-label="关闭"
           >
@@ -187,7 +187,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
                   aria-pressed={priority === p}
                   onClick={() => { edited(); setPriority(p) }}
                   className={clsx(
-                    'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-my-md px-2.5 py-1 text-my-xs font-medium transition-colors',
+                    'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-my-base px-2.5 py-1 text-my-xs font-medium transition-colors',
                     buttonClass,
                     priority === p && 'ring-2 ring-my-line-accent'
                   )}
@@ -198,7 +198,7 @@ function IntakeForm({ open, projectRoot }: { open: boolean; projectRoot: string 
             </div>
           </div>
 
-          <div className="my-item-description rounded-my-md border border-my-line bg-my-layer-1 px-3.5 py-2.5 leading-5">
+          <div className="my-item-description rounded-my-base border border-my-line bg-my-layer-1 px-3.5 py-2.5 leading-5">
             创建后待办将保存为本地文档（.trellis/todos/*.md）。Codex / ZCode / Claude Code 可以直接读取该文件进行需求规划并转换为正式任务。
           </div>
           {busy && <div role="status" className="text-my-xs text-my-secondary">

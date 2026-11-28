@@ -1013,7 +1013,7 @@ export function LabelPill({ label, onClick }: { label: Label; onClick?: () => vo
       type="button"
       onClick={onClick}
       className={clsx(
-        'inline-flex h-[22px] max-w-[140px] items-center gap-1 rounded-my-sm border border-[var(--my-label-border,var(--my-border-subtle))] px-1.5 text-my-xs font-medium',
+        'inline-flex h-[22px] max-w-[140px] items-center gap-1 rounded-my-base border border-[var(--my-label-border,var(--my-border-subtle))] px-1.5 text-my-xs font-medium',
         onClick && 'hover:brightness-110'
       )}
       style={{
@@ -1067,7 +1067,7 @@ export function SearchInput({
             onChange('')
             inputRef.current?.focus({ preventScroll: true })
           }}
-          className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-my-md text-[var(--my-txt-tertiary)] transition-colors hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]"
+          className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-my-base text-[var(--my-txt-tertiary)] transition-colors hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]"
         >
           <X size={12} aria-hidden="true" />
         </button>
@@ -1133,7 +1133,7 @@ export function Tabs<T extends string>({
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={clsx(
-            'my-control my-control-sm rounded-my-md transition-colors select-none',
+            'my-control my-control-sm rounded-my-base transition-colors select-none',
             active === t.id
               ? 'font-medium text-[var(--my-txt-primary)]'
               : 'font-normal text-[var(--my-txt-tertiary)] hover:bg-[var(--my-bg-layer-transparent-hover)] hover:text-[var(--my-txt-primary)]'

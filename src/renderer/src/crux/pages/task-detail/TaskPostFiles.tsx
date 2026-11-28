@@ -1,8 +1,9 @@
 import { useState, type JSX } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { SOURCE_PART_BYTES, taskSourceFiles, type TaskSourceFile } from '@shared/task-source-files'
 import type { CruxMaterialScope } from '@shared/crux-task-materials'
 import { api } from '../../../api'
-import { Button } from '../../../my/ui'
+import { Button, Checkbox, DisclosureGrid } from '../../../my/ui'
 import { conversationClient, conversationValue } from '../../../conversations/client'
 import type { TaskHandoffSource } from './task-handoff-source'
 
@@ -48,11 +49,21 @@ export async function sendPostFiles(scope: CruxMaterialScope, sourceId: string, 
 export function PostFilePicker({ source, selected, onChange }: {
   source: TaskHandoffSource; selected: readonly string[]; onChange(ids: string[]): void
 }): JSX.Element | null {
+  const [open, setOpen] = useState(false)
   if (!source.fileChoices?.length) return null
-  return <details><summary>共享附件{selected.length ? ` · ${selected.length}` : ''}</summary>
-    {source.fileChoices.map(file => <label key={file.fileId} className="flex items-center gap-2 py-1"><input type="checkbox"
-      checked={selected.includes(file.fileId)} onChange={event => onChange(event.target.checked ? [...selected, file.fileId] : selected.filter(id => id !== file.fileId))} />
-      {file.name}</label>)}</details>
+  return <div>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>共享附件{selected.length ? ` · ${selected.length}` : ''}</span>
+    </button>
+    <DisclosureGrid open={open}>
+      <div className="mt-1">
+        {source.fileChoices.map(file => <label key={file.fileId} className="flex items-center gap-2 py-1"><Checkbox
+          checked={selected.includes(file.fileId)} onChange={checked => onChange(checked ? [...selected, file.fileId] : selected.filter(id => id !== file.fileId))} />
+          {file.name}</label>)}
+      </div>
+    </DisclosureGrid>
+  </div>
 }
 export async function readPostFile(scope: CruxMaterialScope, sourceId: string, file: TaskSourceFile, current: () => boolean) {
   const bytes = new Uint8Array(file.bytes)

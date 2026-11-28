@@ -267,7 +267,7 @@ export function ProjectsPage(): JSX.Element | null {
                         <button
                           type="button"
                           onClick={() => openTask(task.id)}
-                          className="flex w-full items-center gap-2 rounded-my-sm px-1.5 py-1 text-left transition-colors hover:bg-my-layer-1"
+                          className="flex w-full items-center gap-2 rounded-my-base px-1.5 py-1 text-left transition-colors hover:bg-my-layer-1"
                         >
                           <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span>
                           <span className="min-w-0 flex-1 truncate text-my-xs text-my-primary">{task.title}</span>

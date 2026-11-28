@@ -246,7 +246,7 @@ function WorkflowEditor({ wf, onClose, onSaved }: { wf: WorkflowInfo; onClose: (
           ))}
         </div>
         {!wf.structure.hasPhaseIndex && (
-          <div className="mb-3 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-2 text-my-xs leading-4 text-my-warning-text">
+          <div className="mb-3 rounded-my-base border border-my-line-warning bg-my-warning-subtle p-2 text-my-xs leading-4 text-my-warning-text">
             缺少 Phase Index——SessionStart 将无法注入阶段概览
           </div>
         )}
@@ -599,7 +599,7 @@ function StudioWorkspace({ root }: { root: string }): JSX.Element {
               }}
               title={s.hint}
               className={clsx(
-                'flex w-full items-center gap-2 rounded-my-lg px-2.5 py-[7px] text-left text-my-sm transition-colors',
+                'flex w-full items-center gap-2 rounded-my-base px-2.5 py-[7px] text-left text-my-sm transition-colors',
                 section === s.id ? 'bg-my-layer-1-selected font-medium text-my-primary' : 'text-my-secondary hover:bg-my-layer-1 hover:text-my-primary'
               )}
             >
@@ -721,12 +721,12 @@ function WorkflowSection({
           <span className="text-my-xs text-my-tertiary">自上而下回退</span>
         </div>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title">1 · 任务 Pin</div>
             <div className="mt-1 text-my-lg font-bold text-my-primary">{totalPins}</div>
             <div className="text-my-xs leading-4 text-my-tertiary">task.json 的 workflow 字段（随仓库提交）</div>
           </div>
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title">2 · 个人默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.developerWorkflow ?? '—'}</span>
@@ -745,7 +745,7 @@ function WorkflowSection({
             </div>
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">.trellis/.developer（gitignored）</div>
           </div>
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title">3 · 团队默认</div>
             <div className="mt-1 flex items-center gap-2">
               <span className="font-mono text-my-sm text-my-primary">{chain.configDefault ?? '—'}</span>
@@ -764,7 +764,7 @@ function WorkflowSection({
             </div>
             <div className="mt-1 text-my-xs leading-4 text-my-tertiary">config.yaml 的 default_workflow</div>
           </div>
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title">4 · 全局回退</div>
             <div className="mt-1 flex items-center gap-2">
               <span className={clsx('text-my-sm', chain.globalExists ? 'text-my-success-text' : 'text-my-danger-text')}>
@@ -817,7 +817,7 @@ function WorkflowSection({
               ))}
             </div>
             {wf.warnings.length > 0 && (
-              <div className="mt-2.5 space-y-1 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-2 text-my-xs leading-4 text-my-warning-text">
+              <div className="mt-2.5 space-y-1 rounded-my-base border border-my-line-warning bg-my-warning-subtle p-2 text-my-xs leading-4 text-my-warning-text">
                 {wf.warnings.map((w, i) => (
                   <div key={i} className="flex items-start gap-1.5">
                     <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {w}
@@ -1147,7 +1147,7 @@ function HooksSection({
         ) : (
           <div className="grid gap-1.5 md:grid-cols-2">
             {scan.hookScripts.map((f) => (
-              <div key={f.path} className="flex items-center gap-2 rounded-my-lg border border-my-line px-3 py-1.5">
+              <div key={f.path} className="flex items-center gap-2 rounded-my-base border border-my-line px-3 py-1.5">
                 <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-secondary" title={f.path}>{f.name}</span>
                 <span className="shrink-0 text-my-2xs text-my-placeholder">{relTime(f.mtime)}</span>
                 <Button variant="ghost" size="sm" onClick={() => onOpenFile(f.path)} title="查看 / 编辑">
@@ -1215,7 +1215,7 @@ function ConfigSection({ scan, onChanged }: { scan: StudioScan; onChanged: () =>
   return (
     <PageContent variant="centered" className="space-y-4">
       {!c.exists && (
-        <div className="flex items-center gap-2 rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-sm text-my-warning-text">
+        <div className="flex items-center gap-2 rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-sm text-my-warning-text">
           <AlertTriangle size={13} /> .trellis/config.yaml 不存在——保存时将创建（团队共享文件，建议提交评审）。
         </div>
       )}
@@ -1338,7 +1338,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
         </div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {scan.platforms.map((p) => (
-            <div key={p.id} className={clsx('rounded-my-lg border p-3', p.detected ? 'border-my-line-accent-subtle bg-my-accent-subtle' : 'border-my-line bg-my-layer-1 opacity-70')}>
+            <div key={p.id} className={clsx('rounded-my-base border p-3', p.detected ? 'border-my-line-accent-subtle bg-my-accent-subtle' : 'border-my-line bg-my-layer-1 opacity-70')}>
               <div className="flex items-center gap-1.5">
                 <span className="text-my-xs font-medium text-my-primary">{p.name}</span>
                 {p.detected ? (
@@ -1366,7 +1366,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
       <div className="my-card p-4">
         <div className="my-item-title mb-2">团队与个人配置</div>
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title mb-1.5">团队共享（PR 评审协作）</div>
             <ul className="space-y-1 text-my-xs leading-4 text-my-tertiary">
               <li>· <code>.trellis/spec/</code> —— 规范知识库，像代码一样经 PR 评审</li>
@@ -1375,7 +1375,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
               <li>· 平台目录（.claude 等）—— hooks / skills / 命令，随仓库分发</li>
             </ul>
           </div>
-          <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+          <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
             <div className="my-item-title mb-1.5">个人隔离（gitignored）</div>
             <ul className="space-y-1 text-my-xs leading-4 text-my-tertiary">
               <li>· <code>.trellis/.developer</code> —— 本机身份与个人 workflow 偏好{name_ext(scan)}</li>
@@ -1384,7 +1384,7 @@ function PlatformSection({ scan }: { scan: StudioScan }): JSX.Element {
             </ul>
           </div>
         </div>
-        <div className="mt-3 rounded-my-lg border border-my-line bg-my-layer-1 p-3 text-my-xs leading-5 text-my-tertiary">
+        <div className="mt-3 rounded-my-base border border-my-line bg-my-layer-1 p-3 text-my-xs leading-5 text-my-tertiary">
           <span className="text-my-secondary">新成员加入：</span>
           在已 init 的项目里再跑一次 <code>trellis init</code> → 选「Set up developer identity」写入本机身份；不要选 Full re-initialize（会覆盖团队配置）。
           版本升级用 <code>trellis update</code>（--dry-run 预览 / --migrate 兼容破坏性变更），模板哈希机制会保护本地修改。

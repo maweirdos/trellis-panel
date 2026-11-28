@@ -233,7 +233,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
         {/* 头部 */}
         <div className="flex shrink-0 items-center gap-2 border-b border-my-line px-5 py-3">
           <Wand2 size={15} className="shrink-0 text-my-icon-accent" />
-          <span className="text-my-sm font-semibold text-my-primary">AI 规划工作台</span>
+          <span className="text-my-sm font-medium text-my-primary">AI 规划工作台</span>
           {seed.jiraKey && <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">⚡ {seed.jiraKey}</span>}
           <Button variant="ghost" className="ml-auto justify-center px-1.5" onClick={close} aria-label="关闭规划工作台" title="关闭">
             <X size={14} />
@@ -248,7 +248,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
         )}
 
         <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-5">
-          {error && <div role="alert" className="mb-3 break-words rounded-my-lg border border-my-line bg-my-layer-1 p-2.5 text-my-xs text-my-danger-text">{error}</div>}
+          {error && <div role="alert" className="mb-3 break-words rounded-my-base border border-my-line bg-my-layer-1 p-2.5 text-my-xs text-my-danger-text">{error}</div>}
           {/* Step 1: 输入 */}
           {phase === 'input' && (
             <div className="space-y-3">
@@ -282,7 +282,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
             <fieldset disabled={creating || phase === 'generating'} className="min-w-0 space-y-4">
               {/* KB 来源 */}
               <div>
-                <div className="mb-1.5 flex items-center gap-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">
+                <div className="mb-1.5 flex items-center gap-2 text-my-xs font-medium uppercase tracking-wide text-my-tertiary">
                   <Library size={11} /> 知识库来源 · {result?.sources.length ?? 0} 篇
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -339,7 +339,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
               </div>
               <label className="block">
                 <span className="my-item-title mb-1 block">PRD 草稿</span>
-                <div className="max-h-56 overflow-y-auto rounded-my-lg border border-my-line bg-my-canvas p-3">
+                <div className="max-h-56 overflow-y-auto rounded-my-base border border-my-line bg-my-canvas p-3">
                   <MarkdownView content={plan.description} />
                 </div>
                 <textarea value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} rows={3} className="my-input mt-1.5 resize-y px-2 py-1.5 font-mono text-my-xs" title="编辑 PRD 原文" />
@@ -349,8 +349,8 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
                 <textarea value={subtasksText} onChange={(e) => setSubtasksText(e.target.value)} rows={5} className="my-input resize-y px-2 py-1.5 font-mono text-my-sm" />
               </label>
               {(plan.questions.length > 0 || result?.sources.length === 0) && (
-                <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3">
-                  <div className="mb-1 flex items-center gap-1.5 text-my-xs font-semibold text-my-warning-text">
+                <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-my-xs font-medium text-my-warning-text">
                     <AlertTriangle size={11} /> 开放问题（AI 标注的信息缺口）
                   </div>
                   <ul className="space-y-0.5 text-my-xs leading-5 text-my-warning-text">
@@ -373,7 +373,7 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
           {/* Step 4: 完成 + 衔接 */}
           {phase === 'done' && createdDir && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 rounded-my-xl border border-my-line-accent-subtle bg-my-accent-subtle p-4">
+              <div className="flex items-center gap-2 rounded-my-base border border-my-line-accent-subtle bg-my-accent-subtle p-4">
                 <CheckCircle2 size={18} className="shrink-0 text-my-icon-accent" />
                 <div className="min-w-0">
                   <div className="my-item-title">任务已创建：{createdDir}</div>
@@ -387,21 +387,21 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
                 </Button>
               </div>
               {createdWarnings.length > 0 && (
-                <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs leading-5 text-my-warning-text">
-                  <div className="mb-1 flex items-center gap-1.5 font-semibold"><AlertTriangle size={11} /> 部分产物未写入</div>
+                <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs leading-5 text-my-warning-text">
+                  <div className="mb-1 flex items-center gap-1.5 font-medium"><AlertTriangle size={11} /> 部分产物未写入</div>
                   {createdWarnings.map((w, i) => <div key={i}>· {w}</div>)}
                 </div>
               )}
               <div>
-                <div className="mb-2 text-my-xs font-semibold uppercase tracking-wide text-my-tertiary">交接材料（默认只核对与阅读）</div>
+                <div className="mb-2 text-my-xs font-medium uppercase tracking-wide text-my-tertiary">交接材料（默认只核对与阅读）</div>
                 {handoffLoading ? <div role="status" className="flex items-center gap-2 text-my-xs text-my-secondary"><Loader2 size={12} className="animate-spin" />正在生成交接材料…</div> : handoff ? (
                   <div className="space-y-1.5">
                     {handoff.issues.length > 0 && (
-                      <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-2.5 text-my-2xs leading-4 text-my-warning-text">
+                      <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle p-2.5 text-my-2xs leading-4 text-my-warning-text">
                         已知读取问题：{handoff.issues.join('；')}
                       </div>
                     )}
-                    <div className="flex items-start gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-2.5">
+                    <div className="flex items-start gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-2.5">
                       <pre className="min-h-16 max-h-44 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all font-mono text-my-2xs leading-4 text-my-secondary">{handoff.text}</pre>
                       <Button variant="ghost" disabled={copying} className="shrink-0 justify-center px-2" onClick={() => void copy(handoff.text, '交接材料已复制')} aria-label="复制完整交接材料" title="复制完整交接材料">
                         <Copy size={12} />
@@ -409,13 +409,13 @@ function PlanningSession({ seed, onClose }: { seed: PlanningSeed; onClose: () =>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-2.5 text-my-xs text-my-secondary">
+                  <div className="flex items-center gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-2.5 text-my-xs text-my-secondary">
                     <span role="alert" className="min-w-0 flex-1">{handoffError ?? '交接材料暂不可用'}</span>
                     <Button variant="ghost" size="sm" onClick={() => void buildHandoff(createdDir)}>重试</Button>
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+              <div className="flex items-center gap-2 rounded-my-base border border-my-line bg-my-layer-1 p-3">
                 <Radio size={13} className="shrink-0 text-my-icon-accent" />
                 <div className="min-w-0 flex-1 truncate text-my-xs text-my-secondary">
                   <code className="font-mono text-my-2xs">channel create {createdDir}-exec --task {createdDir}</code>

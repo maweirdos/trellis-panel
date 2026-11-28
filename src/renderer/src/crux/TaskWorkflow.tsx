@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowRight, Check, CheckCheck, CircleCheck, ClipboardCheck, Code2, FileQuestion, FileText, Loader2, MoreHorizontal, Palette, Pencil, Play, RotateCcw, Send, ShieldCheck, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ArrowRight, Check, CheckCheck, ChevronRight, CircleCheck, ClipboardCheck, Code2, FileQuestion, FileText, Loader2, MoreHorizontal, Palette, Pencil, Play, RotateCcw, Send, ShieldCheck, Users, X, type LucideIcon } from 'lucide-react'
 import type { CruxExecutorRef, CruxSnapshot, CruxTask, CruxTaskAction, CruxTaskStage, CruxTaskWorkKind, CruxTransitionTaskInput } from '@shared/crux'
 import type { CruxWorkLocal } from '@shared/crux-work'
 import type { ProductTaskResults } from '@shared/product-task-entry'
@@ -7,7 +7,7 @@ import type { TaskMaterialInputReference } from '@shared/task-material-inputs'
 import { taskInputCanonical, taskInputTransitionFence, type TaskInputRead } from '@shared/team-task-inputs'
 import { currentTaskTestSubmission, getCruxTaskActions, getCruxTaskStageMetadata, isCruxTriageManager } from '@shared/crux-domain/workflow'
 import { api, hasIpc } from '../api'
-import { Button, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
+import { Button, Checkbox, DisclosureGrid, Dropdown, DropdownItem, Modal, Tooltip } from '../my/ui'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
 import { TeamMarkdown } from '../team/TeamMarkdown'
 import { availableExecutionTargets, useCrux } from './store'
@@ -31,6 +31,19 @@ import { designReferenceBody, matchesDesignReference, taskDesignReference, type 
 import { AssignedTaskNextStep, hasAssignedNextStep } from './workflow-stage/AssignedTaskNextStep'
 import { buildTaskTestRun, TaskTestRunFields, type TestRunDraft } from './workflow-stage/TaskTestRunFields'
 import './workflow-stage/workflow-stage.css'
+
+function WorkflowDetailsDisclosure({ label, defaultOpen = false, className = '', summaryClassName = '', children }: {
+  label: string; defaultOpen?: boolean; className?: string; summaryClassName?: string; children: ReactNode
+}): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen)
+  return <div className={className}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary ${summaryClassName}`.trim()}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 const WORKFLOW_ACTION_LABELS: Record<CruxTaskAction, string> = {
   accept: '先接纳', arrange: '安排处理', request_info: '请补充', supplement: '补充信息', decline: '不采纳',
@@ -104,8 +117,11 @@ export function TaskWorkflow({ snapshot, task, source, resourceRefresh = 0, work
   const [reviewState, setReviewState] = useState<TaskMaterialReviewState>({ state: 'loading', document: null, refreshing: true, incomplete: false })
   const [success, setSuccess] = useState<{ updatedAt: string; message: string } | null>(null)
   const workbench = useRef<HTMLDivElement>(null)
-  const materials = useRef<HTMLDetailsElement>(null)
-  const development = useRef<HTMLDetailsElement>(null)
+  const materials = useRef<HTMLDivElement>(null)
+  const development = useRef<HTMLDivElement>(null)
+  const [materialsOpen, setMaterialsOpen] = useState(false)
+  const [developmentOpen, setDevelopmentOpen] = useState(task.workflow?.stage === 'developing')
+  useEffect(() => { setDevelopmentOpen(task.workflow?.stage === 'developing') }, [task.workflow?.stage])
   const mounted = useRef(true)
   const inFlight = useRef(false)
   const canInteract = useInteractionGuard()
@@ -147,7 +163,7 @@ export function TaskWorkflow({ snapshot, task, source, resourceRefresh = 0, work
   }
   function openMaterial(kind: TaskMaterialEntryRequest['kind'], mode: 'work' | 'review' = 'work'): void {
     if (!source.owns()) return
-    if (materials.current) materials.current.open = true
+    setMaterialsOpen(true)
     setMaterialEntry((current) => ({ kind, mode, requestId: (current?.requestId ?? 0) + 1 }))
     requestAnimationFrame(() => { if (source.owns()) materials.current?.scrollIntoView({ block: 'nearest' }) })
   }
@@ -166,7 +182,7 @@ export function TaskWorkflow({ snapshot, task, source, resourceRefresh = 0, work
   }
   async function begin(): Promise<void> {
     if (!owns() || inFlight.current || useCrux.getState().busy) return
-    if (development.current) development.current.open = true
+    setDevelopmentOpen(true)
     if (!nativeDevelopmentApi()) { development.current?.focus({ preventScroll: true }); development.current?.scrollIntoView({ block: 'nearest' }); return }
     if (workspaceContext.state !== 'local' && productTaskApi() && task.workflow?.stage === 'dev_ready') {
       inFlight.current = true; setPending(true); setError('')
@@ -303,25 +319,36 @@ export function TaskWorkflow({ snapshot, task, source, resourceRefresh = 0, work
       planningOwner.current = occupied
     }} onOpenMaterial={receipt => {
       if (!source.owns()) return
-      if (materials.current) materials.current.open = true
+      setMaterialsOpen(true)
       setMaterialEntry(current => ({ kind: 'implement', mode: 'work', requestId: (current?.requestId ?? 0) + 1, documentId: receipt.documentId, versionId: receipt.versionId ?? undefined }))
       onMaterialCommitted?.()
       requestAnimationFrame(() => { if (source.owns()) materials.current?.scrollIntoView({ block: 'nearest' }) })
     }} />}
-    {showDevelopment && <details key={task.workflow?.stage} ref={development} open={task.workflow?.stage === 'developing'} className="space-y-3">
-      <summary>工程与执行</summary>
-      <TaskDevelopmentCard snapshot={snapshot} task={task} resourceRefresh={resourceRefresh} planningOwnerRevision={planningOwnerRevision} openRequest={openDevelopment} onOpenInputs={onOpenInputs} onExecutionChanged={() => setExecutionResultsRevision(revision => revision + 1)} onEnter={enterPlanning} />
-    </details>}
+    {showDevelopment && <div key={task.workflow?.stage} ref={development} tabIndex={-1} className="space-y-3">
+      <button type="button" aria-expanded={developmentOpen} onClick={() => setDevelopmentOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+        <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${developmentOpen ? 'rotate-90' : ''}`} />
+        <span>工程与执行</span>
+      </button>
+      <DisclosureGrid open={developmentOpen}>
+        <TaskDevelopmentCard snapshot={snapshot} task={task} resourceRefresh={resourceRefresh} planningOwnerRevision={planningOwnerRevision} openRequest={openDevelopment} onOpenInputs={onOpenInputs} onExecutionChanged={() => setExecutionResultsRevision(revision => revision + 1)} onEnter={enterPlanning} />
+      </DisclosureGrid>
+    </div>}
     <TaskExecutionResults key={`results:${scopeKey}:${actor}:${task.id}:${task.createdAt}`} task={task} refreshRevision={executionResultsRevision} onRead={setNativeResults} />
     {executionFirst && workbenchView}
-    <details ref={materials} className="workflow-stage-materials"><summary>阶段材料与版本</summary>
-      {workspaceContext.state === 'local' && task.workflow?.stage === 'designing' && <ManualDesignDraft snapshot={snapshot} task={task} openRequest={materialEntry?.requestId ?? 0} disabled={!canHandle || busy || pending} onSubmit={(body) => { if (owns()) setDialog({ action: 'submit_design', stage: task.workflow?.stage, body }) }} />}
-      <TaskMaterials snapshot={snapshot} task={task} entryRequest={materialEntry} onReviewState={setReviewState} onCommitted={() => { if (source.owns()) onMaterialCommitted?.() }} />
-    </details>
+    <div ref={materials} className="workflow-stage-materials">
+      <button type="button" aria-expanded={materialsOpen} onClick={() => setMaterialsOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+        <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${materialsOpen ? 'rotate-90' : ''}`} />
+        <span>阶段材料与版本</span>
+      </button>
+      <DisclosureGrid open={materialsOpen}>
+        {workspaceContext.state === 'local' && task.workflow?.stage === 'designing' && <ManualDesignDraft snapshot={snapshot} task={task} openRequest={materialEntry?.requestId ?? 0} disabled={!canHandle || busy || pending} onSubmit={(body) => { if (owns()) setDialog({ action: 'submit_design', stage: task.workflow?.stage, body }) }} />}
+        <TaskMaterials snapshot={snapshot} task={task} entryRequest={materialEntry} onReviewState={setReviewState} onCommitted={() => { if (source.owns()) onMaterialCommitted?.() }} />
+      </DisclosureGrid>
+    </div>
     {error && <div className="collab-inline-error" role="alert">{error}</div>}
     {dialog && <WorkflowActionDialog key={`${scopeKey}:${actor}:${task.id}:${dialog.action}${dialog.plan ? `:${taskInputCanonical(dialog.plan)}` : ''}`} source={source} snapshot={snapshot} task={task} workflowInputs={dialog.inputs ?? workflowInputs} action={dialog.action} expectedStage={dialog.stage} initialBody={dialog.body} initialPlan={dialog.plan} onEditPlan={plan => {
       if (!source.owns()) return
-      if (materials.current) materials.current.open = true
+      setMaterialsOpen(true)
       setDialog(null)
       setMaterialEntry(current => ({ kind: 'implement', mode: 'work', requestId: (current?.requestId ?? 0) + 1, documentId: plan.documentId }))
       requestAnimationFrame(() => { if (source.owns()) materials.current?.scrollIntoView({ block: 'nearest' }) })
@@ -528,11 +555,10 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
         <Field label="验收标准"><textarea className={textareaClass} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一项" /></Field></>}
       {action === 'pass_test' && (fixedDelivery
         ? <p className="my-item-description">{latestTest ? `本轮测试记录 · ${latestTest.id}` : '当前交付尚无测试记录。'}</p>
-        : <div className="flex flex-col gap-3">{(task.acceptanceCriteria ?? []).map((criterion) => <label key={criterion} className="flex items-start gap-2 text-my-sm"><input type="checkbox" className="mt-0.5" checked={checked.includes(criterion)} onChange={(event) => setChecked((previous) => event.target.checked ? [...previous, criterion] : previous.filter((item) => item !== criterion))} /><span>{criterion}</span></label>)}</div>)}
-      {testEditor && testDelivery && <details className="space-y-2" open={!latestTest || undefined}>
-        <summary className="my-item-title cursor-pointer">记录本轮测试结果</summary>
+        : <div className="flex flex-col gap-3">{(task.acceptanceCriteria ?? []).map((criterion) => <label key={criterion} className="flex items-start gap-2 text-my-sm"><Checkbox checked={checked.includes(criterion)} onChange={(next) => setChecked((previous) => next ? [...previous, criterion] : previous.filter((item) => item !== criterion))} /><span>{criterion}</span></label>)}</div>)}
+      {testEditor && testDelivery && <WorkflowDetailsDisclosure label="记录本轮测试结果" defaultOpen={!latestTest} className="space-y-2" summaryClassName="my-item-title">
         <TaskTestRunFields delivery={testDelivery} value={testDraft} onChange={setTestDraft} />
-      </details>}
+      </WorkflowDetailsDisclosure>}
       {testedExecution && ['pass_test', 'return_development', 'accept_delivery', 'return_delivery'].includes(action) &&
         <p className="my-item-description break-words">本轮交付版本 {testedExecution.manifest.versionId}</p>}
       {['submit_design', 'approve_design'].includes(action) && <DesignRevisionPicker task={task} purpose={action === 'approve_design' ? 'approve' : 'submit'} value={design} onChange={setDesign} disabled={submitting || busy} />}
@@ -548,7 +574,7 @@ function WorkflowActionDialog({ snapshot, task, source, workflowInputs, action, 
       {['supplement', 'approve_plan', 'submit_delivery'].includes(action) && !task.acceptanceCriteria?.length && <Field label={action === 'submit_delivery' ? '验收要确认的结果' : '测试要验证的结果'}><textarea className={textareaClass} value={criteria} onChange={(event) => setCriteria(event.target.value)} placeholder="每行一项" /></Field>}
       {HANDED.has(action) && <Field label={action === 'arrange' ? workKind === 'general' ? '负责同事' : nextStage === 'design_ready' ? '设计负责人' : '开发负责人' : recipientLabel}><Select className="w-full" value={recipient} onChange={(val) => setRecipient(val)} options={[{ value: '', label: '请选择空间成员' }, ...(recipient && !recipients.some((candidate) => candidate.member.id === recipient) ? [{ value: recipient, label: '原处理人已不可选，请重新选择', disabled: true }] : []), ...recipients.map(({ member, reason }) => ({ value: member.id, label: `${member.name}${member.id === identity.actor ? '（自己）' : ''} · ${reason}` }))]} /><p className="mt-1 text-my-xs text-my-tertiary">{!recipients.length ? '暂无符合条件的空间成员，请由空间管理员补充成员或指定负责人。' : recipient ? recipients.find((candidate) => candidate.member.id === recipient)?.reason ?? '请重新核对接收人。' : '负责同事接收任务并确认交接；Agent 只作为执行配置。'}</p></Field>}
       {HANDED.has(action) && <div className="space-y-3">{requiredRole && !recipients.length ? <p role="status" className="text-my-xs text-my-warning-text">此任务尚无可接收交付的指定{requiredRole === 'testOwnerId' ? '测试' : '验收'}负责人，请先核对空间成员与任务职责。</p> : missingRole && <p role="status" className="text-my-xs text-my-warning-text">未找到{responsibility === 'design' ? '设计' : action === 'submit_test' ? '测试' : '开发'}职责匹配的空间成员。可添加同事，或明确指定本空间成员负责本次工作。</p>}<Button size="sm" variant="outline" onClick={() => setConfiguringMembers((value) => !value)}>{requiredRole ? '配置任务交付负责人' : workspaceContext.canManage ? '添加空间成员' : '查看空间成员'}</Button>{configuringMembers && <WorkflowSpaceMembers snapshot={snapshot} task={task} requiredRole={requiredRole} onClose={() => setConfiguringMembers(false)} />}</div>}
-    </fieldset>{draft.stale && <div role="alert" className="collab-inline-error"><span>任务内容已更新，草稿已保留。</span><details className="w-full"><summary>查看当前任务</summary><p className="whitespace-pre-wrap break-words">{task.title}{task.description ? `\n${task.description}` : ''}</p><ul className="list-disc pl-4">{task.acceptanceCriteria?.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul></details><Button size="sm" disabled={busy || submitting || stageChanged} onClick={() => { if (owns()) draft.review() }}>已核对，继续编辑</Button></div>}{stageChanged && <div role="alert" className="collab-inline-error">任务阶段已更新，请关闭后核对当前进度。</div>}{(error || inputBlocker) && <div role="alert" className="collab-inline-error">{error || inputBlocker}</div>}</div>
+    </fieldset>{draft.stale && <div role="alert" className="collab-inline-error"><span>任务内容已更新，草稿已保留。</span><WorkflowDetailsDisclosure label="查看当前任务" className="w-full"><div className="mt-1 space-y-1"><p className="whitespace-pre-wrap break-words">{task.title}{task.description ? `\n${task.description}` : ''}</p><ul className="list-disc pl-4">{task.acceptanceCriteria?.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul></div></WorkflowDetailsDisclosure><Button size="sm" disabled={busy || submitting || stageChanged} onClick={() => { if (owns()) draft.review() }}>已核对，继续编辑</Button></div>}{stageChanged && <div role="alert" className="collab-inline-error">任务阶段已更新，请关闭后核对当前进度。</div>}{(error || inputBlocker) && <div role="alert" className="collab-inline-error">{error || inputBlocker}</div>}</div>
     <footer className="collab-flow-dialog-footer">{draft.hasDraft && <Button variant="ghost" className="mr-auto" disabled={busy || submitting} onClick={() => { if (owns()) { draft.discard(); onClose() } }}>放弃草稿</Button>}<Button variant="outline" onClick={onClose}>{action === 'decline' && task.workflow && !task.triagePending ? '返回' : '取消'}</Button><Button variant="primary" disabled={busy || submitting || creatingAgent || configuringMembers || stageChanged || draft.stale || Boolean(inputBlocker)} onClick={() => void save()}>{submitting && <Loader2 size={14} className="animate-spin" />}{action === 'arrange' ? '确认安排' : action === 'reassign' ? '确认转交' : action === 'submit_test' ? '人工确认并交给测试' : workflowActionLabel(action, task)}</Button></footer>
   </Modal>
 }

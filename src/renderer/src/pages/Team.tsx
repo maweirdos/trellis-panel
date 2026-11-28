@@ -156,7 +156,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
             const inflight = mine.filter((t) => !isFinished(t))
             const doneCount = m.byStatus['已完成'] ?? 0
             return (
-              <div key={m.name} className="rounded-my-lg border border-my-line bg-my-surface-1 px-4 py-3.5">
+              <div key={m.name} className="rounded-my-base border border-my-line bg-my-surface-1 px-4 py-3.5">
                 <div className="mb-2.5 flex items-center gap-2.5">
                   <Avatar name={m.name} />
                   <div className="min-w-0 flex-1">
@@ -187,7 +187,7 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
                     <button
                       key={t.dirName}
                       onClick={() => showTask(t.dirName)}
-                      className="flex w-full items-center gap-2 rounded-my-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-my-line hover:bg-my-layer-1"
+                      className="flex w-full items-center gap-2 rounded-my-base border border-transparent px-2 py-1.5 text-left transition-colors hover:border-my-line hover:bg-my-layer-1"
                     >
                       <PriorityBadge priority={t.record?.priority ?? ''} />
                       <span className="my-item-title min-w-0 flex-1 truncate">
@@ -207,13 +207,13 @@ function BoardTab({ feed, members, snapshot, mode = 'overview' }: {
           })}
         </div>
         {visibleMembers.length === 0 && (
-          <div className="rounded-my-lg border border-my-line bg-my-surface-1 py-10 text-center text-my-sm text-my-secondary">{responsibility === 'mine' && !snapshot.meta.developer ? '当前项目未设置开发者身份' : '此范围暂无任务负责人'}</div>
+          <div className="rounded-my-base border border-my-line bg-my-surface-1 py-10 text-center text-my-sm text-my-secondary">{responsibility === 'mine' && !snapshot.meta.developer ? '当前项目未设置开发者身份' : '此范围暂无任务负责人'}</div>
         )}
       </div>}
 
       {/* 动态时间线：按日分组 */}
       {mode !== 'members' && <div className={mode === 'overview' ? 'xl:col-span-2' : ''}>
-        <div className="overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
+        <div className="overflow-hidden rounded-my-base border border-my-line bg-my-surface-1">
           <div className="my-item-title flex items-center gap-1.5 border-b border-my-line px-4 py-2.5">
             <GitCommitHorizontal size={13} className="text-my-tertiary" /> 最近记录
           </div>
@@ -756,7 +756,7 @@ function StandupTab(): JSX.Element {
           </Button>
         </div>
       </div>
-      <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-secondary">
+      <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-my-base border border-my-line bg-my-canvas p-3 font-mono text-my-sm leading-5 text-my-secondary">
         {markdown || '生成中…'}
       </pre>
     </div>
@@ -801,21 +801,21 @@ function WorkflowInsightTab({ snapshot }: { snapshot: ProjectSnapshot }): JSX.El
         <div className="my-item-title mb-3">Workflow 解析链（团队 → 个人 → 任务）</div>
         {scan ? (
           <div className="grid gap-2 text-my-sm md:grid-cols-4">
-            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+            <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
               <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">任务 pin</div>
               <div className="mt-1 font-mono text-my-primary">
                 {scan.workflows.reduce((n, w) => n + w.pinnedTasks.length, 0) || '—'}
               </div>
             </div>
-            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+            <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
               <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">个人默认（.developer）</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.developerWorkflow ?? '—'}</div>
             </div>
-            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+            <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
               <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">团队默认（config.yaml）</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.configDefault ?? '—'}</div>
             </div>
-            <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+            <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
               <div className="text-my-2xs uppercase tracking-wide text-my-tertiary">全局回退</div>
               <div className="mt-1 font-mono text-my-primary">{scan.chain.globalExists ? 'workflow.md ✓' : '缺失'}</div>
             </div>

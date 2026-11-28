@@ -1,10 +1,22 @@
-import { useCallback, useEffect, useId, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { TeamContentApi, TeamContentConfigure } from '@shared/team-content-api'
 import { teamContentConfigureInputSchema } from '@shared/team-content-api'
 import { teamContentLimitsSchema, type TeamContentConfig, type TeamContentKind } from '@shared/team-content'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, Checkbox, DisclosureGrid } from '../../my/ui'
 import { PreferenceRow, PreferenceSection } from '../../pages/settings/PreferenceSection'
+
+function TeamContentDisclosure({ label, className = '', triggerClassName = 'text-my-secondary hover:text-my-primary', children }: { label: string; className?: string; triggerClassName?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`inline-flex cursor-pointer items-center gap-1.5 text-left transition-colors ${triggerClassName}`.trim()}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export type TeamContentSettingsProps = { workspaceKey: string; teamId?: string; contentApi?: TeamContentApi; onChanged?: () => void }
 type SafeInput = Omit<TeamContentConfigure, 'expectedEpoch' | 'apiKey'>
@@ -159,8 +171,8 @@ function SettingsForm({ workspaceKey, teamId, contentApi, onChanged }: TeamConte
       void load(true).catch(() => { if (live.current) setMessage({ text: '配置未能读取，请重试。', error: true }) }).finally(() => { lock.current = false; if (live.current) setBusy(null) })
     }}>刷新</Button>
   </div>}>
-    <PreferenceRow label="启用团队 AI" htmlFor={`${id}-enabled`}>
-      <input id={`${id}-enabled`} type="checkbox" className="my-control" checked={draft.enabled} disabled={disabled} onChange={event => edit({ enabled: event.target.checked })} />
+    <PreferenceRow label="启用团队 AI">
+      <Checkbox ariaLabel="启用团队 AI" checked={draft.enabled} disabled={disabled} onChange={enabled => edit({ enabled })} />
     </PreferenceRow>
     <PreferenceRow label="服务地址" htmlFor={`${id}-endpoint`} hint="完整的 HTTPS chat/completions 地址。">
       <input id={`${id}-endpoint`} type="url" className="my-input" maxLength={2048} placeholder="https://…/v1/chat/completions" value={draft.endpoint} disabled={disabled} onChange={event => edit({ endpoint: event.target.value })} />
@@ -173,15 +185,16 @@ function SettingsForm({ workspaceKey, teamId, contentApi, onChanged }: TeamConte
     </PreferenceRow>
     <PreferenceRow label="内容能力">
       <div className="flex flex-wrap gap-3">{(Object.keys(capabilityNames) as TeamContentKind[]).map(kind => <label key={kind} className="my-item-title flex items-center gap-2">
-        <input type="checkbox" className="my-control" checked={draft.capabilities.includes(kind)} disabled={disabled} onChange={event => edit({ capabilities: event.target.checked ? [...draft.capabilities, kind] : draft.capabilities.filter(value => value !== kind) })} />{capabilityNames[kind]}
+        <Checkbox checked={draft.capabilities.includes(kind)} disabled={disabled} onChange={checked => edit({ capabilities: checked ? [...draft.capabilities, kind] : draft.capabilities.filter(value => value !== kind) })} />{capabilityNames[kind]}
       </label>)}</div>
     </PreferenceRow>
-    <details className="preference-disclosure">
-      <summary>并发与用量限制</summary>
-      {(Object.keys(limitNames) as (keyof Draft['limits'])[]).map(name => <PreferenceRow key={name} label={limitNames[name]} htmlFor={`${id}-${name}`}>
-        <input id={`${id}-${name}`} type="number" className="my-input" min={teamContentLimitsSchema.shape[name].minValue ?? 0} max={teamContentLimitsSchema.shape[name].maxValue ?? undefined} step={1} value={Number.isNaN(draft.limits[name]) ? '' : draft.limits[name]} disabled={disabled} onChange={event => edit({ limits: { ...draft.limits, [name]: event.target.value === '' ? Number.NaN : Number(event.target.value) } })} />
-      </PreferenceRow>)}
-    </details>
+    <TeamContentDisclosure label="并发与用量限制" className="preference-disclosure" triggerClassName="text-my-sm text-my-secondary hover:text-my-primary">
+      <div className="mt-3">
+        {(Object.keys(limitNames) as (keyof Draft['limits'])[]).map(name => <PreferenceRow key={name} label={limitNames[name]} htmlFor={`${id}-${name}`}>
+          <input id={`${id}-${name}`} type="number" className="my-input" min={teamContentLimitsSchema.shape[name].minValue ?? 0} max={teamContentLimitsSchema.shape[name].maxValue ?? undefined} step={1} value={Number.isNaN(draft.limits[name]) ? '' : draft.limits[name]} disabled={disabled} onChange={event => edit({ limits: { ...draft.limits, [name]: event.target.value === '' ? Number.NaN : Number(event.target.value) } })} />
+        </PreferenceRow>)}
+      </div>
+    </TeamContentDisclosure>
     <div className="preference-actions flex flex-wrap items-center gap-2">
       <Button size="sm" variant="primary" disabled={Boolean(busy) || !loaded || !canManage || pending?.kind === 'probe'} onClick={() => void save()}>{busy === 'configure' ? '保存中…' : pending?.kind === 'configure' ? '重试原保存' : '保存配置'}</Button>
       <Button size="sm" variant="outline" disabled={Boolean(busy) || !config?.enabled || !config.hasCredential || !config.credentialProtectionAvailable || dirty.current || pending?.kind === 'configure' || probeSince !== null} onClick={() => void probe()}>{busy === 'probe' ? '提交检测…' : pending?.kind === 'probe' ? '核对原检测' : '检测模型'}</Button>
@@ -189,8 +202,8 @@ function SettingsForm({ workspaceKey, teamId, contentApi, onChanged }: TeamConte
     </div>
     {message && <div className="px-4 pb-4">
       <p role={message.error ? 'alert' : 'status'} className={`text-my-sm break-words ${message.error ? 'text-my-danger-text' : 'text-my-secondary'}`}>{message.text}</p>
-      {(message.code || pending) && <details className="mt-2 text-my-xs text-my-tertiary"><summary>操作详情</summary><p className="break-all">{message.code}{pending ? ` · ${pending.kind === 'configure' ? pending.input.commandId : pending.commandId}` : ''}</p></details>}
+      {(message.code || pending) && <TeamContentDisclosure label="操作详情" className="mt-2 text-my-xs text-my-tertiary" triggerClassName="text-my-tertiary hover:text-my-primary"><p className="mt-1 break-all">{message.code}{pending ? ` · ${pending.kind === 'configure' ? pending.input.commandId : pending.commandId}` : ''}</p></TeamContentDisclosure>}
     </div>}
-    {loaded && config?.health.code && <details className="px-4 pb-4 text-my-xs text-my-tertiary"><summary>检测详情</summary><p>{config.health.code}</p></details>}
+    {loaded && config?.health.code && <TeamContentDisclosure label="检测详情" className="px-4 pb-4 text-my-xs text-my-tertiary" triggerClassName="text-my-tertiary hover:text-my-primary"><p className="mt-1">{config.health.code}</p></TeamContentDisclosure>}
   </PreferenceSection>
 }

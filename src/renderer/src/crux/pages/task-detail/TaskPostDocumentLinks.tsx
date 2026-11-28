@@ -107,12 +107,12 @@ export function TaskPostDocumentLinks({ editor, task, body }: { editor: Editor |
   }, [editor, sources, actor, conversations, paths, canInteract])
   if (!preview) return null
   const close = () => { serial.current++; setPreview(null) }
-  return <Modal open ariaLabel={preview.entry.title} onClose={close} width={760}>
+  return <Modal open placement="center" ariaLabel={preview.entry.title} onClose={close} width={760}>
     <section className="flex max-h-[var(--my-modal-max-height)] flex-col">
     <header className="flex shrink-0 items-center gap-2 border-b border-my-line px-4 py-2">
-      <h2 className="min-w-0 flex-1 break-words text-my-title font-semibold">{preview.entry.title}</h2>
+      <h2 className="min-w-0 flex-1 break-words text-my-title font-medium">{preview.entry.title}</h2>
       <span className="text-my-xs text-my-secondary">{preview.entry.source}</span>
-      <Button size="sm" variant="ghost" aria-label="关闭文档" onClick={close}><X size={16} /></Button>
+      <button type="button" className="my-icon-control" aria-label="关闭文档" onClick={close}><X size={16} /></button>
     </header>
     <div className="my-scrollbar my-chat-prose min-h-0 overflow-y-auto p-4">
       {preview.error ? <p role="alert">{preview.error}</p> : preview.text === undefined ? <p role="status">读取中…</p> :

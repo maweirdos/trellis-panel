@@ -1,12 +1,28 @@
 import '@shared/csp-validation'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { LoaderCircle, X } from 'lucide-react'
+import { ChevronRight, LoaderCircle, X } from 'lucide-react'
 import type { DaemonLifecycleDecision, DaemonLifecycleDialogApi, DaemonLifecycleDialogState } from '@shared/daemon-lifecycle-dialog'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
 import { BrandMark } from '../my/BrandMark'
 import { normalizeUiFontSize } from '../my/appearance'
 import './quit.css'
 import './lifecycle.css'
+
+function LifecycleFailureDetails({ failure, commandId }: { failure?: string; commandId?: string }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="daemon-lifecycle-details no-drag">
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary focus-visible:outline-[var(--my-focus-width)] focus-visible:outline-offset-1 focus-visible:outline-[var(--my-focus-ring)]">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>查看详情</span>
+    </button>
+    <DisclosureGrid open={open}>
+      <div className="mt-2 space-y-2">
+        <p>{failure}</p>
+        <dl><dt>原退出命令</dt><dd>{commandId}</dd></dl>
+      </div>
+    </DisclosureGrid>
+  </div>
+}
 
 declare global {
   interface Window {
@@ -152,11 +168,7 @@ export function DaemonLifecycleDialog(): JSX.Element {
             </ul>
           )}
           {phase === 'confirmation' && state && state.sessionCount > state.sessions.length && <p className="my-item-description">另有 {state.sessionCount - state.sessions.length} 个会话</p>}
-          {exitFailed && <details className="daemon-lifecycle-details no-drag">
-            <summary>查看详情</summary>
-            <p>{state?.failure}</p>
-            <dl><dt>原退出命令</dt><dd>{state?.commandId}</dd></dl>
-          </details>}
+          {exitFailed && <LifecycleFailureDetails failure={state?.failure} commandId={state?.commandId} />}
           {!state && !failure && <p className="my-item-description" role="status">正在读取会话…</p>}
         </section>
         {!running && <footer className="daemon-quit-footer daemon-lifecycle-footer no-drag">

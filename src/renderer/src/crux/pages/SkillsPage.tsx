@@ -288,7 +288,7 @@ function SkillInspectorDrawer({
                   key={preset.id}
                   type="button"
                   onClick={() => { setName(preset.name); setDescription(preset.description); setContent(preset.content) }}
-                  className="rounded-my-sm border border-my-line bg-my-canvas px-2.5 py-1 text-my-2xs text-my-secondary transition-colors hover:border-my-line-strong hover:bg-my-layer-1 hover:text-my-primary"
+                  className="rounded-my-base border border-my-line bg-my-canvas px-2.5 py-1 text-my-2xs text-my-secondary transition-colors hover:border-my-line-strong hover:bg-my-layer-1 hover:text-my-primary"
                 >
                   {preset.name}
                 </button>

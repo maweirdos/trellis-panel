@@ -211,10 +211,10 @@ function HomeQuickPeekModal({ task, state, onClose, onRepair }: { task: HomeTask
           <h3 className="text-my-lg font-medium text-my-primary">{displayTask.title}</h3>
         </div>
         <div className="flex items-center gap-1">
-          <Dropdown align="right" trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="my-icon-control" aria-label="任务更多操作" aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>
+          <Dropdown align="right" trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="任务更多操作" aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></button>}>
             {(close) => <DropdownItem disabled={!displayTask.path} onClick={() => { close(); onRepair(displayTask) }}>修复执行入口</DropdownItem>}
           </Dropdown>
-          <Button variant="ghost" size="sm" className="my-icon-control" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
+          <button type="button" className="my-icon-control" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></button>
         </div>
       </div>
       <p className="whitespace-pre-wrap break-words text-my-sm leading-relaxed text-my-secondary">{displayTask.description || '暂无任务描述'}</p>

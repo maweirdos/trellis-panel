@@ -118,7 +118,7 @@ export function SpacesPage(): JSX.Element | null {
               <td className="px-3 py-2 text-my-xs text-my-secondary">{itemPreset?.label ?? '标准模板'}</td>
               <td className="px-3 py-2"><span className="flex items-center gap-1.5 text-my-xs text-my-secondary">{item.visibility === 'private' ? <Lock size={13} /> : <Globe size={13} />}{item.visibility === 'private' ? '私有' : '组织内公开'}</span></td>
               <td className="px-3 py-2 tabular-nums text-my-secondary">{readable ? item.memberIds.length : '—'}</td>
-              <td className="px-3 py-2"><div className="flex justify-end">{joined ? <span className="text-my-xs text-my-tertiary">已加入</span> : !item.archived && item.visibility !== 'private' && <Tooltip label={`加入 ${item.name}`}><Button size="sm" variant="ghost" className="my-icon-control" disabled={busy || !actorId} aria-label={`加入 ${item.name}`} onClick={() => void run('加入空间', () => api.crux.joinSpace({ spaceId: item.id }))}><LogIn size={15} /></Button></Tooltip>}</div></td>
+              <td className="px-3 py-2"><div className="flex justify-end">{joined ? <span className="text-my-xs text-my-tertiary">已加入</span> : !item.archived && item.visibility !== 'private' && <Tooltip label={`加入 ${item.name}`}><button type="button" className="my-icon-control" disabled={busy || !actorId} aria-label={`加入 ${item.name}`} onClick={() => void run('加入空间', () => api.crux.joinSpace({ spaceId: item.id }))}><LogIn size={15} /></button></Tooltip>}</div></td>
             </tr>
           })}</tbody>
         </table>}
@@ -128,23 +128,23 @@ export function SpacesPage(): JSX.Element | null {
           <h2 className="min-w-0 flex-1 truncate text-my-md font-medium text-my-primary">{space.name}</h2>
           <span className="font-mono text-my-xs text-my-tertiary">{space.key}</span>
           <Tooltip label={spaceStarred ? '取消收藏空间' : '收藏空间到侧边栏'}>
-            <Button variant="ghost" size="sm" className="my-icon-control" aria-label={spaceStarred ? '取消收藏空间' : '收藏空间'} aria-pressed={spaceStarred} onClick={() => toggleFavorite('space', space.id, space.id)}>
+            <button type="button" className="my-icon-control" aria-label={spaceStarred ? '取消收藏空间' : '收藏空间'} aria-pressed={spaceStarred} onClick={() => toggleFavorite('space', space.id, space.id)}>
               <Star size={14} className={`transition-transform duration-150 ${spaceStarred ? 'my-star-pop fill-current text-my-warning-text' : ''}`} />
-            </Button>
+            </button>
           </Tooltip>
           {workspace.canManage && <>
             {space.archived ? (
               <Tooltip label="已归档空间需先恢复再配置">{reconfigureBtn}</Tooltip>
             ) : reconfigureBtn}
             <Tooltip label={space.archived ? '已归档空间只读' : '编辑基本信息'}>
-              <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure} aria-label="编辑空间" onClick={() => setEditing(space)}>
+              <button type="button" className="my-icon-control" disabled={busy || !canConfigure} aria-label="编辑空间" onClick={() => setEditing(space)}>
                 <Pencil size={14} />
-              </Button>
+              </button>
             </Tooltip>
             <Tooltip label={space.archived ? '恢复空间' : canRead && pendingCount > 0 ? `还有 ${pendingCount} 条未完成任务` : '归档空间'}>
-              <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || (!space.archived && canRead && pendingCount > 0)} aria-label={space.archived ? '恢复空间' : '归档空间'} onClick={() => void archive()}>
+              <button type="button" className="my-icon-control" disabled={busy || (!space.archived && canRead && pendingCount > 0)} aria-label={space.archived ? '恢复空间' : '归档空间'} onClick={() => void archive()}>
                 {space.archived ? <RotateCcw size={14} /> : <Archive size={14} />}
-              </Button>
+              </button>
             </Tooltip>
           </>}
         </header>
@@ -254,7 +254,7 @@ export function SpacesPage(): JSX.Element | null {
             <div className="mb-2 flex items-center gap-2">
               <Users size={16} className="text-my-icon-secondary" />
               <h3 className="flex-1 text-my-sm font-medium text-my-primary">成员 <span className="text-my-xs font-normal tabular-nums text-my-tertiary">{members.length}</span></h3>
-              {canConfigure && <Tooltip label="管理空间成员"><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy} aria-label="管理空间成员" onClick={() => setEditingMembers(space.id)}><Pencil size={14} /></Button></Tooltip>}
+              {canConfigure && <Tooltip label="管理空间成员"><button type="button" className="my-icon-control" disabled={busy} aria-label="管理空间成员" onClick={() => setEditingMembers(space.id)}><Pencil size={14} /></button></Tooltip>}
             </div>
             <ul className="divide-y divide-my-line">{members.map((member) => <li key={member.id} className="flex items-center gap-2 py-2"><MemberChip member={member} /><span className="ml-auto text-my-xs text-my-tertiary">{member.title || ROLE_LABEL[member.role]}</span></li>)}</ul>
             {members.length === 0 && <p className="py-2 text-my-xs text-my-tertiary">暂无成员</p>}

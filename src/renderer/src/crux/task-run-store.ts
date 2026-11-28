@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { CruxRuntimeKind, CruxWorkingDirectoryMode } from '@shared/crux'
 import type { IsolationMode } from './collaboration-platform-store'
 
-/** 对标 HiFox 7 态 Run 生命周期（index.1042a5a6bd.js task_status） */
+/** 7 态 Run 生命周期 */
 export type TaskRunStatus =
   | 'queued'
   | 'dispatched'
@@ -12,7 +12,7 @@ export type TaskRunStatus =
   | 'failed'
   | 'cancelled'
 
-/** 对标 HiFox Agent 实时工作状态（index.1042a5a6bd.js agent_state） */
+/** Agent 实时工作状态 */
 export type AgentPresenceState = 'idle' | 'working' | 'blocked' | 'error' | 'offline'
 
 export type RunFailureKind = 'agent_error' | 'timeout' | 'runtime_offline' | 'runtime_recovery' | 'manual'

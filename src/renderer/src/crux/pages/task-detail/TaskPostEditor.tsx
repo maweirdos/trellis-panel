@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
-import { Code2, ExternalLink, Quote, Redo2, Sparkles, Undo2 } from 'lucide-react'
+import { ChevronRight, Code2, ExternalLink, Quote, Redo2, Sparkles, Undo2 } from 'lucide-react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
@@ -7,7 +7,18 @@ import type { CruxTask } from '@shared/crux'
 import { api } from '../../../api'
 import { MarkdownView } from '../../../components/MarkdownView'
 import { externalHttpUrl } from '../../../../../shared/external-url'
-import { Button } from '../../../my/ui'
+import { Button, DisclosureGrid } from '../../../my/ui'
+
+function PostConflictDisclosure({ content }: { content: string }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>查看当前正文</span>
+    </button>
+    <DisclosureGrid open={open}><div className="task-post-conflict-content my-chat-prose"><MarkdownView content={content} /></div></DisclosureGrid>
+  </div>
+}
 import { useInteractionActive, useInteractionGuard } from '../../../utils/interaction-scope'
 import { useCrux } from '../../store'
 import { useTaskDraftField, type TaskDraft } from './task-drafts'
@@ -500,10 +511,7 @@ function TaskPostBodySession({ task, draft, disabled, mutate, onQuote, onPolish,
     {(issue || sourceMode && richIssue) && <p className="task-post-issue" role={issue ? 'alert' : 'status'}>{issue || richIssue}</p>}
     {baseBody !== (task.description ?? '') && <div className="task-post-conflict" role="alert">
       <span>任务正文已更新。</span>
-      <details>
-        <summary>查看当前正文</summary>
-        <div className="task-post-conflict-content my-chat-prose"><MarkdownView content={task.description ?? ''} /></div>
-      </details>
+      <PostConflictDisclosure content={task.description ?? ''} />
       <Button size="sm" disabled={disabled} onClick={() => setBaseBodyField(task.description ?? '')}>保留草稿</Button>
     </div>}
   </section>

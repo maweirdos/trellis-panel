@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { Bot, ChevronRight, Loader2, PenLine, Sparkles, X } from 'lucide-react'
 import type { CruxID, CruxPriority, CruxSnapshot, CruxTaskInput, CruxTaskWorkKind } from '@shared/crux'
@@ -24,6 +24,17 @@ import { RequirementIntake } from '../intake/RequirementIntake'
 import { bodyDigest, discussionInput } from '../intake/requirements'
 import { clearTaskHandoffFields, clearTaskHandoffRecovery, readTaskHandoffIntent, readTaskHandoffRecovery, rememberTaskHandoffSource, saveTaskHandoffIntent, saveTaskHandoffRecovery, type TaskHandoffFields, type TaskHandoffIntent, type TaskHandoffRecovery, type TaskHandoffSource } from './task-detail/task-handoff-source'
 import type { IntakeFile } from '../intake/use-requirement-intake'
+
+function TaskCreateDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export interface NewTaskModalProps {
   open: boolean
@@ -123,7 +134,7 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
     const content = <div className="flex flex-col gap-4 bg-my-canvas p-5">
           <h2 className="my-item-title">创建团队任务</h2>
           <p role={waiting ? 'status' : 'alert'} className="my-item-description">{message}</p>
-          {!waiting && (context.error || loadError) && <details className="my-item-description"><summary className="cursor-pointer">查看连接详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{context.error || loadError}</p></details>}
+          {!waiting && (context.error || loadError) && <TaskCreateDisclosure label="查看连接详情" className="my-item-description"><p className="mt-2 whitespace-pre-wrap break-words">{context.error || loadError}</p></TaskCreateDisclosure>}
           <div className="flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={activeProps.onClose}>关闭</Button>
             {!waiting && <Button size="sm" variant="outline" disabled={!hasIpc} onClick={() => { setRecoveryError(''); void refresh() }}>重新核对</Button>}
@@ -135,7 +146,7 @@ export function NewTaskModal(props: NewTaskModalProps): JSX.Element | null {
       <ConnectionPanel open={connectionOpen} hideTrigger onOpenChange={open => { setConnectionOpen(open); if (!open) void refresh() }} />
     </>
   }
-  if (!snapshot || !spaceId || !canReadTaskSpace(snapshot, context, spaceId)) return <Modal open={props.open} onClose={activeProps.onClose} ariaLabel="无法创建任务"><div className="flex flex-col gap-3 p-5"><h2 className="text-my-md font-semibold text-my-primary">当前空间不可用</h2><p role="alert" className="text-my-sm text-my-secondary">请重新选择有访问权限的空间。</p><div className="flex justify-end"><Button onClick={activeProps.onClose}>关闭</Button></div></div></Modal>
+  if (!snapshot || !spaceId || !canReadTaskSpace(snapshot, context, spaceId)) return <Modal open={props.open} placement="center" onClose={activeProps.onClose} ariaLabel="无法创建任务"><div className="flex flex-col gap-3 p-5"><h2 className="text-my-md font-medium text-my-primary">当前空间不可用</h2><p role="alert" className="text-my-sm text-my-secondary">请重新选择有访问权限的空间。</p><div className="flex justify-end"><Button onClick={activeProps.onClose}>关闭</Button></div></div></Modal>
   const key = JSON.stringify([authority, spaceId, activeProps.projectId, activeProps.iterationId, activeProps.parentTaskId, activeProps.triagePending, generation, handoff?.id])
   return <InteractionScope key={key} active={props.open}><TaskCreateForm {...activeProps} open={props.open} handoff={handoff} retained={retained} unsent={recovery?.fields[spaceId]} onUnsentChange={fields => {
     if (!handoff) return
@@ -484,7 +495,7 @@ function TaskCreateForm({ open, unsent: cachedUnsent, retained, onUnsentChange, 
     <div className="flex max-h-[var(--my-modal-max-height)] flex-col bg-my-panel">
       <header className="flex h-my-header shrink-0 items-center gap-3 border-b border-my-line px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h2 className="truncate text-my-md font-semibold text-my-primary">{heading}</h2>
+          <h2 className="truncate text-my-md font-medium text-my-primary">{heading}</h2>
           <span className="my-chip bg-my-layer-1 text-my-tertiary">{space.key}</span>
         </div>
         {!handoff && !initialParent && context.state !== 'local' && (
@@ -510,9 +521,9 @@ function TaskCreateForm({ open, unsent: cachedUnsent, retained, onUnsentChange, 
           </Segmented>
         )}
         <Tooltip label="关闭新建任务">
-          <Button size="sm" variant="ghost" className="w-7 px-0" aria-label="关闭新建任务" onClick={close}>
+          <button type="button" className="my-icon-control" aria-label="关闭新建任务" onClick={close}>
             <X size={15} />
-          </Button>
+          </button>
         </Tooltip>
       </header>
       <div className="my-scrollbar min-h-0 overflow-y-auto px-6 py-5">
@@ -546,7 +557,7 @@ function TaskCreateForm({ open, unsent: cachedUnsent, retained, onUnsentChange, 
           </Field>
           <Field label={handoff ? '共享的任务描述' : '描述'}><textarea className={textareaClass} rows={handoff ? 6 : 3} value={description} onChange={event => setDescription(event.target.value)} /></Field>
           {handoff && <PostFilePicker source={handoff} selected={selectedFileIds} onChange={setSelectedFileIds} />}
-          {selectedMaterial && <div className="rounded-my-md border border-my-line bg-my-layer-1 p-3"><p className="text-my-sm text-my-primary">首次正文 · {selectedMaterial.versionLabel}</p><details className="mt-2 text-my-sm text-my-secondary"><summary className="cursor-pointer">查看共享正文</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></details></div>}
+          {selectedMaterial && <div className="rounded-my-base border border-my-line bg-my-layer-1 p-3"><p className="text-my-sm text-my-primary">首次正文 · {selectedMaterial.versionLabel}</p><TaskCreateDisclosure label="查看共享正文" className="mt-2 text-my-sm text-my-secondary"><p className="mt-2 whitespace-pre-wrap break-words">{selectedMaterial.body}</p></TaskCreateDisclosure></div>}
           {handoff && !triagePending && <Field label="负责人"><TaskAllocationPicker snapshot={snapshot} spaceId={spaceId} value={allocation} onChange={setAllocation} fallbackActorId={actorId} disabled={disabled || locked} /></Field>}
           {!handoff && (
             <Field label="负责人与 AI 委派执行者">

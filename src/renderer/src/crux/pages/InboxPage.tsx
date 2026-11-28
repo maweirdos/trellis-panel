@@ -166,7 +166,7 @@ export function InboxPage(): JSX.Element | null {
                               item.read ? 'bg-transparent' : 'bg-my-accent'
                             }`}
                           />
-                          <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+                          <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
                             {KIND_LABEL[item.kind]}
                           </span>
                           {task && <span className="font-mono text-my-2xs text-my-tertiary">{task.id}</span>}
@@ -262,7 +262,7 @@ export function InboxPage(): JSX.Element | null {
                     <ArrowLeft size={13} />
                     <span>返回列表</span>
                   </Button>
-                  <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-secondary">
+                  <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-secondary">
                     {KIND_LABEL[selectedItem.kind]}
                   </span>
                   <span className="tabular-nums">{formatCollaborationTime(selectedItem.at)}</span>

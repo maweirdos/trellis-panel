@@ -119,7 +119,7 @@ export function CrewsPage(): JSX.Element | null {
                     <h2 className="my-item-title truncate text-my-sm font-medium text-my-primary">{crew.name}</h2>
                     {crew.description && <p className="my-item-description mt-0.5">{crew.description}</p>}
                   </div>
-                  {crew.archived && <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-tertiary">已归档</span>}
+                  {crew.archived && <span className="rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-tertiary">已归档</span>}
                 </header>
 
                 {!captainReady && (
@@ -164,7 +164,7 @@ export function CrewsPage(): JSX.Element | null {
                 {quickReplies.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
                     {quickReplies.slice(0, 3).map((reply) => (
-                      <span key={reply.id} className="rounded-my-sm bg-my-layer-1 px-2 py-0.5 text-my-2xs text-my-secondary">{reply.label}</span>
+                      <span key={reply.id} className="rounded-my-base bg-my-layer-1 px-2 py-0.5 text-my-2xs text-my-secondary">{reply.label}</span>
                     ))}
                   </div>
                 )}
@@ -185,21 +185,21 @@ export function CrewsPage(): JSX.Element | null {
                       </Button>
                     )}
                     <Tooltip label={`编辑 ${crew.name}`}>
-                      <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable} aria-label={`编辑 ${crew.name}`} onClick={() => setEditing(crew)}>
+                      <button type="button" className="my-icon-control" disabled={busy || !writable} aria-label={`编辑 ${crew.name}`} onClick={() => setEditing(crew)}>
                         <Pencil size={14} />
-                      </Button>
+                      </button>
                     </Tooltip>
                     {crew.archived ? (
                       <Tooltip label={captainReady ? `恢复 ${crew.name}` : '请先更换可用队长'}>
-                        <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable || !captainReady} aria-label={`恢复 ${crew.name}`} onClick={() => restore(crew)}>
+                        <button type="button" className="my-icon-control" disabled={busy || !writable || !captainReady} aria-label={`恢复 ${crew.name}`} onClick={() => restore(crew)}>
                           <RotateCcw size={14} />
-                        </Button>
+                        </button>
                       </Tooltip>
                     ) : (
                       <Tooltip label={`归档 ${crew.name}`}>
-                        <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !writable} aria-label={`归档 ${crew.name}`} onClick={() => void archiveCrew(crew)}>
+                        <button type="button" className="my-icon-control" disabled={busy || !writable} aria-label={`归档 ${crew.name}`} onClick={() => void archiveCrew(crew)}>
                           <Archive size={14} />
-                        </Button>
+                        </button>
                       </Tooltip>
                     )}
                   </div>
@@ -425,7 +425,7 @@ function CrewEditorForm({ crew, snapshot, spaceId, onClose }: { crew: CruxCrew |
           {quickReplies.length > 0 && (
             <ul className="space-y-1">
               {quickReplies.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-2 rounded-my-sm bg-my-layer-1 px-2.5 py-1 text-my-xs">
+                <li key={item.id} className="flex items-center justify-between gap-2 rounded-my-base bg-my-layer-1 px-2.5 py-1 text-my-xs">
                   <span className="truncate font-medium text-my-primary">{item.label}</span>
                   <button type="button" aria-label={`删除 ${item.label}`} onClick={() => setQuickReplies((prev) => prev.filter((r) => r.id !== item.id))} className="text-my-tertiary hover:text-my-danger-text">
                     <Trash2 size={12} />

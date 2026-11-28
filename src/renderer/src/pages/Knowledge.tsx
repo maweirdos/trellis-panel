@@ -844,13 +844,13 @@ function KnowledgePageContent(): JSX.Element {
                   </div>
                 )}
                 {remoteDoc.error && (
-                  <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{remoteDoc.error}</div>
+                  <div className="rounded-my-base border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{remoteDoc.error}</div>
                 )}
                 {!remoteDoc.snapshot && remoteDoc.content !== null && (
                   remoteDoc.fileName.endsWith('.md') || remoteDoc.fileName.endsWith('.markdown') ? (
                     <MarkdownView content={remoteDoc.content} />
                   ) : (
-                    <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{remoteDoc.content}</pre>
+                    <pre className="whitespace-pre-wrap break-words rounded-my-base border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{remoteDoc.content}</pre>
                   )
                 )}
               </PageContent>
@@ -896,9 +896,9 @@ function KnowledgePageContent(): JSX.Element {
             <div className="my-scrollbar min-h-0 flex-1">
               <PageContent variant="centered">
                 <div className="mb-3 truncate font-mono text-my-xs text-my-tertiary" title={active.path}>{active.path}</div>
-                {docError && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{docError}</div>}
+                {docError && <div className="rounded-my-base border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{docError}</div>}
                 {active.synthetic && (
-                  <div className="rounded-my-lg border border-my-line bg-my-layer-1 p-4 text-my-xs leading-6 text-my-primary">
+                  <div className="rounded-my-base border border-my-line bg-my-layer-1 p-4 text-my-xs leading-6 text-my-primary">
                     这是任务提炼的合成文档（task.json 的描述 / 备注 / 子任务）。原始 JSON：
                     <Button
                       variant="ghost"
@@ -920,7 +920,7 @@ function KnowledgePageContent(): JSX.Element {
                 {relativePath === null && docContent !== null && (active.path.endsWith('.md') || active.path.endsWith('.markdown') ? (
                   <MarkdownView content={docContent} />
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words rounded-my-lg border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{docContent}</pre>
+                  <pre className="whitespace-pre-wrap break-words rounded-my-base border border-my-line bg-my-surface-1 p-3 font-mono text-my-sm leading-5 text-my-primary">{docContent}</pre>
                 ))}
               </PageContent>
             </div>
@@ -988,7 +988,7 @@ function KnowledgePageContent(): JSX.Element {
             )}
             {aiAnswer && (
               <PageSection variant="centered" className="mb-2.5">
-                <div className="rounded-my-lg border border-my-line-accent-subtle bg-my-accent-subtle p-3">
+                <div className="rounded-my-base border border-my-line-accent-subtle bg-my-accent-subtle p-3">
                   <MarkdownView content={aiAnswer} />
                   {aiSources.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1 border-t border-my-line pt-2">
@@ -1042,11 +1042,11 @@ function KnowledgePageContent(): JSX.Element {
       {/* 打开的产物查看器标签保留在最上层（外部组件渲染） */}
       {viewerTabs.length > 0 && null}
       <Modal open={scopeOpen && Boolean(snapshot?.meta.root)} onClose={() => setScopeOpen(false)} width={560} placement="center" ariaLabel="项目知识范围">
-        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">项目知识范围</h2><Button size="sm" variant="ghost" className="my-icon-control" onClick={() => setScopeOpen(false)} aria-label="关闭知识范围"><X size={15} /></Button></div>
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">项目知识范围</h2><button type="button" className="my-icon-control" onClick={() => setScopeOpen(false)} aria-label="关闭知识范围"><X size={15} /></button></div>
         <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <KnowledgeScopeControl key={snapshot.meta.root} root={snapshot.meta.root} />}</div>
       </Modal>
       <Modal open={showMaterials && Boolean(snapshot?.meta.root)} onClose={() => setShowMaterials(false)} width={760} placement="center" ariaLabel="项目需求材料">
-        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">需求材料</h2><Button size="sm" variant="ghost" className="my-icon-control" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></Button></div>
+        <div className="flex items-center gap-2 border-b border-my-line px-5 py-3"><h2 className="flex-1 text-my-md font-medium">需求材料</h2><button type="button" className="my-icon-control" onClick={() => setShowMaterials(false)} aria-label="关闭需求材料"><X size={15} /></button></div>
         <div className="my-scrollbar max-h-[65vh] overflow-y-auto p-5">{snapshot?.meta.root && <ProductMaterialActions key={snapshot.meta.root} root={snapshot.meta.root} sources={[]} />}</div>
       </Modal>
     </div>

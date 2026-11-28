@@ -53,12 +53,12 @@ function JsonlRecord({ line, idx }: { line: string; idx: number }): JSX.Element 
     <button
       onClick={() => setOpen((o) => !o)}
       className={clsx(
-        'w-full rounded-my-md border px-3 py-2 text-left transition-colors',
+        'w-full rounded-my-base border px-3 py-2 text-left transition-colors',
         open ? 'border-my-line-accent-subtle bg-my-layer-1' : 'border-my-line bg-my-surface-1 hover:border-my-line-strong'
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded-my-sm bg-my-layer-3 px-1.5 font-mono text-my-2xs text-my-secondary">#{idx + 1}</span>
+        <span className="shrink-0 rounded-my-base bg-my-layer-3 px-1.5 font-mono text-my-2xs text-my-secondary">#{idx + 1}</span>
         {parsed === undefined ? (
           <span className="text-my-xs text-my-danger-text">JSON 解析失败（原文见源码视图）</span>
         ) : (
@@ -87,7 +87,7 @@ function JsonlView({ content }: { content: string }): JSX.Element {
   return (
     <div className="space-y-1.5">
       {lines.length > JSONL_CAP && (
-        <div className="rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
+        <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
           共 {lines.length} 行，仅展示前 {JSONL_CAP} 行
         </div>
       )}
@@ -221,7 +221,7 @@ function ViewerBody({
               <JsonTree data={parsedJson} />
             ) : (
               <>
-                <div className="mb-2 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
+                <div className="mb-2 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-3 py-1.5 text-my-xs text-my-warning-text">
                   JSON 解析失败，展示源码
                 </div>
                 <CodeView content={content ?? ''} ext={file.ext} />
@@ -298,7 +298,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
                 e.stopPropagation()
                 pinArtifact(t.file.path, !t.pinned)
               }}
-              className={clsx('shrink-0 rounded-my-sm p-0.5 transition-opacity', t.pinned ? 'text-my-icon-accent' : 'text-my-icon-tertiary opacity-0 hover:text-my-primary group-hover:opacity-100')}
+              className={clsx('shrink-0 rounded-my-base p-0.5 transition-opacity', t.pinned ? 'text-my-icon-accent' : 'text-my-icon-tertiary opacity-0 hover:text-my-primary group-hover:opacity-100')}
               title={t.pinned ? '取消固定（预览标签）' : '固定标签'}
             >
               {t.pinned ? <Pin size={10} /> : <PinOff size={10} />}
@@ -308,7 +308,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
                 e.stopPropagation()
                 closeArtifact(t.file.path)
               }}
-              className="shrink-0 rounded-my-sm p-0.5 text-my-icon-tertiary hover:text-my-danger-text"
+              className="shrink-0 rounded-my-base p-0.5 text-my-icon-tertiary hover:text-my-danger-text"
               title="关闭标签"
             >
               <X size={11} />
@@ -339,7 +339,7 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
             <button
               onClick={() => setMode((m) => (m === 'graphic' ? 'raw' : 'graphic'))}
               className={clsx(
-                'my-control cursor-pointer whitespace-nowrap rounded-my-md border px-3 transition-colors duration-150',
+                'my-control cursor-pointer whitespace-nowrap rounded-my-base border px-3 transition-colors duration-150',
                 mode === 'raw'
                   ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                   : 'border-my-line-strong text-my-secondary hover:bg-my-layer-transparent-hover'
@@ -354,9 +354,11 @@ export function ArtifactViewer({ projectName }: { projectName: string }): JSX.El
             <Copy size={12} aria-hidden="true" /> {copyStatus === 'copied' ? '已复制' : copyStatus === 'copying' ? '正在复制…' : copyStatus === 'error' ? '重试复制' : '复制'}
           </Button>
           <button
+            type="button"
             onClick={() => closeArtifact(file.path)}
-            className="rounded-my-md p-1.5 text-my-icon-secondary transition-colors hover:bg-my-layer-transparent-hover hover:text-my-primary"
+            className="my-icon-control"
             title="关闭 (Esc)"
+            aria-label="关闭"
           >
             <X size={15} />
           </button>

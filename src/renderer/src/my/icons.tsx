@@ -135,7 +135,7 @@ export function NavIcon({ name, size = 16, className }: IconProps & { name: stri
 export function WorkspaceMark({ color, letter, size = 20 }: { color: string; letter: string; size?: number }): JSX.Element {
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-my-inset font-semibold text-my-on-color"
+      className="flex shrink-0 items-center justify-center rounded-my-inset font-medium text-my-on-color"
       style={{ width: size, height: size, background: color, fontSize: size * 0.5 }}
     >
       {letter}

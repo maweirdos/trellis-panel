@@ -9,9 +9,9 @@ import { InteractionScope } from '../utils/interaction-scope'
 export function DaemonSettingsDialog(): JSX.Element {
   const [open, setOpen] = useState(false)
   useEffect(() => (api as typeof api & { daemon?: DaemonApi })?.daemon?.onOpenSettings?.(() => setOpen(true)), [])
-  return <Modal open={open} onClose={() => setOpen(false)} ariaLabel="后台设置" width={620}>
+  return <Modal open={open} placement="center" onClose={() => setOpen(false)} ariaLabel="后台设置" width={620}>
     <div className="flex items-center justify-between border-b border-my-line px-5 py-3">
-      <h1 className="text-my-sm font-semibold">后台设置</h1>
+      <h1 className="text-my-sm font-medium">后台设置</h1>
       <Button onClick={() => setOpen(false)}>关闭</Button>
     </div>
     {open && <InteractionScope active><div className="daemon-settings-dialog"><DaemonSettings /></div></InteractionScope>}

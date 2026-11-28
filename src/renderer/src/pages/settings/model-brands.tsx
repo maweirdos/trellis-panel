@@ -249,7 +249,7 @@ export function getProviderVisual(name: string, local = false): {
   }
   const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toLocaleUpperCase() || 'M'
   return {
-    icon: <span className="text-sm font-semibold text-my-txt-primary">{initial}</span>,
+    icon: <span className="text-sm font-medium text-my-txt-primary">{initial}</span>,
     iconBg: 'bg-my-layer-2'
   }
 }

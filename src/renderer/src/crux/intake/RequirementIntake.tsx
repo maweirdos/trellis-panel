@@ -1,9 +1,9 @@
 import { useId, useState, type JSX } from 'react'
-import { ArrowLeft, Check, FileText, Loader2, Send, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, FileText, Loader2, Send, Sparkles, X } from 'lucide-react'
 import type { CruxSnapshot } from '@shared/crux'
 import { MarkdownView } from '../../components/MarkdownView'
 import { TeamContentSettings } from '../../components/team/TeamContentSettings'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { useEscLayer } from '../../utils/use-esc-layer'
 import { useCrux } from '../store'
 import { useTaskDraftField, type TaskDraft } from '../pages/task-detail/task-drafts'
@@ -26,6 +26,7 @@ export function RequirementIntake({ snapshot, spaceId, actorId, draft, onClose, 
   const [showDocument, setShowDocument] = useState(false)
   const [configuring, setConfiguring] = useState(false)
   const [addingReviewers, setAddingReviewers] = useState(false)
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
   const context = useCrux(state => state.workspaceContext)
   const seedTask = snapshot.tasks.find(task => task.id === intake.taskId && task.createdAt === intake.taskCreatedAt && task.spaceId === spaceId)
   const canManageSpace = Boolean(space && !space.archived && (context.canManage || space.ownerId === actorId))
@@ -53,7 +54,18 @@ export function RequirementIntake({ snapshot, spaceId, actorId, draft, onClose, 
           <div className="intake-message"><div className="intake-message-head">我</div><p>{intake.original}</p>{intake.files.map((file, index) => <p key={`${file.name}:${index}`}><FileText size={14} /> {file.name}</p>)}</div>
           {intake.job && <div className="intake-message"><div className="intake-message-head"><Sparkles size={15} /> 产品助手</div><div className="intake-model-result" role="status"><span>{intake.running ? '正在结合资料整理需求…' : intake.job.state === 'succeeded' && !intake.job.cancelRequested ? '需求候选已生成，可以查看并继续调整。' : '本轮整理未完成。'}</span>{(intake.running || intake.cancelCommand) && <Button size="sm" variant="ghost" disabled={intake.busy || saved.saving || saved.locked} onClick={() => void intake.cancel()}>{intake.cancelCommand ? '核对取消请求' : '取消整理'}</Button>}</div>{intake.candidate && !showDocument && <Button size="sm" variant="outline" onClick={() => setShowDocument(true)}><FileText size={14} />查看需求说明</Button>}</div>}
           {intake.taskId && <p role="status" className="intake-saved"><Check size={14} />素材已保存为任务 <button type="button" onClick={openTask}>{intake.taskId}</button></p>}
-          <details className="intake-evidence"><summary>查看本轮依据</summary><p>包括输入诉求、上传文本、所选资料版本与适用的已发布团队规范。提供依据不代表模型已遵守；此入口未读取 Git 源码。</p>{intake.job?.sources.map(source => <p key={source.sourceId}><strong>{source.title ?? source.sourceId}{source.versionNumber ? ` · v${source.versionNumber}` : ''}</strong><small>{source.kind} · SHA-256 {source.digest}</small></p>)}</details>
+          <div className="intake-evidence">
+            <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+              <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${evidenceOpen ? 'rotate-90' : ''}`} />
+              <span>查看本轮依据</span>
+            </button>
+            <DisclosureGrid open={evidenceOpen}>
+              <div className="mt-2 space-y-1">
+                <p>包括输入诉求、上传文本、所选资料版本与适用的已发布团队规范。提供依据不代表模型已遵守；此入口未读取 Git 源码。</p>
+                {intake.job?.sources.map(source => <p key={source.sourceId}><strong>{source.title ?? source.sourceId}{source.versionNumber ? ` · v${source.versionNumber}` : ''}</strong><small>{source.kind} · SHA-256 {source.digest}</small></p>)}
+              </div>
+            </DisclosureGrid>
+          </div>
           {seedTask && canManageSpace && <div><Button size="sm" variant="ghost" disabled={inputDisabled} aria-expanded={addingReviewers} onClick={() => setAddingReviewers(value => !value)}>{addingReviewers ? '收起评审同事' : '添加评审同事'}</Button>{addingReviewers && <WorkflowSpaceMembers key={`${intake.scope.workspaceKey}:${seedTask.id}:${seedTask.createdAt}`} snapshot={snapshot} task={seedTask} creating returnLabel="返回需求评审" onAdded={ids => { const peer = ids.find(id => id !== actorId); if (intake.source.owns() && peer) setReviewerId(peer) }} onClose={() => setAddingReviewers(false)} />}</div>}
         </div>}
         {!started && <div className="intake-empty-heading"><span>产品助手</span><h2>这次想解决什么？</h2></div>}

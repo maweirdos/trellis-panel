@@ -333,7 +333,7 @@ export function QuickTodoView(): JSX.Element {
               {pending.slice(0, 8).map((t) => (
                 <div
                   key={t.id}
-                  className="group flex items-center gap-2 rounded-my-md px-2 py-1 hover:bg-my-layer-2-hover"
+                  className="group flex items-center gap-2 rounded-my-base px-2 py-1 hover:bg-my-layer-2-hover"
                   title={t.title}
                 >
                   <span

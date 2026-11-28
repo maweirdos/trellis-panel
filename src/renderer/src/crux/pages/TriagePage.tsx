@@ -188,7 +188,7 @@ export function TriagePage(): JSX.Element | null {
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-my-2xs text-my-tertiary">{item.task.id}</span>
                         <PriorityBadge priority={item.task.priority} />
-                        <span className="ml-auto inline-flex items-center gap-1 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+                        <span className="ml-auto inline-flex items-center gap-1 rounded-my-base bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
                           <Bot size={11} />
                           <span>建议：{PRIORITY_LABEL[item.suggested]}</span>
                         </span>

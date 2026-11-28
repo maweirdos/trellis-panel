@@ -58,7 +58,7 @@ export function TaskContinuationModal({ projectRoot, taskDir, taskTitle, history
     <div className="my-modal-content my-task-continuation">
       <header className="my-task-conversation-association__header">
         <div className="min-w-0"><h2 className="text-my-lg font-medium text-my-primary">{history ? '任务交接与历史资料' : '接续此任务'}</h2><p className="my-task-conversation-association__task">{packet?.taskTitle ?? taskTitle}</p></div>
-        <Button variant="ghost" size="sm" className="my-icon-control" aria-label="关闭任务接续说明" onClick={onClose}><X size={16} /></Button>
+        <button type="button" className="my-icon-control" aria-label="关闭任务接续说明" onClick={onClose}><X size={16} /></button>
       </header>
       <p className="my-task-continuation__note"><FileText size={16} aria-hidden="true" /><span>{history ? '此任务已完成或归档。可查看或复制交接资料，不会重新执行任务。' : '尚未恢复旧会话历史。复制说明后，在常用的外部编辑器中粘贴并发送。'}</span></p>
       {reason && <p className="text-my-xs text-my-secondary">{reason}</p>}

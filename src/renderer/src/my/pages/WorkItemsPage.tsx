@@ -263,7 +263,7 @@ function LabelDot({ label }: { label: Label }): JSX.Element {
   const source = useWorkItemsSource()
   return (
     <span
-      className="h-2 w-2 shrink-0 rounded-my-sm"
+      className="h-2 w-2 shrink-0 rounded-my-base"
       style={{ background: source.presentation?.labelColor?.(label) ?? `var(--my-label-${label.color}-icon)` }}
     />
   )
@@ -316,7 +316,7 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
   }
   if (meta.kind === 'label') {
     if (meta.label) return <LabelDot label={meta.label} />
-    return <span className="inline-block h-2 w-2 shrink-0 rounded-my-sm border border-dashed border-my-line-strong" />
+    return <span className="inline-block h-2 w-2 shrink-0 rounded-my-base border border-dashed border-my-line-strong" />
   }
   return null
 }
@@ -330,7 +330,7 @@ function DueChip({ due, stateGroup, done }: { due: string; stateGroup: StateGrou
     <span
       title={source.presentation?.dueDateLabel}
       className={clsx(
-        'inline-flex h-[20px] shrink-0 items-center gap-1 rounded-my-sm px-1.5 text-my-xs',
+        'inline-flex h-[20px] shrink-0 items-center gap-1 rounded-my-base px-1.5 text-my-xs',
         overdue ? 'bg-my-danger-subtle text-my-danger-text' : 'text-my-tertiary'
       )}
     >
@@ -370,7 +370,7 @@ function SubProgressBadge({ done, total }: { done: number; total: number }): JSX
     <span
       title={`子工作项 ${done}/${total} 已完成`}
       className={clsx(
-        'flex h-[18px] shrink-0 items-center gap-1 rounded-my-sm px-1 text-my-xs',
+        'flex h-[18px] shrink-0 items-center gap-1 rounded-my-base px-1 text-my-xs',
         allDone ? 'bg-my-success-subtle text-my-success-text' : 'bg-my-layer-2 text-my-tertiary'
       )}
     >
@@ -1180,7 +1180,7 @@ function SpreadsheetLayout({ issues, ident }: { issues: Issue[]; ident: string }
         ))}
       </div>
       {selected.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-2 px-3 py-2 shadow-[var(--my-shadow-overlay-200)]">
+        <div className="fixed bottom-8 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-my-base border border-my-line bg-my-layer-2 px-3 py-2 shadow-[var(--my-shadow-overlay-200)]">
           <span className="text-my-sm text-my-secondary">已选 {selected.length} 项</span>
           {/* 批量状态不提供：生命周期状态由 Trellis 工作流逐任务管理（F01 同源），批量写入本就是缓议的受控命令 */}
           <Dropdown
@@ -1429,7 +1429,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
                     key={issue.id}
                     type="button"
                     onClick={() => openIssue(issue.id)}
-                    className="flex h-[20px] w-full items-center gap-1 rounded-my-sm border border-my-line bg-my-layer-2 px-1 text-left hover:bg-my-layer-1-hover"
+                    className="flex h-[20px] w-full items-center gap-1 rounded-my-base border border-my-line bg-my-layer-2 px-1 text-left hover:bg-my-layer-1-hover"
                   >
                     {st && <StateGroupIcon stateGroup={st.group} color={st.color} size={10} />}
                     <span className="min-w-0 truncate text-my-xs text-my-secondary">{issue.name}</span>
@@ -1747,7 +1747,7 @@ function WorkItemsPageInner(): JSX.Element {
                 <SlidersHorizontal size={13} />
                 筛选
                 {filterCount > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-my-sm bg-my-layer-3 px-1 text-my-2xs font-normal tabular-nums text-my-primary">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-my-base bg-my-layer-3 px-1 text-my-2xs font-normal tabular-nums text-my-primary">
                     {filterCount}
                   </span>
                 )}

@@ -64,7 +64,7 @@ function DiffBody({ result }: { result: DocumentDiffResult }): JSX.Element {
         <span className="rounded-my-full bg-my-danger-subtle px-2 py-0.5 text-my-danger-text">−{result.stats.removed}</span>
         <span className="font-sans text-my-xs text-my-tertiary">耗时 {result.elapsedMs}ms</span>
       </div>
-      <div className="overflow-x-auto rounded-my-lg border border-my-line">
+      <div className="overflow-x-auto rounded-my-base border border-my-line">
         {result.hunks.map((hunk, hi) => {
           const inlineSegments = inlineByHunk[hi]
           return (
@@ -169,7 +169,7 @@ export function DocumentDiffPanel({
     <div
       role="region"
       aria-label="文档版本对比"
-      className="flex min-h-0 flex-1 flex-col rounded-my-lg border border-my-line bg-my-layer-2"
+      className="flex min-h-0 flex-1 flex-col rounded-my-base border border-my-line bg-my-layer-2"
     >
       <div className="flex items-center gap-2 border-b border-my-line px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary">{baselineLabel}</span>

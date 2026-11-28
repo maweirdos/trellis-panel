@@ -83,12 +83,12 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTestCo
       setSaving(false)
     }
   }
-  return <Modal open onClose={close} ariaLabel={isNew ? '添加供应商' : `编辑供应商 ${provider.name}`}>
+  return <Modal open placement="center" onClose={close} ariaLabel={isNew ? '添加供应商' : `编辑供应商 ${provider.name}`}>
     <form className="my-modal-content model-config-editor" onSubmit={(event) => { event.preventDefault(); void save() }}>
       <div className="mb-5 flex items-center gap-3">
         <ProviderIdentity name={draft.name} local={draft.apiFormat === 'ollama'} />
-        <h2 className="min-w-0 flex-1 text-my-lg font-semibold text-my-primary">{isNew ? '添加供应商' : '编辑供应商'}</h2>
-        <Button variant="ghost" onClick={close} disabled={saving} aria-label="关闭供应商配置"><X size={17} /></Button>
+        <h2 className="min-w-0 flex-1 text-my-lg font-medium text-my-primary">{isNew ? '添加供应商' : '编辑供应商'}</h2>
+        <button type="button" className="my-icon-control" onClick={close} disabled={saving} aria-label="关闭供应商配置"><X size={17} /></button>
       </div>
       <fieldset disabled={saving} className="space-y-4">
         <div><label htmlFor="models-provider-name">名称</label><input id="models-provider-name" className="my-input" value={draft.name} onChange={(event) => patch({ name: event.target.value })} autoFocus required /></div>
@@ -101,7 +101,7 @@ export function ModelProviderEditor({ provider, isNew, onClose, onSave, onTestCo
         ]} /></div>
         <div>
           <div className="mb-1 flex items-center justify-between gap-2"><label htmlFor="models-api-key" className="mb-0">API 密钥</label>{provider.apiKeyEncrypted && !secret && !clearSecret && <span className="my-item-description">已加密保存 · 留空保留</span>}</div>
-          <div className="relative"><input id="models-api-key" type={showKey ? 'text' : 'password'} className="my-input pr-10" value={secret} onChange={(event) => { invalidateTest(); setSecret(event.target.value); if (event.target.value) setClearSecret(false) }} placeholder={provider.apiKeyEncrypted ? '输入新密钥以替换' : draft.apiFormat === 'ollama' ? '可选' : '输入 API 密钥'} autoComplete="new-password" spellCheck={false} /><button type="button" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? '隐藏 API 密钥' : '显示 API 密钥'} aria-pressed={showKey} className="absolute inset-y-0 right-0 flex items-center rounded-my-md px-3 text-my-tertiary hover:text-my-primary">{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+          <div className="relative"><input id="models-api-key" type={showKey ? 'text' : 'password'} className="my-input pr-10" value={secret} onChange={(event) => { invalidateTest(); setSecret(event.target.value); if (event.target.value) setClearSecret(false) }} placeholder={provider.apiKeyEncrypted ? '输入新密钥以替换' : draft.apiFormat === 'ollama' ? '可选' : '输入 API 密钥'} autoComplete="new-password" spellCheck={false} /><button type="button" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? '隐藏 API 密钥' : '显示 API 密钥'} aria-pressed={showKey} className="absolute inset-y-0 right-0 flex items-center rounded-my-base px-3 text-my-tertiary hover:text-my-primary">{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
           {provider.apiKeyEncrypted && <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             {clearSecret && <span role="status" className="text-my-xs text-my-danger-text">保存后将清除已保存密钥</span>}
             <Button variant="ghost" size="sm" disabled={saving} onClick={() => { invalidateTest(); setClearSecret((value) => !value); setSecret('') }}>{clearSecret ? '保留已保存密钥' : '清除已保存密钥'}</Button>
@@ -173,15 +173,15 @@ export function ModelItemEditor({
   }
 
   return (
-    <Modal open onClose={close} ariaLabel={isNew ? '添加模型' : `编辑模型 ${model.name || model.id}`}>
+    <Modal open placement="center" onClose={close} ariaLabel={isNew ? '添加模型' : `编辑模型 ${model.name || model.id}`}>
       <form className="my-modal-content model-detail-modal" onSubmit={(event) => { event.preventDefault(); void save() }}>
         <div className="model-detail-header">
           <span className={`model-brand-badge ${brandMeta.iconBg}`} aria-hidden="true">{brandMeta.icon}</span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-my-lg font-semibold text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2>
+            <h2 className="text-my-lg font-medium text-my-primary">{isNew ? '添加模型' : '编辑模型'}</h2>
             <p className="my-item-description">{providerName}</p>
           </div>
-          <Button variant="ghost" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></Button>
+          <button type="button" className="my-icon-control" disabled={saving} onClick={close} aria-label="关闭模型配置"><X size={17} /></button>
         </div>
 
         <fieldset disabled={saving} className="grid gap-4 sm:grid-cols-2">

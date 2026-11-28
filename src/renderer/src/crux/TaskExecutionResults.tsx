@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowLeft, BookOpen, FileText, RefreshCw, X } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ArrowLeft, BookOpen, ChevronRight, FileText, RefreshCw, X } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { CruxWorkspaceContext } from '@shared/crux-remote'
 import type { ProductTaskResults } from '@shared/product-task-entry'
 import type { ExecutionArtifactRef } from '@shared/team-execution-artifacts'
-import { Button, Modal } from '../my/ui'
+import { Button, DisclosureGrid, Modal } from '../my/ui'
+
+function ResultsDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex cursor-pointer items-center gap-1 text-left transition-colors hover:text-my-primary">
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { TeamMarkdown } from '../team/TeamMarkdown'
 import { useCrux } from './store'
 import { productTaskApi } from './development/ProductTaskEntry'
@@ -78,12 +89,12 @@ export function TaskExecutionResults({ task, refreshRevision = 0, onRead }: { ta
       <span className="min-w-0 flex-1"><span className="my-item-title break-words">{kindNames[item.kind] ?? item.title}</span><span className="my-item-description ml-2">{item.byteLength.toLocaleString()} B</span></span>
       <Button size="sm" variant="ghost" disabled={!source.available} onClick={() => void read(item.ref, kindNames[item.kind] ?? item.title, item.kind)}>阅读固定版本</Button>
     </div>)}
-    {value?.previous && <details className="text-my-xs text-my-secondary"><summary className="cursor-pointer">上次固定交付</summary><div className="mt-2 space-y-1">
+    {value?.previous && <ResultsDisclosure label="上次固定交付" className="text-my-xs text-my-secondary"><div className="mt-2 space-y-1">
       {value.previous.artifacts.map(item => <div key={item.ref.versionId} className="flex min-w-0 items-center gap-2"><FileText size={14} className="shrink-0 text-my-icon-secondary" /><span className="my-item-title min-w-0 flex-1 break-words">{kindNames[item.kind] ?? item.title}</span><Button size="sm" variant="ghost" disabled={!source.available} onClick={() => void read(item.ref, kindNames[item.kind] ?? item.title, item.kind)}>阅读上次固定版本</Button></div>)}
-    </div></details>}
+    </div></ResultsDisclosure>}
     {value?.sync?.error && <p role="status" className="break-words text-my-xs text-my-warning-text">{value.sync.error}</p>}
     {error && <p role="alert" className="break-words text-my-xs text-my-danger-text">{error}</p>}
-    {selected && source.available && <Modal open width={editingRule ? 1040 : 800} ariaLabel={editingRule ? '沉淀规范' : selected.title} onClose={() => { if (editingRule) backToResult(); else { reading.current++; setSelected(null); setLesson(null) } }}>
+    {selected && source.available && <Modal open placement="center" width={editingRule ? 1040 : 800} ariaLabel={editingRule ? '沉淀规范' : selected.title} onClose={() => { if (editingRule) backToResult(); else { reading.current++; setSelected(null); setLesson(null) } }}>
       <div ref={readerHeader} className="flex flex-wrap items-center gap-2 border-b border-my-line p-3">
         {editingRule && <Button size="sm" variant="ghost" onClick={backToResult}><ArrowLeft size={14} />返回成果</Button>}
         <h2 className="min-w-0 flex-1 text-my-title font-medium">{editingRule ? '沉淀规范' : selected.title}</h2>
@@ -92,14 +103,14 @@ export function TaskExecutionResults({ task, refreshRevision = 0, onRead }: { ta
           setLesson({ task: { instanceId: context.instanceId, projectId: context.projectId, spaceId: task.spaceId, taskId: task.id, taskCreatedAt: task.createdAt }, artifact: selected.ref, title: `${task.title} · ${selected.title}` })
           setEditingRule(true)
         }}><BookOpen size={14} />沉淀规范</Button>}
-        <Button size="sm" variant="ghost" aria-label={editingRule ? '返回成果阅读' : '关闭成果'} onClick={() => { if (editingRule) backToResult(); else { reading.current++; setSelected(null); setLesson(null) } }}><X size={16} /></Button>
+        <button type="button" className="my-icon-control" aria-label={editingRule ? '返回成果阅读' : '关闭成果'} onClick={() => { if (editingRule) backToResult(); else { reading.current++; setSelected(null); setLesson(null) } }}><X size={16} /></button>
       </div>
       <div className="my-scrollbar max-h-[70vh] overflow-y-auto p-4">
       <div hidden={editingRule}>
         {selected.error ? <p role="alert" className="text-my-sm text-my-danger-text">{selected.error}</p> : selected.text === undefined ? <p role="status" className="text-my-sm text-my-secondary">正在读取固定版本…</p>
           : ['selected-file', 'source-patch'].includes(selected.kind) ? <pre className="whitespace-pre-wrap break-words font-mono text-my-sm text-my-primary">{selected.text}</pre>
             : <TeamMarkdown text={selected.text} identity={`${context.key}:${task.id}:${selected.ref.versionId}`} />}
-        <details className="mt-4 text-my-xs text-my-secondary"><summary className="cursor-pointer">版本详情</summary><dl className="mt-2 space-y-1 break-all"><div>执行：{selected.ref.executionId}</div><div>版本：{selected.ref.versionId}</div><div>摘要：{selected.ref.bodyDigest}</div></dl></details>
+        <ResultsDisclosure label="版本详情" className="mt-4 text-my-xs text-my-secondary"><dl className="mt-2 space-y-1 break-all"><div>执行：{selected.ref.executionId}</div><div>版本：{selected.ref.versionId}</div><div>摘要：{selected.ref.bodyDigest}</div></dl></ResultsDisclosure>
       </div>
       {lesson && snapshot && governance && context.actorId && <div hidden={!editingRule}>
         <TaskLessonEditor key={`${lesson.task.taskCreatedAt}:${lesson.artifact.versionId}`} snapshot={snapshot} context={context} task={task} lesson={lesson} active={editingRule && source.canWrite()} />

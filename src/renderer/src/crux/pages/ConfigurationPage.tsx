@@ -122,9 +122,9 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
                                 <span className="text-my-2xs tabular-nums text-my-tertiary">{taskCount} 条任务 · {typeCount} 种类型使用</span>
                               </div>
                               <Tooltip label={taskCount > 0 ? '此状态正在使用' : `删除 ${statusDisplayName(status)}`}>
-                                <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure || taskCount > 0} aria-label={`删除 ${statusDisplayName(status)}`} onClick={() => void remove(status.id, statusDisplayName(status))}>
+                                <button type="button" className="my-icon-control" disabled={busy || !canConfigure || taskCount > 0} aria-label={`删除 ${statusDisplayName(status)}`} onClick={() => void remove(status.id, statusDisplayName(status))}>
                                   <Trash2 size={14} />
-                                </Button>
+                                </button>
                               </Tooltip>
                             </li>
                           )
@@ -170,9 +170,9 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
                               <Pencil size={13} />编辑工作流
                             </Button>
                             <Tooltip label={type.isDefault ? '默认类型不能删除' : inUse ? '此类型正在使用' : `删除 ${type.name}`}>
-                              <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure || type.isDefault || inUse} aria-label={`删除 ${type.name}`} onClick={() => void remove(type.id, type.name)}>
+                              <button type="button" className="my-icon-control" disabled={busy || !canConfigure || type.isDefault || inUse} aria-label={`删除 ${type.name}`} onClick={() => void remove(type.id, type.name)}>
                                 <Trash2 size={14} />
-                              </Button>
+                              </button>
                             </Tooltip>
                           </div>
                         </td>
@@ -183,7 +183,7 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
                     <tr key={label.id} className="border-b border-my-line transition-colors duration-100 last:border-b-0 hover:bg-my-layer-1-hover">
                       <td className="px-3 py-2"><span className={label.archived ? 'opacity-50' : undefined}><LabelChip label={label} /></span>{label.archived && <span className="ml-2 text-my-xs text-my-tertiary">已归档</span>}</td>
                       <td className="px-3 py-2 text-my-secondary">{label.spaceId ? space.name : '组织'}</td>
-                      <td className="px-3 py-2"><div className="flex justify-end"><Tooltip label={label.archived ? '标签已归档' : `归档 ${label.name}`}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure || label.archived} aria-label={`归档 ${label.name}`} onClick={() => void remove(label.id, label.name)}><Archive size={14} /></Button></Tooltip></div></td>
+                      <td className="px-3 py-2"><div className="flex justify-end"><Tooltip label={label.archived ? '标签已归档' : `归档 ${label.name}`}><button type="button" className="my-icon-control" disabled={busy || !canConfigure || label.archived} aria-label={`归档 ${label.name}`} onClick={() => void remove(label.id, label.name)}><Archive size={14} /></button></Tooltip></div></td>
                     </tr>
                   ))}
                 </tbody>

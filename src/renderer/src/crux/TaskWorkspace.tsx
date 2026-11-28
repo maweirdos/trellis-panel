@@ -307,16 +307,16 @@ function TaskWorkspaceSource({ scope, layout: initialLayout = 'list', iterationI
           <div className="flex flex-wrap items-center gap-1.5">
             {task.outputReview && <TaskOutputReviewBoardBadge task={task} />}
             {activeRun ? (
-              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-info-subtle px-1.5 py-0.5 text-my-2xs text-my-info-text">
+              <span className="inline-flex items-center gap-1 rounded-my-base bg-my-info-subtle px-1.5 py-0.5 text-my-2xs text-my-info-text">
                 <Bot size={11} />
                 {activeRun.executorName} · {RUN_STATUS_META[activeRun.status].label}
               </span>
             ) : queuedCount > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+              <span className="inline-flex items-center gap-1 rounded-my-base bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-secondary">
                 <Bot size={11} />排队 {queuedCount}
               </span>
             ) : task.executor ? (
-              <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-tertiary">
+              <span className="inline-flex items-center gap-1 rounded-my-base bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-tertiary">
                 <Bot size={11} />{task.executor.name}
               </span>
             ) : null}
