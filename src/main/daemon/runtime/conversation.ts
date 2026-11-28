@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { openConversationDatabase } from '../../services/conversation/persistence/database'
 import { ConversationProjectionStore } from '../../services/conversation/persistence/ProjectionStore'
+import { ConversationSearchIndex } from '../../services/conversation/persistence/SearchIndex'
 import { ConversationAttachmentStore } from '../../services/conversation/attachments'
 import { conversationAttachmentDraftScope, prepareConversationAttachmentClaim } from '../../services/conversation/attachments/claims'
 import { prepareConversationKnowledge } from '../../services/conversation/attachments/knowledge'
@@ -40,6 +41,8 @@ import { RunFinalizationService } from '../../services/conversation/orchestratio
 import { UsageLimitRecoveryWorker } from '../../services/conversation/orchestration/UsageLimitRecoveryWorker'
 import { IdleCompactionService } from '../../services/conversation/orchestration/IdleCompactionService'
 import { CheckpointService } from '../../services/conversation/orchestration/CheckpointService'
+import { ThreadSearchService, type ThreadInlineMatch } from '../../services/conversation/orchestration/ThreadSearchService'
+import { ThreadTitleService } from '../../services/conversation/orchestration/ThreadTitleService'
 import {
   RESTART_CONTINUATION_EFFECT_TYPE,
   buildManualContinuationText,
@@ -68,7 +71,13 @@ import type { WorkcopyUseRegistry } from '../../services/workcopy-use/registry'
 import { resolveWorkcopy } from '../../services/workcopy-use/identity'
 import { prepareDelegatedWorktree, recoverDelegatedWorktreePreparation, verifyDelegatedWorktree } from '../../services/conversation/orchestration/DelegatedWorktree'
 import { pathKey } from '../../services/task-conversations/lib/paths'
-import type { ConversationAuthority, ConversationCommandState, ConversationEventPage, ConversationRunEvidence } from '../../../shared/conversation/desktop'
+import type {
+  ConversationAuthority,
+  ConversationCommandState,
+  ConversationEventPage,
+  ConversationRunEvidence,
+  ConversationSearchMatch,
+} from '../../../shared/conversation/desktop'
 import type {
   ConversationAttachmentBytesInput, ConversationAttachmentContent, ConversationAttachmentDraftTarget,
   ConversationAttachmentLocator, ConversationAttachmentReferences,
@@ -160,6 +169,9 @@ export class ConversationRuntime {
   private readonly idleCompaction: IdleCompactionService<CommandAuthority>
   private readonly finalization: RunFinalizationService<ActiveTurn, CommandAuthority>
   private readonly checkpoints: CheckpointService
+  private readonly searchIndex: ConversationSearchIndex
+  private readonly searchService: ThreadSearchService
+  private readonly titleService: ThreadTitleService
   private readonly storageId: string
   private readonly deadlines
   private readonly dispatches = new Map<string, { root: string; work: Promise<void> }>()
@@ -293,12 +305,19 @@ export class ConversationRuntime {
         offerDelegatedCompletionDelivery: (threadId, parentRunId) => this.offerDelegatedCompletionDelivery(threadId, parentRunId),
       },
       (threadId, authority) => this.idleCompaction.schedule(threadId, authority),
+      threadId => {
+        if (!this.closing) this.titleService.maybeAutoRefineAfterFirstTurn(threadId)
+      },
     )
     this.checkpoints = new CheckpointService(
       this.projections,
       this.eventSink,
       () => [...this.activeTurns.values()].map(turn => ({ threadId: turn.row.thread_id, cwd: turn.executionRoot })),
     )
+    this.searchIndex = new ConversationSearchIndex(this.database)
+    this.searchIndex.ensureBackfilled()
+    this.searchService = new ThreadSearchService(this.database, this.searchIndex)
+    this.titleService = new ThreadTitleService(this.database, this.eventSink, this.commands, this.searchIndex)
     this.worker.reconcile('startup', { continueAfterRestart: this.shouldContinueAfterRestart() })
     this.relations.reconcileAfterRecovery(this.eventSink)
     this.usageLimitRecovery.reconcileOnStartup()
@@ -500,6 +519,13 @@ export class ConversationRuntime {
     if (!accepted.committed) return this.commandState(accepted.receipt)
     const authority = { ...input, assertCurrent: input.assertAuthorityCurrent ?? input.assertCurrent }
     if (input.artifactMcp) this.threadArtifactMcps.set(accepted.receipt.threadId, input.artifactMcp)
+    this.searchIndex.upsertMessage({
+      threadId: accepted.receipt.threadId,
+      messageId: accepted.receipt.messageId,
+      role: 'user',
+      title: input.title?.trim() || input.text.trim().slice(0, 80) || '新对话',
+      body: input.text,
+    })
     this.authorizations.set(input.commandId, authority)
     this.scheduleNext(accepted.receipt.threadId, authority)
     return { ...accepted.receipt, dispatch: 'accepted' }
@@ -526,7 +552,9 @@ export class ConversationRuntime {
       case 'thread.rename': {
         const previous = this.relations.read(command.threadId).parent
         const change = previous && this.relations.update({ ...previous, title: command.title, updatedAt: new Date().toISOString() })
-        return this.commands.changeThread(command, authority, undefined, change?.hostEvents, change?.apply)
+        const receipt = this.commands.changeThread(command, authority, undefined, change?.hostEvents, change?.apply)
+        this.searchIndex.updateThreadTitle(command.threadId, command.title)
+        return receipt
       }
       case 'thread.pin':
       case 'thread.archive':
@@ -535,6 +563,28 @@ export class ConversationRuntime {
           this.idleCompaction.cancel(command.threadId)
         }
         return this.commands.changeThread(command, authority)
+      case 'thread.title.regenerate': {
+        if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '仅可在未归档的个人会话中重新生成标题。')
+        }
+        return this.titleService.regenerateTitle(command, authority)
+      }
+      case 'thread.visit':
+        return this.commands.visitThread(command, authority, this.eventSink.latestSequence(command.threadId))
+      case 'thread.mark-unread':
+        return this.commands.markThreadUnread(command, authority)
+      case 'thread.tag.set': {
+        if (restrictedRelation || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '当前会话不支持更新标签。')
+        }
+        return this.commands.setThreadTags(command, authority)
+      }
+      case 'thread.snooze': {
+        if (authority.binding.kind !== 'personal' || restrictedRelation || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '仅可在未归档的个人会话中设置置后提醒。')
+        }
+        return this.commands.snoozeThread(command, authority)
+      }
       case 'thread.fork': {
         if (this.commands.isArchived(command.threadId) || authority.binding.kind === 'planning' ||
           authority.binding.kind === 'task' && !this.isOrdinaryTask(authority)) {
@@ -623,7 +673,21 @@ export class ConversationRuntime {
           throw new DaemonError('E_BUSY', '父会话正在执行回合，请等待完成后再回并子会话结论。')
         }
         this.idleCompaction.cancel(command.threadId)
-        return this.commands.commit(command, authority, this.relations.planMergeBack(command, authority))
+        const mergePlan = this.relations.planMergeBack(command, authority)
+        const receipt = this.commands.commit(command, authority, mergePlan)
+        const mergedMsg = mergePlan.events[0]?.payload as { id?: string; role?: string; text?: string } | undefined
+        const threadRow = this.projections.readThreadPayload(command.threadId)
+        const threadTitle = threadRow ? String((JSON.parse(threadRow.payload_json) as { title?: string }).title ?? '') : ''
+        if (mergedMsg?.id && mergedMsg.text) {
+          this.searchIndex.upsertMessage({
+            threadId: command.threadId,
+            messageId: mergedMsg.id,
+            role: mergedMsg.role ?? 'assistant',
+            title: threadTitle,
+            body: mergedMsg.text,
+          })
+        }
+        return receipt
       }
       case 'message.dispatch': {
         this.usageLimitRecovery.cancel(command.threadId, '用户已手动发送新消息。')
@@ -663,6 +727,15 @@ export class ConversationRuntime {
         }
         const portableHistory = command.references?.map(reference => this.contextHandoff.capture(reference, authority))
         const receipt = this.commands.appendMessage(command, authority, selection, undefined, registration.promptAttachments, portableHistory, this.relations)
+        const threadTitle = this.projections.readThreadPayload(command.threadId)
+        const decodedTitle = threadTitle ? String((JSON.parse(threadTitle.payload_json) as { title?: string }).title ?? '') : ''
+        this.searchIndex.upsertMessage({
+          threadId: command.threadId,
+          messageId: command.messageId,
+          role: 'user',
+          title: decodedTitle,
+          body: command.text,
+        })
         this.resolvePendingAsyncUserInputs(command.threadId)
         this.authorizations.set(command.commandId, authority)
         this.scheduleNext(command.threadId, authority)
@@ -775,6 +848,15 @@ export class ConversationRuntime {
             occurredAt => { this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, occurredAt) },
             keptHistory && keptHistory.messages.length > 0 ? [keptHistory] : undefined,
           )
+          const editThreadRow = this.projections.readThreadPayload(command.threadId)
+          const editTitle = editThreadRow ? String((JSON.parse(editThreadRow.payload_json) as { title?: string }).title ?? '') : ''
+          this.searchIndex.upsertMessage({
+            threadId: command.threadId,
+            messageId: command.messageId,
+            role: 'user',
+            title: editTitle,
+            body: command.text,
+          })
           this.sessions.loadedThreads.delete(command.threadId)
           this.resolvePendingAsyncUserInputs(command.threadId)
           this.authorizations.set(command.commandId, authority)
@@ -969,6 +1051,7 @@ export class ConversationRuntime {
     let cleanup = this.dispatches.get(commandId)
     if (!cleanup) {
       const work = this.cleanDeletedThread(threadId, commandId, authority)
+        .then(() => { this.searchIndex.removeThread(threadId) })
         .catch(() => {})
         .finally(() => this.dispatches.delete(commandId))
       cleanup = { root: authority.cwd, work }
@@ -2341,6 +2424,22 @@ export class ConversationRuntime {
       disposedCompletion?.apply()
       if (turn) this.settleStopFromTerminal(turn, settled)
     })
+    if (outputs.length > 0) {
+      const threadRow = this.projections.readThreadPayload(threadId)
+      const threadTitle = threadRow ? String((JSON.parse(threadRow.payload_json) as { title?: string }).title ?? '') : ''
+      for (const output of outputs) {
+        const msg = JSON.parse(output.payload_json) as { id?: string; role?: string; text?: string }
+        if (msg.id && msg.text) {
+          this.searchIndex.upsertMessage({
+            threadId,
+            messageId: msg.id,
+            role: msg.role ?? 'assistant',
+            title: threadTitle,
+            body: msg.text,
+          })
+        }
+      }
+    }
     this.finalization.onTurnSettled({
       turn,
       threadId,
@@ -2790,6 +2889,22 @@ export class ConversationRuntime {
   listThreads(ownerId: string, spaceId: string, projectId: string, filter?: { archived?: boolean; query?: string }) {
     this.ports.assertOwner()
     return this.intake.listThreads(ownerId, spaceId, projectId, filter)
+  }
+
+  searchThreads(
+    ownerId: string,
+    spaceId: string,
+    projectId: string,
+    filter: { readonly query: string; readonly archived?: boolean; readonly limit?: number },
+  ): readonly ConversationSearchMatch[] {
+    this.ports.assertOwner()
+    return this.searchService.searchThreads(ownerId, spaceId, projectId, filter)
+  }
+
+  findInThread(threadId: string, query: string, authority: ConversationAuthority): readonly ThreadInlineMatch[] {
+    this.ports.assertOwner()
+    if (!this.commands.hasThread(threadId, authority)) return []
+    return this.searchService.findInThread(threadId, query)
   }
 
   readThread(threadId: string, ownerId: string, spaceId: string, projectId: string): ConversationThreadSnapshot | null {

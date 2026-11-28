@@ -1,26 +1,28 @@
 import { app, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { z } from 'zod'
 import { workspaceGrantSchema } from '../../shared/daemon'
 import { desktopConversationTaskFields, runtimeBodies } from '../../shared/daemon-runtime'
 import { ipcInvoke } from '../../shared/ipc-channels'
 import { ipcFail, IpcErrorCode, noProject, type IpcFail } from '../../shared/ipc-errors'
 import { modelSelectionIdSchema } from '../../shared/model-selection'
+import type { ConversationAggregatedSearchMatch } from '../../shared/conversation/desktop'
 import { ConversationAttachmentBytesInputSchema } from '../../shared/conversation/attachments'
 import { conversationKnowledgeReferenceSchema } from '../../shared/conversation/knowledge-reference'
 import { conversationTaskLocatorSchema, sameConversationTaskLocator, type ConversationTaskLocator } from '../../shared/conversation/task-scope'
 import type { NativeConversationTask } from '../../shared/conversation/task-native'
 import { DaemonError } from '../daemon/errors'
 import { getProjectGeneration, getProjectRoot } from '../state'
+import { getSettings } from '../services/store'
 import {
   applyConversationCommand, createConversationThread, describeConversationDriver, listConversationDrivers, listConversationModels,
   listConversationThreads, readConversationCommand, readConversationEventDelta, readConversationEvents, readConversationHistory,
   readConversationThread, readConversationThreadCommand, listConversationAttachments, readConversationAttachment,
-  readConversationTaskScope, releaseConversationAttachment, stageConversationAttachment,
+  readConversationTaskScope, releaseConversationAttachment, searchConversationThreads, stageConversationAttachment,
 } from '../services/daemon-client/conversation'
 import { readHostConversationAttachmentFile } from '../services/conversation/attachments'
-import { captureDesktopConversationTask } from '../services/conversation/task-scope'
+import { captureDesktopConversationTask, conversationTaskDirectoryName } from '../services/conversation/task-scope'
 import { checkedDirectory, directoryIdentity, ownedDirectory, pathKey } from '../services/private-conversations/files'
 import { captureAppWindowDocument } from '../services/window-navigation'
 import { registerProjectWorkbenchIpc } from './project-workbench'
@@ -43,6 +45,31 @@ const threadCommandSchema = runtimeBodies['runtime.conversationThreadCommand'].e
 const deltaSchema = runtimeBodies['runtime.conversationEventDelta'].extend(desktopTaskScope)
 const historySchema = runtimeBodies['runtime.conversationHistory'].extend(desktopTaskScope)
 const listSchema = runtimeBodies['runtime.conversationList'].extend(desktopConversationTaskFields)
+const searchSchema = runtimeBodies['runtime.conversationSearch'].extend(desktopTaskScope)
+const searchAllSchema = z.object({
+  query: z.string().trim().min(1).max(160),
+  archived: z.boolean().optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict()
+const MAX_RECENT_AGGREGATE_ROOTS = 24
+
+function isInsideTaskWorkspace(userData: string, candidate: string): boolean {
+  const taskRoot = pathKey(join(userData, conversationTaskDirectoryName))
+  const rel = relative(taskRoot, pathKey(candidate))
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+}
+
+function threadTimestampMs(value: unknown): number {
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (value && typeof value === 'object' && 'epochMilliseconds' in value) {
+    const ms = Number((value as { epochMilliseconds: unknown }).epochMilliseconds)
+    return Number.isFinite(ms) ? ms : 0
+  }
+  return 0
+}
 const describeDriverSchema = runtimeBodies['runtime.conversationDescribeDriver'].extend(desktopTaskScope)
 const attachmentTarget = runtimeBodies['runtime.conversationAttachmentList'].extend(desktopTaskScope)
 const attachmentStage = z.union([
@@ -218,6 +245,105 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
   }
   const invalid = (): IpcFail => ipcFail(IpcErrorCode.InvalidArg, '会话请求参数无效。', { outcome: 'not-admitted' })
   const changed = (): IpcFail => ipcFail(IpcErrorCode.Conflict, '页面所属工程已变化，请重新打开会话。', { outcome: 'not-admitted' })
+
+  const collectAggregateTargets = (userData: string): Array<{ root: string; source: 'work' | 'code'; projectName: string; identity: string }> => {
+    const targets: Array<{ root: string; source: 'work' | 'code'; projectName: string; identity: string }> = []
+    const seenKeys = new Set<string>()
+    const addTarget = (candidate: string, source: 'work' | 'code', projectName?: string): void => {
+      if (!candidate || (source === 'code' && isInsideTaskWorkspace(userData, candidate))) return
+      try {
+        const verified = rootSchema.parse(checkedDirectory(rootSchema.parse(candidate)))
+        const key = pathKey(verified)
+        if (seenKeys.has(key)) return
+        const identity = directoryIdentity(verified)
+        seenKeys.add(key)
+        targets.push({
+          root: verified,
+          source,
+          projectName: projectName ?? (basename(verified) || verified),
+          identity,
+        })
+      } catch {
+        /* 跳过已删除或不可访问的历史目录 */
+      }
+    }
+    try {
+      addTarget(ownedDirectory(userData, workDirectoryName), 'work', '托管目录')
+    } catch {
+      /* 托管目录不可用时继续尝试其余目录 */
+    }
+    const currentProject = getProjectRoot()
+    if (currentProject) addTarget(currentProject, 'code')
+    for (const recent of (getSettings().recentProjects ?? []).slice(0, MAX_RECENT_AGGREGATE_ROOTS)) {
+      addTarget(recent, 'code')
+    }
+    return targets
+  }
+
+  register(ipcInvoke.conversation.search, (scope, [input, ...extra]) => {
+    const parsed = searchSchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => searchConversationThreads(scope.root, withTask(scope, body), scope.isCurrent))
+  })
+
+  handle(ipcInvoke.conversation.searchAll, async (event, rawInput: unknown, ...extra: unknown[]) => {
+    const window = getMain()
+    const isDocumentCurrent = window && captureAppWindowDocument(window, event)
+    if (!window || !isDocumentCurrent) return ipcFail(IpcErrorCode.Denied, '请从应用主页面访问会话。', { outcome: 'not-admitted' })
+    const parsed = searchAllSchema.safeParse(rawInput ?? {})
+    if (extra.length || !parsed.success) return invalid()
+    const userData = app.getPath('userData')
+    const sameDocument = (): boolean => getMain() === window && isDocumentCurrent() && app.getPath('userData') === userData
+
+    const targets = collectAggregateTargets(userData)
+    if (targets.length === 0) return { ok: true as const, matches: [] }
+
+    const results = await Promise.allSettled(
+      targets.map(async (target) => {
+        const isCurrent = (): boolean => {
+          if (!sameDocument()) return false
+          try { return directoryIdentity(target.root) === target.identity } catch { return false }
+        }
+        const res = await searchConversationThreads(target.root, parsed.data, isCurrent)
+        return { target, res }
+      }),
+    )
+
+    if (!sameDocument()) return changed()
+    const deduped = new Map<string, ConversationAggregatedSearchMatch>()
+    let firstFailure: IpcFail | null = null
+    let succeededCount = 0
+
+    for (const settled of results) {
+      if (settled.status !== 'fulfilled') continue
+      const { target, res } = settled.value
+      if (!res.ok) {
+        if (!firstFailure) firstFailure = res
+        continue
+      }
+      succeededCount += 1
+      for (const match of res.matches) {
+        const existing = deduped.get(match.threadId)
+        if (!existing || (existing.matchedField === 'title' && match.matchedField === 'body')) {
+          deduped.set(match.threadId, {
+            ...match,
+            cwd: target.root,
+            source: target.source,
+            projectName: target.projectName,
+          })
+        }
+      }
+    }
+
+    if (succeededCount === 0 && firstFailure) return firstFailure
+    const limit = parsed.data.limit ?? 25
+    const matches = [...deduped.values()]
+      .sort((a, b) => threadTimestampMs(b.updatedAt) - threadTimestampMs(a.updatedAt))
+      .slice(0, limit)
+    return { ok: true as const, matches }
+  })
 
   register(ipcInvoke.conversation.models, (scope, [cwd, task, ...extra]) => {
     const parsed = conversationTaskLocatorSchema.optional().safeParse(task)

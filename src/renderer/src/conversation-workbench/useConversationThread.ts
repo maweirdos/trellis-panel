@@ -191,6 +191,11 @@ export interface ConversationThreadController {
     readonly summary?: string
     readonly messageIds?: readonly string[]
   }) => Promise<ConversationApplyResult>
+  readonly markVisited: (sequence?: number) => Promise<ConversationApplyResult>
+  readonly markUnread: () => Promise<ConversationApplyResult>
+  readonly regenerateTitle: () => Promise<ConversationApplyResult>
+  readonly setTags: (tags: readonly string[]) => Promise<ConversationApplyResult>
+  readonly snoozeThread: (snoozedUntil: string | null) => Promise<ConversationApplyResult>
   readonly resume: (input?: {
     readonly sourceRunId: string
     readonly instanceId: string
@@ -253,6 +258,11 @@ function commandAction(command: ConversationThreadCommand): string {
     case 'message.edit-and-rerun': return 'message.edit-and-rerun'
     case 'provider.switch': return 'provider.switch'
     case 'thread.merge_back': return 'thread.merge_back'
+    case 'thread.visit': return 'thread.visit'
+    case 'thread.mark-unread': return 'thread.mark-unread'
+    case 'thread.title.regenerate': return 'thread.title.regenerate'
+    case 'thread.tag.set': return 'thread.tag.set'
+    case 'thread.snooze': return 'thread.snooze'
     case 'runtime-request.respond': return `respond:${command.requestId}:${command.generation}`
     default: return `command:${command.commandId}`
   }
@@ -763,6 +773,81 @@ export function useConversationThread(
     [applyRemembered, reload, threadId],
   )
 
+  const markVisited = useCallback(
+    (sequence?: number) =>
+      threadId
+        ? applyRemembered('thread.visit', () => ({
+          type: 'thread.visit',
+          threadId,
+          ...(sequence !== undefined ? { sequence } : {}),
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const markUnread = useCallback(
+    () =>
+      threadId
+        ? applyRemembered('thread.mark-unread', () => ({
+          type: 'thread.mark-unread',
+          threadId,
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
+  const regenerateTitle = useCallback(
+    () =>
+      threadId
+        ? applyRemembered('thread.title.regenerate', () => ({
+          type: 'thread.title.regenerate',
+          threadId,
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
+  const setTags = useCallback(
+    (tags: readonly string[]) =>
+      threadId
+        ? applyRemembered('thread.tag.set', () => ({
+          type: 'thread.tag.set',
+          threadId,
+          tags: [...tags],
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
+  const snoozeThread = useCallback(
+    (snoozedUntil: string | null) =>
+      threadId
+        ? applyRemembered('thread.snooze', () => ({
+          type: 'thread.snooze',
+          threadId,
+          snoozedUntil,
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
   const resume = useCallback(
     (input?: {
       readonly sourceRunId: string
@@ -878,12 +963,14 @@ export function useConversationThread(
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
       rollbackCheckpoint, editAndRerun, switchProvider, mergeBackThread,
+      markVisited, markUnread, regenerateTitle, setTags, snoozeThread,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     }),
     [
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
       rollbackCheckpoint, editAndRerun, switchProvider, mergeBackThread,
+      markVisited, markUnread, regenerateTitle, setTags, snoozeThread,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     ],
   )

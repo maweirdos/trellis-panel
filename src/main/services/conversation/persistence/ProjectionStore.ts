@@ -523,6 +523,10 @@ export class ConversationProjectionStore {
         WHERE thread_id = ? AND node_id IN (${placeholders})`)
         .all(threadId, ...removedRunIds) as Array<{ runtime_request_id: string }>
       const requestIds = requestRows.map(row => row.runtime_request_id)
+      const messageRows = this.database.prepare(`SELECT message_id FROM conversation_v2_projection_messages
+        WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .all(threadId, ...removedRunIds) as Array<{ message_id: string }>
+      const removedMessageIds = messageRows.map(row => row.message_id)
 
       if (requestIds.length > 0) {
         const reqPh = requestIds.map(() => '?').join(',')
@@ -542,6 +546,14 @@ export class ConversationProjectionStore {
         .run(threadId, ...removedRunIds)
       this.database.prepare(`DELETE FROM conversation_v2_projection_turn_items WHERE thread_id = ? AND run_id IN (${placeholders})`)
         .run(threadId, ...removedRunIds)
+      if (removedMessageIds.length > 0) {
+        try {
+          const msgPh = removedMessageIds.map(() => '?').join(',')
+          this.database.prepare(`DELETE FROM conversation_v2_message_fts WHERE message_id IN (${msgPh})`).run(...removedMessageIds)
+        } catch {
+          // 若当前数据库未启用 FTS5，跳过索引清理
+        }
+      }
       this.database.prepare(`DELETE FROM conversation_v2_projection_messages WHERE thread_id = ? AND run_id IN (${placeholders})`)
         .run(threadId, ...removedRunIds)
       this.database.prepare(`DELETE FROM conversation_v2_projection_plans WHERE thread_id = ? AND run_id IN (${placeholders})`)

@@ -55,9 +55,10 @@ import { ConversationQuickSearchModal } from './ConversationQuickSearchModal'
 import { ConversationRelations, ConversationSubagentBar } from './ConversationRelations'
 import { ConversationRightPanel, useNarrowConversationPanel } from './ConversationRightPanel'
 import { ConversationRuntimeRequests } from './ConversationRuntimeRequests'
-import { ConversationSidebarList } from './ConversationSidebarList'
+import { ConversationSidebarList, isThreadUnread, visibleThreadTags, type ConversationSidebarStatusFilter } from './ConversationSidebarList'
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
+import { ThreadFindBar } from './ThreadFindBar'
 import { useConversationNavigation } from './conversation-navigation-store'
 import { conversationArtifactSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
@@ -286,6 +287,13 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const writable = interactive && hasIpc && taskScope?.canSend !== false
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<ConversationSidebarStatusFilter>('all')
+  const [threadFindOpen, setThreadFindOpen] = useState(false)
+  const [threadFindQuery, setThreadFindQuery] = useState('')
+  const [threadFindIndex, setThreadFindIndex] = useState(0)
+  const [scrollToRowRequest, setScrollToRowRequest] = useState<{ readonly rowId: string; readonly nonce: number } | null>(null)
+  const pendingJumpFindRef = useRef<{ readonly threadId: string; readonly query: string } | null>(null)
+  const lastVisitedMarkRef = useRef<string | null>(null)
   const groupMode = useConversationNavigation((state) => state.groupMode)
   const setGroupMode = useConversationNavigation((state) => state.setGroupMode)
   const scopeFilter = useConversationNavigation((state) => state.scopeFilter)
@@ -593,6 +601,19 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setQueueEdit(undefined)
     setRollbackDialog(undefined)
     setEditRerunDialog(undefined)
+    const pendingFind = pendingJumpFindRef.current
+    if (pendingFind && next?.threadId === pendingFind.threadId) {
+      pendingJumpFindRef.current = null
+      setThreadFindQuery(pendingFind.query)
+      setThreadFindIndex(0)
+      setThreadFindOpen(true)
+    } else {
+      pendingJumpFindRef.current = null
+      setThreadFindOpen(false)
+      setThreadFindQuery('')
+      setThreadFindIndex(0)
+      setScrollToRowRequest(null)
+    }
     setSidebarOpen(false)
   }
 
@@ -984,6 +1005,53 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   for (const message of optimisticMessages) {
     rows.push({ kind: 'message', id: message.id, message: { ...message, runId: null, streaming: false } })
   }
+  const normalizedFindQuery = threadFindOpen ? threadFindQuery.trim().toLowerCase() : ''
+  const matchedFindRowIds = useMemo(() => {
+    if (!normalizedFindQuery) return [] as string[]
+    const matchesText = (row: ConversationTimelineRow): string => {
+      if (row.kind === 'message') return row.message.text
+      if (row.kind === 'reasoning') return row.text
+      if (row.kind === 'plan') {
+        return row.item.type === 'proposed_plan'
+          ? row.item.markdown
+          : row.item.steps.map(step => step.text).join('\n')
+      }
+      if (row.kind === 'work') return `${row.text} ${row.detail ?? ''} ${row.output ?? ''}`
+      if (row.kind === 'work-group') return row.entries.map(e => `${e.text} ${e.detail ?? ''} ${e.output ?? ''}`).join('\n')
+      if (row.kind === 'work-fold') return row.entries.map(e => e.kind === 'message' ? e.message.text : e.kind === 'work' ? `${e.text} ${e.detail ?? ''}` : '').join('\n')
+      return ''
+    }
+    return rows.filter(row => matchesText(row).toLowerCase().includes(normalizedFindQuery)).map(row => row.id)
+  }, [normalizedFindQuery, rows])
+  const matchedFindRowSet = useMemo(() => new Set(matchedFindRowIds), [matchedFindRowIds])
+  const clampedFindIndex = matchedFindRowIds.length ? Math.min(threadFindIndex, matchedFindRowIds.length - 1) : 0
+  const highlightedFindRowId = matchedFindRowIds[clampedFindIndex] ?? null
+
+  const jumpToFindIndex = useCallback((nextIndex: number) => {
+    if (!matchedFindRowIds.length) return
+    const wrapped = (nextIndex + matchedFindRowIds.length) % matchedFindRowIds.length
+    setThreadFindIndex(wrapped)
+    setScrollToRowRequest(prev => ({ rowId: matchedFindRowIds[wrapped], nonce: (prev?.nonce ?? 0) + 1 }))
+  }, [matchedFindRowIds])
+
+  useEffect(() => {
+    if (matchedFindRowIds.length && threadFindOpen && normalizedFindQuery) {
+      setScrollToRowRequest(prev => ({ rowId: matchedFindRowIds[0], nonce: (prev?.nonce ?? 0) + 1 }))
+    }
+  }, [matchedFindRowIds, normalizedFindQuery, threadFindOpen])
+
+  useEffect(() => {
+    if (!interactive || !writable || !projection || read?.error || taskScope || isDelegatedThread) return
+    if (!isThreadUnread(projection.thread)) return
+    const sequence = projection.cursor?.sequence ?? 0
+    const token = `${projection.thread.id}:${sequence}:${String(projection.thread.updatedAt)}`
+    if (lastVisitedMarkRef.current === token) return
+    lastVisitedMarkRef.current = token
+    void controller.markVisited(sequence).then(result => {
+      if (result.ok) setListRevision(value => value + 1)
+    })
+  }, [controller, interactive, isDelegatedThread, projection, read?.error, taskScope, writable])
+
   const runPending = Boolean(run && isActiveRun(run))
   const runningProvider = catalog.instances.find(item => item.instanceId === activeRun?.modelSelection.instanceId)?.driverKind
   const loadingThread = Boolean(target && !projection && !read?.error)
@@ -1201,8 +1269,27 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     return result.ok ? result.items : null
   }, [])
 
+  const searchContentAggregated = useCallback(async (searchQuery: string): Promise<readonly import('../../../shared/conversation/desktop').ConversationAggregatedSearchMatch[] | null> => {
+    if (!hasIpc) return null
+    if (aggregatedMode && typeof api.conversationSearchAll === 'function') {
+      const result = await api.conversationSearchAll({ query: searchQuery, limit: 25 })
+      return result.ok ? result.matches : null
+    }
+    if (typeof api.conversationSearch === 'function') {
+      const result = await api.conversationSearch(root, { query: searchQuery, limit: 25, ...(task && { task }) })
+      if (!result.ok) return null
+      return result.matches.map(match => ({
+        ...match,
+        cwd: root,
+        source: source === 'code' ? 'code' : 'work',
+        projectName: projectNameFromPath(root),
+      }))
+    }
+    return null
+  }, [aggregatedMode, root, source, task])
+
   useEffect(() => {
-    if (!aggregatedMode || !interactive) return
+    if (!interactive) return
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || event.altKey) return
       const mod = event.ctrlKey || event.metaKey
@@ -1210,18 +1297,30 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       const targetEl = event.target instanceof HTMLElement ? event.target : null
       const inEditor = Boolean(targetEl && (targetEl.isContentEditable || targetEl.closest('input, textarea, select, [role="textbox"]')))
       const key = event.key.toLowerCase()
-      if ((key === 'f' && !event.shiftKey && !inEditor) || (key === 'k' && event.shiftKey)) {
+      if (key === 'f' && !event.shiftKey) {
+        if (projection && !quickSearchOpen && !management && !queueEdit && !rollbackDialog && !editRerunDialog) {
+          event.preventDefault()
+          setThreadFindOpen(true)
+          return
+        }
+        if (aggregatedMode && !inEditor) {
+          event.preventDefault()
+          setQuickSearchOpen(true)
+          return
+        }
+      }
+      if (aggregatedMode && ((key === 'f' && event.shiftKey) || (key === 'k' && event.shiftKey))) {
         event.preventDefault()
         setQuickSearchOpen(true)
         return
       }
-      if (key === 'n' && !event.shiftKey && writable && !management && !queueEdit) {
+      if (aggregatedMode && key === 'n' && !event.shiftKey && writable && !management && !queueEdit) {
         event.preventDefault()
         setQuickSearchOpen(false)
         startNewConversation()
         return
       }
-      if (key === 'o' && !event.shiftKey && canOpenLocalProject && (quickSearchOpen || (!inEditor && !management && !queueEdit))) {
+      if (aggregatedMode && key === 'o' && !event.shiftKey && canOpenLocalProject && (quickSearchOpen || (!inEditor && !management && !queueEdit))) {
         event.preventDefault()
         setQuickSearchOpen(false)
         openLocalDirectoryForNewChat()
@@ -1229,7 +1328,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [aggregatedMode, canOpenLocalProject, interactive, management, openLocalDirectoryForNewChat, queueEdit, quickSearchOpen, startNewConversation, writable])
+  }, [aggregatedMode, canOpenLocalProject, editRerunDialog, interactive, management, openLocalDirectoryForNewChat, projection, queueEdit, quickSearchOpen, rollbackDialog, startNewConversation, writable])
 
   const selectedThreadAgent = useMemo(
     () => (selectedThread ? resolveConversationThreadAgent(selectedThread, knownAgents) : null),
@@ -1377,6 +1476,44 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         onNewConversation={(agentId) => startNewConversation(agentId)}
         onOpenLocalDirectory={openLocalDirectoryForNewChat}
         onSearchRemote={searchRemoteAggregated}
+        onSearchContent={searchContentAggregated}
+        onSelectContentMatch={(match, findQuery) => {
+          const existing = sidebarAggregatedItems.find(item => item.thread.id === match.threadId)
+          pendingJumpFindRef.current = { threadId: match.threadId, query: findQuery }
+          if (existing) {
+            openAggregatedThread(existing)
+          } else {
+            const matchThreadId = match.threadId as OrchestrationV2AppThread['id']
+            openAggregatedThread({
+              thread: {
+                createdBy: 'user',
+                creationSource: 'web',
+                id: matchThreadId,
+                projectId: match.cwd as never,
+                title: match.threadTitle,
+                providerInstanceId: 'codex' as never,
+                modelSelection: { instanceId: 'codex', model: 'codex' } as never,
+                runtimeMode: 'approval-required',
+                interactionMode: 'default',
+                branch: null,
+                worktreePath: null,
+                activeProviderThreadId: null,
+                lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: matchThreadId },
+                forkedFrom: null,
+                createdAt: match.updatedAt as never,
+                updatedAt: match.updatedAt as never,
+                archivedAt: null,
+                settledAt: null,
+                settledOverride: null,
+                lastVisitedAt: null,
+                deletedAt: null,
+              },
+              cwd: match.cwd,
+              source: match.source,
+              projectName: match.projectName,
+            })
+          }
+        }}
       />
     )}
     <Modal open={Boolean(queueEdit)} onClose={() => setQueueEdit(undefined)} ariaLabel="编辑排队消息" width={500}>
@@ -1573,7 +1710,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               <Tooltip side="bottom" label="分组与范围">
                 <button
                   type="button"
-                  className={open || groupMode !== 'auto' || scopeFilter !== 'all' ? 'conversation-sidebar-tool-btn my-icon-control is-active' : 'conversation-sidebar-tool-btn my-icon-control'}
+                  className={open || groupMode !== 'auto' || scopeFilter !== 'all' || statusFilter !== 'all' ? 'conversation-sidebar-tool-btn my-icon-control is-active' : 'conversation-sidebar-tool-btn my-icon-control'}
                   aria-label="分组与显示范围"
                   aria-expanded={open}
                   onClick={toggle}
@@ -1593,6 +1730,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
                 <DropdownHeader>目录范围</DropdownHeader>
                 <DropdownItem selected={scopeFilter === 'all'} onClick={() => { setScopeFilter('all'); close() }}>全部目录</DropdownItem>
                 <DropdownItem selected={scopeFilter === 'current'} onClick={() => { setScopeFilter('current'); close() }}>仅当前目录</DropdownItem>
+                <DropdownDivider />
+                <DropdownHeader>会话状态</DropdownHeader>
+                <DropdownItem selected={statusFilter === 'all'} onClick={() => { setStatusFilter('all'); close() }}>全部状态</DropdownItem>
+                <DropdownItem selected={statusFilter === 'unread'} onClick={() => { setStatusFilter('unread'); close() }}>仅未读</DropdownItem>
+                <DropdownItem selected={statusFilter === 'running'} onClick={() => { setStatusFilter('running'); close() }}>运行中</DropdownItem>
               </>
             )}
           </Dropdown>
@@ -1618,7 +1760,7 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           >
             <Search size={15} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">搜索对话</span>
-            <kbd className="my-kbd">Ctrl F</kbd>
+            <kbd className="my-kbd">Ctrl ⇧F</kbd>
           </button>
         </>
       ) : <div className="grid gap-2">{writable && <button type="button" className="my-nav-item" onClick={() => openDraft()}><Plus size={15} aria-hidden="true" />新建对话</button>}
@@ -1652,10 +1794,11 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           currentSource={source === 'code' ? 'code' : 'work'}
           groupMode={groupMode}
           scopeFilter={scopeFilter}
+          statusFilter={statusFilter}
           collapsedGroups={collapsedGroups}
           writable={writable}
           onToggleGroup={toggleGroupCollapsed}
-          onResetScopeFilter={() => setScopeFilter('all')}
+          onResetScopeFilter={() => { setScopeFilter('all'); setStatusFilter('all') }}
           onSelectItem={openAggregatedThread}
           onNewWithAgent={(agentId) => startNewConversation(agentId)}
           onTogglePin={(item) => void changeThread({ type: 'thread.pin', threadId: item.thread.id, pinned: !item.thread.pinnedAt }, item.cwd)}
@@ -1668,15 +1811,19 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             const binding = resolveConversationThreadAgent(item.thread, knownAgents)
             setManagement({ thread: item.thread, cwd: item.cwd, action: 'delete', title: displayConversationThreadTitle(item.thread, binding) })
           }}
+          onRegenerateTitle={(item) => void changeThread({ type: 'thread.title.regenerate', threadId: item.thread.id }, item.cwd)}
+          onToggleUnread={(item, unread) => void changeThread(unread ? { type: 'thread.mark-unread', threadId: item.thread.id } : { type: 'thread.visit', threadId: item.thread.id }, item.cwd)}
         />
       ) : (
         <>
           {query.trim() && threads?.length === 0 && <p className="my-item-description p-2">没有匹配的会话</p>}
           {(threads ?? []).map(thread => {
             const cleanTitle = displayConversationThreadTitle(thread, null)
+            const unread = isThreadUnread(thread)
+            const tags = visibleThreadTags(thread.tags)
             return <ConversationListRow key={thread.id} id={thread.id} title={cleanTitle}
             selected={thread.id === target?.threadId} pinned={Boolean(thread.pinnedAt)}
-            archived={Boolean(thread.archivedAt)} time={threadUpdatedAt(thread.updatedAt)}
+            archived={Boolean(thread.archivedAt)} unread={unread} tags={tags} time={threadUpdatedAt(thread.updatedAt)}
             busy={thread.id === hostThreadId && Boolean(activeRun)}
             onSelect={() => thread.id === targetRef.current?.threadId ? setSidebarOpen(false) : select({ threadId: thread.id })}
             onTogglePin={writable ? () => void changeThread({ type: 'thread.pin', threadId: thread.id, pinned: !thread.pinnedAt }) : undefined}
@@ -1684,6 +1831,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             actions={writable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="acp-recent-action-btn my-icon-control"
               aria-label={`${cleanTitle}的更多操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={16} aria-hidden="true" /></button>}>
               {close => <>
+                <DropdownItem icon={<Sparkles size={14} aria-hidden="true" />} onClick={() => { close(); void changeThread({ type: 'thread.title.regenerate', threadId: thread.id }) }}>重新生成标题</DropdownItem>
+                <DropdownItem icon={<Check size={14} aria-hidden="true" />} onClick={() => { close(); void changeThread(unread ? { type: 'thread.visit', threadId: thread.id } : { type: 'thread.mark-unread', threadId: thread.id }) }}>{unread ? '标为已读' : '标为未读'}</DropdownItem>
                 <DropdownItem icon={<Pencil size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, cwd: root, action: 'rename', title: cleanTitle }) }}>重命名</DropdownItem>
                 <DropdownItem danger icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => { close(); setManagement({ thread, cwd: root, action: 'delete', title: cleanTitle }) }}>删除</DropdownItem>
               </>}
@@ -1778,6 +1927,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               <span>设置</span>
             </button>
           )}
+          {projection && <button type="button" className="my-icon-control"
+            title="在当前对话中查找 (Ctrl+F)" aria-label="在当前对话中查找" aria-pressed={threadFindOpen}
+            onClick={() => setThreadFindOpen(value => !value)}><Search size={15} aria-hidden="true" /></button>}
           {projection && (projectAvailable || projection.relations.children.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
@@ -1812,6 +1964,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           {interactive && code && !compact && !taskScope && <><GitBranchControl /><ApplicationPanel /></>}
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
+          {projection && <button type="button" className="my-icon-control"
+            title="在当前对话中查找 (Ctrl+F)" aria-label="在当前对话中查找" aria-pressed={threadFindOpen}
+            onClick={() => setThreadFindOpen(value => !value)}><Search size={15} aria-hidden="true" /></button>}
           {projection && (projectAvailable || projection.relations.children.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
@@ -1831,7 +1986,25 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           if (added) focusComposer()
           return added
         }} />}>
+        {projection && (
+          <ThreadFindBar
+            open={threadFindOpen}
+            query={threadFindQuery}
+            matchCount={matchedFindRowIds.length}
+            activeMatchIndex={clampedFindIndex}
+            onQueryChange={(next) => {
+              setThreadFindQuery(next)
+              setThreadFindIndex(0)
+            }}
+            onNext={() => jumpToFindIndex(clampedFindIndex + 1)}
+            onPrev={() => jumpToFindIndex(clampedFindIndex - 1)}
+            onClose={() => setThreadFindOpen(false)}
+          />
+        )}
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
+          highlightedRowId={highlightedFindRowId}
+          matchedRowIds={matchedFindRowSet}
+          scrollToRowRequest={scrollToRowRequest}
           sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
           onOpenCitation={openAssistantCitation}
           onOpenRelatedThread={openRelatedThread}

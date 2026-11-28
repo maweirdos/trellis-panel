@@ -14,6 +14,8 @@ export interface ConversationListRowProps {
   selected: boolean
   pinned?: boolean
   archived?: boolean
+  unread?: boolean
+  tags?: readonly string[]
   busy?: boolean
   time?: number
   previewId?: string
@@ -54,6 +56,8 @@ export function ConversationListRow({
   selected,
   pinned,
   archived,
+  unread,
+  tags,
   busy,
   time,
   previewId,
@@ -105,6 +109,7 @@ export function ConversationListRow({
           onSelect()
         }}
       >
+        {unread && !selected && <span className="acp-recent-unread-dot" aria-label="未读" />}
         <span className="acp-recent-title my-item-title" title={title}>
           {title}
         </span>
@@ -113,6 +118,7 @@ export function ConversationListRow({
         <span className="acp-recent-meta">
           {busy && <ConversationActivityIndicator />}
           {pinned && <Pin size={12} className="acp-recent-pin shrink-0" aria-label="已置顶" />}
+          {tags && tags.slice(0, 2).map(tag => <span key={tag} className="acp-recent-tag-badge" title={tag}>{tag}</span>)}
           {relativeTime && <time className="acp-recent-time">{relativeTime}</time>}
           {status}
         </span>

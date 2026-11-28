@@ -101,6 +101,11 @@ export const runtimeBodies = {
     ...conversationAttachmentReferenceFields,
   }),
   'runtime.conversationList': taskConversation.extend({ archived: z.boolean().optional(), query: z.string().trim().max(160).optional() }),
+  'runtime.conversationSearch': taskConversation.extend({
+    query: z.string().trim().min(1).max(160),
+    archived: z.boolean().optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  }),
   'runtime.conversationRead': taskConversation.extend({ threadId: z.string().min(1).max(200), artifactMcp: openArtifactMcpGrantSchema.optional() }),
   'runtime.conversationCommand': taskConversation.extend({ commandId: z.string().uuid() }),
   'runtime.conversationEvents': taskConversation.extend({

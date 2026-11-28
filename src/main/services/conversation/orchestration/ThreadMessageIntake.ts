@@ -103,7 +103,8 @@ export class ThreadMessageIntake {
       lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
       forkedFrom: null, createdAt: timestamp, updatedAt: timestamp, archivedAt: null, settledAt: null,
       ...(input.tags?.length ? { tags: [...input.tags] } : {}),
-      lastVisitedAt: null, deletedAt: null,
+      ...(input.title.trim() ? { titleRenamed: true } : {}),
+      lastVisitedAt: timestamp, deletedAt: null,
     })
     const run = decodeRunEvent({
       id: runId, threadId, ordinal: 1, providerInstanceId: input.modelSelection.instanceId,
@@ -122,6 +123,7 @@ export class ThreadMessageIntake {
     ]
     const resultSequence = this.commitCommand(input.commandId, digest, thread, run, message, events, iso, input, authority,
       configurationFingerprint, attachmentClaim?.commit, roleInstructions)
+    this.database.prepare('UPDATE conversation_v2_projection_threads SET last_visited_sequence = ? WHERE thread_id = ?').run(resultSequence, threadId)
     return { receipt: { threadId, runId, commandId: input.commandId, messageId, acceptedAt: iso, resultSequence }, committed: true }
   }
 
@@ -150,7 +152,8 @@ export class ThreadMessageIntake {
           active_provider_thread_id, created_at, updated_at, archived_at, deleted_at, payload_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?)
       `).run(threadId, scope.projectId, scope.ownerId, scope.spaceId, thread.title, scope.modelSelection.instanceId,
-        thread.runtimeMode, thread.interactionMode, acceptedAt, acceptedAt, threadJson(thread))
+        thread.runtimeMode, thread.interactionMode, acceptedAt, acceptedAt, threadJson(thread));
+      this.database.prepare('UPDATE conversation_v2_projection_threads SET title_source = ?, last_visited_sequence = ? WHERE thread_id = ?').run(thread.titleRenamed ? 'manual' : 'placeholder', 0, threadId)
       if (authority) this.commands.ensureControl(threadId, authority)
       claimAttachments?.()
       this.database.prepare(`

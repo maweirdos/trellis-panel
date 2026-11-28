@@ -34,6 +34,7 @@ export class RunFinalizationService<
     private readonly usageLimitRecovery: UsageLimitRecoveryWorker<TAuthority>,
     private readonly delegationHost: TurnFinalizationDelegationHost<TTurn>,
     private readonly onIdleCompactionCheck?: (threadId: string, authority: TAuthority) => void,
+    private readonly onFirstTurnSettled?: (threadId: string) => void,
   ) {}
 
   onTurnSettled(input: TurnFinalizedInput<TTurn, TAuthority>): void {
@@ -51,6 +52,17 @@ export class RunFinalizationService<
 
     if (input.status === 'completed' && input.isPersonal && input.authority && !this.relations.restrictedParent(input.threadId)) {
       this.onIdleCompactionCheck?.(input.threadId, input.authority)
+    }
+
+    if (input.status === 'completed' && input.isPersonal && !this.relations.restrictedParent(input.threadId) && this.onFirstTurnSettled) {
+      const hook = this.onFirstTurnSettled
+      queueMicrotask(() => {
+        try {
+          hook(input.threadId)
+        } catch {
+          // 自动标题提炼失败不影响主会话完成态
+        }
+      })
     }
 
     if (

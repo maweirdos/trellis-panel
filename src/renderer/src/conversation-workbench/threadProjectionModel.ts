@@ -29,8 +29,15 @@ import type { ConversationTaskLocator } from '../../../shared/conversation/task-
 import type { ConversationThreadRelations } from '../../../shared/conversation/thread-relations'
 import { ModelSelection } from '../../../shared/conversation/modelSelection'
 
-export type ConversationThread = Pick<OrchestrationV2AppThread, 'id' | 'title' | 'modelSelection'> &
-  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath' | 'runtimeMode' | 'interactionMode'>>
+export type ConversationThread = Pick<
+  OrchestrationV2AppThread,
+  'id' | 'title' | 'modelSelection' | 'tags' | 'titleRenamed'
+> &
+  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath' | 'runtimeMode' | 'interactionMode'>> & {
+    readonly updatedAt?: OrchestrationV2AppThread['updatedAt'] | string
+    readonly lastVisitedAt?: OrchestrationV2AppThread['lastVisitedAt'] | string | null
+    readonly snoozedUntil?: OrchestrationV2AppThread['snoozedUntil'] | string | null
+  }
 
 export type ConversationMessage = Pick<
   OrchestrationV2ConversationMessage,
@@ -761,13 +768,17 @@ export function applyEventPage(
     }
     const wireEvent = entry.event
     if (wireEvent.type === 'thread.metadata-updated' && wireEvent.threadId === thread.id) {
-      const { title, modelSelection, runtimeMode, interactionMode } = wireEvent.payload
+      const { title, modelSelection, runtimeMode, interactionMode, lastVisitedAt, tags, snoozedUntil, titleRenamed } = wireEvent.payload
       thread = {
         ...thread,
         title,
         modelSelection: Option.getOrElse(decodeModelSelection(modelSelection), () => thread.modelSelection),
         ...(runtimeMode !== undefined ? { runtimeMode } : {}),
         ...(interactionMode !== undefined ? { interactionMode } : {}),
+        ...(lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+        ...(snoozedUntil !== undefined ? { snoozedUntil } : {}),
+        ...(titleRenamed !== undefined ? { titleRenamed } : {}),
       }
       continue
     }

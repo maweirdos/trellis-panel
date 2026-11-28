@@ -505,6 +505,8 @@ export const ipcInvoke = {
     models: 'conversation:models',
     create: 'conversation:create',
     list: 'conversation:list',
+    search: 'conversation:search',
+    searchAll: 'conversation:search-all',
     read: 'conversation:read',
     command: 'conversation:command',
     events: 'conversation:events',

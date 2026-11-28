@@ -452,3 +452,26 @@
     transition: none;
   }
 }
+
+.acp-recent-unread-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-accent-primary);
+}
+
+.acp-recent-tag-badge {
+  max-width: var(--my-space-64);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--my-space-4);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-3);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-2xs);
+  font-weight: var(--my-weight-normal);
+  line-height: 1.5;
+  flex-shrink: 0;
+}

@@ -87,6 +87,23 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
     summary: z.string().trim().min(1).max(16_000).optional(),
     messageIds: z.array(id).min(1).max(32).optional(),
   }),
+  z.strictObject({ ...base, type: z.literal('thread.title.regenerate') }),
+  z.strictObject({
+    ...base,
+    type: z.literal('thread.visit'),
+    sequence: z.number().int().nonnegative().safe().optional(),
+  }),
+  z.strictObject({ ...base, type: z.literal('thread.mark-unread') }),
+  z.strictObject({
+    ...base,
+    type: z.literal('thread.tag.set'),
+    tags: z.array(z.string().trim().min(1).max(64).refine(value => !/\p{Cc}/u.test(value), 'Invalid thread tag.')).max(16),
+  }),
+  z.strictObject({
+    ...base,
+    type: z.literal('thread.snooze'),
+    snoozedUntil: z.string().datetime().nullable(),
+  }),
 ]).superRefine((input, context) => {
   if (input.type === 'message.dispatch' && input.manualContinuationOfRunId) {
     if (input.deliveryIntent === 'steer' || input.attachmentIds?.length || input.references?.length) {

@@ -1,6 +1,6 @@
 /** GUI native facade for the new conversation kernel. */
 import type { TrellisApi } from '../../../shared/types'
-import type { ConversationCommandState, ConversationEventPage } from '../../../shared/conversation/desktop'
+import type { ConversationCommandState, ConversationEventPage, ConversationSearchMatch } from '../../../shared/conversation/desktop'
 import type { ConversationThreadCommandState, ConversationThreadEventPage, ConversationThreadHistoryPage, ConversationThreadSnapshot } from '../../../shared/conversation/command-runtime'
 import type { ConversationDriverDescriptor } from '../../../shared/conversation/driverCatalog'
 import type { ConversationAttachmentBytesInput, ConversationAttachmentContent, StagedConversationAttachment } from '../../../shared/conversation/attachments'
@@ -46,6 +46,23 @@ export const listConversationThreads = async (root: string, isCurrent?: () => bo
   try {
     const threads = await runtimeCall<readonly OrchestrationV2AppThread[], 'runtime.conversationList'>(root, 'runtime.conversationList', filter, undefined, isCurrent)
     return { ok: true, threads }
+  } catch (error) { return failure(error) }
+}
+
+export const searchConversationThreads = async (
+  root: string,
+  input: RuntimeBody<'runtime.conversationSearch'>,
+  isCurrent?: () => boolean,
+): Promise<Awaited<ReturnType<TrellisApi['conversationSearch']>>> => {
+  try {
+    const matches = await runtimeCall<readonly ConversationSearchMatch[], 'runtime.conversationSearch'>(
+      root,
+      'runtime.conversationSearch',
+      input,
+      undefined,
+      isCurrent,
+    )
+    return { ok: true, matches }
   } catch (error) { return failure(error) }
 }
 

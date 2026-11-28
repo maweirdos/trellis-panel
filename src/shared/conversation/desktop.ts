@@ -84,4 +84,22 @@ export interface ConversationEventPage {
   readonly nextSequence: number
   readonly hasMore: boolean
 }
+
+export interface ConversationSearchMatch {
+  readonly threadId: string
+  readonly threadTitle: string
+  readonly messageId: string | null
+  readonly role: 'user' | 'assistant' | 'system' | null
+  readonly runOrdinal: number | null
+  readonly snippet: string
+  readonly matchedField: 'title' | 'body'
+  readonly updatedAt: string
+}
+
+export interface ConversationAggregatedSearchMatch extends ConversationSearchMatch {
+  readonly cwd: string
+  readonly source: 'work' | 'code'
+  readonly projectName: string
+}
+
 export const CONVERSATION_READ_PAGE_LIMIT = 100

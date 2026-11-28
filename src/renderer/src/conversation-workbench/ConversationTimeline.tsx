@@ -65,6 +65,9 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly emptyTitle?: string
   readonly hideEmptyState?: boolean
   readonly citationRef?: RefObject<ConversationCitationNavigation | null>
+  readonly highlightedRowId?: string | null
+  readonly matchedRowIds?: ReadonlySet<string>
+  readonly scrollToRowRequest?: { readonly rowId: string; readonly nonce: number } | null
 }
 
 export interface ConversationCitationNavigation {
@@ -194,6 +197,9 @@ export function ConversationTimeline({
   onCite,
   onOpenCitation,
   citationRef,
+  highlightedRowId,
+  matchedRowIds,
+  scrollToRowRequest,
   footer,
   emptyTitle,
   hideEmptyState = false,
@@ -206,8 +212,8 @@ export function ConversationTimeline({
   ) : null, [working, workingStartedAt, workingLabel, showWorkingStatus])
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const [openWorkLogs, setOpenWorkLogs] = useState<ReadonlySet<string>>(() => new Set())
-  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow }),
-    [openWorkLogs, workingAnchor, workingRow])
+  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds }),
+    [openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds])
   const interactionActive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
@@ -507,6 +513,18 @@ export function ConversationTimeline({
     }
   }, [threadId, scrollElement, scheduleMinimapRefresh])
 
+  useEffect(() => {
+    if (!scrollToRowRequest?.rowId) return
+    const index = rows.findIndex(row => row.id === scrollToRowRequest.rowId)
+    if (index === -1) return
+    releaseFollow()
+    void listRef.current?.scrollToIndex({
+      index,
+      animated: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET,
+    }).then(scheduleMinimapRefresh).catch(() => undefined)
+  }, [releaseFollow, rows, scheduleMinimapRefresh, scrollToRowRequest])
+
   return (
     <div className="conversation-timeline-viewport">
       <div
@@ -551,7 +569,12 @@ export function ConversationTimeline({
             onItemSizeChanged={scheduleMinimapRefresh}
             onMetricsChange={scheduleMinimapRefresh}
             onReady={restoreReadingPosition}
-            renderItem={({ item }) => <div data-conversation-row-id={item.id} data-timeline-row-kind={item.kind}>
+            renderItem={({ item }) => <div
+              data-conversation-row-id={item.id}
+              data-timeline-row-kind={item.kind}
+              data-find-match={matchedRowIds?.has(item.id) ? 'true' : undefined}
+              data-find-current={highlightedRowId === item.id ? 'true' : undefined}
+            >
               {item.kind === 'work-fold' ? <WorkLogDisclosure
                 label={item.durationMs > 0 ? `工作了 ${formatDuration(item.durationMs)}` : ''}
                 workEntries={item.entries.filter((entry): entry is ConversationTimelineWorkEntry => entry.kind === 'work')}

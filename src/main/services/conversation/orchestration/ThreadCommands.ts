@@ -234,7 +234,7 @@ export class ThreadCommands {
     }
     const change = (() => {
       switch (input.type) {
-        case 'thread.rename': return { type: 'thread.metadata-updated', patch: { title: input.title } } as const
+        case 'thread.rename': return { type: 'thread.metadata-updated', patch: { title: input.title, titleRenamed: true } } as const
         case 'thread.pin': return { type: input.pinned ? 'thread.pinned' : 'thread.unpinned', patch: { pinnedAt: input.pinned ? occurredAt : null } } as const
         case 'thread.archive': return { type: input.archived ? 'thread.archived' : 'thread.unarchived', patch: { archivedAt: input.archived ? occurredAt : null } } as const
       }
@@ -245,10 +245,17 @@ export class ThreadCommands {
       events: [event],
       hostEvents,
       apply: () => {
-        this.database.prepare(`UPDATE conversation_v2_projection_threads SET title = ?, updated_at = ?,
-          archived_at = ?, deleted_at = ?, payload_json = ? WHERE thread_id = ?`)
-          .run(String(next.title), occurredAt, typeof next.archivedAt === 'string' ? next.archivedAt : null,
-            typeof next.deletedAt === 'string' ? next.deletedAt : null, JSON.stringify(next), input.threadId)
+        if (input.type === 'thread.rename') {
+          this.database.prepare(`UPDATE conversation_v2_projection_threads SET title = ?, title_source = 'manual', updated_at = ?,
+            archived_at = ?, deleted_at = ?, payload_json = ? WHERE thread_id = ?`)
+            .run(String(next.title), occurredAt, typeof next.archivedAt === 'string' ? next.archivedAt : null,
+              typeof next.deletedAt === 'string' ? next.deletedAt : null, JSON.stringify(next), input.threadId)
+        } else {
+          this.database.prepare(`UPDATE conversation_v2_projection_threads SET title = ?, updated_at = ?,
+            archived_at = ?, deleted_at = ?, payload_json = ? WHERE thread_id = ?`)
+            .run(String(next.title), occurredAt, typeof next.archivedAt === 'string' ? next.archivedAt : null,
+              typeof next.deletedAt === 'string' ? next.deletedAt : null, JSON.stringify(next), input.threadId)
+        }
         if (input.type === 'thread.archive' && input.archived) {
           this.database.prepare(`UPDATE conversation_v2_effect_outbox
             SET status = 'cancelled', last_error = '会话已归档，取消自动续接。', updated_at = ?, completed_at = ?
@@ -323,6 +330,113 @@ export class ThreadCommands {
           'UPDATE conversation_v2_projection_threads SET default_provider = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?',
         ).run(selection.modelSelection.instanceId, occurredAt, JSON.stringify(next), input.threadId)
         clearBinding(occurredAt)
+      },
+    })
+  }
+
+  visitThread(
+    input: Extract<ConversationThreadCommand, { type: 'thread.visit' }>,
+    authority: ConversationAuthority,
+    latestSequence: number,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json, last_visited_sequence FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string; last_visited_sequence: number } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const nextSequence = Math.max(row.last_visited_sequence ?? 0, input.sequence ?? latestSequence)
+    const next: Record<string, unknown> = {
+      ...current,
+      lastVisitedAt: occurredAt,
+    }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        this.database.prepare(
+          'UPDATE conversation_v2_projection_threads SET last_visited_sequence = ?, payload_json = ? WHERE thread_id = ?',
+        ).run(nextSequence, JSON.stringify(next), input.threadId)
+      },
+    })
+  }
+
+  markThreadUnread(
+    input: Extract<ConversationThreadCommand, { type: 'thread.mark-unread' }>,
+    authority: ConversationAuthority,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const next: Record<string, unknown> = {
+      ...current,
+      lastVisitedAt: null,
+    }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        this.database.prepare(
+          'UPDATE conversation_v2_projection_threads SET last_visited_sequence = 0, payload_json = ? WHERE thread_id = ?',
+        ).run(JSON.stringify(next), input.threadId)
+      },
+    })
+  }
+
+  setThreadTags(
+    input: Extract<ConversationThreadCommand, { type: 'thread.tag.set' }>,
+    authority: ConversationAuthority,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json, archived_at FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string; archived_at: string | null } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    if (row.archived_at !== null) throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const tags = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))].slice(0, 16)
+    const next: Record<string, unknown> = {
+      ...current,
+      tags,
+      updatedAt: occurredAt,
+    }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        this.database.prepare(
+          'UPDATE conversation_v2_projection_threads SET updated_at = ?, payload_json = ? WHERE thread_id = ?',
+        ).run(occurredAt, JSON.stringify(next), input.threadId)
+      },
+    })
+  }
+
+  snoozeThread(
+    input: Extract<ConversationThreadCommand, { type: 'thread.snooze' }>,
+    authority: ConversationAuthority,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json, archived_at FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string; archived_at: string | null } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    if (row.archived_at !== null) throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const next: Record<string, unknown> = {
+      ...current,
+      snoozedUntil: input.snoozedUntil,
+      updatedAt: occurredAt,
+    }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        this.database.prepare(
+          'UPDATE conversation_v2_projection_threads SET snoozed_until = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?',
+        ).run(input.snoozedUntil, occurredAt, JSON.stringify(next), input.threadId)
       },
     })
   }
