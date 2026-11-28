@@ -22,6 +22,7 @@ import {
   readConversationTaskScope, releaseConversationAttachment, readConversationCheckpointDiff, searchConversationThreads, stageConversationAttachment,
 } from '../services/daemon-client/conversation'
 import { readHostConversationAttachmentFile } from '../services/conversation/attachments'
+import { readConversationUsageLimits } from '../services/conversation/providers/usage-limits'
 import { captureDesktopConversationTask, conversationTaskDirectoryName } from '../services/conversation/task-scope'
 import { checkedDirectory, directoryIdentity, ownedDirectory, pathKey } from '../services/private-conversations/files'
 import { captureAppWindowDocument } from '../services/window-navigation'
@@ -500,5 +501,20 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     const { cwd, ...body } = parsed.data
     if (!scope.matchesRoot(cwd)) return changed()
     return inScope(scope, () => readConversationAttachment(scope.root, withTask(scope, body), scope.isCurrent))
+  })
+  handle(ipcInvoke.conversation.usageLimits, (event, raw?: unknown, ...extra: unknown[]) => {
+    const window = getMain()
+    if (!window || !captureAppWindowDocument(window, event)) {
+      return ipcFail(IpcErrorCode.Denied, '\u8bf7\u4ece\u5e94\u7528\u4e3b\u9875\u9762\u8bbf\u95ee\u4f1a\u8bdd\u7528\u91cf\u3002')
+    }
+    if (extra.length) return ipcFail(IpcErrorCode.InvalidArg, '\u4f1a\u8bdd\u7528\u91cf\u8bf7\u6c42\u53c2\u6570\u65e0\u6548\u3002')
+    const parsed = z.object({ refresh: z.boolean().optional() }).optional().safeParse(raw)
+    if (!parsed.success) return ipcFail(IpcErrorCode.InvalidArg, '\u4f1a\u8bdd\u7528\u91cf\u8bf7\u6c42\u53c2\u6570\u65e0\u6548\u3002')
+    try {
+      const report = readConversationUsageLimits({ bypassCache: parsed.data?.refresh === true })
+      return { ok: true as const, report }
+    } catch {
+      return ipcFail(IpcErrorCode.Io, '\u65e0\u6cd5\u8bfb\u53d6\u672c\u5730\u8d26\u53f7\u7528\u91cf\u8bb0\u5f55\u3002')
+    }
   })
 }

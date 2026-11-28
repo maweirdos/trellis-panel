@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, Check, ChevronDown, Clock, Cpu, FolderOpen, History, ListFilter, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Search, Settings2, Sparkles, SquarePen, Tag, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Bell, BellOff, Check, ChevronDown, Clock, Cpu, FolderOpen, History, ListFilter, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Search, Settings2, Sparkles, SquarePen, Tag, Trash2, Volume2, X } from 'lucide-react'
 import {
   displayConversationThreadTitle,
   resolveConversationThreadAgent,
@@ -63,6 +63,13 @@ import { ConversationTimeline, type ConversationCitationNavigation } from './Con
 import { ThreadFindBar } from './ThreadFindBar'
 import { ThreadTagsSnoozeModal, formatSnoozeLabel } from './ThreadTagsSnoozeModal'
 import { deriveNextPromptSuggestion } from './promptSuggestion'
+import {
+  playAttentionChime,
+  playCompletionChime,
+  updateThreadNotificationSettings,
+  useThreadNotificationSettings,
+} from './threadNotifications'
+import { useThreadNotifications } from './useThreadNotifications'
 import { useConversationNavigation } from './conversation-navigation-store'
 import { conversationArtifactSurface, conversationCheckpointsSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
@@ -1384,6 +1391,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     () => (selectedThread ? displayConversationThreadTitle(selectedThread, selectedThreadAgent) : undefined),
     [selectedThread, selectedThreadAgent],
   )
+  const notificationSettings = useThreadNotificationSettings()
+  useThreadNotifications(interactive ? projection : undefined, selectedThreadTitle)
   const embeddedFilteredThreads = useMemo(() => {
     const list = threads ?? []
     if (!embeddedCrux) return list
@@ -2070,6 +2079,47 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           {projection && <button type="button" className="my-icon-control"
             title="在当前对话中查找 (Ctrl+F)" aria-label="在当前对话中查找" aria-pressed={threadFindOpen}
             onClick={() => setThreadFindOpen(value => !value)}><Search size={15} aria-hidden="true" /></button>}
+          {!compact && <Dropdown align="right" width={220} trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              className="my-icon-control"
+              title={notificationSettings.soundEnabled || notificationSettings.desktopEnabled ? '后台完成与审批提醒：已开启' : '后台完成与审批提醒：已静音'}
+              aria-label="后台完成与审批提醒设置"
+              aria-expanded={open}
+              onClick={toggle}
+            >
+              {notificationSettings.soundEnabled || notificationSettings.desktopEnabled
+                ? <Bell size={15} aria-hidden="true" />
+                : <BellOff size={15} aria-hidden="true" />}
+            </button>
+          )}>
+            {() => <>
+              <DropdownHeader>后台提醒与提示音</DropdownHeader>
+              <DropdownItem
+                selected={notificationSettings.soundEnabled}
+                icon={notificationSettings.soundEnabled ? <Check size={14} aria-hidden="true" /> : undefined}
+                description="后台完成或等待审批时播放柔和提示音"
+                onClick={() => updateThreadNotificationSettings({ soundEnabled: !notificationSettings.soundEnabled })}
+              >
+                提示音效
+              </DropdownItem>
+              <DropdownItem
+                selected={notificationSettings.desktopEnabled}
+                icon={notificationSettings.desktopEnabled ? <Check size={14} aria-hidden="true" /> : undefined}
+                description="窗口失焦或后台时弹出系统通知"
+                onClick={() => updateThreadNotificationSettings({ desktopEnabled: !notificationSettings.desktopEnabled })}
+              >
+                桌面通知
+              </DropdownItem>
+              <DropdownDivider />
+              <DropdownItem icon={<Volume2 size={14} aria-hidden="true" />} onClick={() => { playCompletionChime() }}>
+                试听完成提示音
+              </DropdownItem>
+              <DropdownItem icon={<Volume2 size={14} aria-hidden="true" />} onClick={() => { playAttentionChime() }}>
+                试听审批提示音
+              </DropdownItem>
+            </>}
+          </Dropdown>}
           {projection && (projectAvailable || projection.relations.children.length > 0 || projection.checkpoints.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {

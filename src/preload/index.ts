@@ -585,6 +585,7 @@ const api = {
   conversationSearch: (root: string, input: Parameters<TrellisApi['conversationSearch']>[1]) => ipcRenderer.invoke(ipcInvoke.conversation.search, root, input),
   conversationSearchAll: (input: Parameters<TrellisApi['conversationSearchAll']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.searchAll, input),
   conversationCheckpointDiff: (input: Parameters<TrellisApi['conversationCheckpointDiff']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.checkpointDiff, input),
+  conversationUsageLimits: (options?: Parameters<TrellisApi['conversationUsageLimits']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.usageLimits, options),
   conversationRead: (threadId: string, root: string, task?: Parameters<TrellisApi['conversationTaskScope']>[0]) =>
     ipcRenderer.invoke(ipcInvoke.conversation.read, threadId, root, ...(task === undefined ? [] : [task])),
   conversationEvents: (input: Parameters<TrellisApi['conversationEvents']>[0]) => ipcRenderer.invoke(ipcInvoke.conversation.events, input),

@@ -508,6 +508,7 @@ export const ipcInvoke = {
     search: 'conversation:search',
     searchAll: 'conversation:search-all',
     checkpointDiff: 'conversation:checkpoint-diff',
+    usageLimits: 'conversation:usage-limits',
     read: 'conversation:read',
     command: 'conversation:command',
     events: 'conversation:events',

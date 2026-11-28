@@ -9,6 +9,7 @@ import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
 import { ComposerPromptEditorTiptap, type ComposerPromptEditorHandle, type ComposerPromptSnapshot } from './ComposerPromptEditorTiptap'
 import { ComposerStashMenu } from './ComposerStashMenu'
 import { ComposerSurface } from './ComposerSurface'
+import { ComposerUsageLimits } from './ComposerUsageLimits'
 import { composerSuggestionOptionId, ConversationComposerMenu } from './ConversationComposerMenu'
 import { ConversationModelPicker } from './ConversationModelPicker'
 import {
@@ -657,6 +658,7 @@ export function ConversationComposer({
         <div className="spacer" />
         <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
           onChange={onModelChange} disabled={!interactive} />
+        <ComposerUsageLimits activeProvider={selectedInstance?.driverKind} />
         {contextControl}
         {speech.available && <button type="button" className="my-icon-control shrink-0"
           title={recording ? `停止录音（${dictationShortcutLabel}）` : `语音输入（${dictationShortcutLabel}）`}
