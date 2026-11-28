@@ -56,7 +56,7 @@ function AuthorizationCode({ url }: { url: string }): JSX.Element | null {
   }, [url])
   if (failed) return <p role="status" className="my-item-description">无法显示二维码，请打开授权链接。</p>
   return image ? <>
-    <img src={image} alt="飞书授权二维码" width={208} height={208} className="mx-auto block h-auto max-w-full rounded-my-md" draggable={false} />
+    <img src={image} alt="飞书授权二维码" width={208} height={208} className="mx-auto block h-auto max-w-full rounded-my-base" draggable={false} />
     <p className="my-item-description">用飞书扫码授权</p>
   </> : null
 }

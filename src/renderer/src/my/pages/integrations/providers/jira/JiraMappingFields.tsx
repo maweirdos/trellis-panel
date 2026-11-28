@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useState, type ComponentProps, type JSX } from 'react'
+import { useCallback, useEffect, useState, type ComponentProps, type JSX, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { JiraData, JiraField, JiraMapping } from '@shared/jira-integration'
-import { Checkbox } from '../../../../ui'
+import { Checkbox, DisclosureGrid } from '../../../../ui'
 import { IntegrationMappingEditor, type IntegrationMappingOption, type IntegrationMappingRow } from '../../IntegrationSections'
+
+function JiraFieldDisclosure({ label, className = 'text-my-sm', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}><div className="mt-2 space-y-3">{children}</div></DisclosureGrid>
+  </div>
+}
 
 const labels: Record<JiraField, string> = { title: '标题', description: '描述', priority: '优先级', status: 'Jira 来源状态', assignee: '负责人', labels: '标签', type: '类型', comments: '评论（追加与完整读取）' }
 export function emptyJiraMapping(): JiraMapping { return { revision: 1, fields: ['title', 'description'], priorities: {}, statuses: {}, members: {}, types: {}, transitions: {} } }
@@ -31,9 +43,9 @@ export function JiraMappingFields({ value, onChange, metadata, disabled = false,
     <fieldset disabled={disabled} className="space-y-3"><legend className="my-item-title mb-2">{section === 'statuses' ? '状态映射' : section === 'members' ? '成员映射' : '同步字段'}</legend><div className="grid gap-3 sm:grid-cols-2">{(Object.keys(labels) as JiraField[]).filter(visible).map((field) => <label key={field} className="my-item-title flex items-center gap-2"><Checkbox checked={value.fields.includes(field)} onChange={(checked) => onChange({ ...value, fields: checked ? [...value.fields, field] : value.fields.filter((item) => item !== field) })} />{labels[field]}</label>)}</div></fieldset>
     {(section === 'all' || section === 'statuses') && <p className="my-item-description">Jira 状态保存为来源状态，任务生命周期保持原有流程。</p>}
     {visible('priority') && value.fields.includes('priority') && <MappedEditor onValidityChange={(valid) => validate('priority', valid)} label="优先级" values={value.priorities} sourceOptions={choices(metadata?.priorities)} targets={priorityTargets} onChange={(next) => update('priorities', next)} disabled={disabled} />}
-    {visible('status') && value.fields.includes('status') && <><MappedEditor onValidityChange={(valid) => validate('status', valid)} label="来源状态" values={value.statuses} sourceOptions={choices(metadata?.statuses)} targets={statusTargets} onChange={(next) => update('statuses', next)} disabled={disabled} />{showTransitions && <details className="space-y-3 text-my-sm"><summary className="cursor-pointer">双向状态流转</summary><p className="text-my-xs text-my-tertiary">填写真实 Jira transition ID，执行前会重新核实可用流转。</p>{[...new Set(Object.values(value.statuses))].map((status) => <label key={status} className="flex items-center gap-3 text-my-sm"><span className="my-item-title">{status}</span><input className="my-input min-w-0 flex-1" aria-label={`${status} 的 Jira transition ID`} value={value.transitions[status] ?? ''} onChange={(event) => { const transitions = { ...value.transitions }; if (event.target.value) transitions[status] = event.target.value; else delete transitions[status]; onChange({ ...value, transitions }) }} disabled={disabled} /></label>)}</details>}</>}
+    {visible('status') && value.fields.includes('status') && <><MappedEditor onValidityChange={(valid) => validate('status', valid)} label="来源状态" values={value.statuses} sourceOptions={choices(metadata?.statuses)} targets={statusTargets} onChange={(next) => update('statuses', next)} disabled={disabled} />{showTransitions && <JiraFieldDisclosure label="双向状态流转"><p className="text-my-xs text-my-tertiary">填写真实 Jira transition ID，执行前会重新核实可用流转。</p>{[...new Set(Object.values(value.statuses))].map((status) => <label key={status} className="flex items-center gap-3 text-my-sm"><span className="my-item-title">{status}</span><input className="my-input min-w-0 flex-1" aria-label={`${status} 的 Jira transition ID`} value={value.transitions[status] ?? ''} onChange={(event) => { const transitions = { ...value.transitions }; if (event.target.value) transitions[status] = event.target.value; else delete transitions[status]; onChange({ ...value, transitions }) }} disabled={disabled} /></label>)}</JiraFieldDisclosure>}</>}
     {visible('type') && value.fields.includes('type') && <MappedEditor onValidityChange={(valid) => validate('type', valid)} label="Issue 类型" values={value.types} sourceOptions={choices(metadata?.issueTypes)} targets={typeTargets} onChange={(next) => update('types', next)} disabled={disabled} />}
     {visible('assignee') && value.fields.includes('assignee') && <><label className="block space-y-1"><span className="my-item-title">本地负责人标识</span><input className="my-input w-full" value={memberTarget} placeholder="填写已有本地负责人" onChange={(event) => setMemberTarget(event.target.value)} disabled={disabled} /></label><MappedEditor onValidityChange={(valid) => validate('assignee', valid)} label="成员" values={value.members} sourceOptions={[{ value: '', label: '选择 Jira 用户名' }, ...(metadata?.members ?? []).map((member) => ({ value: member.name, label: `${member.displayName} (${member.name})` }))]} targets={[{ value: '', label: '选择本地负责人' }, ...[...new Set([...Object.values(value.members), memberTarget].filter(Boolean))].map((name) => ({ value: name, label: name }))]} onChange={(next) => update('members', next)} disabled={disabled} />{metadata?.membersHasMore && <p className="my-item-description">还有成员未显示，可按用户名缩小查询范围。</p>}</>}
-    {(section === 'all' || section === 'fields') && <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer">字段与历史支持范围</summary><p className="mt-2">只处理明确映射的字段。已编写的 PRD 保持原有流程。附件、父任务、自定义字段与历史仅保留来源证据，不支持双向编辑。</p></details>}
+    {(section === 'all' || section === 'fields') && <JiraFieldDisclosure label="字段与历史支持范围" className="text-my-xs text-my-tertiary"><p>只处理明确映射的字段。已编写的 PRD 保持原有流程。附件、父任务、自定义字段与历史仅保留来源证据，不支持双向编辑。</p></JiraFieldDisclosure>}
   </div>
 }

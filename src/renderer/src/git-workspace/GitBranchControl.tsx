@@ -9,7 +9,7 @@ import { useMy } from '../my/store'
 import { projectRootKey } from '../my/navigation'
 import { computeInlineLineDiffs, InlineDiffText } from '../my/git/inline-diff'
 import { patchRows } from '../my/git/patch'
-import { Button, Dropdown, Modal, Tooltip } from '../my/ui'
+import { Button, Checkbox, Dropdown, Modal, Tooltip } from '../my/ui'
 import { Select } from '../components/Select'
 import { useEscLayer } from '../utils/use-esc-layer'
 import { closeGitWorkspace, gitActionScope, gitWorkspaceGeneration, hasGitWorkspace, openGitWorkspace, refreshGitWorkspace, runGitMutation, useGitWorkspace, type GitActionScope } from './useGitWorkspace'
@@ -77,13 +77,13 @@ function BranchForms({ dialog, onClose }: { dialog: BranchDialog | null; onClose
         : await runGitMutation(dialog.scope, '正在推送…', (bridge, input) => bridge.push({ ...input, remote, branch: snapshot.branch ?? '', remoteBranch: remoteBranch.trim(), setUpstream }))
     if (success && dialog.scope.generation === gitWorkspaceGeneration()) onClose()
   }
-  return <Modal open onClose={onClose} ariaLabel={title}>
+  return <Modal open placement="center" onClose={onClose} ariaLabel={title}>
     <div className="my-git-workspace-form my-scrollbar">
-      <header className="flex items-center gap-3"><h2 className="min-w-0 flex-1 text-my-lg font-semibold text-my-primary">{title}</h2><button type="button" className="my-icon-control" aria-label={`关闭${title}`} onClick={onClose}><X size={16} /></button></header>
+      <header className="flex items-center gap-3"><h2 className="min-w-0 flex-1 text-my-lg font-medium text-my-primary">{title}</h2><button type="button" className="my-icon-control" aria-label={`关闭${title}`} onClick={onClose}><X size={16} /></button></header>
       {dialog.kind === 'create' && <>
         <label className="my-git-workspace-field"><span>分支名称</span><input className="my-input" aria-label="分支名称" value={name} onChange={(event) => setName(event.target.value)} disabled={Boolean(state.busy)} placeholder="例如 feature/search" /></label>
         <p className="break-words text-my-xs text-my-secondary">基于当前提交 {snapshot.head?.slice(0, 12) ?? '尚无提交'} 创建。</p>
-        <label className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" className="my-git-workspace-checkbox" checked={switchAfter} onChange={(event) => setSwitchAfter(event.target.checked)} disabled={!snapshot.clean || Boolean(state.busy)} />创建后切换</label>
+        <label className="flex items-center gap-2 text-my-sm text-my-secondary"><Checkbox checked={switchAfter} onChange={(checked) => setSwitchAfter(checked)} disabled={!snapshot.clean || Boolean(state.busy)} />创建后切换</label>
         {!snapshot.clean && <p className="text-my-xs text-my-tertiary">工作区有未提交更改，可先创建分支，处理更改后再切换。</p>}
       </>}
       {dialog.kind === 'switch' && <>
@@ -97,7 +97,7 @@ function BranchForms({ dialog, onClose }: { dialog: BranchDialog | null; onClose
         <label className="my-git-workspace-field"><span>远端</span><Select ariaLabel="推送远端" value={remote} onChange={setRemote} options={snapshot.remotes.map((item) => ({ value: item.name, label: item.name }))} className="w-full" disabled={Boolean(state.busy)} /></label>
         <p className="break-words font-mono text-my-xs text-my-tertiary">{snapshot.remotes.find((item) => item.name === remote)?.pushUrl || '尚未配置远端'}</p>
         <label className="my-git-workspace-field"><span>远端分支</span><input className="my-input" aria-label="远端分支" value={remoteBranch} onChange={(event) => setRemoteBranch(event.target.value)} disabled={Boolean(state.busy)} /></label>
-        <label className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" className="my-git-workspace-checkbox" checked={setUpstream} onChange={(event) => setSetUpstream(event.target.checked)} disabled={Boolean(state.busy)} />设置为当前分支的上游</label>
+        <label className="flex items-center gap-2 text-my-sm text-my-secondary"><Checkbox checked={setUpstream} onChange={(checked) => setSetUpstream(checked)} disabled={Boolean(state.busy)} />设置为当前分支的上游</label>
       </>}
       {stale && <p role="alert" className="text-my-xs text-my-warning-text">Git 状态已变化，请关闭后重新查看。</p>}
       {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
@@ -203,7 +203,7 @@ function FileGroup({ title, entries, selected, onToggle, onSelect, staged, busy 
   return <section className="my-git-workspace-files" aria-label={title}>
     <h3 className="my-git-workspace-file-heading">{title}<span className="tabular-nums text-my-tertiary">{entries.length}</span></h3>
     {entries.length === 0 ? <p className="px-3 pb-2 text-my-xs text-my-tertiary">无更改</p> : <ul>{entries.map((entry) => <li key={entry.path} className="my-git-workspace-file-row">
-      <input type="checkbox" className="my-git-workspace-checkbox" disabled={busy} checked={selected.has(entry.path)} onChange={() => onToggle(entry.path)} aria-label={`选择${staged ? '暂存' : '工作区'}文件 ${entry.path}`} />
+      <Checkbox disabled={busy} checked={selected.has(entry.path)} onChange={() => onToggle(entry.path)} aria-label={`选择${staged ? '暂存' : '工作区'}文件 ${entry.path}`} />
       <button type="button" className="my-git-workspace-file-button" aria-label={`查看${staged ? '暂存' : '工作区'}差异 ${entry.path}`} onClick={() => onSelect({ path: entry.path, staged, untracked: entry.untracked })} title={entry.origPath ? `${entry.origPath} → ${entry.path}` : entry.path}>
         <FileDiff size={13} className="shrink-0 text-my-icon-tertiary" /><span className="min-w-0 flex-1 truncate font-mono text-my-xs">{entry.path}</span><span className="shrink-0 text-my-2xs text-my-tertiary">{STATUS[staged ? entry.x : entry.y] ?? '更改'}</span>
       </button>
@@ -247,7 +247,7 @@ function SourceControlPanel({ trigger, onBranchDialog }: { trigger: RefObject<HT
   }
   const push = (opener: HTMLButtonElement): void => { const scope = gitActionScope(); if (scope) { opener.focus({ preventScroll: true }); onBranchDialog({ kind: 'push', scope, opener }) } }
   return <><span ref={anchor} hidden />{state.panelOpen && portal && createPortal(<aside ref={panel} role="dialog" aria-label="更改与提交" tabIndex={-1} className="my-git-workspace-panel my-scrollbar no-drag">
-    <header className="my-git-workspace-panel-header"><div className="min-w-0 flex-1"><h2 className="text-my-sm font-semibold text-my-primary">更改与提交</h2><p className="truncate font-mono text-my-xs text-my-tertiary" title={snapshot?.branch ?? state.root ?? ''}>{branchLabel(snapshot, state.errorCode)}</p></div><Tooltip label="刷新 Git 状态"><button type="button" className="my-icon-control" aria-label="刷新 Git 状态" disabled={state.loading || Boolean(state.busy) || !state.root || !hasGitWorkspace()} onClick={() => void refreshGitWorkspace()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : undefined} /></button></Tooltip><button type="button" className="my-icon-control" aria-label="关闭更改面板" onClick={close}><X size={15} /></button></header>
+    <header className="my-git-workspace-panel-header"><div className="min-w-0 flex-1"><h2 className="text-my-sm font-medium text-my-primary">更改与提交</h2><p className="truncate font-mono text-my-xs text-my-tertiary" title={snapshot?.branch ?? state.root ?? ''}>{branchLabel(snapshot, state.errorCode)}</p></div><Tooltip label="刷新 Git 状态"><button type="button" className="my-icon-control" aria-label="刷新 Git 状态" disabled={state.loading || Boolean(state.busy) || !state.root || !hasGitWorkspace()} onClick={() => void refreshGitWorkspace()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : undefined} /></button></Tooltip><button type="button" className="my-icon-control" aria-label="关闭更改面板" onClick={close}><X size={15} /></button></header>
     <GitFeedback />
     {!hasGitWorkspace() ? <p className="my-git-workspace-empty">{hasIpc ? '当前桥接不支持 Git 操作，请重新启动应用。' : '桌面端可查看项目 Git 并执行手动操作。'}</p> : !state.root ? <p className="my-git-workspace-empty">选择项目后查看更改。</p> : state.loading && !snapshot ? <p className="my-git-workspace-empty" role="status">正在读取 Git 状态…</p> : snapshot ? <>
       {snapshot.operation && <p role="alert" className="px-3 py-2 text-my-xs text-my-warning-text">仓库正在执行 {snapshot.operation}，请先完成该操作。</p>}

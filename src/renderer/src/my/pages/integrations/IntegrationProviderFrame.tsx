@@ -16,7 +16,7 @@ export function IntegrationProviderFrame({ entry, onBack, children, flowActive =
   }, [entry.id, canInteract])
   return <div className="integration-provider-frame" data-integration-detail={entry.id} data-flow-active={flowActive || undefined}>
     {!flowActive && <Button size="sm" variant="ghost" onClick={onBack}><ChevronLeft size={15} />返回集成</Button>}
-    {!flowActive && <div className="integration-product-hero"><div className="integration-product-tile"><IntegrationProductIcon provider={entry.providerId} large /></div><div className="min-w-0 flex-1"><h2 ref={title} tabIndex={-1} className="text-my-xl font-semibold">{entry.name}</h2><p className="my-item-description mt-2">{entry.description}</p></div></div>}
+    {!flowActive && <div className="integration-product-hero"><div className="integration-product-tile"><IntegrationProductIcon provider={entry.providerId} large /></div><div className="min-w-0 flex-1"><h2 ref={title} tabIndex={-1} className="text-my-xl font-medium">{entry.name}</h2><p className="my-item-description mt-2">{entry.description}</p></div></div>}
     <div className="integration-provider-sections">{children}</div>
   </div>
 }

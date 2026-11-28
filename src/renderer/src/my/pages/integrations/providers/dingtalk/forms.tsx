@@ -66,7 +66,7 @@ export function DingTalkAssistantForm({ api, root, apps, initial, executionAvail
         <label className="block space-y-1.5"><span className="my-item-title">允许的群 ConversationId · 每行一个</span><textarea className="my-input w-full" rows={2} value={groups} onChange={event => setGroups(event.target.value)} /></label>
         {check('允许名单内成员通过单聊使用', 'allowDirect')}
         <div className="space-y-2"><p className="my-item-title">执行方式</p><Select ariaLabel="Agent 执行策略" value={policy.execution} options={[{ value: 'tasks-only', label: '仅创建任务' }, { value: 'manual', label: '本机确认后执行', disabled: !executionAvailable }, { value: 'native-approvals', label: '接入 Agent，保留原生审批', disabled: !executionAvailable }]} onChange={execution => setPolicy({ ...policy, execution: execution as DingPolicy['execution'] })} /></div>
-        {policy.execution !== 'tasks-only' && <div className="space-y-3 rounded-my-md bg-my-layer-2 p-3">
+        {policy.execution !== 'tasks-only' && <div className="space-y-3 rounded-my-base bg-my-layer-2 p-3">
           <Field label="已配置的 Runtime ID" value={policy.runtimeId} onChange={runtimeId => setPolicy({ ...policy, runtimeId })} />
           <Field label="已配置的 Profile ID" value={policy.profileId} onChange={profileId => setPolicy({ ...policy, profileId })} />
           <p className="text-my-xs text-my-secondary">{policy.execution === 'manual' ? '接收消息后等待本机确认，才会启动 Agent。' : '允许消息接入已配置的 Agent，工具权限仍需按原生选项审批。'}消息不能改变模型、目录或权限；关闭界面不会自动批准。</p>

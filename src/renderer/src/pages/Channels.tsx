@@ -17,7 +17,7 @@ import { useApp } from '../store'
 import { Select } from '../components/Select'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button } from '../my/ui'
+import { Button, Modal } from '../my/ui'
 import { useMy } from '../my/store'
 import { SidebarResizeHandle, useSidebarWidthStyle } from '../my/layout/SidebarResizeHandle'
 import { fmtIso } from '../utils/format'
@@ -222,13 +222,13 @@ export function ChannelsPage(): JSX.Element {
         </div>
 
         <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-          {error && <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{error}</div>}
+          {error && <div className="rounded-my-base border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text">{error}</div>}
           {visible.map((c) => (
             <button
               key={`${c.bucket}/${c.name}`}
               onClick={() => setActiveName(`${c.bucket}/${c.name}`)}
               className={clsx(
-                'mb-1.5 w-full rounded-my-lg border px-3 py-2 text-left transition-colors',
+                'mb-1.5 w-full rounded-my-base border px-3 py-2 text-left transition-colors',
                 active?.name === c.name && active?.bucket === c.bucket
                   ? 'border-my-line-accent-subtle bg-my-accent-subtle'
                   : 'border-transparent hover:border-my-line hover:bg-my-layer-1'
@@ -412,7 +412,7 @@ export function ChannelsPage(): JSX.Element {
                       </div>
                       <div
                         className={clsx(
-                          'rounded-my-xl border px-3 py-2 text-my-sm leading-5 text-my-primary',
+                          'rounded-my-base border px-3 py-2 text-my-sm leading-5 text-my-primary',
                           item.mine ? 'border-my-line-accent-subtle bg-my-accent-subtle' : 'border-my-line bg-my-layer-2'
                         )}
                       >
@@ -434,7 +434,7 @@ export function ChannelsPage(): JSX.Element {
                         <span className="font-medium text-my-secondary">worker「{item.by}」</span>
                         <span className="text-my-accent-text">正在回复…（{item.steps} 步）</span>
                       </div>
-                      <div className="rounded-my-xl border border-my-line bg-my-layer-2 px-3 py-2 text-my-sm leading-5 text-my-primary">
+                      <div className="rounded-my-base border border-my-line bg-my-layer-2 px-3 py-2 text-my-sm leading-5 text-my-primary">
                         <pre className="whitespace-pre-wrap break-words font-sans">{item.text.slice(-2000) || '…'}</pre>
                         <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-my-accent align-middle" />
                       </div>
@@ -461,10 +461,10 @@ export function ChannelsPage(): JSX.Element {
           </div>
 
           {actionOutput && (
-            <div className="mx-4 mb-2 max-h-28 shrink-0 overflow-y-auto rounded-my-lg border border-my-line bg-my-canvas p-2.5">
+            <div className="mx-4 mb-2 max-h-28 shrink-0 overflow-y-auto rounded-my-base border border-my-line bg-my-canvas p-2.5">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">CLI 输出</span>
-                <button onClick={() => setActionOutput(null)} className="text-my-tertiary hover:text-my-secondary">
+                <span className="text-my-2xs font-medium uppercase tracking-wide text-my-tertiary">CLI 输出</span>
+                <button type="button" onClick={() => setActionOutput(null)} className="my-icon-control" aria-label="关闭输出">
                   <X size={11} />
                 </button>
               </div>
@@ -494,53 +494,51 @@ export function ChannelsPage(): JSX.Element {
       )}
 
       {/* 派发弹窗 */}
-      {dispatchOpen && (
-        <div className="absolute inset-0 z-50 grid animate-fade-in place-items-center bg-my-backdrop" onClick={() => !dispatching && setDispatchOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-[520px] overflow-hidden rounded-my-xl border border-my-line bg-my-layer-2 shadow-[var(--my-shadow-overlay-200)]">
-            <div className="flex items-center gap-2 border-b border-my-line px-5 py-3.5">
-              <RadioTower size={15} className="text-my-accent-text" />
-              <span className="my-item-title">派活给 AI</span>
-              <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">自动建频道 · 结构化指令 · 事件实时回流</span>
-              <Button variant="ghost" className="ml-auto" title="关闭" onClick={() => setDispatchOpen(false)}>
-                <X size={15} />
-              </Button>
+      <Modal open={dispatchOpen} onClose={() => { if (!dispatching) setDispatchOpen(false) }} placement="center" width={520} ariaLabel="派活给 AI">
+        <div className="overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-my-line px-5 py-3.5">
+            <RadioTower size={15} className="text-my-accent-text" />
+            <span className="my-item-title">派活给 AI</span>
+            <span className="my-chip border border-my-line-accent-subtle bg-my-accent-subtle text-my-accent-text">自动建频道 · 结构化指令 · 事件实时回流</span>
+            <button type="button" className="my-icon-control ml-auto" title="关闭" aria-label="关闭" onClick={() => setDispatchOpen(false)}>
+              <X size={15} />
+            </button>
+          </div>
+          <div className="space-y-3.5 p-5">
+            <div>
+              <label className="my-item-title mb-1.5 block">派发一个看板任务（可选）</label>
+              <Select ariaLabel="派发一个看板任务" value={dispatchTask} onChange={setDispatchTask} className="h-9 w-full" options={[
+                { value: '', label: '— 不派任务，派一句话需求 —' },
+                ...(snapshot?.tasks ?? []).map((task) => ({ value: task.dirName, label: `${task.record?.title ?? task.dirName}（${task.record?.status ?? ''}）` }))
+              ]} />
+              <p className="mt-1 text-my-2xs leading-4 text-my-placeholder">
+                选中任务后，指令会自动携带任务目录、PRD 摘录与子任务清单，AI worker 可直接开工。
+              </p>
             </div>
-            <div className="space-y-3.5 p-5">
-              <div>
-                <label className="my-item-title mb-1.5 block">派发一个看板任务（可选）</label>
-                <Select ariaLabel="派发一个看板任务" value={dispatchTask} onChange={setDispatchTask} className="h-9 w-full" options={[
-                  { value: '', label: '— 不派任务，派一句话需求 —' },
-                  ...(snapshot?.tasks ?? []).map((task) => ({ value: task.dirName, label: `${task.record?.title ?? task.dirName}（${task.record?.status ?? ''}）` }))
-                ]} />
-                <p className="mt-1 text-my-2xs leading-4 text-my-placeholder">
-                  选中任务后，指令会自动携带任务目录、PRD 摘录与子任务清单，AI worker 可直接开工。
-                </p>
-              </div>
-              <div>
-                <label className="my-item-title mb-1.5 block">{dispatchTask ? '派发人补充说明（可选）' : '一句话需求 *'}</label>
-                <textarea
-                  value={dispatchText}
-                  onChange={(e) => setDispatchText(e.target.value)}
-                  rows={3}
-                  placeholder={dispatchTask ? '例如：重点核对验收标准第 2 条' : '例如：帮我检查所有任务的状态字段是否与 Jira 同步'}
-                  className="w-full resize-y rounded-my-md border border-my-line bg-my-surface-1 px-3 py-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
-                />
-              </div>
-              <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-3.5 py-2.5 text-my-xs leading-5 text-my-tertiary">
-                派发后自动创建 dispatch-* 频道并以 panel-ui 身份发送指令；AI worker（trellis channel spawn 启动）的
-                progress / done 事件会实时出现在频道事件流里，可随时插话引导。
-              </div>
+            <div>
+              <label className="my-item-title mb-1.5 block">{dispatchTask ? '派发人补充说明（可选）' : '一句话需求 *'}</label>
+              <textarea
+                value={dispatchText}
+                onChange={(e) => setDispatchText(e.target.value)}
+                rows={3}
+                placeholder={dispatchTask ? '例如：重点核对验收标准第 2 条' : '例如：帮我检查所有任务的状态字段是否与 Jira 同步'}
+                className="w-full resize-y rounded-my-base border border-my-line bg-my-surface-1 px-3 py-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+              />
             </div>
-            <div className="flex items-center gap-2 border-t border-my-line px-5 py-3">
-              <span className="ml-auto text-my-xs text-my-placeholder">{snapshot?.meta.name}</span>
-              <Button variant="outline" onClick={() => setDispatchOpen(false)} disabled={dispatching}>取消</Button>
-              <Button variant="primary" onClick={() => void doDispatch()} disabled={dispatching || (!dispatchTask && !dispatchText.trim())}>
-                {dispatching ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {dispatching ? '派发中…' : '立即派发'}
-              </Button>
+            <div className="rounded-my-base border border-my-line bg-my-layer-1 px-3.5 py-2.5 text-my-xs leading-5 text-my-tertiary">
+              派发后自动创建 dispatch-* 频道并以 panel-ui 身份发送指令；AI worker（trellis channel spawn 启动）的
+              progress / done 事件会实时出现在频道事件流里，可随时插话引导。
             </div>
           </div>
+          <div className="flex items-center gap-2 border-t border-my-line px-5 py-3">
+            <span className="ml-auto text-my-xs text-my-placeholder">{snapshot?.meta.name}</span>
+            <Button variant="outline" onClick={() => setDispatchOpen(false)} disabled={dispatching}>取消</Button>
+            <Button variant="primary" onClick={() => void doDispatch()} disabled={dispatching || (!dispatchTask && !dispatchText.trim())}>
+              {dispatching ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {dispatching ? '派发中…' : '立即派发'}
+            </Button>
+          </div>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

@@ -1,11 +1,23 @@
-import { useRef, useState, type JSX } from 'react'
-import { ArchiveRestore, ArrowUpRight, RefreshCw, Square } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX } from 'react'
+import { ArchiveRestore, ArrowUpRight, ChevronRight, RefreshCw, Square } from 'lucide-react'
 import type { RunRef } from '@shared/workflow'
 import type { WorkflowWorkspaceRecovery } from '@shared/workflow-recovery'
 import { api, hasIpc } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { projectRootKey } from '../../my/navigation'
-import { Button, Modal } from '../../my/ui'
+import { Button, DisclosureGrid, Modal } from '../../my/ui'
+
+function WorkflowReceiptDisclosure({ hasPending, children }: { hasPending: boolean; children: JSX.Element }): JSX.Element {
+  const [open, setOpen] = useState(hasPending)
+  useEffect(() => { if (hasPending) setOpen(true) }, [hasPending])
+  return <div>
+    <button type="button" className="my-item-description inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>停止回执</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { useApp } from '../../store'
 import { useInteractionGuard, useInteractionSignal } from '../../utils/interaction-scope'
 import { stableCommandId } from '../../utils/stable-command-id'
@@ -124,7 +136,7 @@ export function ManagedWorkflowRecovery({ root }: { root: string }): JSX.Element
       setOpen(true)
       void execute(ticket => read(undefined, ticket))
     }}><ArchiveRestore size={16} aria-hidden="true" /></button>
-    <Modal open={open} onClose={() => {
+    <Modal open={open} placement="center" onClose={() => {
       if (lock.current) return
       generation.current++
       setTarget(undefined); setRecord(undefined)
@@ -139,15 +151,14 @@ export function ManagedWorkflowRecovery({ root }: { root: string }): JSX.Element
           {record?.source.reason && <p className="my-item-description">{record.source.reason}</p>}
         </> : !busy && <p className="my-item-description">当前工程没有可核对的保留运行。</p>}
         {busy && <p role="status" className="my-item-description">正在核对原记录…</p>}
-        {receipts.length > 0 && <details open={receipts.some(receipt => receipt.pending)}>
-          <summary className="my-item-description">停止回执</summary>
-          <ul className="space-y-2">{receipts.map(receipt => <li key={receipt.commandId} className="my-item-description break-words">
+        {receipts.length > 0 && <WorkflowReceiptDisclosure hasPending={receipts.some(receipt => receipt.pending)}>
+          <ul className="mt-1.5 space-y-2">{receipts.map(receipt => <li key={receipt.commandId} className="my-item-description break-words">
             <p>{receipt.run.runId} · r{receipt.run.revision} · {receipt.text}</p>
             {receipt.pending && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void execute(ticket => reconcile(receipt, ticket))}>
               核对原运行
             </Button>}
           </li>)}</ul>
-        </details>}
+        </WorkflowReceiptDisclosure>}
         {issue && <p role="alert" className="my-item-description">{issue}</p>}
         {typeof api.managedWorkflow.recoveryArtifact === 'function' && outputs.length > 0 && <ul className="space-y-2" aria-label="原工作流产物">
           {outputs.map(output => <li key={output.id}>

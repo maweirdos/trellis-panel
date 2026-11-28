@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, ArrowLeft, FolderOpen, Loader2, Pause, Play, RefreshCw, Square, Terminal, X } from 'lucide-react'
+import { Activity, ArrowLeft, ChevronRight, FolderOpen, Loader2, Pause, Play, RefreshCw, Square, Terminal, X } from 'lucide-react'
 import type { ApplicationInstanceSummary, ApplicationLogsResult, ApplicationTaskServiceUse } from '@shared/app-runtime'
 import { api, hasIpc } from '../api'
-import { Button, Modal, Tooltip } from '../my/ui'
+import { Button, DisclosureGrid, Modal, Tooltip } from '../my/ui'
+
+function RunOriginDisclosure({ children }: { children: JSX.Element }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="mt-1 text-my-tertiary">
+    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>原目标</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { useApp } from '../store'
 import { useMy } from '../my/store'
 import { projectRootKey } from '../my/navigation'
@@ -106,9 +117,9 @@ export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'defau
     {variant === 'activity' ? <Tooltip label={activityLabel} side="bottom" align="right"><Button variant="ghost" className="my-header-activity no-drag" aria-label={activityLabel} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); void refreshApplicationInstances() }}><Activity size={16} aria-hidden="true" /><span className="my-item-title">活动</span><span className="my-header-activity-count">{count}</span>{(state.error || state.partial || uncertain) && <span className="text-my-warning-text" aria-hidden="true">!</span>}</Button></Tooltip> : <button type="button" className="no-drag my-control my-button-ghost mr-1 shrink-0" aria-label={`本机运行 ${count} 项${uncertain ? '，有待核对结果' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); void refreshApplicationInstances() }}>
       <Terminal size={14} aria-hidden="true" /><span className="whitespace-nowrap text-my-xs">本机运行 {count}</span>{(state.error || state.partial || uncertain) && <span className="text-my-warning-text" aria-hidden="true">!</span>}
     </button>}
-    <Modal open={open} onClose={() => setOpen(false)} ariaLabel="本机运行中心" width="var(--my-run-config-width)">
+    <Modal open={open} onClose={() => setOpen(false)} placement="center" ariaLabel="本机运行中心" width="var(--my-run-config-width)">
       <div className="flex min-h-0 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-my-line p-4"><h2 className="min-w-0 flex-1 text-my-lg font-semibold text-my-primary">本机运行 <span className="text-my-sm text-my-tertiary">{count} 项</span></h2><Button variant="ghost" size="sm" disabled={state.loading || !hasIpc} onClick={() => void refreshApplicationInstances()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : undefined} />刷新</Button><button className="my-icon-control" type="button" aria-label="关闭本机运行中心" onClick={() => setOpen(false)}><X size={16} /></button></header>
+        <header className="flex shrink-0 items-center gap-2 border-b border-my-line p-4"><h2 className="min-w-0 flex-1 text-my-lg font-medium text-my-primary">本机运行 <span className="text-my-sm tabular-nums text-my-tertiary">{count} 项</span></h2><Button variant="ghost" size="sm" disabled={state.loading || !hasIpc} onClick={() => void refreshApplicationInstances()}><RefreshCw size={14} className={state.loading ? 'animate-spin' : undefined} />刷新</Button><button className="my-icon-control" type="button" aria-label="关闭本机运行中心" onClick={() => setOpen(false)}><X size={16} /></button></header>
         <div className="my-scrollbar min-h-0 overflow-y-auto p-4" style={{ maxHeight: '70dvh', scrollbarGutter: 'stable' }}>
           {!hasIpc ? <p className="my-application-empty">桌面端可查看本机运行</p> : <>
             {state.error && <div role="alert" className="my-application-message text-my-danger-text">{state.error}<Button variant="ghost" size="sm" onClick={() => void refreshApplicationInstances()}>重试</Button></div>}
@@ -118,8 +129,8 @@ export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'defau
             <div className={detail ? 'grid min-w-0 gap-4 md:grid-cols-2' : 'min-w-0'}>
               <div className="min-w-0 space-y-4">
                 {[...groups].map(([root, instances]) => <section key={root} aria-label={`工作副本 ${root}`}>
-                  <h3 className="text-my-sm font-semibold text-my-primary">{copyName(root)}</h3><p className="mb-2 break-all text-my-xs text-my-tertiary">{root}</p>
-                  <div className="space-y-2">{instances.map((item) => <article key={instanceKey(item.target)} className="rounded-my-lg border border-my-line p-3" data-run-id={item.run.id}>
+                  <h3 className="text-my-sm font-medium text-my-primary">{copyName(root)}</h3><p className="mb-2 break-all text-my-xs text-my-tertiary">{root}</p>
+                  <div className="space-y-2">{instances.map((item) => <article key={instanceKey(item.target)} className="rounded-my-base border border-my-line p-3" data-run-id={item.run.id}>
                     <button type="button" className="my-control my-button-ghost w-full justify-start text-left" aria-pressed={selectedKey === instanceKey(item.target)} onClick={() => setSelected(item)}><Terminal size={14} className="shrink-0" /><span className="my-item-title min-w-0 break-words text-inherit">{nameOf(item)}</span></button>
                     <div className="mt-2 flex flex-wrap gap-2 text-my-xs"><ProcessStatus app={item} /><ReadinessStatus readiness={item.readiness} /></div>
                     <p className="mt-2 text-my-xs text-my-secondary">{item.runEnvironmentCheck?.status === 'verified' ? '环境已人工核对' : item.environmentCheck?.status === 'changed' ? '环境已变化' : '环境待核实'}{item.configChanged === true ? ' · 有配置变更' : item.configChanged === null ? ' · 启动快照未知' : ''}</p>
@@ -129,13 +140,13 @@ export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'defau
                   </article>)}</div>
                 </section>)}
               </div>
-              {detail && <section className="min-w-0 rounded-my-lg border border-my-line p-3" aria-label="原实例详情">
+              {detail && <section className="min-w-0 rounded-my-base border border-my-line p-3" aria-label="原实例详情">
                 <div className="flex items-center gap-2"><h3 className="my-item-title min-w-0 flex-1 break-words">{nameOf(detail)}</h3><button type="button" className="my-icon-control" aria-label="收起实例详情" onClick={() => setSelected(null)}><ArrowLeft size={14} /></button></div>
                 {!current && <p role="status" className="mt-2 text-my-xs text-my-tertiary">原实例已不在当前运行清单</p>}
                 <ApplicationRunFacts run={detail.run} configChanged={detail.configChanged} serviceUses={detail.serviceUses} environmentCheck={detail.environmentCheck} runEnvironmentCheck={detail.runEnvironmentCheck} />
                 {detail.serviceUses && detail.serviceUses.length > 0 && <section aria-label="原实例任务引用" className="mt-3 space-y-2">
                   <h4 className="text-my-xs font-medium text-my-primary">原实例任务引用</h4>
-                  {detail.serviceUses.map(reference => <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-my-lg border border-my-line p-2 text-my-xs">
+                  {detail.serviceUses.map(reference => <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-my-base border border-my-line p-2 text-my-xs">
                     <div className="min-w-0 flex-1 break-words text-my-secondary">{reference.taskLabel}<br /><span className="text-my-tertiary">尝试 {reference.contextRevision.split(':')[0]} · {reference.coordination === 'ready' ? '使用范围已确认' : '原变更待核对'}</span></div>
                     <Button size="sm" variant="outline" aria-label={`解除 ${reference.taskLabel} 的原引用 ${reference.id.slice(0, 8)}`} disabled={referenceBusy || Boolean(pending) || typeof api.appRuntimeDetachInstanceReference !== 'function'} onClick={() => void detachReference(detail, reference)}>{reference.coordination === 'releasing' ? '重试原解绑' : '解除此引用'}</Button>
                   </div>)}
@@ -148,7 +159,7 @@ export function ApplicationRunCenter({ variant = 'default' }: { variant?: 'defau
                 <InstanceOutput key={instanceKey(detail.target)} instance={detail} />
               </section>}
             </div>
-            {state.receipts.length > 0 && <section className="mt-4 border-t border-my-line pt-3" aria-label="运行操作结果"><h3 className="text-my-sm font-semibold text-my-primary">操作结果</h3><ol className="mt-2 space-y-2">{[...state.receipts].reverse().map((item) => <li key={item.id} className="rounded-my-lg border border-my-line p-3 text-my-xs"><div className="flex items-center gap-2 text-my-primary">{item.pending && <Loader2 size={12} className="animate-spin" />}<span className="break-words">{item.name} · {{ start: '启动', stop: '停止', restart: '重启' }[item.action]}</span></div><p role="status" className={`mt-1 break-words ${item.unknown || item.result?.ok === false ? 'text-my-warning-text' : 'text-my-secondary'}`}>{runReceiptMessage(item)}</p><details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">原目标</summary><p className="break-all">{item.root}<br />{item.appId} · {item.runId ?? '新启动'}{item.result?.restart && <><br />重启阶段：{item.result.restart.phase}</>}</p></details></li>)}</ol></section>}
+            {state.receipts.length > 0 && <section className="mt-4 border-t border-my-line pt-3" aria-label="运行操作结果"><h3 className="text-my-sm font-medium text-my-primary">操作结果</h3><ol className="mt-2 space-y-2">{[...state.receipts].reverse().map((item) => <li key={item.id} className="rounded-my-base border border-my-line p-3 text-my-xs"><div className="flex items-center gap-2 text-my-primary">{item.pending && <Loader2 size={12} className="animate-spin" />}<span className="break-words">{item.name} · {{ start: '启动', stop: '停止', restart: '重启' }[item.action]}</span></div><p role="status" className={`mt-1 break-words ${item.unknown || item.result?.ok === false ? 'text-my-warning-text' : 'text-my-secondary'}`}>{runReceiptMessage(item)}</p><RunOriginDisclosure><p className="mt-1 break-all">{item.root}<br />{item.appId} · {item.runId ?? '新启动'}{item.result?.restart && <><br />重启阶段：{item.result.restart.phase}</>}</p></RunOriginDisclosure></li>)}</ol></section>}
           </>}
         </div>
       </div>

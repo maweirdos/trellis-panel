@@ -1,8 +1,21 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { Bot, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleX, Download, ExternalLink, FolderOpen, Loader2, MoreHorizontal, PlugZap, RefreshCw, Settings2, Terminal, X } from 'lucide-react'
 import { api, hasIpc } from '../api'
 import { ToolBrandIcon } from '../components/ToolBrandIcon'
-import { Button, Dropdown, DropdownItem } from '../my/ui'
+import { Button, DisclosureGrid, Dropdown, DropdownItem } from '../my/ui'
+
+function RuntimeInspectDisclosure({ header, open: controlledOpen, onToggle, children }: { header: ReactNode; open?: boolean; onToggle?: () => void; children: ReactNode }): JSX.Element {
+  const [localOpen, setLocalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : localOpen
+  const toggle = onToggle ?? (() => setLocalOpen((v) => !v))
+  return <div className="runtime-engine-inspect">
+    <button type="button" className="inline-flex w-fit max-w-full items-center gap-[var(--my-space-6)] py-[var(--my-space-6)] rounded-my-base text-left transition-colors hover:text-my-primary" aria-expanded={isOpen} onClick={toggle}>
+      {header}
+      <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+    </button>
+    <DisclosureGrid open={isOpen}>{children}</DisclosureGrid>
+  </div>
+}
 import { PreferenceSection } from '../pages/settings/PreferenceSection'
 import { useApp } from '../store'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -55,10 +68,9 @@ function withoutCommandId(reason: string, commandId?: string): string {
 
 function RuntimeFeedbackDetails({ commandId }: { commandId?: string }): JSX.Element | null {
   if (!commandId) return null
-  return <details className="runtime-engine-inspect">
-    <summary><Terminal size={13} aria-hidden="true" /><span>诊断详情</span><ChevronDown size={13} className="runtime-engine-inspect-chevron" aria-hidden="true" /></summary>
+  return <RuntimeInspectDisclosure header={<><Terminal size={13} aria-hidden="true" /><span>诊断详情</span></>}>
     <dl className="runtime-engine-fields"><div><dt>命令 ID</dt><dd><code>{commandId}</code></dd></div></dl>
-  </details>
+  </RuntimeInspectDisclosure>
 }
 
 function RuntimeActivity({ label, animating }: { label?: string; animating: boolean }): JSX.Element {
@@ -493,12 +505,10 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
               {!heading && runtimeId && !sdk && !zcode && actionButton('node', '选择全局 Node')}
               {native && agent.available && canSetup && (agent.updateStatus === 'current' || agent.updateStatus === 'available') && actionButton('setup', '重装', 'ghost', 'reinstall')}
             </div>}
-            {unsupported && <details className="runtime-engine-inspect">
-              <summary><CircleAlert size={13} aria-hidden="true" /><span>停用说明</span><ChevronDown size={13} className="runtime-engine-inspect-chevron" aria-hidden="true" /></summary>
+            {unsupported && <RuntimeInspectDisclosure header={<><CircleAlert size={13} aria-hidden="true" /><span>停用说明</span></>}>
               <p className="runtime-engine-diagnostics">{agent.setupBlockedReason || '此自定义执行引擎已停用，无法启动或恢复。'}</p>
-            </details>}
-            <details className="runtime-engine-inspect" open={inspections[id]?.information ?? false}>
-              <summary onClick={event => { event.preventDefault(); setInspections(previous => ({ ...previous, [id]: { ...previous[id], information: !previous[id]?.information } })) }}><Terminal size={13} aria-hidden="true" /><span>运行信息</span><ChevronDown size={13} className="runtime-engine-inspect-chevron" aria-hidden="true" /></summary>
+            </RuntimeInspectDisclosure>}
+            <RuntimeInspectDisclosure open={inspections[id]?.information ?? false} onToggle={() => setInspections(previous => ({ ...previous, [id]: { ...previous[id], information: !previous[id]?.information } }))} header={<><Terminal size={13} aria-hidden="true" /><span>运行信息</span></>}>
               <dl className="runtime-engine-fields">
                 <div><dt>Node</dt><dd><code>{sdk ? '应用内置' : agent.nodePath ?? (zcode ? '应用内置' : '未确认 · 由引擎管理')}</code></dd></div>
                 {sdk ? <>
@@ -510,11 +520,10 @@ export function RuntimePanel({ agents, onChange, isCurrent, runtimeId, heading =
                 </> : <div><dt>启动命令</dt><dd><code>{agent.command || '待配置'}</code></dd></div>}
                 {agent.checkedAt !== undefined && <div><dt>检测时间</dt><dd>{new Date(agent.checkedAt).toLocaleString()}</dd></div>}
               </dl>
-            </details>
-            {diagnostics.length > 0 && <details className="runtime-engine-inspect" open={inspections[id]?.diagnostics ?? false}>
-              <summary onClick={event => { event.preventDefault(); setInspections(previous => ({ ...previous, [id]: { ...previous[id], diagnostics: !previous[id]?.diagnostics } })) }}><CircleAlert size={13} aria-hidden="true" /><span>检测记录</span><span className="runtime-engine-record-count">{diagnostics.length}</span><ChevronDown size={13} className="runtime-engine-inspect-chevron" aria-hidden="true" /></summary>
+            </RuntimeInspectDisclosure>
+            {diagnostics.length > 0 && <RuntimeInspectDisclosure open={inspections[id]?.diagnostics ?? false} onToggle={() => setInspections(previous => ({ ...previous, [id]: { ...previous[id], diagnostics: !previous[id]?.diagnostics } }))} header={<><CircleAlert size={13} aria-hidden="true" /><span>检测记录</span><span className="runtime-engine-record-count tabular-nums">{diagnostics.length}</span></>}>
               <ul className="runtime-engine-diagnostics">{diagnostics.map((message, diagnosticIndex) => <li key={diagnosticIndex}>{message}</li>)}</ul>
-            </details>}
+            </RuntimeInspectDisclosure>}
           </div>
         )
         const entry = (

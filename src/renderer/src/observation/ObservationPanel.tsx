@@ -1,10 +1,21 @@
 import { useMemo, useState } from 'react'
-import { Activity, Database, Eye, FileClock, History, Loader2, RefreshCw, ShieldQuestion } from 'lucide-react'
+import { Activity, ChevronRight, Database, Eye, FileClock, History, Loader2, RefreshCw, ShieldQuestion } from 'lucide-react'
 import { clsx } from 'clsx'
 import { api } from '../api'
 import { useApp } from '../store'
 import { confirmDialog } from '../components/Dialogs'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
+
+function HealthGovernanceDisclosure({ compact, children }: { compact: boolean; children: JSX.Element }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={clsx('mt-3 border-t border-my-line pt-2', compact && 'mt-2')}>
+    <button type="button" className="flex select-none items-center gap-1.5 text-my-2xs font-medium text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={11} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <Database size={11} /> 观测健康与治理
+    </button>
+    <DisclosureGrid open={open}><div className="mt-2">{children}</div></DisclosureGrid>
+  </div>
+}
 import { fmtBytes, relTime } from '../utils/format'
 import { EvidenceBadge } from './EvidenceBadge'
 import { useMaterialCurrency, useObservationScope } from './use-observation-scope'
@@ -81,7 +92,7 @@ function MaterialRow({ material, compact }: { material: ReceiptMaterialView; com
 function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: boolean }): JSX.Element {
   const wording = evidenceWording(receipt.level)
   return (
-    <div className={clsx('rounded-my-lg border border-my-line bg-my-layer-1 p-2.5', compact && 'p-2')}>
+    <div className={clsx('rounded-my-base border border-my-line bg-my-layer-1 p-2.5', compact && 'p-2')}>
       <div className="flex flex-wrap items-center gap-1.5">
         <EvidenceBadge level={receipt.level} />
         <span className="ml-auto shrink-0 font-mono text-my-2xs text-my-tertiary" title={new Date(receipt.occurredAtMs).toLocaleString()}>
@@ -117,7 +128,7 @@ function ReceiptCard({ receipt, compact }: { receipt: ReceiptView; compact: bool
       </div>
 
       {receipt.manifestIncomplete && (
-        <div className="mt-1.5 rounded-my-sm border border-my-line-warning bg-my-warning-subtle px-1.5 py-1 text-my-2xs text-my-warning-text">
+        <div className="mt-1.5 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-1.5 py-1 text-my-2xs text-my-warning-text">
           清单不完整：遗漏 {receipt.totals.omittedEntries} 条（本次采集所列材料口径，不代表规范覆盖完整）
           {receipt.totals.expectedEntries === null && '；预期数量未知，不计算缺失率'}
         </div>
@@ -152,7 +163,7 @@ function ActivityColumns({ columns, compact }: { columns: ActivityColumnView[]; 
     <div className={clsx('space-y-2.5', compact && 'space-y-2')}>
       {columns.map((column) => (
         <div key={column.key}>
-          <div className="mb-1 flex items-center gap-1 text-my-2xs font-semibold uppercase tracking-wide text-my-tertiary">
+          <div className="mb-1 flex items-center gap-1 text-my-2xs font-medium uppercase tracking-wide text-my-tertiary">
             <Activity size={10} />
             {column.label}
           </div>
@@ -374,13 +385,13 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
 
   return (
     <section
-      className={clsx('rounded-my-lg border border-my-line bg-my-layer-1', compact ? 'p-2' : 'p-2.5')}
+      className={clsx('rounded-my-base border border-my-line bg-my-layer-1', compact ? 'p-2' : 'p-2.5')}
       aria-label="上下文回执与观察"
       data-observation-panel={scope.scopeKey}
     >
       <header className="flex items-center gap-1.5">
         <Eye size={12} className="shrink-0 text-my-icon-accent" />
-        <span className="font-semibold text-my-primary text-my-xs">观察 · 上下文回执</span>
+        <span className="font-medium text-my-primary text-my-xs">观察 · 上下文回执</span>
         <span className="ml-auto">
           <EvidenceBadge level={latestView?.level} unobserved={latestView === null} size={compact ? 'sm' : 'md'} />
         </span>
@@ -429,7 +440,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
           {latestView !== null ? (
             <ReceiptCard receipt={latestView} compact={compact} />
           ) : scope.status === 'live' ? (
-            <div className="rounded-my-lg border border-dashed border-my-line-strong p-2.5 text-center text-my-2xs text-my-tertiary">
+            <div className="rounded-my-base border border-dashed border-my-line-strong p-2.5 text-center text-my-2xs text-my-tertiary">
               未观察到注入记录（{latestWording.label}）。这不是故障证明；可在下方「健康与治理」检查观测配置。
             </div>
           ) : null}
@@ -441,7 +452,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
         <div className="mt-2">
           <button
             type="button"
-            className="flex w-full items-center gap-1 rounded-my-sm px-0.5 py-0.5 text-my-2xs text-my-secondary transition-colors hover:text-my-primary"
+            className="flex w-full items-center gap-1 rounded-my-base px-0.5 py-0.5 text-my-2xs text-my-secondary transition-colors hover:text-my-primary"
             onClick={() => setShowHistory((v) => !v)}
             aria-expanded={showHistory}
           >
@@ -470,7 +481,7 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
       {/* 实际活动（分列；不含回执，不升级阶段） */}
       {activityColumns !== null && (
         <div className={clsx('mt-3 border-t border-my-line pt-2.5', compact && 'mt-2 pt-2')}>
-          <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-my-primary text-my-xs">
+          <div className="mb-1.5 flex items-center gap-1.5 font-medium text-my-primary text-my-xs">
             <FileClock size={12} className="shrink-0 text-my-icon-accent" /> 实际活动
           </div>
           <ActivityColumns columns={activityColumns.columns} compact={compact} />
@@ -478,14 +489,9 @@ export function ObservationPanel({ workspaceId, taskRef, activity, variant = 'pa
       )}
 
       {/* 健康与治理 */}
-      <details className={clsx('mt-3 border-t border-my-line pt-2', compact && 'mt-2')}>
-        <summary className="flex cursor-pointer select-none items-center gap-1.5 text-my-2xs font-medium text-my-secondary transition-colors hover:text-my-primary">
-          <Database size={11} /> 观测健康与治理
-        </summary>
-        <div className="mt-2">
-          <HealthGovernance />
-        </div>
-      </details>
+      <HealthGovernanceDisclosure compact={compact}>
+        <HealthGovernance />
+      </HealthGovernanceDisclosure>
     </section>
   )
 }

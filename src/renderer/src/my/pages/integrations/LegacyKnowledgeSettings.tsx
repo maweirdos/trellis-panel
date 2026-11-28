@@ -1,11 +1,12 @@
 import { useId, useState, type JSX } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { ipcFail, IpcErrorCode } from '../../../../../shared/ipc-errors'
 import { WEKNORA_DEFAULTS, type WeknoraConfig, type WeknoraKbSummary } from '../../../../../shared/types'
 import { api, hasIpc } from '../../../api'
 import { Select } from '../../../components/Select'
 import { PreferenceRow, PreferenceSection } from '../../../pages/settings/PreferenceSection'
 import { useApp } from '../../../store'
-import { Button, Switch } from '../../ui'
+import { Button, DisclosureGrid, Switch } from '../../ui'
 import { useIntegrationAction } from './hooks'
 
 type LegacyDraft = Pick<WeknoraConfig, 'enabled' | 'baseUrl' | 'apiKey' | 'syncSpec' | 'specKbId' | 'mcpUrl' | 'mcpToken'>
@@ -36,6 +37,7 @@ function remoteSnippet(kind: 'claude' | 'codex' | 'zcode', draft: LegacyDraft): 
 export function LegacyKnowledgeSettings(): JSX.Element {
   const id = useId()
   const settings = useApp((state) => state.settings)
+  const [open, setOpen] = useState(false)
   const saved = { ...WEKNORA_DEFAULTS, ...settings?.weknora }
   const autoSync = saved.enabled && saved.syncSpec
   const syncStatus = autoSync
@@ -43,14 +45,17 @@ export function LegacyKnowledgeSettings(): JSX.Element {
     : '旧连接已停用'
 
   return <PreferenceSection id={id} title="兼容设置">
-    <details className="preference-disclosure">
-      <summary>
-        规范同步与旧 MCP
+    <div className="preference-disclosure">
+      <button type="button" className="inline-flex w-full items-center gap-1.5 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <ChevronRight size={13} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+        <span>规范同步与旧 MCP</span>
         {settings && saved.syncSpec && <span className={`ml-2 text-my-xs ${autoSync ? 'text-my-warning-text' : 'text-my-tertiary'}`}>{syncStatus}</span>}
-      </summary>
-      {settings ? <LegacyKnowledgeSettingsForm id={id} saved={saved} />
-        : <p role="status" className="text-my-sm text-my-secondary">设置尚未加载。</p>}
-    </details>
+      </button>
+      <DisclosureGrid open={open}>
+        {settings ? <LegacyKnowledgeSettingsForm id={id} saved={saved} />
+          : <p role="status" className="text-my-sm text-my-secondary">设置尚未加载。</p>}
+      </DisclosureGrid>
+    </div>
   </PreferenceSection>
 }
 

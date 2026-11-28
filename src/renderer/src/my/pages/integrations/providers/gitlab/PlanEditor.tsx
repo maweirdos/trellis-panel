@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import { Search } from 'lucide-react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight, Search } from 'lucide-react'
 import { gitlabMappingSchema, type GitlabBinding, type GitlabField, type GitlabInput, type GitlabOutput, type GitlabProject, type GitlabUser } from '@shared/gitlab-integration'
 import { useInteractionGuard } from '../../../../../utils/interaction-scope'
 import { Select } from '../../../../../components/Select'
-import { Button } from '../../../../ui'
+import { Button, Checkbox, DisclosureGrid } from '../../../../ui'
 import { IntegrationMappingEditor, type IntegrationMappingRow } from '../../IntegrationSections'
+
+function GitlabPlanDisclosure({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="text-my-sm">
+    <button type="button" className="my-item-title inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={13} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}><div className="mt-3 space-y-4">{children}</div></DisclosureGrid>
+  </div>
+}
 
 type Snapshot = GitlabOutput<'snapshot'>
 export interface PlanEditorProps {
@@ -73,32 +84,32 @@ export function GitlabPlanEditor({ initial, snapshot, projects, members, busy, q
         <div className="flex gap-2"><input aria-label="搜索 GitLab 项目" className="my-input min-w-0 flex-1" value={query} maxLength={200} onChange={(e) => setQuery(e.target.value)} placeholder="项目名称或路径" disabled={busy} /><Button size="sm" disabled={busy} onClick={search}><Search size={14} />搜索</Button></div>
         <div role="group" aria-label="来源项目" className="space-y-2">{projects.map((item) => {
           const linked = snapshot.bindings.some((b) => b.project.id === item.id)
-          return <button key={item.id} type="button" disabled={busy || !item.issuesEnabled || linked} aria-pressed={project?.id === item.id} className={`gitlab-project-choice flex w-full items-center justify-between gap-3 rounded-my-md border p-3 text-left text-my-sm ${project?.id === item.id ? 'border-my-line-accent bg-my-layer-2' : 'border-my-line hover:bg-my-layer-2'} disabled:opacity-50`} onClick={() => { setProject(item); if (item.id !== project?.id) setMemberRows([]) }}><span className="my-item-title min-w-0 break-words">{item.path}</span><span className="my-item-description shrink-0">{!item.issuesEnabled ? '未启用 Issues' : linked ? '已创建同步' : project?.id === item.id ? '已选择' : '选择'}</span></button>
+          return <button key={item.id} type="button" disabled={busy || !item.issuesEnabled || linked} aria-pressed={project?.id === item.id} className={`gitlab-project-choice flex w-full items-center justify-between gap-3 rounded-my-base border p-3 text-left text-my-sm transition-colors ${project?.id === item.id ? 'border-my-line-accent bg-my-layer-2' : 'border-my-line hover:bg-my-layer-2'} disabled:opacity-50`} onClick={() => { setProject(item); if (item.id !== project?.id) setMemberRows([]) }}><span className="my-item-title min-w-0 break-words">{item.path}</span><span className="my-item-description shrink-0">{!item.issuesEnabled ? '未启用 Issues' : linked ? '已创建同步' : project?.id === item.id ? '已选择' : '选择'}</span></button>
         })}</div>
         {searched && !projects.length && !busy && <p role="status" className="text-my-sm text-my-tertiary">未找到可访问的项目，请更换关键词。</p>}
         {!searched && <p className="my-item-description">搜索要同步的 GitLab 项目。</p>}
         {moreProjects && <Button size="sm" variant="ghost" disabled={busy} onClick={loadMoreProjects}>加载更多项目</Button>}
       </>}
       <p className="text-my-sm text-my-secondary">目标：当前项目</p>
-      <fieldset disabled={busy} className="space-y-2"><legend className="my-item-title mb-2">同步方向</legend><div className="flex flex-wrap gap-2">{([{ value: 'inbound', label: 'GitLab → 当前项目' }, { value: 'bidirectional', label: '双向同步' }] as const).map((option) => <button key={option.value} type="button" aria-pressed={direction === option.value} className={`rounded-my-md border px-3 py-2 text-my-sm ${direction === option.value ? 'border-my-line-accent bg-my-layer-2' : 'border-my-line'}`} onClick={() => setDirection(option.value)}>{option.label}</button>)}</div></fieldset>
+      <fieldset disabled={busy} className="space-y-2"><legend className="my-item-title mb-2">同步方向</legend><div className="flex flex-wrap gap-2">{([{ value: 'inbound', label: 'GitLab → 当前项目' }, { value: 'bidirectional', label: '双向同步' }] as const).map((option) => <button key={option.value} type="button" aria-pressed={direction === option.value} className={`rounded-my-base border px-3 py-2 text-my-sm transition-colors ${direction === option.value ? 'border-my-line-accent bg-my-layer-2' : 'border-my-line'}`} onClick={() => setDirection(option.value)}>{option.label}</button>)}</div></fieldset>
       {direction === 'bidirectional' && <p className="text-my-sm text-my-warning-text">双向同步会将映射字段写回 GitLab，需要已验证的 api 权限。</p>}
     </>}
     {showStatuses && <div className="space-y-5">
-      <label className="my-item-title flex items-center gap-2"><input type="checkbox" checked={selected.includes('state')} disabled={busy} onChange={(e) => toggleField('state', e.target.checked)} />同步 Issue 状态</label>
+      <label className="my-item-title flex items-center gap-2"><Checkbox checked={selected.includes('state')} disabled={busy} onChange={(checked) => toggleField('state', checked)} />同步 Issue 状态</label>
       {selected.includes('state') ? <IntegrationMappingEditor label="状态映射" rows={statusRows} onChange={setStatusRows} sourceOptions={[{ value: 'opened', label: 'opened' }, { value: 'closed', label: 'closed' }]} targets={snapshot.localStatuses.map((s) => ({ value: s.id, label: s.name }))} disabled={busy} /> : <p className="my-item-description">保留 GitLab 原始状态，不应用状态映射。</p>}
       <p className="my-item-description">状态映射不改变 Trellis 的完成或归档状态。</p>
     </div>}
     {showMembers && <div className="space-y-5">
-      <label className="my-item-title flex items-center gap-2"><input type="checkbox" checked={selected.includes('assignees')} disabled={busy} onChange={(e) => toggleField('assignees', e.target.checked)} />映射 GitLab 负责人</label>
+      <label className="my-item-title flex items-center gap-2"><Checkbox checked={selected.includes('assignees')} disabled={busy} onChange={(checked) => toggleField('assignees', checked)} />映射 GitLab 负责人</label>
       {membersBusy && <p role="status" className="text-my-sm text-my-secondary">正在读取项目成员…</p>}
       {membersError && <div className="space-y-2"><p role="alert" className="text-my-sm text-my-warning-text">{membersError}</p><Button size="sm" disabled={busy || membersBusy} onClick={() => { if (projectId) loadMembers(projectId) }}>重新读取成员</Button></div>}
       {selected.includes('assignees') ? <><IntegrationMappingEditor label="成员映射" rows={memberRows} onChange={setMemberRows} sourceOptions={memberOptions} targets={snapshot.localMembers.map((m) => ({ value: m.id, label: m.name }))} disabled={busy || membersBusy} />{moreMembers && <Button size="sm" variant="ghost" disabled={busy || membersBusy} onClick={loadMoreMembers}>加载更多项目成员</Button>}</> : <p className="my-item-description">保留来源用户身份，不应用成员映射。</p>}
     </div>}
     {showOptions && <div className="space-y-5">
-      <fieldset disabled={busy} className="space-y-2"><legend className="my-item-title mb-2">同步字段</legend><div className="flex flex-wrap gap-x-5 gap-y-3">{fields.filter((field) => field.id !== 'state' && field.id !== 'assignees').map((field) => <label key={field.id} className="my-item-title flex items-center gap-2"><input type="checkbox" checked={selected.includes(field.id)} onChange={(e) => toggleField(field.id, e.target.checked)} />{field.label}</label>)}</div></fieldset>
-      <div className="space-y-3">{([{ label: '为未关联的 Issue 创建本地任务', value: createMissing, set: setCreateMissing }, { label: '同步 GitLab 评论', value: comments, set: setComments }, { label: '包含已有 Issue 的评论历史', value: history, set: setHistory }]).map((option) => <label key={option.label} className="my-item-title flex items-center gap-2"><input type="checkbox" checked={option.value} disabled={busy} onChange={(e) => option.set(e.target.checked)} />{option.label}</label>)}</div>
+      <fieldset disabled={busy} className="space-y-2"><legend className="my-item-title mb-2">同步字段</legend><div className="flex flex-wrap gap-x-5 gap-y-3">{fields.filter((field) => field.id !== 'state' && field.id !== 'assignees').map((field) => <label key={field.id} className="my-item-title flex items-center gap-2"><Checkbox checked={selected.includes(field.id)} onChange={(checked) => toggleField(field.id, checked)} />{field.label}</label>)}</div></fieldset>
+      <div className="space-y-3">{([{ label: '为未关联的 Issue 创建本地任务', value: createMissing, set: setCreateMissing }, { label: '同步 GitLab 评论', value: comments, set: setComments }, { label: '包含已有 Issue 的评论历史', value: history, set: setHistory }]).map((option) => <label key={option.label} className="my-item-title flex items-center gap-2"><Checkbox checked={option.value} disabled={busy} onChange={option.set} />{option.label}</label>)}</div>
       <p className="my-item-description">已有 Issue 的导入需在保存后单独预览确认。</p>
-      <details className="space-y-4 text-my-sm"><summary className="my-item-title cursor-pointer">接收方式</summary><Select ariaLabel="接收方式" value={transport} onChange={(value) => setTransport(value === 'webhook' ? 'webhook' : 'polling')} options={[{ value: 'polling', label: '定时同步' }, ...((snapshot.receiverAvailable || transport === 'webhook') ? [{ value: 'webhook', label: snapshot.receiverAvailable ? 'Webhook + 定时追赶' : 'Webhook（接收端不可用）' }] : [])]} disabled={busy} />{transport === 'webhook' && <p className="text-my-xs text-my-secondary">保存不会注册 Webhook，需在同步详情中再次确认。</p>}</details>
+      <GitlabPlanDisclosure label="接收方式"><Select ariaLabel="接收方式" value={transport} onChange={(value) => setTransport(value === 'webhook' ? 'webhook' : 'polling')} options={[{ value: 'polling', label: '定时同步' }, ...((snapshot.receiverAvailable || transport === 'webhook') ? [{ value: 'webhook', label: snapshot.receiverAvailable ? 'Webhook + 定时追赶' : 'Webhook（接收端不可用）' }] : [])]} disabled={busy} />{transport === 'webhook' && <p className="text-my-xs text-my-secondary">保存不会注册 Webhook，需在同步详情中再次确认。</p>}</GitlabPlanDisclosure>
     </div>}
     {!initial && step === 4 && <>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-3 text-my-sm"><dt className="text-my-tertiary">GitLab 项目</dt><dd className="break-words">{project?.path}</dd><dt className="text-my-tertiary">目标</dt><dd>当前项目</dd><dt className="text-my-tertiary">同步方向</dt><dd>{direction === 'inbound' ? 'GitLab → 当前项目' : '双向同步'}</dd><dt className="text-my-tertiary">同步字段</dt><dd>{fields.filter((field) => selected.includes(field.id)).map((field) => field.label).join('、')}</dd><dt className="text-my-tertiary">状态映射</dt><dd>{mapping.statuses.length} 项</dd><dt className="text-my-tertiary">成员映射</dt><dd>{mapping.members.length} 项</dd><dt className="text-my-tertiary">评论</dt><dd>{comments ? '同步' : '不同步'}{history ? ' · 包含历史' : ''}</dd><dt className="text-my-tertiary">接收方式</dt><dd>{transport === 'webhook' ? 'Webhook + 定时追赶' : '定时同步'}</dd></dl>

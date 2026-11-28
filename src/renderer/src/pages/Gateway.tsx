@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  ChevronRight,
   RefreshCw,
   Terminal,
   Activity,
@@ -14,7 +15,7 @@ import {
 import { useApp } from '../store'
 import { api, hasIpc } from '../api'
 import { clsx } from 'clsx'
-import { Button, Checkbox, Modal } from '../my/ui'
+import { Button, Checkbox, DisclosureGrid, Modal } from '../my/ui'
 import { relTime } from '../utils/format'
 import { errorMessage } from '../../../shared/errors'
 import { knowledgeStatusLabel, useProjectKnowledge } from '../knowledge/bridge'
@@ -28,7 +29,17 @@ import type {
   GatewayToolDef,
   KbMcpInstallResult
 } from '../../../shared/types'
-import type { JSX } from 'react'
+
+function GatewayDisclosure({ label, ariaLabel, className = 'text-my-xs text-my-tertiary', labelClassName = '', children }: { label: string; ariaLabel?: string; className?: string; labelClassName?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" aria-label={ariaLabel} className={`inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary ${labelClassName}`.trim()} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export function GatewayPage(): JSX.Element {
   const root = useApp((s) => s.snapshot?.meta.root ?? '')
@@ -300,33 +311,33 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
       </PreferenceSection>
 
       {statusError && (
-        <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+        <div role="alert" className="flex items-start gap-3 rounded-my-base border border-my-line p-3 text-my-xs">
           <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
           <div className="min-w-0 flex-1">
             <div className="text-my-primary">{gatewayStatus ? '刷新失败，保留上次网关记录' : '无法读取网关状态'}</div>
-            <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{statusError}</p></details>
+            <GatewayDisclosure label="错误详情" className="mt-1 text-my-tertiary"><p className="mt-1 whitespace-pre-wrap break-words">{statusError}</p></GatewayDisclosure>
           </div>
           <Button variant="outline" size="sm" onClick={loadStatus} disabled={loadingStatus}>{loadingStatus ? '读取中' : '重试'}</Button>
         </div>
       )}
       {actionError && (
-        <div role="alert" className="flex items-start gap-3 rounded-my-lg border border-my-line p-3 text-my-xs">
+        <div role="alert" className="flex items-start gap-3 rounded-my-base border border-my-line p-3 text-my-xs">
           <AlertTriangle size={15} className="mt-0.5 shrink-0 text-my-danger-text" />
           <div className="min-w-0 flex-1">
             <div className="text-my-primary">{actionError.kind === 'mount' ? '接入配置生成失败' : '上游连通性测试失败'}</div>
-            <details className="mt-1 text-my-tertiary"><summary className="cursor-pointer">错误详情</summary><p className="mt-1 whitespace-pre-wrap break-words">{actionError.detail}</p></details>
+            <GatewayDisclosure label="错误详情" className="mt-1 text-my-tertiary"><p className="mt-1 whitespace-pre-wrap break-words">{actionError.detail}</p></GatewayDisclosure>
           </div>
           <Button variant="outline" size="sm" disabled={!actionsAvailable || installingMcp || !!testingUpstreamId} onClick={() => actionError.kind === 'mount' ? void handleOpenMountModal() : actionError.upstreamId && void handleTestUpstream(actionError.upstreamId)}>重试</Button>
         </div>
       )}
       {!gatewayStatus && !statusError && (
-        <div role="status" className="flex items-center gap-3 rounded-my-lg border border-my-line p-4 text-my-sm text-my-tertiary">
+        <div role="status" className="flex items-center gap-3 rounded-my-base border border-my-line p-4 text-my-sm text-my-tertiary">
           {loadingStatus ? <Loader2 size={18} className="shrink-0 animate-spin" /> : <Terminal size={18} className="shrink-0" />}
           <span>{!hasIpc ? '网关需在桌面应用中使用' : !canReadStatus ? '请重启桌面应用以加载网关' : loadingStatus ? '正在读取网关状态…' : '尚未读取网关状态'}</span>
         </div>
       )}
       {gatewayStatus && <>
-        <PreferenceSection id="gateway-upstreams" title="上游服务" action={<span className="text-my-xs text-my-tertiary">{upstreams.filter((upstream) => upstream.status === 'connected').length} / {upstreams.length} 已连接</span>}>
+        <PreferenceSection id="gateway-upstreams" title="上游服务" action={<span className="text-my-xs tabular-nums text-my-tertiary">{upstreams.filter((upstream) => upstream.status === 'connected').length} / {upstreams.length} 已连接</span>}>
           {[
             { id: 'local-kb', label: '本地知识库', hint: root ? `${root}/.trellis` : '未打开项目' },
             { id: 'weknora', label: 'WeKnora 知识库', hint: knowledge.context ? `${knowledge.context.scope.connectionName || '未绑定'} · ${knowledge.context.scope.collectionIds.length} 个知识库` : knowledge.loading ? '正在读取项目绑定' : knowledge.error ? '项目绑定读取失败' : root ? '绑定状态未知' : '未打开项目' },
@@ -335,8 +346,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             const upstream = upstreams.find((item) => item.id === service.id)
             const connected = upstream?.status === 'connected'
             const status = !root ? '未打开项目' : !upstream ? '状态未知' : upstream.status === 'connected' ? '已连接' : upstream.status === 'disabled' ? '已禁用' : upstream.status === 'error' ? '连接异常' : '未连接'
-            return <PreferenceRow key={service.id} label={service.label} hint={service.hint} detail={(upstream?.endpoint || upstream?.error || upstream?.lastChecked || service.id === 'weknora') && <details className="text-my-xs text-my-tertiary">
-                <summary className="cursor-pointer" aria-label={`${service.label}的连接详情`}>连接详情</summary>
+            return <PreferenceRow key={service.id} label={service.label} hint={service.hint} detail={(upstream?.endpoint || upstream?.error || upstream?.lastChecked || service.id === 'weknora') && <GatewayDisclosure label="连接详情" ariaLabel={`${service.label}的连接详情`}>
                 <div className="mt-2 space-y-1 break-words">
                   {upstream?.endpoint && <p className="font-mono break-all">{upstream.endpoint}</p>}
                   {upstream?.lastChecked && <p>状态更新时间：{relTime(upstream.lastChecked)}</p>}
@@ -347,9 +357,9 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                     <Button variant="outline" size="sm" onClick={() => void knowledge.refresh()} disabled={!root || knowledge.loading}>重新读取绑定</Button>
                   </>}
                 </div>
-              </details>}>
+              </GatewayDisclosure>}>
               <span className={clsx('my-chip', connected && root ? 'bg-my-success-subtle text-my-success-text' : upstream?.status === 'error' ? 'bg-my-warning-subtle text-my-warning-text' : 'bg-my-layer-3 text-my-tertiary')}>{status}</span>
-              <span className="text-my-xs text-my-tertiary">{tools.filter((tool) => tool.upstreamId === service.id).length} 个工具</span>
+              <span className="text-my-xs tabular-nums text-my-tertiary">{tools.filter((tool) => tool.upstreamId === service.id).length} 个工具</span>
               <Button
                 variant="outline" size="sm"
                 onClick={() => handleTestUpstream(service.id)}
@@ -364,7 +374,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
           })}
         </PreferenceSection>
 
-        <PreferenceSection id="gateway-tools" title="工具" action={<span className="text-my-xs text-my-tertiary">{filteredTools.length} 个工具</span>}>
+        <PreferenceSection id="gateway-tools" title="工具" action={<span className="text-my-xs tabular-nums text-my-tertiary">{filteredTools.length} 个工具</span>}>
           <PreferenceRow label="分类">
             <div className="my-segmented preference-choices" role="group" aria-label="工具分类">
               {([
@@ -377,8 +387,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
           {filteredTools.length === 0 && <div className="py-4 text-my-sm text-my-tertiary">当前分类没有工具</div>}
           {filteredTools.map((tool) => <div key={tool.name} className="preference-row">
             <div className="preference-row-label space-y-2">
-              <details className="text-my-xs font-normal text-my-secondary">
-                <summary className="my-item-title cursor-pointer break-all font-mono">{tool.name}</summary>
+              <GatewayDisclosure label={tool.name} className="text-my-xs font-normal text-my-secondary" labelClassName="my-item-title break-all font-mono">
                 <div className="mt-3 space-y-3">
                   <p className="my-item-description">{tool.description}</p>
                   {Object.keys(tool.parameters).length === 0 ? <p className="text-my-tertiary">无参数</p> : <dl className="space-y-2">
@@ -389,7 +398,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                     </div>)}
                   </dl>}
                 </div>
-              </details>
+              </GatewayDisclosure>
               <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">
                 <span>{tool.upstreamId}</span>
                 {tool.securityRule && <span className="text-my-warning-text">{tool.securityRule}</span>}
@@ -405,8 +414,8 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
         </PreferenceSection>
 
         <PreferenceSection id="gateway-audit" title="调用记录" action={<div className="flex items-center gap-2">
-          <span className="text-my-xs text-my-tertiary">累计 {gatewayStatus.totalQueries} 次调用</span>
-          <Button variant="ghost" size="sm" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} aria-label="刷新调用记录"><RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} /></Button>
+          <span className="text-my-xs tabular-nums text-my-tertiary">累计 {gatewayStatus.totalQueries} 次调用</span>
+          <button type="button" className="my-icon-control" onClick={loadStatus} disabled={!canReadStatus || loadingStatus} aria-label="刷新调用记录"><RefreshCw size={12} className={clsx(loadingStatus && 'animate-spin')} /></button>
         </div>}>
           {recentLogs.length === 0 ? <p className="py-4 text-my-sm text-my-tertiary">暂无调用记录</p> : <div className="divide-y divide-my-line">
             {recentLogs.map((log) => <div key={log.id} className="py-4 text-my-xs">
@@ -415,17 +424,16 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                   <span className={clsx('my-chip', log.status === 'success' && 'bg-my-success-subtle text-my-success-text', log.status === 'blocked' && 'bg-my-danger-subtle text-my-danger-text', log.status === 'error' && 'bg-my-warning-subtle text-my-warning-text')}>{log.status === 'success' ? '成功' : log.status === 'blocked' ? '已拦截' : '失败'}</span>
                   <span className="break-all font-mono text-my-primary">{log.toolName || log.query || 'mcp_call'}</span>
                 </div>
-                <div className="flex items-center gap-2 text-my-tertiary"><span className="font-mono">{log.elapsedMs}ms</span><span>{relTime(log.timestamp)}</span></div>
+                <div className="flex items-center gap-2 text-my-tertiary"><span className="font-mono tabular-nums">{log.elapsedMs}ms</span><span>{relTime(log.timestamp)}</span></div>
               </div>
               {log.error && <p className="mt-2 break-words text-my-danger-text">{log.error}</p>}
-              <details className="mt-2 text-my-tertiary">
-                <summary className="cursor-pointer">调用详情</summary>
+              <GatewayDisclosure label="调用详情" className="mt-2 text-my-tertiary">
                 <div className="mt-2 space-y-2">
                   <p>上游：{log.upstreamId || 'gateway'}</p>
                   {log.input && Object.keys(log.input).length > 0 && <pre className="whitespace-pre-wrap break-all font-mono">入参：{JSON.stringify(log.input, null, 2)}</pre>}
                   {log.responsePreview && <pre className="whitespace-pre-wrap break-all font-mono">响应：{log.responsePreview}</pre>}
                 </div>
-              </details>
+              </GatewayDisclosure>
             </div>)}
           </div>}
         </PreferenceSection>
@@ -438,13 +446,13 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <Play size={16} className="text-my-accent-text" />
-                <h3 className="text-my-sm font-semibold text-my-primary">
+                <h3 className="text-my-sm font-medium text-my-primary">
                   在线工具调试: <span className="font-mono text-my-accent-text">{selectedTool.name}</span>
                 </h3>
               </div>
-              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭调试器" onClick={closeDebugger}>
+              <button type="button" className="my-icon-control shrink-0" aria-label="关闭调试器" onClick={closeDebugger}>
                 <X size={14} />
-              </Button>
+              </button>
             </div>
 
             <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4" style={{ scrollbarGutter: 'stable' }}>
@@ -453,9 +461,9 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
 
               {/* 参数输入 */}
               <div className="space-y-3">
-                <h4 className="text-my-xs font-semibold text-my-primary">调用参数</h4>
+                <h4 className="text-my-xs font-medium text-my-primary">调用参数</h4>
                 {Object.keys(selectedTool.parameters).length === 0 ? (
-                  <div className="rounded-my-lg border border-my-line bg-my-canvas p-3 text-my-xs text-my-tertiary">
+                  <div className="rounded-my-base border border-my-line bg-my-canvas p-3 text-my-xs text-my-tertiary">
                     该工具为无参工具，直接点击下方“执行调用”即可。
                   </div>
                 ) : (
@@ -475,7 +483,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                           disabled={executingTool}
                           value={toolArgs[pName] || ''}
                           onChange={(e) => setToolArgs({ ...toolArgs, [pName]: e.target.value })}
-                          className="w-full rounded-my-md border border-my-line bg-my-surface-1 p-2.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+                          className="w-full rounded-my-base border border-my-line bg-my-surface-1 p-2.5 font-mono text-my-xs text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
                           placeholder="输入 SQL 语句，例如 SELECT * FROM t_order LIMIT 5"
                         />
                       ) : (
@@ -517,29 +525,29 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               )}
 
               {/* 调试执行结果 */}
-              {executionError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-xs text-my-danger-text"><span>执行失败，可重试调用</span><details className="mt-1"><summary className="cursor-pointer">错误详情</summary><p className="whitespace-pre-wrap break-words">{executionError}</p></details></div>}
+              {executionError && <div role="alert" className="rounded-my-base border border-my-line p-3 text-my-xs text-my-danger-text"><span>执行失败，可重试调用</span><GatewayDisclosure label="错误详情" className="mt-1"><p className="whitespace-pre-wrap break-words">{executionError}</p></GatewayDisclosure></div>}
               {testResult && (
                 <div role={testResult.ok ? 'status' : 'alert'} className="space-y-2 border-t border-my-line pt-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-my-xs font-semibold text-my-primary">执行结果</span>
-                    <span className="font-mono text-my-xs text-my-success-text">
+                    <span className="text-my-xs font-medium text-my-primary">执行结果</span>
+                    <span className="font-mono text-my-xs tabular-nums text-my-success-text">
                       耗时: {testResult.elapsedMs}ms
                     </span>
                   </div>
                   {testResult.blockedBySecurity ? (
-                    <div className="rounded-my-lg border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text space-y-1">
-                      <div className="flex items-center gap-1.5 font-semibold">
+                    <div className="rounded-my-base border border-my-line-danger bg-my-danger-subtle p-3 text-my-xs text-my-danger-text space-y-1">
+                      <div className="flex items-center gap-1.5 font-medium">
                         <AlertTriangle size={14} />
                         <span>网关安全防线触发：执行被拦截！</span>
                       </div>
                       <p>{testResult.error}</p>
                     </div>
                   ) : testResult.ok ? (
-                    <pre className="max-h-60 overflow-y-auto rounded-my-lg border border-my-line bg-my-canvas p-3 font-mono text-my-xs text-my-secondary leading-relaxed">
+                    <pre className="max-h-60 overflow-y-auto rounded-my-base border border-my-line bg-my-canvas p-3 font-mono text-my-xs text-my-secondary leading-relaxed">
                       {JSON.stringify(testResult.result, null, 2)}
                     </pre>
                   ) : (
-                    <div className="rounded-my-lg border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">
+                    <div className="rounded-my-base border border-my-line-warning bg-my-warning-subtle p-3 text-my-xs text-my-warning-text">
                       {testResult.error}
                     </div>
                   )}
@@ -567,16 +575,16 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={16} className="text-my-success-text" />
-                <h3 className="text-my-sm font-semibold text-my-primary">网关安全防线与熔断策略</h3>
+                <h3 className="text-my-sm font-medium text-my-primary">网关安全防线与熔断策略</h3>
               </div>
-              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭安全策略" onClick={closeSecurity}>
+              <button type="button" className="my-icon-control shrink-0" aria-label="关闭安全策略" onClick={closeSecurity}>
                 <X size={14} />
-              </Button>
+              </button>
             </div>
 
             <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4 text-my-xs" style={{ scrollbarGutter: 'stable' }}>
-              {securityError && <div role="alert" className="rounded-my-lg border border-my-line p-3 text-my-danger-text">{securityError}</div>}
-              <div className="flex items-center justify-between rounded-my-lg border border-my-line bg-my-canvas p-3">
+              {securityError && <div role="alert" className="rounded-my-base border border-my-line p-3 text-my-danger-text">{securityError}</div>}
+              <div className="flex items-center justify-between rounded-my-base border border-my-line bg-my-canvas p-3">
                 <div>
                   <div className="my-item-title">SQL 只读安全拦截</div>
                   <p className="my-item-description mt-0.5">强制阻断 DROP / DELETE / UPDATE / ALTER 等写操作</p>
@@ -635,21 +643,21 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-my-line px-5 py-3">
               <div className="flex items-center gap-2">
                 <Terminal size={16} className="text-my-accent-text" />
-                <h3 className="text-my-sm font-semibold text-my-primary">接入 AI 编程编辑器</h3>
+                <h3 className="text-my-sm font-medium text-my-primary">接入 AI 编程编辑器</h3>
               </div>
-              <Button variant="ghost" size="sm" className="my-icon-control shrink-0" aria-label="关闭接入配置" onClick={() => setShowMountModal(false)}>
+              <button type="button" className="my-icon-control shrink-0" aria-label="关闭接入配置" onClick={() => setShowMountModal(false)}>
                 <X size={14} />
-              </Button>
+              </button>
             </div>
 
             <div className="my-scrollbar min-h-0 overflow-y-auto p-5 space-y-4 text-my-xs" style={{ scrollbarGutter: 'stable' }}>
-              <div className="rounded-my-lg border border-my-line-success bg-my-success-subtle p-3 text-my-success-text leading-relaxed">
+              <div className="rounded-my-base border border-my-line-success bg-my-success-subtle p-3 text-my-success-text leading-relaxed">
                 网关脚本已就绪：<br />
                 <code className="font-mono text-my-xs break-all">{mcpInstallResult.scriptPath}</code>
               </div>
 
               {/* Claude Code */}
-              <div className="rounded-my-lg border border-my-line bg-my-canvas p-3">
+              <div className="rounded-my-base border border-my-line bg-my-canvas p-3">
                 <div className="flex items-center justify-between">
                   <span className="my-item-title">Claude Code (.mcp.json)</span>
                   <Button
@@ -678,7 +686,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                     <span>{copiedKey === 'claude' && copyFeedback.status === 'copied' ? '已复制' : copiedKey === 'claude' && copyFeedback.status === 'copying' ? '复制中' : '复制 JSON'}</span>
                   </Button>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
+                <pre className="mt-2 overflow-x-auto rounded-my-base border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
 {`{
   "mcpServers": {
     "trellis-gateway": {
@@ -691,7 +699,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
               </div>
 
               {/* Codex */}
-              <div className="rounded-my-lg border border-my-line bg-my-canvas p-3">
+              <div className="rounded-my-base border border-my-line bg-my-canvas p-3">
                 <div className="flex items-center justify-between">
                   <span className="my-item-title">Codex (~/.codex/config.toml)</span>
                   <Button
@@ -709,7 +717,7 @@ function GatewayWorkspace({ root }: { root: string }): JSX.Element {
                     <span>{copiedKey === 'codex' && copyFeedback.status === 'copied' ? '已复制' : copiedKey === 'codex' && copyFeedback.status === 'copying' ? '复制中' : '复制 TOML'}</span>
                   </Button>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded-my-sm border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
+                <pre className="mt-2 overflow-x-auto rounded-my-base border border-my-line bg-my-canvas p-2 font-mono text-my-xs text-my-secondary">
 {`[mcp_servers.trellis-gateway]
 command = "node"
 args = ["${mcpInstallResult.scriptPath}", "--root", "${snapshot?.meta.root || '.'}"]`}

@@ -28,9 +28,9 @@ function ApplicationDialogs(): JSX.Element | null {
   if (!editor || !state.root) return null
   const close = (): void => { request.current += 1; setError(null); closeApplicationEditor() }
   if (editor.kind !== 'remove') return <ApplicationConfigDialog key={`${state.generation}:${editor.kind === 'edit' ? editor.definition.id : 'new'}`} root={state.root} definition={editor.kind === 'edit' ? editor.definition : undefined} npm={editor.kind === 'new' ? editor.npm : undefined} onClose={close} />
-  return <Modal open onClose={close} ariaLabel="删除应用配置">
+  return <Modal open onClose={close} placement="center" ariaLabel="删除应用配置">
     <div className="p-5">
-      <h2 className="text-my-lg font-semibold text-my-primary">删除应用配置</h2>
+      <h2 className="text-my-lg font-medium text-my-primary">删除应用配置</h2>
       <p className="mt-3 break-words text-my-sm text-my-secondary">删除“{editor.definition.name}”的本机启动配置？</p>
       {error && <p role="alert" className="my-application-message mt-3 text-my-danger-text">{error}</p>}
       <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" onClick={close}>取消</Button><Button variant="danger" disabled={removing} onClick={() => {
@@ -80,7 +80,7 @@ export function ApplicationPanel(): JSX.Element {
     </Tooltip></span>}>
       {(close) => <div id={id} role="dialog" aria-label="项目应用" className="my-applications-popup">
         <CloseMenuForEditor active={Boolean(state.editor)} close={close} />
-        <header className="flex shrink-0 items-center gap-2 px-3 py-2"><div className="min-w-0 flex-1"><h2 className="text-my-sm font-semibold text-my-primary">运行配置</h2>{projectName && <p className="truncate text-my-xs text-my-tertiary">{projectName}</p>}</div><ApplicationActions onOpen={close} /></header>
+        <header className="flex shrink-0 items-center gap-2 px-3 py-2"><div className="min-w-0 flex-1"><h2 className="text-my-sm font-medium text-my-primary">运行配置</h2>{projectName && <p className="truncate text-my-xs text-my-tertiary">{projectName}</p>}</div><ApplicationActions onOpen={close} /></header>
         <div className="my-run-config-options my-scrollbar" role="listbox" aria-label="选择运行配置" onKeyDown={(event) => {
           const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]')]
           const current = options.indexOf(document.activeElement as HTMLButtonElement)
@@ -104,7 +104,7 @@ export function ApplicationPanel(): JSX.Element {
 
 export function ApplicationRuntimeView(): JSX.Element {
   return <section aria-label="项目应用运行" className="flex h-full min-h-0 min-w-0 flex-col">
-    <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2"><div className="min-w-0 flex-1"><h2 className="text-my-md font-semibold text-my-primary">应用</h2><p className="mt-1 text-my-xs text-my-tertiary">项目启动配置与运行状态</p></div><ApplicationActions /></div>
+    <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2"><div className="min-w-0 flex-1"><h2 className="text-my-md font-medium text-my-primary">应用</h2><p className="mt-1 text-my-xs text-my-tertiary">项目启动配置与运行状态</p></div><ApplicationActions /></div>
     <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto"><ApplicationList /></div>
   </section>
 }

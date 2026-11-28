@@ -87,11 +87,11 @@ export function ProviderEcosystemPanel(): JSX.Element {
   }
 
   return <div className="preferences-page space-y-4">
-    <section className="rounded-my-md border border-my-line bg-my-panel p-4">
+    <section className="rounded-my-base border border-my-line bg-my-panel p-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="my-item-title text-my-lg">ACP Registry</h2>
-          <p className="my-item-description">{catalog ? `${catalog.stale ? '缓存' : '在线'} · ${catalog.indexVersion ?? '未知版本'} · ${catalog.agents.length} 项` : '目录未加载'}</p>
+          <p className="my-item-description tabular-nums">{catalog ? `${catalog.stale ? '缓存' : '在线'} · ${catalog.indexVersion ?? '未知版本'} · ${catalog.agents.length} 项` : '目录未加载'}</p>
         </div>
         <Button size="sm" variant="outline" disabled={busy === 'catalog'} onClick={() => void reload(true)}>
           <RefreshCw size={14} aria-hidden />{busy === 'catalog' ? '刷新中…' : '刷新'}
@@ -108,7 +108,7 @@ export function ProviderEcosystemPanel(): JSX.Element {
       </div>
     </section>
 
-    <section className="rounded-my-md border border-my-line bg-my-panel p-4">
+    <section className="rounded-my-base border border-my-line bg-my-panel p-4">
       <h2 className="my-item-title text-my-lg">本地 Provider</h2>
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         <label className="grid gap-1 text-my-sm text-my-secondary" htmlFor="provider-name">名称<input id="provider-name" className="my-input" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
@@ -134,10 +134,10 @@ export function ProviderEcosystemPanel(): JSX.Element {
             <span className="flex-1" />
             <Button size="sm" variant="ghost" disabled={busy === `matrix-${provider.id}`} onClick={() => void inspect(provider.id)}>能力矩阵</Button>
             <Button size="sm" variant="ghost" onClick={() => setDraft(serializeProvider(provider))}>编辑</Button>
-            <Button size="sm" variant="ghost" aria-label={`删除 ${provider.name}`} disabled={busy === provider.id} onClick={() => void remove(provider.id)}><Trash2 size={14} aria-hidden /></Button>
+            <button type="button" className="my-icon-control" aria-label={`删除 ${provider.name}`} disabled={busy === provider.id} onClick={() => void remove(provider.id)}><Trash2 size={14} aria-hidden /></button>
           </div>
           <p className="my-item-description break-all font-mono text-my-xs">{provider.executable} {provider.argv.join(' ')}</p>
-          {matrix[provider.id] && <dl className="grid gap-2 rounded-my-sm bg-[var(--my-bg-canvas)] p-3 sm:grid-cols-2">
+          {matrix[provider.id] && <dl className="grid gap-2 rounded-my-base bg-[var(--my-bg-canvas)] p-3 sm:grid-cols-2">
             {matrix[provider.id].map(item => <div key={item.key} className="flex items-center justify-between gap-2">
               <dt className="my-item-title text-my-sm">{capabilityLabel[item.key]}</dt><dd className="text-my-xs text-my-tertiary">{item.negotiated ?? (item.registry ? `${item.registry} · ` : '') + evidenceLabel[item.status]}</dd>
             </div>)}

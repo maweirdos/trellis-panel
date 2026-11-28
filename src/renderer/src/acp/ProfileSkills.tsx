@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api, hasIpc } from '../api'
-import { Button } from '../my/ui'
+import { Button, Checkbox } from '../my/ui'
 import { relativePathUnderRoot, sameRelativeDocumentPath } from '../reader/reader-paths'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import { acpSkillPathSchema } from '../../../shared/acp-context'
@@ -62,17 +62,17 @@ export function ProfileSkills({ root, value, onChange, disabled = false, isCurre
     else if (value.length < 32) onChange([...value, path])
   }
   return <section aria-label="项目技能" className="space-y-2 text-my-sm text-my-secondary">
-    <div className="flex items-center justify-between gap-2"><h3 className="font-medium text-my-primary">项目技能</h3><span className="text-my-tertiary">已选 {value.length} / 32</span></div>
+    <div className="flex items-center justify-between gap-2"><h3 className="font-medium text-my-primary">项目技能</h3><span className="tabular-nums text-my-tertiary">已选 {value.length} / 32</span></div>
     <p className="my-item-description">额外选择当前项目技能；执行引擎原有的技能仍会继承。</p>
     {visible.loading && <p role="status" className="flex items-center gap-1 text-my-tertiary"><Loader2 size={12} className="animate-spin" />正在读取项目技能…</p>}
     {visible.error && <div><p role="alert" className="text-my-danger-text">{visible.error}</p><Button size="sm" variant="outline" disabled={disabled || !active || !hasIpc || !root} onClick={() => { if (canInteract() && isCurrent()) setAttempt((previous) => previous + 1) }}>重试读取技能</Button></div>}
     <div className="space-y-2">
       {visible.skills.map((skill) => <label key={skill.relativePath} className="flex items-start gap-2">
-        <input type="checkbox" className="my-checkbox mt-1 shrink-0" checked={selected(skill.relativePath)} disabled={disabled || !active || (!selected(skill.relativePath) && value.length >= 32)} onChange={() => toggle(skill.relativePath)} />
+        <span className="mt-1 shrink-0"><Checkbox checked={selected(skill.relativePath)} disabled={disabled || !active || (!selected(skill.relativePath) && value.length >= 32)} onChange={() => toggle(skill.relativePath)} /></span>
         <span className="min-w-0"><strong className="my-item-title">{skill.name}</strong>{skill.description && <span className="my-item-description block break-words">{skill.description}</span>}<span className="block break-all font-mono text-my-xs text-my-tertiary">{skill.relativePath}</span></span>
       </label>)}
       {missing.map((path) => <label key={path} className="flex items-start gap-2">
-        <input type="checkbox" className="my-checkbox mt-1 shrink-0" checked disabled={disabled || !active} onChange={() => toggle(path)} />
+        <span className="mt-1 shrink-0"><Checkbox checked disabled={disabled || !active} onChange={() => toggle(path)} /></span>
         <span className="min-w-0"><span className="block break-all font-mono">{path}</span><span className="text-my-tertiary">{visible.complete ? '未在本次扫描中找到，已保留选择' : '已保留选择，尚未核对文件'}</span></span>
       </label>)}
     </div>

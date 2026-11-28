@@ -41,7 +41,7 @@ export function WorkItemIntegrations({ taskDir, connectionId }: { taskDir: strin
   useEffect(() => { setPreview(null); setReceipt(null); setRequestId('') }, [binding?.id, binding?.revision, connection?.revision, taskDir, root])
   if (!hasIpc || !root) return null
   const context = binding && connection ? { ...boundRequest(root, binding, connection), taskDir } : null
-  return <section className="space-y-3 rounded-my-lg border border-my-line bg-my-layer-1 p-3">
+  return <section className="space-y-3 rounded-my-base border border-my-line bg-my-layer-1 p-3">
     <h3 className="text-my-sm font-medium">外部关联与通知</h3>
     {links.map((link) => <div key={link.id} className="flex items-center justify-between gap-2 text-my-xs"><div className="min-w-0"><p className="my-item-title truncate" title={link.object.title}>{link.object.providerId} · #{link.object.number} {link.object.title}</p><p className="my-item-description truncate">{link.object.repository} · {link.object.state}（关联时快照）</p></div><div className="flex shrink-0 gap-1"><Button size="sm" onClick={() => void api.openExternal(link.object.url)}>来源</Button><Button size="sm" disabled={action.busy} onClick={() => void action.run(() => api.integrations.unlink({ expectedRoot: root, taskDir, linkId: link.id })).then((result) => { if (result) setLinks(result) })}>移除关联</Button></div></div>)}
     {links.length === 0 && <p className="text-my-xs text-my-tertiary">尚未关联远端 PR / MR。</p>}
@@ -51,7 +51,7 @@ export function WorkItemIntegrations({ taskDir, connectionId }: { taskDir: strin
       {context && provider?.category === 'messaging' && <div className="space-y-2">
         <p className="text-my-xs text-my-tertiary">仅向所选群发送当前工作项摘要；先预览，再明确发送。</p>
         <Button size="sm" disabled={action.busy} onClick={() => void action.run(() => api.integrations.previewNotification(context)).then((result) => { if (result) { setPreview(result); setReceipt(null); setRequestId(crypto.randomUUID()) } })}>{preview ? '重新预览' : '预览通知'}</Button>
-        {preview && <div className="space-y-2 rounded-my-md border border-my-line p-3"><p className="text-my-xs text-my-tertiary">发送到：{preview.destination}</p><p className="text-my-sm font-medium">{preview.title}</p><pre className="whitespace-pre-wrap break-words font-sans text-my-xs text-my-secondary">{preview.body}</pre><Button variant="primary" size="sm" disabled={action.busy || receipt !== null} onClick={() => void action.run(() => api.integrations.sendNotification({ ...context, requestId, preview })).then((result) => { if (result) setReceipt(result) })}>{action.busy ? '提交中…' : '发送这条通知'}</Button></div>}
+        {preview && <div className="space-y-2 rounded-my-base border border-my-line p-3"><p className="text-my-xs text-my-tertiary">发送到：{preview.destination}</p><p className="text-my-sm font-medium">{preview.title}</p><pre className="whitespace-pre-wrap break-words font-sans text-my-xs text-my-secondary">{preview.body}</pre><Button variant="primary" size="sm" disabled={action.busy || receipt !== null} onClick={() => void action.run(() => api.integrations.sendNotification({ ...context, requestId, preview })).then((result) => { if (result) setReceipt(result) })}>{action.busy ? '提交中…' : '发送这条通知'}</Button></div>}
         {receipt && <p role="status" className={receipt.state === 'delivered' ? 'text-my-xs text-my-success-text' : 'text-my-xs text-my-tertiary'}>{receipt.detail}{receipt.state === 'uncertain' ? '。重新发送前请先核实目标群。' : ''}</p>}
       </div>}
     </> : <p className="my-item-description">{connectionId ? '当前项目没有为该连接启用的通知目的地。' : '当前项目暂无可用的关联或通知目的地。'}</p>}

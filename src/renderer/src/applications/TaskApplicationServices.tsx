@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Link, Loader2, Play, RefreshCw, Unlink } from 'lucide-react'
+import { Check, ChevronRight, Link, Loader2, Play, RefreshCw, Unlink } from 'lucide-react'
 import type { ApplicationTaskPlanResult, ApplicationTaskRuntimeApi, ApplicationTaskScope, ApplicationTaskPlan } from '@shared/app-task-runtime'
 import type { ApplicationRuntimeApi, ApplicationTaskServiceUse } from '@shared/app-runtime'
 import { api, hasIpc } from '../api'
-import { Button } from '../my/ui'
+import { Button, DisclosureGrid } from '../my/ui'
+
+function PlanSnapshotDisclosure({ children }: { children: JSX.Element }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="mt-2 text-my-xs text-my-secondary">
+    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>启动计划与环境事实</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { ApplicationSnapshotFacts } from './ApplicationRunFacts'
 import { ProcessStatus, ReadinessStatus } from './ApplicationStatus'
 
@@ -149,7 +160,7 @@ export function TaskApplicationServices({ query, expected, contextKey, runtimeAp
     finally { busyRef.current = false; if (live(generation)) setBusy(null) }
   }
   return <section ref={section} aria-label="任务启动环境与服务" className="min-w-0 space-y-3">
-    <header className="flex flex-wrap items-center gap-2"><h3 className="min-w-0 flex-1 text-my-sm font-semibold text-my-primary">启动环境与服务</h3><Button variant="ghost" size="sm" disabled={!available || loading || isBusy} onClick={() => { setOperationError(null); void refresh() }}><RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />刷新计划</Button></header>
+    <header className="flex flex-wrap items-center gap-2"><h3 className="min-w-0 flex-1 text-my-sm font-medium text-my-primary">启动环境与服务</h3><Button variant="ghost" size="sm" disabled={!available || loading || isBusy} onClick={() => { setOperationError(null); void refresh() }}><RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />刷新计划</Button></header>
     {!available && <p className="text-my-xs text-my-tertiary">桌面端接入任务运行服务后可核对本机启动计划</p>}
     {currentError && <p role="alert" className="my-application-message break-words text-my-danger-text">{currentError}</p>}
     {receipt?.generation === generation && <p role="status" className="break-words text-my-xs text-my-secondary">{receipt.message}</p>}
@@ -158,13 +169,13 @@ export function TaskApplicationServices({ query, expected, contextKey, runtimeAp
       <p className="break-all text-my-xs text-my-tertiary">本人工作副本 · {current.root}</p>
       {current.referencesPartial && <p role="status" className="text-my-xs text-my-warning-text">部分本机服务引用不可读取，请同时核对本机运行中心</p>}
       {current.plans.length === 0 && <p className="text-my-xs text-my-tertiary">此副本尚无启动配置；在应用配置中添加后刷新计划</p>}
-      {current.plans.map(plan => <article key={plan.app.definition.id} className="min-w-0 rounded-my-lg border border-my-line p-3">
+      {current.plans.map(plan => <article key={plan.app.definition.id} className="min-w-0 rounded-my-base border border-my-line p-3">
         <div className="flex flex-wrap items-start gap-2"><h4 className="my-item-title min-w-0 flex-1 break-words">{plan.app.definition.name} <span className="font-normal text-my-xs text-my-tertiary">{plan.app.definition.id}</span></h4><span className="text-my-xs text-my-secondary">{ENVIRONMENT_LABELS[plan.environment.selection]}</span></div>
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-my-xs"><ProcessStatus app={plan.app} /><ReadinessStatus readiness={plan.app.readiness} /><span className={plan.environment.status === 'verified' ? 'text-my-secondary' : 'text-my-warning-text'}>{plan.environment.status === 'verified' ? '人工已核对' : plan.environment.status === 'changed' ? '环境已变化' : '环境待核实'}</span></div>
         <p className="mt-2 break-all text-my-xs text-my-secondary">{plan.snapshot.status === 'known' ? plan.snapshot.cwd : plan.blockedReason}</p>
         {plan.blockedReason && <p className="mt-2 break-words text-my-xs text-my-warning-text">{plan.blockedReason}</p>}
         {plan.app.configChanged && <p className="mt-2 text-my-xs text-my-warning-text">新配置尚未应用到原运行实例</p>}
-        <details className="mt-2 text-my-xs text-my-secondary"><summary className="cursor-pointer">启动计划与环境事实</summary><dl className="mt-2 grid min-w-0 gap-2 break-words"><ApplicationSnapshotFacts snapshot={plan.snapshot} /></dl></details>
+        <PlanSnapshotDisclosure><dl className="mt-2 grid min-w-0 gap-2 break-words"><ApplicationSnapshotFacts snapshot={plan.snapshot} /></dl></PlanSnapshotDisclosure>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="outline" disabled={!available || !plan.canVerify || isBusy || Boolean(currentError)} onClick={() => void operate(plan, 'verify')}><Check size={12} />人工核对环境</Button>
           <Button size="sm" variant="primary" disabled={!available || !plan.canStart || isBusy || Boolean(currentError)} onClick={() => void operate(plan, 'start')}><Play size={12} />启动并引用</Button>
@@ -175,7 +186,7 @@ export function TaskApplicationServices({ query, expected, contextKey, runtimeAp
       {current.references.length > 0 && <div className="space-y-2"><h4 className="text-my-xs font-medium text-my-primary">固定服务引用</h4>{current.references.map(reference => {
         const referencePlan = current.plans.find(plan => plan.app.definition.id === reference.appId && reference.root === current.root)
         const original = referencePlan?.app
-        return <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-my-lg border border-my-line p-3 text-my-xs"><div className="min-w-0 flex-1 break-all text-my-secondary">{reference.appId} · {reference.disposition === 'created' ? '本任务创建' : '兼容复用'}<br />{reference.root}<br />{reference.runId}<br />配置 {reference.configRevision}<br />{reference.coordination !== 'ready' && <><span className="text-my-warning-text">{reference.coordination === 'releasing' ? '原解绑待确认' : '原使用授权待确认'}</span><br /></>}{original?.run?.id === reference.runId ? <ProcessStatus app={original} /> : '原实例已更换或属于其他开发副本；在本机运行中心核对'}</div>{reference.coordination !== 'ready' && reference.coordination !== 'releasing' && referencePlan?.reusable.length ? <Button size="sm" variant="outline" disabled={!available || isBusy} onClick={() => void operate(referencePlan, 'reuse')}>重试原使用授权</Button> : null}<Button size="sm" variant="ghost" disabled={!available || isBusy} onClick={() => void detach(reference)}><Unlink size={12} />{reference.coordination === 'releasing' ? '重试原解绑' : '解绑引用'}</Button></div>
+        return <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-my-base border border-my-line p-3 text-my-xs"><div className="min-w-0 flex-1 break-all text-my-secondary">{reference.appId} · {reference.disposition === 'created' ? '本任务创建' : '兼容复用'}<br />{reference.root}<br />{reference.runId}<br />配置 {reference.configRevision}<br />{reference.coordination !== 'ready' && <><span className="text-my-warning-text">{reference.coordination === 'releasing' ? '原解绑待确认' : '原使用授权待确认'}</span><br /></>}{original?.run?.id === reference.runId ? <ProcessStatus app={original} /> : '原实例已更换或属于其他开发副本；在本机运行中心核对'}</div>{reference.coordination !== 'ready' && reference.coordination !== 'releasing' && referencePlan?.reusable.length ? <Button size="sm" variant="outline" disabled={!available || isBusy} onClick={() => void operate(referencePlan, 'reuse')}>重试原使用授权</Button> : null}<Button size="sm" variant="ghost" disabled={!available || isBusy} onClick={() => void detach(reference)}><Unlink size={12} />{reference.coordination === 'releasing' ? '重试原解绑' : '解绑引用'}</Button></div>
       })}</div>}
     </>}
   </section>

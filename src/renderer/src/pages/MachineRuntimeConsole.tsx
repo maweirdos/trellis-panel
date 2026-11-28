@@ -3288,16 +3288,16 @@ export function MachineRuntimeConsole({
 
       {/* 本机运维弹窗：守护进程、保持唤醒、自动清理、团队通道心跳、全局 Node */}
       {opsModalOpen && (
-        <Modal open onClose={() => setOpsModalOpen(false)} width={560} ariaLabel="本机运维与设备通道">
+        <Modal open placement="center" onClose={() => setOpsModalOpen(false)} width={560} ariaLabel="本机运维与设备通道">
           <div className="mc-modal-shell">
             <header className="mc-modal-head">
               <div className="flex items-center gap-2">
                 <Server size={16} className="text-my-icon-secondary" />
-                <h2 className="text-my-md font-semibold text-my-primary">本机运维与设备通道</h2>
+                <h2 className="text-my-md font-medium text-my-primary">本机运维与设备通道</h2>
               </div>
-              <Button size="sm" variant="ghost" aria-label="关闭本机运维设置" onClick={() => setOpsModalOpen(false)}>
+              <button type="button" className="my-icon-control" aria-label="关闭本机运维设置" onClick={() => setOpsModalOpen(false)}>
                 <X size={15} />
-              </Button>
+              </button>
             </header>
             <div className="mc-modal-body my-scrollbar">
               <div className="mc-patch-grid">
@@ -3523,14 +3523,14 @@ function CustomRuntimeDialog({
   }
 
   return (
-    <Modal open onClose={onClose} width={560} ariaLabel={existing ? '编辑自定义 Runtime' : '接入新 Runtime'}>
+    <Modal open placement="center" onClose={onClose} width={560} ariaLabel={existing ? '编辑自定义 Runtime' : '接入新 Runtime'}>
       <div className="mc-modal-shell">
         <header className="mc-modal-head">
           <div>
-            <h2 className="text-my-md font-semibold text-my-primary">{existing ? '编辑自定义 Runtime' : '接入新 Runtime'}</h2>
+            <h2 className="text-my-md font-medium text-my-primary">{existing ? '编辑自定义 Runtime' : '接入新 Runtime'}</h2>
             <p className="mt-0.5 text-my-2xs text-my-tertiary">点选常见生态模板一键预填，或直接指定本机 CLI 可执行文件</p>
           </div>
-          <Button size="sm" variant="ghost" aria-label="关闭" onClick={onClose}><X size={15} /></Button>
+          <button type="button" className="my-icon-control" aria-label="关闭" onClick={onClose}><X size={15} /></button>
         </header>
         <div className="mc-modal-body my-scrollbar">
           {!existing && (

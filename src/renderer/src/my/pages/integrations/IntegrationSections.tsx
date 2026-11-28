@@ -1,8 +1,19 @@
-import { useId, type JSX, type ReactNode } from 'react'
-import { AlertCircle, LoaderCircle, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import { useId, useState, type JSX, type ReactNode } from 'react'
+import { AlertCircle, ChevronRight, LoaderCircle, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import type { IntegrationAccount, IntegrationJob, IntegrationJobState, SyncPlan } from '../../../../../shared/integration-work'
 import { Select } from '../../../components/Select'
-import { Button, Dropdown, DropdownItem } from '../../ui'
+import { Button, DisclosureGrid, Dropdown, DropdownItem } from '../../ui'
+
+function JobRecordDisclosure({ children }: { children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="integration-disclosure text-my-xs">
+    <button type="button" className="inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>记录详情</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export type IntegrationResource<T> =
   | { state: 'loading' }
@@ -58,7 +69,7 @@ export function IntegrationJobHistory({ resource, jobActions, pagination }: { re
       <p className="my-item-description">{new Date(job.createdAt).toLocaleString()} · 已处理 {job.counts.processed}{job.counts.total === null ? ' 项 · 总量未知' : ` / ${job.counts.total} 项`} · 失败 {job.counts.failed} 项</p>
       {job.state === 'unknown' && <p className="text-my-xs text-my-warning-text">请核实原作业结果后再继续。</p>}
       {job.state === 'partially-failed' && detail && <p className="break-words text-my-xs text-my-danger-text">{detail}</p>}
-      <details className="integration-disclosure text-my-xs"><summary>记录详情</summary><div className="mt-2 space-y-2 text-my-secondary">{detail && <p className="break-words">{detail}</p>}<p className="break-all">目标：{destinationLabel}</p><p className="break-all">来源实例：{job.source.instanceId}</p><p className="break-all">作业：{job.id}</p><p className="break-all">原始命令：{job.commandId}</p></div></details>
+      <JobRecordDisclosure><div className="mt-2 space-y-2 text-my-secondary">{detail && <p className="break-words">{detail}</p>}<p className="break-all">目标：{destinationLabel}</p><p className="break-all">来源实例：{job.source.instanceId}</p><p className="break-all">作业：{job.id}</p><p className="break-all">原始命令：{job.commandId}</p></div></JobRecordDisclosure>
     </div><span className={`shrink-0 text-my-xs ${job.state === 'unknown' ? 'text-my-warning-text' : 'text-my-secondary'}`}>{jobStates[job.state]}</span>{actions.length > 0 && <Dropdown align="right" trigger={({ open, toggle }) => <Button size="sm" variant="ghost" aria-label={`${sourceLabel}的记录操作`} aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>{(close) => <>{actions.map((action) => <DropdownItem key={action.label} disabled={action.disabled || action.busy} onClick={() => { close(); action.onClick() }}>{action.label}</DropdownItem>)}</>}</Dropdown>}
     </article>
   })}{pagination && <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">{pagination.previous && <SectionAction action={pagination.previous} />}{pagination.hasMore && pagination.next && <SectionAction action={pagination.next} />}</div>}</div>

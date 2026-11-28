@@ -1,9 +1,20 @@
-import { useLayoutEffect, useState, type JSX } from 'react'
-import { ArrowRight, MoreHorizontal, Plus, X } from 'lucide-react'
+import { useLayoutEffect, useState, type JSX, type ReactNode } from 'react'
+import { ArrowRight, ChevronRight, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { IntegrationBinding, IntegrationConnection, ProviderManifest, RemoteRepository } from '../../../../../shared/integrations'
 import { api } from '../../../api'
 import { useApp } from '../../../store'
-import { Button, Checkbox, Dropdown, DropdownItem, Modal } from '../../ui'
+import { Button, Checkbox, DisclosureGrid, Dropdown, DropdownItem, Modal } from '../../ui'
+
+function FailureDisclosure({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="integration-disclosure text-my-sm">
+    <button type="button" className="inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { projectRootKey } from '../../navigation'
 import { Select } from '../../../components/Select'
 import { ConnectionEditor } from './ConnectionEditor'
@@ -47,8 +58,8 @@ function KnowledgeLegacyImportDialog({ root, onClose, onSaved }: { root: string;
   const owner = useIntegrationOwner(`knowledge-legacy-dialog:${root}`)
   const available = Boolean(knowledgeBridge(['context', 'importLegacy']))
   const recheck = (): void => { if (owner.current()) void state.refresh() }
-  return <Modal open ariaLabel="导入已有 WeKnora 配置" onClose={onClose}>
-    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">导入已有 WeKnora 配置</h2></div>
+  return <Modal open placement="center" ariaLabel="导入已有 WeKnora 配置" onClose={onClose}>
+    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-medium">导入已有 WeKnora 配置</h2></div>
     <div className="my-scrollbar max-h-[60vh] space-y-3 overflow-y-auto p-5">
       {!available ? <p role="status" className="text-my-sm text-my-secondary">{knowledgeUnavailableFor('已有配置导入')}</p> : state.error ? <p role="alert" className="break-words text-my-sm text-my-danger-text">{state.error}</p> : state.loading || !state.context ? <p role="status" className="text-my-sm text-my-tertiary">正在检查已有配置…</p> : !state.context.legacyImportAvailable ? <p role="status" className="text-my-sm text-my-tertiary">当前没有可导入的已有配置。</p> : <><p role="status" className="text-my-sm text-my-secondary">检测到已有配置</p><KnowledgeLegacyImport root={root} onSaved={async () => { if (owner.current() && state.current()) { onClose(); await onSaved() } }} /></>}
     </div><div className="flex justify-end gap-2 border-t border-my-line px-5 py-3">{available && (!state.context?.legacyImportAvailable || state.error) && <Button disabled={state.loading} onClick={recheck}>重新检查</Button>}<Button onClick={onClose}>关闭</Button></div>
@@ -63,8 +74,8 @@ export function BindingEditor({ root, connection, provider, repo, binding, onClo
   const [collectionIds, setCollectionIds] = useState(binding?.knowledge?.defaultCollectionIds ?? [])
   const action = useIntegrationAction(JSON.stringify([root, connection.id, connection.revision, binding?.id, binding?.revision]))
   const validOwner = !binding || (binding.connectionId === connection.id && projectRootKey(binding.root) === projectRootKey(root))
-  return <Modal open ariaLabel={`${binding ? '编辑' : '添加'}项目绑定`} onClose={() => { if (!action.busy) onClose() }}>
-    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{binding ? '编辑' : '添加'}项目绑定</h2><p className="my-item-description mt-1">{connection.name}</p></div>
+  return <Modal open placement="center" ariaLabel={`${binding ? '编辑' : '添加'}项目绑定`} onClose={() => { if (!action.busy) onClose() }}>
+    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-medium">{binding ? '编辑' : '添加'}项目绑定</h2><p className="my-item-description mt-1">{connection.name}</p></div>
     <div className="my-scrollbar max-h-[60vh] space-y-4 overflow-y-auto px-5 py-4"><fieldset disabled={action.busy} className="space-y-4"><label className="block space-y-1"><span className="my-item-title">名称</span><input className="my-input w-full" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={100} /></label>
       {provider.category === 'knowledge' ? <KnowledgeBindingFields root={root} connection={connection} selected={collectionIds} onChange={setCollectionIds} /> : provider.category !== 'messaging' && <label className="block space-y-1"><span className="my-item-title">{provider.category === 'tasks' ? 'JQL 查询范围（可选）' : '仓库路径'}</span><textarea className="my-input min-h-20 w-full" value={scope} onChange={(e) => setScope(e.target.value)} placeholder={provider.category === 'tasks' ? '留空沿用实例查询范围' : 'namespace/repository'} /></label>}
       {provider.id === 'jira' && <p className="text-my-xs text-my-secondary">启用后将切换当前项目的 Jira 来源，其他 Jira 绑定会停用。</p>}
@@ -136,7 +147,7 @@ function ConnectedPanel({ provider, connection, root, bindings, authorizationAva
       </div><div className="flex flex-wrap items-center gap-2"><Button size="sm" disabled={action.busy || (!allowCreate && !nativeAvailable)} onClick={edit}>编辑</Button><Button size="sm" disabled={!nativeAvailable || action.busy || !connection.enabled} onClick={() => void action.run(() => api.integrations.inspect({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result && action.current()) { setInspection(result.detail); await onSaved() } })}>{action.busy ? '检查中…' : provider.category === 'messaging' ? '检查配置' : '检查连接'}</Button>
         <Dropdown align="right" trigger={({ open: expanded, toggle }) => <Button size="sm" variant="ghost" aria-label="更多连接操作" aria-expanded={expanded} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{(close) => <>{allowCreate && <DropdownItem disabled={action.busy} onClick={() => { close(); add() }}>{provider.id === 'jira' || provider.id === 'gitlab' ? '绑定其他实例' : '添加连接'}</DropdownItem>}<DropdownItem onClick={() => { close(); open({ kind: 'diagnostics' }) }}>连接详情</DropdownItem>{!connection.legacy && <DropdownItem danger disabled={!nativeAvailable || action.busy} onClick={() => { close(); open({ kind: 'remove' }) }}>移除连接</DropdownItem>}</>}</Dropdown>
       </div></div>
-      {connection.check === 'failed' && (inspection || connection.detail) && <details className="integration-disclosure text-my-sm"><summary>查看失败详情</summary><p className="mt-2 break-words text-my-danger-text">{inspection || connection.detail}</p></details>}
+      {connection.check === 'failed' && (inspection || connection.detail) && <FailureDisclosure label="查看失败详情"><p className="mt-2 break-words text-my-danger-text">{inspection || connection.detail}</p></FailureDisclosure>}
       {inspection && connection.check !== 'failed' && <p role="status" className="break-words text-my-sm text-my-secondary">{inspection}</p>}
       <ConnectionAuthorization provider={provider} connection={connection} connections={connections} available={authorizationAvailable && nativeAvailable} onSaved={onAuthorizationSaved} />
       {action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}
@@ -154,7 +165,7 @@ function ConnectedPanel({ provider, connection, root, bindings, authorizationAva
     </>}
     {editing && <ConnectionEditor provider={provider} connection={editing.connection} connections={connections} authorizationAvailable={authorizationAvailable} onClose={() => setEditing(null)} onSaved={provider.id === 'jira' ? onAuthorizationSaved : onSaved} />}
     {bindingEdit && root && <BindingEditor root={root} connection={connection} provider={provider} {...bindingEdit} onClose={() => setBindingEdit(null)} onSaved={onSaved} />}
-    {dialog?.kind === 'remove' ? <Modal open ariaLabel="移除连接" onClose={() => { if (!action.busy) setDialog(null) }}><div className="space-y-3 p-5"><h2 className="text-my-lg font-semibold">移除 {connection.name}？</h2><p className="text-my-sm text-my-secondary">此连接将无法继续使用，工作项已有的来源记录会保留。</p>{action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}</div><div className="flex justify-end gap-2 border-t border-my-line px-5 py-3"><Button disabled={action.busy} onClick={() => setDialog(null)}>取消</Button><Button variant="danger" disabled={action.busy} onClick={() => void action.run(() => api.integrations.removeConnection({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result !== undefined && action.current()) { setDialog(null); await onSaved() } })}>{action.busy ? '移除中…' : '确认移除'}</Button></div></Modal> : dialog && <Modal open ariaLabel={dialogTitle} width={720} onClose={() => setDialog(null)}><div className="flex items-center justify-between gap-3 border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{dialogTitle}</h2><Button size="sm" variant="ghost" aria-label="关闭" onClick={() => setDialog(null)}><X size={16} /></Button></div><div className="my-scrollbar max-h-[65vh] space-y-4 overflow-y-auto p-5">
+    {dialog?.kind === 'remove' ? <Modal open placement="center" ariaLabel="移除连接" onClose={() => { if (!action.busy) setDialog(null) }}><div className="space-y-3 p-5"><h2 className="text-my-lg font-medium">移除 {connection.name}？</h2><p className="text-my-sm text-my-secondary">此连接将无法继续使用，工作项已有的来源记录会保留。</p>{action.error && <p role="alert" className="text-my-sm text-my-danger-text">{action.error}</p>}</div><div className="flex justify-end gap-2 border-t border-my-line px-5 py-3"><Button disabled={action.busy} onClick={() => setDialog(null)}>取消</Button><Button variant="danger" disabled={action.busy} onClick={() => void action.run(() => api.integrations.removeConnection({ connectionId: connection.id, connectionRevision: connection.revision })).then(async (result) => { if (result !== undefined && action.current()) { setDialog(null); await onSaved() } })}>{action.busy ? '移除中…' : '确认移除'}</Button></div></Modal> : dialog && <Modal open placement="center" ariaLabel={dialogTitle} width={720} onClose={() => setDialog(null)}><div className="flex items-center justify-between gap-3 border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-medium">{dialogTitle}</h2><button type="button" className="my-icon-control" aria-label="关闭" onClick={() => setDialog(null)}><X size={16} /></button></div><div className="my-scrollbar max-h-[65vh] space-y-4 overflow-y-auto p-5">
       {dialog.kind === 'repositories' && root && <RepositoryBrowser root={root} connection={connection} onSelect={(repo) => { if (action.current()) { setDialog(null); setBindingEdit({ repo }) } }} />}
       {dialog.kind === 'pull-requests' && root && <PullRequestBrowser root={root} binding={dialog.binding} connection={connection} />}
       {dialog.kind === 'work-items' && <>{allowCreate && <p className="text-my-xs text-my-secondary">可选择当前项目已启用的仓库或通知目的地。</p>}<Select className="w-full" ariaLabel="选择集成工作项" value={task} onChange={setTask} options={[{ value: '', label: '选择工作项' }, ...[...(snapshot?.tasks ?? []), ...(snapshot?.archived ?? [])].filter((item) => item.record).map((item) => ({ value: item.path, label: `${item.archived ? '已归档 · ' : ''}${item.record?.title || item.dirName}` }))]} />{task && <WorkItemIntegrations key={task} taskDir={task} connectionId={allowCreate ? undefined : connection.id} />}</>}

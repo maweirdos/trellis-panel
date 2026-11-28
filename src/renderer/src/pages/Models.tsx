@@ -1203,13 +1203,13 @@ export function ModelsPage(): JSX.Element {
       )}
 
       {/* 添加供应商官方模板弹窗 */}
-      <Modal open={showTemplates} onClose={() => setShowTemplates(false)} ariaLabel="选择供应商模板">
+      <Modal open={showTemplates} onClose={() => setShowTemplates(false)} placement="center" ariaLabel="选择供应商模板">
         <div className="my-modal-content">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-my-lg font-semibold text-my-primary">添加模型供应商</h2>
-            <Button variant="ghost" onClick={() => setShowTemplates(false)} aria-label="关闭">
+            <h2 className="text-my-lg font-medium text-my-primary">添加模型供应商</h2>
+            <button type="button" className="my-icon-control" onClick={() => setShowTemplates(false)} aria-label="关闭">
               <X size={16} />
-            </Button>
+            </button>
           </div>
           <div className="model-template-list">
             {OFFICIAL_TEMPLATES.map((template) => {

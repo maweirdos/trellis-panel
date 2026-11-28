@@ -1,17 +1,28 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { ChevronLeft, MoreHorizontal, UserRound } from 'lucide-react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, MoreHorizontal, UserRound } from 'lucide-react'
 import { hasGitlabWorkspaceApi, type GitlabBinding, type GitlabInput, type GitlabOutput, type GitlabProject, type GitlabResult, type GitlabUser, type GitlabWorkspaceApi } from '@shared/gitlab-integration'
 import type { IntegrationJob } from '@shared/integration-work'
 import { useInteractionActive, useInteractionGuard, useInteractionSignal } from '../../../../../utils/interaction-scope'
 import { useEscLayer } from '../../../../../utils/use-esc-layer'
 import { Select } from '../../../../../components/Select'
 import { confirmDialog } from '../../../../../components/Dialogs'
-import { Button, Dropdown, DropdownItem, Tooltip } from '../../../../ui'
+import { Button, DisclosureGrid, Dropdown, DropdownItem, Tooltip } from '../../../../ui'
 import type { ProviderWorkspaceProps } from '../../provider-workspace'
 import { IntegrationJobHistory, IntegrationResourceState, IntegrationSection, type IntegrationResource, type IntegrationSectionAction } from '../../IntegrationSections'
 import { IntegrationProductIcon } from '../../IntegrationProductIcon'
 import { GitlabPlanEditor } from './PlanEditor'
 import { GitlabDialog } from './GitlabDialog'
+
+function GitlabDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={`text-my-xs text-my-tertiary ${className}`.trim()}>
+    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}><div className="mt-2 space-y-2">{children}</div></DisclosureGrid>
+  </div>
+}
 
 function nativeApi(): GitlabWorkspaceApi | null {
   const value = (window.trellis as unknown as { gitlabWorkspace?: unknown } | undefined)?.gitlabWorkspace
@@ -51,7 +62,7 @@ export function GitlabWorkspaceContent(props: ProviderWorkspaceProps): JSX.Eleme
   if (!props.nativeAvailable || !api) return <IntegrationSection title="GitLab Issues"><IntegrationResourceState resource={{ state: 'unavailable', detail: '当前原生版本不支持 GitLab Issues，请完整重启或更新应用。' }} /></IntegrationSection>
   if (!props.root || !props.connection) return <>
     <IntegrationSection title="个人账号"><p className="my-item-description">连接实例后可绑定当前 GitLab 用户。</p></IntegrationSection>
-    <section aria-labelledby={syncHeading} className="integration-section rounded-my-lg border border-my-line bg-my-surface-1">
+    <section aria-labelledby={syncHeading} className="integration-section rounded-my-base border border-my-line bg-my-surface-1">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <h3 id={syncHeading} className="min-w-0 flex-1 text-my-sm font-medium">项目同步</h3>
         <Tooltip label={setupReason}><span role="group" tabIndex={0} aria-label={`新建同步：${setupReason}`}><Button size="sm" disabled>新建同步</Button></span></Tooltip>
@@ -244,21 +255,21 @@ function GitlabWorkspace({ api, context: ownerContext, refresh: refreshConnectio
       {importSubmission.job && <Button size="sm" disabled={disabled} onClick={() => { setSelectedJob(importSubmission.job); openPanel('job') }}>原作业详情</Button>}
       {importSubmission.state === 'received' && <Button size="sm" disabled={disabled} onClick={continueImport}>继续选择导入</Button>}
     </div>
-    <details className="space-y-2 break-words text-my-xs text-my-tertiary"><summary className="cursor-pointer">原提交与预览</summary>
+    <GitlabDisclosure label="原提交与预览">
       {importSubmission.detail && <p>{importSubmission.detail}</p>}
       <p>原命令：{importSubmission.input.commandId}<br />预览：{importSubmission.input.previewId}<br />摘要：{importSubmission.input.previewDigest}<br />实例：{importSubmission.preview.source.instanceId}<br />项目：{importSubmission.preview.source.remoteProjectId}<br />绑定修订：{importSubmission.input.bindingRevision}<br />目标：{importSubmission.input.expectedRoot}</p>
       {importSubmission.preview.issues.map((issue) => <p key={issue.id}>#{issue.iid} · {issue.fields.title}</p>)}
-    </details>
+    </GitlabDisclosure>
   </div>
   const editorContent = editor && <GitlabPlanEditor key={editor === 'new' ? 'new' : `${editor.plan.id}:${editor.plan.source.bindingRevision}`} initial={editor === 'new' ? undefined : editor} snapshot={snapshot} projects={projects} members={members} busy={disabled} query={query} setQuery={setQuery} searched={searched} moreProjects={moreProjects} search={() => { const searchQuery = query; void perform(() => api.projects({ ...context, page: 1, query: searchQuery }), (data) => { setProjects(data.items); setProjectPage(1); setProjectQuery(searchQuery); setMoreProjects(data.hasMore); setSearched(true) }) }} loadMoreProjects={() => void perform(() => api.projects({ ...context, page: projectPage + 1, query: projectQuery }), (data) => { setProjects((old) => [...old, ...data.items]); setProjectPage((old) => old + 1); setMoreProjects(data.hasMore) })} moreMembers={moreMembers} loadMoreMembers={loadMoreMembers} membersBusy={membersBusy} membersError={membersError} loadMembers={loadMembers} dirtyChange={dirtyChange} close={() => void requestCloseEditor()} save={(draft) => void perform(() => api.savePlan({ ...context, ...draft }), () => { closeEditor(); setPreview(null); setNotice('同步配置已保存，当前处于暂停状态。') })} />
   if (fullSetup) return <div className="integration-setup-column space-y-6" data-gitlab-setup="new">
     <Button size="sm" variant="ghost" disabled={disabled} onClick={() => void requestCloseEditor()}><ChevronLeft size={15} />返回 GitLab Issues</Button>
-    <div className="flex items-center gap-3"><IntegrationProductIcon provider="gitlab" /><h2 className="text-my-xl font-semibold">新建项目同步</h2></div>
+    <div className="flex items-center gap-3"><IntegrationProductIcon provider="gitlab" /><h2 className="text-my-xl font-medium">新建项目同步</h2></div>
     {busy && <p role="status" className="text-my-sm text-my-secondary">正在处理…</p>}{error && <p role="alert" className="text-my-sm text-my-danger-text">{error}</p>}
     {editorContent}
   </div>
   return <>
-    {!panel && !editor && error && <p role="alert" className="rounded-my-md border border-my-line p-3 text-my-sm text-my-danger-text">{error}</p>}
+    {!panel && !editor && error && <p role="alert" className="rounded-my-base border border-my-line p-3 text-my-sm text-my-danger-text">{error}</p>}
     {notice && <div role="status" className="flex items-center justify-between gap-3 text-my-sm text-my-secondary"><span>{notice}</span><Button size="sm" variant="ghost" onClick={() => setNotice(null)}>关闭</Button></div>}
     {busy && !panel && !editor && <p role="status" className="text-my-xs text-my-secondary">正在处理…</p>}
     <section aria-label="个人账号" className="integration-account-row">
@@ -271,7 +282,7 @@ function GitlabWorkspace({ api, context: ownerContext, refresh: refreshConnectio
       {snapshot.bindings.map((b) => {
         const current = b.plan.source.connectionRevision === context.connectionRevision
         return <div key={b.plan.id} className="flex flex-wrap items-center gap-3 border-b border-my-line py-3 last:border-0">
-          <button type="button" className="min-w-0 flex-1 rounded-my-md text-left hover:bg-my-layer-2" disabled={disabled} onClick={() => openEditor(b)}><p className="my-item-title break-words">{b.project.path} <span className="my-item-description">{b.plan.direction === 'bidirectional' ? '↔' : '→'} 当前项目</span></p><p className="mt-1 text-my-xs text-my-tertiary">{planStates[b.plan.state]} · {b.plan.direction === 'inbound' ? '单向同步' : '双向同步'} · {b.lastSuccessAt ? new Date(b.lastSuccessAt).toLocaleString() : '尚未完成同步'}</p>{!current && <p className="mt-1 text-my-xs text-my-warning-text">连接已更新，请编辑同步以确认来源。</p>}{b.lastError && <p className="mt-1 text-my-xs text-my-warning-text">{b.lastError}</p>}</button>
+          <button type="button" className="min-w-0 flex-1 rounded-my-base text-left transition-colors hover:bg-my-layer-2" disabled={disabled} onClick={() => openEditor(b)}><p className="my-item-title break-words">{b.project.path} <span className="my-item-description">{b.plan.direction === 'bidirectional' ? '↔' : '→'} 当前项目</span></p><p className="mt-1 text-my-xs text-my-tertiary">{planStates[b.plan.state]} · {b.plan.direction === 'inbound' ? '单向同步' : '双向同步'} · {b.lastSuccessAt ? new Date(b.lastSuccessAt).toLocaleString() : '尚未完成同步'}</p>{!current && <p className="mt-1 text-my-xs text-my-warning-text">连接已更新，请编辑同步以确认来源。</p>}{b.lastError && <p className="mt-1 text-my-xs text-my-warning-text">{b.lastError}</p>}</button>
           <Dropdown align="right" trigger={({ open, toggle }) => <Button size="sm" variant="ghost" aria-expanded={open} aria-label={`${b.project.path} 同步操作`} disabled={disabled} onClick={toggle}><MoreHorizontal size={16} /></Button>}>{(close) => <>
             <DropdownItem onClick={() => { close(); openEditor(b) }}>编辑同步</DropdownItem>
             <DropdownItem disabled={!current} onClick={() => { close(); void perform(() => api.setPlanState({ ...context, bindingId: b.plan.id, bindingRevision: b.plan.source.bindingRevision, state: b.plan.state === 'paused' ? 'active' : 'paused' })) }}>{b.plan.state === 'paused' ? '启用同步' : '暂停同步'}</DropdownItem>
@@ -313,9 +324,9 @@ function GitlabWorkspace({ api, context: ownerContext, refresh: refreshConnectio
         <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { closePanel(); onEditConnection() }}>更新连接凭证</Button>
         {authorizing && <div role="status" className="flex flex-wrap items-center gap-3 text-my-sm"><span>等待浏览器完成授权</span><Button size="sm" onClick={() => { const requestId = authorization.current; if (requestId) void api.cancelAuthorization({ requestId }).catch(() => {}) }}>取消授权</Button></div>}
       </div>
-      <details className="space-y-2 text-my-xs text-my-tertiary"><summary className="cursor-pointer">验证详情</summary><p>{snapshot.permission?.scopes.join('、') || '未返回授权范围'}</p>{snapshot.permission && <p>{new Date(snapshot.permission.checkedAt).toLocaleString()}</p>}</details>
+      <GitlabDisclosure label="验证详情"><p>{snapshot.permission?.scopes.join('、') || '未返回授权范围'}</p>{snapshot.permission && <p>{new Date(snapshot.permission.checkedAt).toLocaleString()}</p>}</GitlabDisclosure>
     </GitlabDialog>}
-    {authorizing && panel !== 'permissions' && <div role="status" className="flex items-center justify-between gap-3 rounded-my-md border border-my-line p-3 text-my-sm"><span>等待浏览器完成授权</span><Button size="sm" onClick={() => { const requestId = authorization.current; if (requestId) void api.cancelAuthorization({ requestId }).catch(() => {}) }}>取消授权</Button></div>}
+    {authorizing && panel !== 'permissions' && <div role="status" className="flex items-center justify-between gap-3 rounded-my-base border border-my-line p-3 text-my-sm"><span>等待浏览器完成授权</span><Button size="sm" onClick={() => { const requestId = authorization.current; if (requestId) void api.cancelAuthorization({ requestId }).catch(() => {}) }}>取消授权</Button></div>}
     {panel === 'binding' && binding && <GitlabDialog title="同步详情" subtitle={binding.project.path} busy={busy} error={error} close={closePanel}>
       <p className="text-my-sm">{planStates[binding.plan.state]} · {binding.plan.direction === 'inbound' ? 'GitLab → 当前项目' : '双向同步'}</p>
       {!currentBinding && <p role="status" className="text-my-sm text-my-warning-text">连接已更新。请编辑并保存同步以重新确认来源和权限。</p>}
@@ -331,7 +342,7 @@ function GitlabWorkspace({ api, context: ownerContext, refresh: refreshConnectio
           {!snapshot.receiverAvailable && <p role="status" className="text-my-xs text-my-warning-text">接收端不可用，可编辑为定时同步。</p>}
         </>}
       </div>
-      <details className="space-y-2 break-words text-my-xs text-my-tertiary"><summary className="cursor-pointer">来源与版本详情</summary><p>实例：{binding.plan.source.instanceId}<br />项目：{binding.project.id}<br />绑定修订：{binding.plan.source.bindingRevision}<br />连接修订：{binding.plan.source.connectionRevision}<br />目标：{context.expectedRoot}</p></details>
+      <GitlabDisclosure label="来源与版本详情" className="break-words"><p>实例：{binding.plan.source.instanceId}<br />项目：{binding.project.id}<br />绑定修订：{binding.plan.source.bindingRevision}<br />连接修订：{binding.plan.source.connectionRevision}<br />目标：{context.expectedRoot}</p></GitlabDisclosure>
     </GitlabDialog>}
     {panel === 'import' && <GitlabDialog title="导入已有 Issue" subtitle={importSubmission?.projectPath ?? binding?.project.path} busy={busy} error={error} close={closePanel}>
       {importSubmission ? importRecovery : <>
@@ -358,13 +369,13 @@ function GitlabWorkspace({ api, context: ownerContext, refresh: refreshConnectio
       <IntegrationJobHistory resource={{ state: 'ready', data: historyRows([job]) }} jobActions={jobActions} />
       {jobs.failures.filter((failure) => failure.jobId === job.id).map((failure, index) => <p key={`${failure.issueId}:${index}`} className="text-my-sm text-my-warning-text">Issue ID {failure.issueId} · {failure.detail} · {new Date(failure.at).toLocaleString()}</p>)}
       {jobs.hasMoreFailures && <p className="text-my-xs text-my-tertiary">当前页只返回部分失败证据，其余记录保留在后台。</p>}
-      <details className="space-y-2 break-words text-my-xs text-my-tertiary"><summary className="cursor-pointer">原始作业与来源</summary><p>作业：{job.id}<br />命令：{job.commandId}<br />连接：{job.source.connectionId}<br />实例：{job.source.instanceId}<br />项目：{job.source.remoteProjectId}<br />绑定修订：{job.source.bindingRevision}<br />作业修订：{job.revision}<br />目标：{context.expectedRoot}<br />证据：{job.evidenceRef || '尚无证据引用'}</p></details>
+      <GitlabDisclosure label="原始作业与来源" className="break-words"><p>作业：{job.id}<br />命令：{job.commandId}<br />连接：{job.source.connectionId}<br />实例：{job.source.instanceId}<br />项目：{job.source.remoteProjectId}<br />绑定修订：{job.source.bindingRevision}<br />作业修订：{job.revision}<br />目标：{context.expectedRoot}<br />证据：{job.evidenceRef || '尚无证据引用'}</p></GitlabDisclosure>
     </GitlabDialog>}
     {panel === 'issue' && bound && <GitlabDialog title="Issue 与评论" subtitle={binding?.project.path} busy={busy} error={error} close={closePanel}>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!/^[1-9]\d*$/.test(iid) || !Number.isSafeInteger(Number(iid))) return; setNotePage(1); setDetail(null); void perform(() => api.issueDetail({ ...bound, iid: Number(iid), notesPage: 1 }), setDetail) }}><input className="my-input min-w-0 flex-1" aria-label="Issue IID" placeholder="Issue 编号，例如 42" inputMode="numeric" value={iid} disabled={disabled} onChange={(e) => setIid(e.target.value)} /><Button size="sm" onClick={(event) => event.currentTarget.form?.requestSubmit()} disabled={disabled || !currentBinding}>读取 Issue</Button></form>
       {detail && <><h4 className="text-my-sm font-medium">#{detail.issue.iid} · {detail.issue.fields.title}</h4><p className="whitespace-pre-wrap break-words text-my-sm text-my-secondary">{detail.issue.fields.description}</p>{detail.notes.map((note) => <article key={note.id} className="space-y-2 border-t border-my-line pt-3"><p className="text-my-xs text-my-tertiary">用户 {note.authorId}{note.system ? ' · 系统记录' : ''} · {new Date(note.createdAt).toLocaleString()}</p><p className="whitespace-pre-wrap break-words text-my-sm">{note.body}</p></article>)}{detail.hasMore && <Button size="sm" disabled={disabled || !currentBinding} onClick={() => void perform(() => api.issueDetail({ ...bound, iid: detail.issue.iid, notesPage: notePage + 1 }), (data) => { setDetail(data); setNotePage((p) => p + 1) })}>下一页评论</Button>}
         <label className="block space-y-2"><span className="my-item-title">发布评论</span><textarea className="my-input w-full" aria-label="新增 Issue 评论" placeholder="输入要发布到 GitLab 的评论" maxLength={10000} value={comment} disabled={disabled} onChange={(e) => setComment(e.target.value)} /></label><p className="text-my-xs text-my-warning-text">评论将以当前连接的 GitLab 用户发布到远端。</p><Button size="sm" disabled={disabled || !currentBinding || !comment.trim() || binding?.plan.direction !== 'bidirectional' || binding?.plan.state === 'paused' || snapshot.permission?.write !== 'granted'} onClick={() => { const key = `note:${detail.issue.id}:${comment}`; void perform(() => api.addComment({ ...bound, issueId: detail.issue.id, body: comment, commandId: commandFor(key), acknowledgeWrite: true }), () => { setComment(''); setNotice('评论已提交，可在历史记录中查看结果。') }, key) }}>确认发布评论</Button>
-        <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer">Issue 来源详情</summary><p>数字 Issue ID：{detail.issue.id} · {detail.issue.fields.state} · {detail.issue.updatedAt}</p></details>
+        <GitlabDisclosure label="Issue 来源详情"><p>数字 Issue ID：{detail.issue.id} · {detail.issue.fields.state} · {detail.issue.updatedAt}</p></GitlabDisclosure>
       </>}
     </GitlabDialog>}
     {panel === 'create' && bound && binding?.plan.direction === 'bidirectional' && <GitlabDialog title="从本地任务创建 Issue" subtitle={binding.project.path} busy={busy} error={error} close={closePanel}>

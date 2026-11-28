@@ -1,9 +1,20 @@
-import { useId, useState, type JSX } from 'react'
-import { Check, Copy, ExternalLink, LoaderCircle } from 'lucide-react'
+import { useId, useState, type JSX, type ReactNode } from 'react'
+import { Check, ChevronRight, Copy, ExternalLink, LoaderCircle } from 'lucide-react'
 import { JIRA_OAUTH_REDIRECT_URI, connectionAuthentication, type AuthenticationMethod, type IntegrationConnection, type ProviderManifest } from '../../../../../shared/integrations'
 import { api, hasIpc } from '../../../api'
-import { Button } from '../../ui'
+import { Button, DisclosureGrid } from '../../ui'
 import { useConnectionBinding } from './useConnectionBinding'
+
+function IntegrationDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={`integration-disclosure ${className}`.trim()}>
+    <button type="button" className="inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 function supportsAuthorization(): boolean {
   return hasIpc && typeof api.integrations?.authorize === 'function' && typeof api.integrations?.cancelAuthorization === 'function'
@@ -34,7 +45,7 @@ export function OAuthSetup({ provider, method, baseUrl, redirectUri, onUseLocalC
     try { await api.copyToClipboard(callback); setCopyStatus('回调地址已复制') }
     catch { setCopyStatus('未能复制，请选择回调地址后手动复制。') }
   }
-  return <details className="integration-disclosure text-my-xs text-my-secondary"><summary>{jira ? '应用登记' : 'OAuth 应用设置'}</summary><div className="mt-3 space-y-3">
+  return <IntegrationDisclosure label={jira ? '应用登记' : 'OAuth 应用设置'} className="text-my-xs text-my-secondary"><div className="mt-3 space-y-3">
     {jira ? <p>在 Jira 创建传入链接，选择 OAuth 2.0 保密客户端。登记 Client ID、Client Secret 与权限：{oauth.scopes.join('、')}。</p> : <>
       <p>在 {provider.name} 注册 Crux，填写 Application ID。</p>
       <p>取消勾选 Confidential（保密），只勾选权限：{oauth.scopes.join('、')}。</p>
@@ -45,7 +56,7 @@ export function OAuthSetup({ provider, method, baseUrl, redirectUri, onUseLocalC
     {jira && (httpBase || httpCallback) && <div className="space-y-2"><p>Jira 管理员需按实际使用的地址设置以下系统属性：</p>{httpBase && <p>实例使用 HTTP：<code className="block select-text break-all">atlassian.oauth2.provider.skip.base.url.https.requirement=true</code></p>}{httpCallback && <p>回调使用 HTTP：<code className="block select-text break-all">atlassian.oauth2.provider.skip.redirect.url.https.requirement=true</code></p>}</div>}
     <Button size="sm" disabled={!hasIpc || !registrationUrl} onClick={() => void api.openExternal(registrationUrl)}>打开 {provider.name} 应用设置 <ExternalLink size={12} aria-hidden="true" /></Button>
     {copyStatus && <p role="status" aria-live="polite">{copyStatus}</p>}
-  </div></details>
+  </div></IntegrationDisclosure>
 }
 
 export function ConnectionAuthorization({ provider, connection, connections, available, onSaved }: {
@@ -65,6 +76,6 @@ export function ConnectionAuthorization({ provider, connection, connections, ava
     <p role="status" aria-live="polite" aria-atomic="true" className="flex items-start gap-2 break-words text-my-xs text-my-secondary">{busy ? <LoaderCircle size={14} className="mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : granted ? <Check size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> : null}{status}</p>
     <div className="flex flex-wrap gap-2">{refreshFailed ? <Button size="sm" onClick={() => void binding.refresh(onSaved)}>刷新连接</Button> : state.phase === 'uncertain' ? <Button size="sm" onClick={() => void binding.reconcile(onSaved)}>读取连接并核实</Button> : <Button size="sm" variant="primary" disabled={!supported || !connection.enabled || busy || state.phase === 'stale'} onClick={() => void binding.run('authorize', undefined, onSaved)}>{busy ? '等待浏览器授权…' : state.error ? '重试浏览器授权' : granted ? '重新授权登录' : '浏览器授权登录'} <ExternalLink size={12} aria-hidden="true" /></Button>}{(state.phase === 'authorizing' || state.phase === 'cancelling') && <Button size="sm" disabled={state.phase === 'cancelling'} onClick={() => void binding.cancel()}>{state.phase === 'cancelling' ? '取消中…' : '取消授权'}</Button>}</div>
     {state.phase === 'uncertain' && state.candidates?.map((item) => <Button key={item.id} size="sm" onClick={() => binding.resume(item)}>继续使用 {item.name}</Button>)}
-    {state.error && <div role="alert" className="break-words text-my-xs text-my-danger-text">{state.error.length > 180 || state.error.includes('\n') ? <><p>授权未完成，请查看详情后重试。</p><details className="integration-disclosure mt-2"><summary>错误详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{state.error}</p></details></> : <p>{state.error}</p>}</div>}
+    {state.error && <div role="alert" className="break-words text-my-xs text-my-danger-text">{state.error.length > 180 || state.error.includes('\n') ? <><p>授权未完成，请查看详情后重试。</p><IntegrationDisclosure label="错误详情" className="mt-2"><p className="mt-2 whitespace-pre-wrap break-words">{state.error}</p></IntegrationDisclosure></> : <p>{state.error}</p>}</div>}
   </section>
 }

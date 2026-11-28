@@ -32,7 +32,7 @@ import { api, hasIpc } from '../api'
 import { WorkItemIntegrations } from '../my/pages/integrations/WorkItemIntegrations'
 import { clsx } from 'clsx'
 import { PriorityBadge, StatusBadge, JiraChip } from '../components/badges'
-import { Button } from '../my/ui'
+import { Button, Checkbox } from '../my/ui'
 import { confirmDialog } from '../components/Dialogs'
 import { fmtBytes, parseSubtask, taskDateLabel } from '../utils/format'
 import { DocumentReader } from '../reader/DocumentReader'
@@ -132,7 +132,7 @@ const DocPane = React.memo(function DocPane({
   }
   return (
     <div data-task-document={file.path}>
-      <div className="mb-4 flex items-center gap-2 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-1.5">
+      <div className="mb-4 flex items-center gap-2 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-1.5">
         <FileText size={12} className={clsx('shrink-0', isMd ? 'text-my-icon-accent' : 'text-my-icon-tertiary')} />
         <span className="min-w-0 flex-1 truncate font-mono text-my-xs text-my-tertiary" title={file.path}>
           {file.name} · {fmtBytes(file.size)}
@@ -157,7 +157,7 @@ const DocPane = React.memo(function DocPane({
           variant={presentation === 'workspace' ? 'full' : 'compact'}
         />
       ) : (
-        <div className="rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2 text-my-sm text-my-tertiary">
+        <div className="rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2 text-my-sm text-my-tertiary">
           该文件不在当前项目内，使用普通读取打开；不提供版本比较与变更提示。
         </div>
       )}
@@ -339,7 +339,7 @@ function HandoffSection({ dirName, status }: { dirName: string; status: string |
           options={HANDOFF_INTENTS.map((item) => ({ value: item, label: item }))}
         />
         <label className="flex items-center gap-1.5 text-my-xs text-my-secondary">
-          <input type="checkbox" checked={includePrd} onChange={(e) => setIncludePrd(e.target.checked)} />
+          <Checkbox checked={includePrd} onChange={setIncludePrd} />
           携带 PRD 原文（内容将离开本机）
         </label>
         <Button size="sm" variant="outline" onClick={() => void build()} disabled={building}>
@@ -349,19 +349,19 @@ function HandoffSection({ dirName, status }: { dirName: string; status: string |
       {result && (
         <div className="mt-2 px-1">
           {result.issues.length > 0 && (
-            <p className="mb-1.5 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-2 py-1.5 text-my-xs leading-4 text-my-warning-text">
+            <p className="mb-1.5 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-2 py-1.5 text-my-xs leading-4 text-my-warning-text">
               已知读取问题：{result.issues.join('；')}
             </p>
           )}
           {result.gitLines.length > 0 && (
-            <div className="mb-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-1.5">
+            <div className="mb-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-2 py-1.5">
               <p className="mb-0.5 text-my-xs font-medium text-my-tertiary">本次变化（Git · 归属以 git 为准）</p>
               {result.gitLines.map((l, i) => (
                 <p key={i} className="truncate font-mono text-my-2xs leading-4 text-my-secondary" title={l}>· {l}</p>
               ))}
             </div>
           )}
-          <div className="mb-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 py-1.5">
+          <div className="mb-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-2 py-1.5">
             <p className="mb-0.5 text-my-xs font-medium text-my-tertiary">检查与未完成项</p>
             <p className="text-my-2xs leading-4 text-my-secondary">
               检查记录：{result.checkFiles.length > 0 ? result.checkFiles.join('、') : '未发现检查记录文件'}
@@ -369,7 +369,7 @@ function HandoffSection({ dirName, status }: { dirName: string; status: string |
             </p>
           </div>
           {result.openQuestions.length > 0 && (
-            <div className="mb-1.5 rounded-my-md border border-my-line-warning bg-my-warning-subtle px-2 py-1.5">
+            <div className="mb-1.5 rounded-my-base border border-my-line-warning bg-my-warning-subtle px-2 py-1.5">
               <p className="mb-0.5 text-my-xs font-medium text-my-warning-text">待确认问题（来自 prd.md，{result.openQuestions.length} 项）</p>
               {result.openQuestions.map((q, i) => (
                 <p key={i} className="truncate text-my-2xs leading-4 text-my-warning-text" title={q}>· {q}</p>
@@ -699,7 +699,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                 onClick={() => setSel(d.path)}
                 title={d.name}
                 className={clsx(
-                  'flex items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
+                  'flex items-center gap-1 rounded-my-base border px-2 py-1 text-my-xs transition-colors',
                   on
                     ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                     : 'border-my-line text-my-secondary hover:bg-my-layer-1-hover'
@@ -714,7 +714,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
           <button
             onClick={() => setSel('info')}
             className={clsx(
-              'flex items-center gap-1 rounded-my-md border px-2 py-1 text-my-xs transition-colors',
+              'flex items-center gap-1 rounded-my-base border px-2 py-1 text-my-xs transition-colors',
               showInfo
                 ? 'border-my-line-accent bg-my-accent-subtle text-my-accent-text'
                 : 'border-transparent text-my-tertiary hover:bg-my-layer-1-hover hover:text-my-secondary'
@@ -746,7 +746,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
         {showInfo && (
           <div className="space-y-1 divide-y divide-my-line">
             {task.parseError && (
-              <div className="mb-2 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-3 py-2 text-my-xs text-my-danger-text">
+              <div className="mb-2 rounded-my-base border border-my-line-danger bg-my-danger-subtle px-3 py-2 text-my-xs text-my-danger-text">
                 task.json 解析失败：{task.parseError}
               </div>
             )}
@@ -839,7 +839,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                     {git?.error ? (
                       <div className="text-my-xs text-my-tertiary">{git.error}</div>
                     ) : git ? (
-                      <div className="space-y-1.5 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
+                      <div className="space-y-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
                         <div className="flex items-center gap-2">
                           <span className="my-chip bg-my-layer-2 font-mono text-my-secondary">{r.branch ?? '无分支'}</span>
                           {git.ahead > 0 && (
@@ -855,7 +855,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                           {git.worktreeDirty && <span className="my-chip border border-my-label-yellow-border text-my-label-yellow-text">有未提交改动</span>}
                         </div>
                         {git.merged && (
-                          <div className="flex items-center gap-1.5 rounded-my-sm bg-my-success-subtle px-2 py-1 text-my-success-text">
+                          <div className="flex items-center gap-1.5 rounded-my-base bg-my-success-subtle px-2 py-1 text-my-success-text">
                             <GitMerge size={11} /> 分支已合入 {r.base_branch ?? '主分支'}
                           </div>
                         )}
@@ -923,7 +923,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                       <div className="text-my-xs text-my-tertiary">{gl.error}</div>
                     )}
                     {gl?.ok && (
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-my-lg border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2.5 text-my-xs">
                         {gl.mr ? (
                           <button
                             onClick={() => {
@@ -1044,7 +1044,7 @@ export function TaskDetail({ presentation = 'preview' }: { presentation?: 'previ
                         disabled={!clickable}
                         onClick={() => clickable && setSel(f.path)}
                         className={clsx(
-                          'flex w-full items-center gap-2.5 rounded-my-lg border border-transparent px-3 py-2 text-left transition-colors',
+                          'flex w-full items-center gap-2.5 rounded-my-base border border-transparent px-3 py-2 text-left transition-colors',
                           clickable
                             ? 'hover:border-my-line hover:bg-my-layer-1-hover'
                             : 'cursor-default opacity-60'

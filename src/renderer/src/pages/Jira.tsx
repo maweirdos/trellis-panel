@@ -562,7 +562,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
       <PageToolbar>
         <span className="my-chip bg-my-label-indigo font-mono text-my-label-indigo-text">{cfg.baseUrl.replace(/^https?:\/\//, '')}</span>
         <span className="text-my-xs text-my-tertiary">{context?.name}</span>
-        <div className="flex overflow-hidden rounded-my-md border border-my-line">
+        <div className="flex overflow-hidden rounded-my-base border border-my-line">
           <button
             onClick={() => quickSearch('mine')}
             className="px-2.5 py-1.5 text-my-sm text-my-secondary transition-colors hover:bg-my-layer-1"
@@ -585,7 +585,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
             onChange={(e) => setJql(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void search(jql)}
             placeholder="自定义 JQL，如 project = HONSKY AND status != 完成（留空 = 我的待办）"
-            className="h-8 w-full rounded-my-md border border-my-line bg-my-surface-1 pl-7 pr-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
+            className="h-8 w-full rounded-my-base border border-my-line bg-my-surface-1 pl-7 pr-2 text-my-sm text-my-primary outline-none placeholder:text-my-placeholder focus:border-my-line-accent"
           />
         </div>
         <button
@@ -616,7 +616,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           {loading ? '查询中…' : '查询'}
         </Button>
-        <span className="text-my-xs text-my-tertiary">
+        <span className="text-my-xs tabular-nums text-my-tertiary">
           显示 {issues.length} / 共 {total} 条
         </span>
         {searchMeta?.sample && (
@@ -632,7 +632,7 @@ function JiraPageBody({ settings, snapshot }: { settings: Settings; snapshot: Pr
       <div className="my-scrollbar min-h-0 flex-1">
       <PageContent variant="full">
         {error && (
-          <div className="mb-4 rounded-my-lg border border-my-line-danger bg-my-danger-subtle px-4 py-2.5 text-my-xs text-my-danger-text">
+          <div className="mb-4 rounded-my-base border border-my-line-danger bg-my-danger-subtle px-4 py-2.5 text-my-xs text-my-danger-text">
             {error}
           </div>
         )}

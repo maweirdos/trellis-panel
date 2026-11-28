@@ -1,10 +1,21 @@
-import { useCallback, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { ChevronRight, LoaderCircle, RefreshCw } from 'lucide-react'
 import { INTEGRATION_CATALOG, type DeliveryReceipt, type IntegrationBinding, type IntegrationConnection } from '../../../../../shared/integrations'
 import { INTEGRATION_DIRECTORY, INTEGRATION_DIRECTORY_GROUPS, type IntegrationDirectoryId } from '../../../../../shared/integration-directory'
 import { InteractionScope, useInteractionActive, useInteractionGuard } from '../../../utils/interaction-scope'
 import { useEscLayer } from '../../../utils/use-esc-layer'
-import { Button } from '../../ui'
+import { Button, DisclosureGrid } from '../../ui'
+
+function IntegrationDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={`integration-disclosure ${className}`.trim()}>
+    <button type="button" className="inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { projectRootKey } from '../../navigation'
 import { ConnectionEditor } from './ConnectionEditor'
 import { BindingEditor, ConnectionPanel } from './ConnectionPanel'
@@ -110,7 +121,7 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
     onSaved={refresh} onAuthorizationSaved={() => refresh(true)} onConnect={context.onConnect}
     onEditConnection={context.onEditConnection} onBindProject={context.onBindProject} onSelectConnection={context.onSelectConnection} />
   return <div className="integration-page space-y-6">
-    {!isFeishu && !nativeAvailable && <p role="status" className="rounded-my-lg border border-my-line p-4 text-my-sm text-my-secondary">{mainOutdated ? error : integrationBridgeMessage(bridge)}</p>}
+    {!isFeishu && !nativeAvailable && <p role="status" className="rounded-my-base border border-my-line p-4 text-my-sm text-my-secondary">{mainOutdated ? error : integrationBridgeMessage(bridge)}</p>}
     {!isFeishu && loading && !data && <p role="status" className="flex items-center gap-2 text-my-sm text-my-tertiary"><LoaderCircle size={15} className="animate-spin motion-reduce:animate-none" />正在读取连接…</p>}
     {context ? <IntegrationProviderFrame entry={context.entry} onBack={back} flowActive={flowActive}>
       <InteractionScope key={isFeishu ? `feishu:${projectRootKey(root)}` : selectionOwner} active={active}>
@@ -119,8 +130,7 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
         {Content && <Content key={isFeishu ? undefined : owner} {...context} />}
         {context.entry.providerId === 'weknora' && !flowActive && <LegacyKnowledgeSettings />}
         {sharedConnection && !flowActive && context.entry.providerId === 'gitlab' && <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => navigate(context.entry.kind === 'tasks' ? 'gitlab-repositories' : 'gitlab-issues-self-managed')}>{context.entry.kind === 'tasks' ? '仓库与 Merge Request' : 'GitLab Issues'}<ChevronRight size={13} /></Button></div>}
-        {isFeishu && !flowActive && connection && <details className="integration-disclosure rounded-my-lg border border-my-line bg-my-layer-1 px-4 py-3">
-          <summary>已有群通知（仅发送）</summary>
+        {isFeishu && !flowActive && connection && <IntegrationDisclosure label="已有群通知（仅发送）" className="rounded-my-base border border-my-line bg-my-layer-1 px-4 py-3">
           <div className="mt-3 space-y-3">
             {error && <div className="flex flex-wrap items-center justify-between gap-2 text-my-sm">
               <span role="alert" className="break-words text-my-danger-text">{error}</span>
@@ -129,7 +139,7 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
             {connectionPanel}
             <NotificationReceipts receipts={receipts} />
           </div>
-        </details>}
+        </IntegrationDisclosure>}
         {sharedConnection && !isFeishu && !flowActive && context.entry.kind === 'messaging' && connection && <NotificationReceipts receipts={receipts} />}
         {currentDialog && currentDialog.kind !== 'binding' && <ConnectionEditor key={`${selectionOwner}:${currentDialog.kind}`} provider={context.provider} connection={currentDialog.connection} connections={connections} authorizationAvailable={authorizationAvailable} onClose={() => { if (editorSavedId.current) setConnectionId(editorSavedId.current); setDialog(null); editorSavedId.current = null }} onSaved={async (value) => { await refresh(context.provider.id === 'jira'); if (value && dialogRef.current === currentDialog) editorSavedId.current = value.id }} />}
         {currentDialog?.kind === 'binding' && root && connection && <BindingEditor key={`${owner}:${currentDialog.binding?.id ?? 'new'}:${currentDialog.binding?.revision ?? 0}`} root={root} connection={connection} provider={context.provider} binding={currentDialog.binding} onClose={() => setDialog(null)} onSaved={refresh} />}
@@ -137,26 +147,26 @@ export function IntegrationsPage({ extensions = PROVIDER_WORKSPACE_EXTENSIONS }:
     </IntegrationProviderFrame> : <div ref={directory} className="preferences-page" data-integration-directory>
       <section aria-label="集成三层归属说明" className="mb-5 grid gap-3 rounded-my-base border border-my-line bg-my-panel p-4 md:grid-cols-3">
         <div>
-          <p className="text-my-xs font-semibold text-my-primary">1 · 组织连接</p>
+          <p className="text-my-xs font-medium text-my-primary">1 · 组织连接</p>
           <p className="mt-1 text-my-xs text-my-secondary">组织统一注册企业服务地址与连接器（Jira、GitLab、企业 WeKnora），供多个团队空间复用。</p>
         </div>
         <div>
-          <p className="text-my-xs font-semibold text-my-primary">2 · 空间绑定</p>
+          <p className="text-my-xs font-medium text-my-primary">2 · 空间绑定</p>
           <p className="mt-1 text-my-xs text-my-secondary">每个空间只关联对应的代码库、工作流项目或知识库范围，空间成员共享同一协作视图。</p>
         </div>
         <div>
-          <p className="text-my-xs font-semibold text-my-primary">3 · 个人授权</p>
+          <p className="text-my-xs font-medium text-my-primary">3 · 个人授权</p>
           <p className="mt-1 text-my-xs text-my-secondary">个人 OAuth 身份、凭据令牌与本机通知只保存在当前用户与设备中，不会覆盖他人凭据。</p>
         </div>
       </section>
       {INTEGRATION_DIRECTORY_GROUPS.map((group, index) => <PreferenceSection key={group.id} id={`integration-group-${group.id}`} title={group.name} action={index === 0 ? <Button size="sm" variant="ghost" aria-label="刷新集成" disabled={bridge !== 'ready' || loading} onClick={() => void refresh()}><RefreshCw size={13} />刷新</Button> : undefined}><div className="integration-directory-grid">
         {INTEGRATION_DIRECTORY.filter((item) => item.category === group.id).map((item) => {
           const count = item.id === 'feishu' ? undefined : data?.connections.filter((saved) => saved.providerId === item.providerId).length
-          return <button key={item.id} type="button" data-integration-entry={item.id} onClick={() => navigate(item.id)} className="integration-directory-item"><IntegrationProductIcon provider={item.providerId} /><div className="min-w-0 flex-1"><p className="my-item-title">{item.name}</p><p className="my-item-description mt-1">{item.description}</p></div>{count !== undefined && count > 0 && <span className="my-item-description shrink-0">{count} 个连接</span>}<ChevronRight size={15} className="shrink-0 text-my-icon-tertiary" /></button>
+          return <button key={item.id} type="button" data-integration-entry={item.id} onClick={() => navigate(item.id)} className="integration-directory-item"><IntegrationProductIcon provider={item.providerId} /><div className="min-w-0 flex-1"><p className="my-item-title">{item.name}</p><p className="my-item-description mt-1">{item.description}</p></div>{count !== undefined && count > 0 && <span className="my-item-description shrink-0 tabular-nums">{count} 个连接</span>}<ChevronRight size={15} className="shrink-0 text-my-icon-tertiary" /></button>
         })}
       </div></PreferenceSection>)}
     </div>}
-    {!isFeishu && error && bridge === 'ready' && !mainOutdated && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-my-lg border border-my-line p-4 text-my-sm"><span className="text-my-danger-text">{error}</span><Button size="sm" disabled={loading} onClick={() => void refresh()}>重试读取</Button></div>}
+    {!isFeishu && error && bridge === 'ready' && !mainOutdated && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-my-base border border-my-line p-4 text-my-sm"><span className="text-my-danger-text">{error}</span><Button size="sm" disabled={loading} onClick={() => void refresh()}>重试读取</Button></div>}
   </div>
 }
 
@@ -168,7 +178,7 @@ function NotificationReceipts({ receipts }: { receipts: readonly DeliveryReceipt
         <div className="min-w-0 flex-1">
           <p className="my-item-title break-words">{receipt.destination}</p>
           <p className="my-item-description mt-1">{new Date(receipt.createdAt).toLocaleString()}</p>
-          {receipt.detail && <details className="integration-disclosure mt-2"><summary>结果详情</summary><p className="mt-2 break-words text-my-sm">{receipt.detail}</p></details>}
+          {receipt.detail && <IntegrationDisclosure label="结果详情" className="mt-2"><p className="mt-2 break-words text-my-sm">{receipt.detail}</p></IntegrationDisclosure>}
         </div>
         <span className={`text-my-xs ${receipt.state === 'uncertain' ? 'text-my-warning-text' : 'text-my-secondary'}`}>{states[receipt.state]}</span>
       </div>)}

@@ -1,7 +1,19 @@
-import { useRef, useState, type JSX } from 'react'
+import { useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { IntegrationSource } from '@shared/integration-work'
 import { JIRA_LIMITS, type JiraData, type JiraIntegrationApi, type JiraMapping } from '@shared/jira-integration'
-import { Button, Checkbox, Modal } from '../../../../ui'
+import { Button, Checkbox, DisclosureGrid, Modal } from '../../../../ui'
+
+function JiraImportDisclosure({ label, className = 'text-my-sm', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={className}>
+    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}><div className="mt-2 space-y-3">{children}</div></DisclosureGrid>
+  </div>
+}
 import { useIntegrationAction } from '../../hooks'
 import { JiraMappingFields } from './JiraMappingFields'
 import { useJiraReads } from './use-jira-reads'
@@ -43,13 +55,13 @@ export function JiraImportDialog({ api, scope, source, metadata, mapping, submis
     void submissions.submit(scope, source, acknowledged).then((job) => { if (job && action.current()) onStarted() })
   }
   const close = (): void => { if (retained) onCheckHistory(); else onClose() }
-  return <Modal open ariaLabel="导入 Jira Issue" onClose={close}>
+  return <Modal open placement="center" ariaLabel="导入 Jira Issue" onClose={close}>
     <div className="flex max-h-[var(--my-modal-max-height)] flex-col">
-      <div className="shrink-0 space-y-2 border-b border-my-line p-5"><h2 className="text-my-lg font-semibold">导入 Issue 数据</h2><p className="text-my-xs text-my-tertiary">{preview ? '3 / 3 · 预览与确认' : stage === 'mapping' ? '2 / 3 · 字段映射' : '1 / 3 · 选择数据'}</p></div>
+      <div className="shrink-0 space-y-2 border-b border-my-line p-5"><h2 className="text-my-lg font-medium">导入 Issue 数据</h2><p className="text-my-xs text-my-tertiary">{preview ? '3 / 3 · 预览与确认' : stage === 'mapping' ? '2 / 3 · 字段映射' : '1 / 3 · 选择数据'}</p></div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 my-scrollbar" style={{ scrollbarGutter: 'stable' }}>
         {!preview && stage === 'source' && <>
           <fieldset disabled={action.busy} className="space-y-2"><legend className="my-item-title mb-2">导入方式</legend><div className="my-segmented integration-auth-methods">{(['api', 'csv'] as const).map((option) => <button key={option} type="button" aria-pressed={format === option} className={`my-segment ${format === option ? 'is-active' : ''}`} onClick={() => { setFormat(option); setError('') }}>{option === 'api' ? '从 Jira 导入' : 'CSV 文件'}</button>)}</div></fieldset>
-          {format === 'api' ? <><p className="text-my-sm text-my-secondary">导入选定项目的 Issue，提交前核对预览。</p><details className="space-y-3 text-my-sm"><summary className="cursor-pointer">筛选与历史</summary><label className="block space-y-2"><span className="my-item-title">JQL 筛选条件</span><textarea className="my-input w-full" value={jql} onChange={(event) => setJql(event.target.value)} placeholder="留空导入所选项目；不含 ORDER BY" /></label><label className="flex items-start gap-2"><Checkbox checked={includeHistory} onChange={setIncludeHistory} />读取可用的评论和历史证据</label><p className="text-my-xs text-my-tertiary">Server 8.1 的部分历史会明确标注。</p></details></> : <>
+          {format === 'api' ? <><p className="text-my-sm text-my-secondary">导入选定项目的 Issue，提交前核对预览。</p><JiraImportDisclosure label="筛选与历史"><label className="block space-y-2"><span className="my-item-title">JQL 筛选条件</span><textarea className="my-input w-full" value={jql} onChange={(event) => setJql(event.target.value)} placeholder="留空导入所选项目；不含 ORDER BY" /></label><label className="flex items-start gap-2"><Checkbox checked={includeHistory} onChange={setIncludeHistory} />读取可用的评论和历史证据</label><p className="text-my-xs text-my-tertiary">Server 8.1 的部分历史会明确标注。</p></JiraImportDisclosure></> : <>
             <label className="block space-y-3"><span className="my-item-title">CSV 文件</span><input type="file" accept=".csv,text/csv" disabled={action.busy} onChange={(event) => {
               const file = event.target.files?.[0]
               const ticket = ++fileRead.current
@@ -58,15 +70,15 @@ export function JiraImportDialog({ api, scope, source, metadata, mapping, submis
               if (file.size > JIRA_LIMITS.csvBytes) { setError('CSV 超过容量限制'); return }
               void file.text().then((text) => { if (ticket === fileRead.current && action.current()) { setCsv(text); setFilename(file.name) } }).catch(() => { if (ticket === fileRead.current && action.current()) setError('无法读取此 CSV 文件。') })
             }} /><span className="my-item-description block">UTF-8 · 最多 {JIRA_LIMITS.csvBytes / 1024} KiB / 500 行{filename ? ` · ${filename}` : ''}</span></label>
-            <details className="space-y-4 text-my-sm"><summary className="cursor-pointer">CSV 列对应关系</summary><p className="text-my-xs text-my-tertiary">数字 Issue ID、Issue key 和标题必填，列名需与表头一致。</p><div className="grid gap-3 sm:grid-cols-2">{(Object.keys(columns) as Array<keyof typeof columns>).map((column) => <label key={column} className="block space-y-2"><span className="my-item-title">{columnLabels[column]}{['issueId', 'key', 'title'].includes(column) ? ' *' : ''}</span><input className="my-input w-full" value={columns[column]} onChange={(event) => setColumns({ ...columns, [column]: event.target.value })} /></label>)}</div></details>
+            <JiraImportDisclosure label="CSV 列对应关系"><p className="text-my-xs text-my-tertiary">数字 Issue ID、Issue key 和标题必填，列名需与表头一致。</p><div className="grid gap-3 sm:grid-cols-2">{(Object.keys(columns) as Array<keyof typeof columns>).map((column) => <label key={column} className="block space-y-2"><span className="my-item-title">{columnLabels[column]}{['issueId', 'key', 'title'].includes(column) ? ' *' : ''}</span><input className="my-input w-full" value={columns[column]} onChange={(event) => setColumns({ ...columns, [column]: event.target.value })} /></label>)}</div></JiraImportDisclosure>
           </>}
         </>}<div hidden={Boolean(preview) || stage !== 'mapping'} className="space-y-4"><p className="my-item-description">默认导入标题与描述，可按需调整其他字段。</p><JiraMappingFields value={map} onChange={setMap} metadata={metadata} disabled={action.busy} onValidityChange={setMappingValid} showTransitions={false} /></div>{preview && <>
           <p className="text-my-sm font-medium">预览 {preview.count} 条 · 来源总量 {preview.total ?? '未知'}</p><p className="text-my-sm text-my-secondary">{preview.scope === 'full-query' ? '将逐页导入整个选定查询；此处仅展示预览样本。' : '将导入此 CSV 文件的所有记录。'}</p>
           {preview.sample.map((issue) => <div key={issue.issueId} className="border-t border-my-line pt-3 text-my-sm"><span className="text-my-tertiary">{issue.key}</span><span className="ml-3">{issue.fields.title}</span></div>)}
           {preview.warnings.map((warning, index) => <p key={index} className="break-words text-my-xs text-my-warning-text">{warning}</p>)}
-          <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer">查询与预览范围</summary><p className="mt-2 break-words">{preview.query}</p><p className="mt-2">{preview.complete ? '预览范围读取完成' : '预览仅覆盖部分范围'} · 有效至 {new Date(preview.expiresAt).toLocaleString()}</p></details>
+          <JiraImportDisclosure label="查询与预览范围" className="text-my-xs text-my-tertiary"><p className="break-words">{preview.query}</p><p>{preview.complete ? '预览范围读取完成' : '预览仅覆盖部分范围'} · 有效至 {new Date(preview.expiresAt).toLocaleString()}</p></JiraImportDisclosure>
           {!retained && <label className="flex items-start gap-2 text-my-sm"><Checkbox checked={acknowledged} onChange={setAcknowledged} />已核对实例、项目、字段映射与覆盖说明</label>}
-          {retained && submission && <div className="space-y-3 rounded-my-md border border-my-line p-3"><p className="text-my-sm font-medium">{submitting ? '原提交正在等待回复' : uncertain ? '原提交结果待核实' : '已找到原提交作业'}</p><p className="break-all text-my-xs text-my-secondary">提交标识：{submission.commandId}</p>{submission.job && <p className="break-all text-my-xs text-my-secondary">原作业：{submission.job.id} · {submission.job.state}</p>}<p className="text-my-xs text-my-tertiary">{uncertain ? '返回历史核实原作业。未读到记录或读取失败，均不能证明没有执行。' : '关闭和重开此窗口保留原提交；不会重新提交。'}</p></div>}
+          {retained && submission && <div className="space-y-3 rounded-my-base border border-my-line p-3"><p className="text-my-sm font-medium">{submitting ? '原提交正在等待回复' : uncertain ? '原提交结果待核实' : '已找到原提交作业'}</p><p className="break-all text-my-xs text-my-secondary">提交标识：{submission.commandId}</p>{submission.job && <p className="break-all text-my-xs text-my-secondary">原作业：{submission.job.id} · {submission.job.state}</p>}<p className="text-my-xs text-my-tertiary">{uncertain ? '返回历史核实原作业。未读到记录或读取失败，均不能证明没有执行。' : '关闭和重开此窗口保留原提交；不会重新提交。'}</p></div>}
         </>}
         {(error || action.error || submission?.detail) && <p role="alert" className="break-words text-my-sm text-my-danger-text">{error || action.error || submission?.detail}</p>}
       </div>

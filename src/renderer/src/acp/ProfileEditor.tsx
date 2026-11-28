@@ -1,7 +1,18 @@
-import { useId, useRef, useState, type JSX } from 'react'
-import { Loader2, Save, Trash2, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight, Loader2, Save, Trash2, X } from 'lucide-react'
 import { api } from '../api'
-import { Button, Modal } from '../my/ui'
+import { Button, DisclosureGrid, Modal } from '../my/ui'
+
+function ProfileDisclosure({ title, subtitle, defaultOpen = false, children }: { title: string; subtitle: string; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen)
+  return <div className="acp-setting">
+    <button type="button" className="flex w-full items-center gap-2.5 min-h-[var(--my-space-64)] px-[var(--my-space-10)] py-[var(--my-space-11)] text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={14} className={`shrink-0 text-my-tertiary transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span className="min-w-0 flex-1"><strong>{title}</strong><small>{subtitle}</small></span>
+    </button>
+    <DisclosureGrid open={open}><div className="acp-setting-content">{children}</div></DisclosureGrid>
+  </div>
+}
 import { confirmDialog } from '../components/Dialogs'
 import { Select } from '../components/Select'
 import { useInteractionGuard, useInteractionSignal } from '../utils/interaction-scope'
@@ -69,7 +80,7 @@ export function ProfileEditor({ initial, agents, root, isNew = false, inline = f
       <header className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-my-line bg-my-surface-1 px-4 py-3">
         <h2 id={`${formId}-title`} className="min-w-0 flex-1 text-my-sm font-medium text-my-primary">{isNew ? '创建自定义角色' : '编辑角色默认配置'}</h2>
         <button type="submit" form={formId} className="my-control my-control-sm my-button-primary shrink-0" disabled={pending || !draft.name.trim() || !draft.runtimeId}>{pending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 保存角色</button>
-        <Button variant="ghost" size="sm" title="关闭角色配置" disabled={pending} onClick={close}><X size={14} /></Button>
+        <button type="button" className="my-icon-control" title="关闭角色配置" aria-label="关闭角色配置" disabled={pending} onClick={close}><X size={14} /></button>
       </header>
       <form id={formId} className="my-scrollbar min-h-0 space-y-3 overflow-y-auto p-4" onSubmit={(event) => { event.preventDefault(); void save() }}>
         <label className="block text-my-sm text-my-secondary">角色名称<input autoFocus required maxLength={100} placeholder="例如：产品助手、前端研发" className="my-input mt-1 w-full" value={draft.name} disabled={pending} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
@@ -78,10 +89,10 @@ export function ProfileEditor({ initial, agents, root, isNew = false, inline = f
           ...(!agents.some((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId) ? [{ value: draft.runtimeId, label: draft.runtimeId || '选择执行引擎' }] : []),
           ...agents.map((agent) => ({ value: agent.runtimeId ?? agent.id, label: `${agent.name} · ${runtimeHealthLabel(agent)}` }))
         ]} /></label>
-        {onAgentsChange && <details className="acp-setting" open={!agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId)?.available}><summary><span><strong>引擎安装与本机环境</strong><small>{runtimeHealthLabel(agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId))}</small></span></summary><div className="acp-setting-content"><RuntimePanel agents={agents} onChange={onAgentsChange} isCurrent={isCurrent} runtimeId={draft.runtimeId} heading={false} /></div></details>}
+        {onAgentsChange && <ProfileDisclosure title="引擎安装与本机环境" subtitle={runtimeHealthLabel(agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId))} defaultOpen={!agents.find((agent) => (agent.runtimeId ?? agent.id) === draft.runtimeId)?.available}><RuntimePanel agents={agents} onChange={onAgentsChange} isCurrent={isCurrent} runtimeId={draft.runtimeId} heading={false} /></ProfileDisclosure>}
         <RuntimeConfigFields role runtimeId={draft.runtimeId} launchKind={launchKind} value={draft} disabled={pending} onChange={patch => setDraft(previous => ({ ...previous, ...patch }))} />
         <label className="block text-my-sm text-my-secondary">角色指令<textarea rows={5} className="my-input mt-1 !h-auto w-full resize-y py-2" value={draft.instructions} disabled={pending} placeholder="写明工作边界、处理步骤和输出要求。例如：先澄清需求，完成 PRD 后等待我确认。" onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} /></label>
-        <details className="acp-setting"><summary><span><strong>项目技能</strong><small>已选 {draft.skillPaths?.length ?? 0} / 32</small></span></summary><div className="acp-setting-content"><ProfileSkills root={root} value={draft.skillPaths ?? []} disabled={pending} isCurrent={isCurrent} onChange={(skillPaths) => setDraft({ ...draft, skillPaths })} /></div></details>
+        <ProfileDisclosure title="项目技能" subtitle={`已选 ${draft.skillPaths?.length ?? 0} / 32`}><ProfileSkills root={root} value={draft.skillPaths ?? []} disabled={pending} isCurrent={isCurrent} onChange={(skillPaths) => setDraft({ ...draft, skillPaths })} /></ProfileDisclosure>
         {sdk && <ProfileMcpServers value={draft.mcpServerNames ?? []} disabled={pending} onChange={(mcpServerNames) => setDraft({ ...draft, mcpServerNames })} />}
         <label className="block text-my-sm text-my-secondary">默认工作目录<input className="my-input mt-1 w-full font-mono text-my-sm" value={draft.cwd ?? ''} disabled={pending} placeholder={`跟随当前项目：${root}`} onChange={(event) => setDraft({ ...draft, cwd: event.target.value })} /></label>
         <p className="text-my-sm text-my-tertiary">{sdk ? 'Pi 的工作目录必须位于当前项目内；留空使用项目根目录' : '留空使用当前项目；修改仅影响新会话。'}</p>
@@ -90,5 +101,5 @@ export function ProfileEditor({ initial, agents, root, isNew = false, inline = f
         {!isNew && <div className="pt-1"><Button variant="ghost" className="text-my-danger-text" disabled={pending} onClick={() => void remove()}><Trash2 size={13} /> 删除</Button></div>}
       </form>
     </div>
-  return inline ? content : <Modal open onClose={close} width={620}>{content}</Modal>
+  return inline ? content : <Modal open placement="center" onClose={close} width={620}>{content}</Modal>
 }

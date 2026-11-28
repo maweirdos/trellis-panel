@@ -15,7 +15,7 @@ export function ArchivePage(): JSX.Element {
         {archived.length === 0 ? (
           <EmptyState title="暂无归档任务" description="由 task.py archive 移入 .trellis/archive 的任务会显示在这里" />
         ) : (
-          <div className="divide-y divide-my-line overflow-hidden rounded-my-lg border border-my-line bg-my-surface-1">
+          <div className="divide-y divide-my-line overflow-hidden rounded-my-base border border-my-line bg-my-surface-1">
             {archived.map((t) => (
               <button
                 key={t.dirName}

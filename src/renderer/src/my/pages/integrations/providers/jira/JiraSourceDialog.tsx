@@ -27,13 +27,13 @@ export function JiraSourceDialog({ api, scope, connection, bindings, initial, ti
   const [bindingId, setBindingId] = useState(initial?.bindingId ?? enabled[0]?.id ?? '')
   const binding = enabled.find((item) => item.id === bindingId) ?? enabled[0]
   const content = <>
-    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-semibold">{title}</h2><p className="my-item-description mt-1">{connection.name} · 选择 Jira 项目</p></div>
+    <div className="border-b border-my-line px-5 py-4"><h2 className="text-my-lg font-medium">{title}</h2><p className="my-item-description mt-1">{connection.name} · 选择 Jira 项目</p></div>
     {!binding ? <div className="space-y-4 p-5"><p className="text-my-sm text-my-secondary">先关联当前项目，再选择可访问的 Jira 项目。</p><Button variant="primary" onClick={() => onAssociate(bindings.find((item) => !item.enabled))}>关联当前项目</Button><Button variant="ghost" onClick={onClose}>取消</Button></div> : <>
       {enabled.length > 1 && <div className="px-5 pt-4"><label className="block space-y-2"><span className="my-item-title">项目关联</span><Select ariaLabel="项目关联" value={binding.id} options={enabled.map((item) => ({ value: item.id, label: item.label }))} onChange={setBindingId} /></label></div>}
       <JiraProjectSelection key={`${binding.id}:${binding.revision}`} api={api} scope={scope} connection={connection} binding={binding} initial={initial?.bindingId === binding.id ? initial : undefined} onClose={onClose} onPrepared={onPrepared} />
     </>}
   </>
-  return embedded ? <div className="overflow-hidden rounded-my-lg border border-my-line">{content}</div> : <Modal open ariaLabel={title} onClose={onClose}>{content}</Modal>
+  return embedded ? <div className="overflow-hidden rounded-my-base border border-my-line">{content}</div> : <Modal open placement="center" ariaLabel={title} onClose={onClose}>{content}</Modal>
 }
 
 function JiraProjectSelection({ api, scope, connection, binding, initial, onClose, onPrepared }: {

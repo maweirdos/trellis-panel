@@ -1,4 +1,18 @@
+import { useState, type JSX } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { ApplicationRun, ApplicationRunSnapshot, ApplicationEnvironmentCheck, ApplicationTaskServiceUse } from '@shared/app-runtime'
+import { DisclosureGrid } from '../my/ui'
+
+function AppSnapshotDisclosure({ children }: { children: JSX.Element }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className="mt-2">
+    <button type="button" className="inline-flex items-center gap-1 text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>启动快照</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export function ApplicationRunFacts({ run, configChanged, serviceUses = [], environmentCheck, runEnvironmentCheck }: { run: ApplicationRun; configChanged: boolean | null; serviceUses?: ApplicationTaskServiceUse[]; environmentCheck?: ApplicationEnvironmentCheck; runEnvironmentCheck?: ApplicationEnvironmentCheck }): JSX.Element {
   const snapshot = run.snapshot
@@ -12,15 +26,14 @@ export function ApplicationRunFacts({ run, configChanged, serviceUses = [], envi
       {serviceUses.some(use => use.coordination !== 'ready') && <span className="text-my-warning-text">任务使用范围待核对</span>}
       <time dateTime={new Date(run.startedAt).toISOString()}>{new Date(run.startedAt).toLocaleString()}</time>
     </div>
-    <details className="mt-2">
-      <summary className="cursor-pointer text-my-secondary">启动快照</summary>
+    <AppSnapshotDisclosure>
       <dl className="mt-2 grid min-w-0 gap-2 break-words">
         <div><dt className="text-my-tertiary">实例</dt><dd className="select-text break-all font-mono">{run.id}</dd></div>
-        {run.pid !== null && <div><dt className="text-my-tertiary">{run.pidRole === 'supervisor' ? '原生容器监督进程' : '前台进程'}</dt><dd>{run.pid}</dd></div>}
+        {run.pid !== null && <div><dt className="text-my-tertiary">{run.pidRole === 'supervisor' ? '原生容器监督进程' : '前台进程'}</dt><dd className="tabular-nums">{run.pid}</dd></div>}
         <ApplicationSnapshotFacts snapshot={snapshot} />
         {stillChecked && !checkedAtLaunch && <div><dt className="text-my-tertiary">运行后环境核对</dt><dd>人工核对 · {runEnvironmentCheck.checkedBy} · {runEnvironmentCheck.checkedAt ? new Date(runEnvironmentCheck.checkedAt).toLocaleString() : '时间未知'}<br />{runEnvironmentCheck.targets.map(target => `${target.key}：${target.endpoint ?? '未知'}`).join('；') || '已核对无外部依赖'}</dd></div>}
       </dl>
-    </details>
+    </AppSnapshotDisclosure>
   </div>
 }
 

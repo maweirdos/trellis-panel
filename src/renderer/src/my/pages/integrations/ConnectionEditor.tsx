@@ -1,9 +1,20 @@
-import { useId, useState, type JSX } from 'react'
-import { Check, LoaderCircle, X } from 'lucide-react'
+import { useId, useState, type JSX, type ReactNode } from 'react'
+import { Check, ChevronRight, LoaderCircle, X } from 'lucide-react'
 import { JIRA_OAUTH_REDIRECT_URI, connectionAuthentication, connectionFields, type ConfigField, type IntegrationConnection, type ProviderManifest, type SaveConnectionInput } from '../../../../../shared/integrations'
 import { api, hasIpc } from '../../../api'
 import { useApp } from '../../../store'
-import { Button, Checkbox, Modal } from '../../ui'
+import { Button, Checkbox, DisclosureGrid, Modal } from '../../ui'
+
+function EditorDisclosure({ label, className = '', children }: { label: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return <div className={`integration-disclosure ${className}`.trim()}>
+    <button type="button" className="inline-flex items-center gap-1 text-left transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { useIntegrationAction } from './hooks'
 import { integrationBridgeMessage, integrationBridgeState } from './bridge'
 import { OAuthSetup } from './ConnectionAuthorization'
@@ -119,12 +130,12 @@ export function ConnectionEditor({ provider, connection, connections, authorizat
       ?? (needsBinding ? method?.oauth ? '绑定并授权' : '绑定并验证' : '保存')
   const error = jira ? binding.state.error || action.error : action.error
   const refreshOnly = async (): Promise<void> => { if (await binding.refresh(finish)) onClose() }
-  return <Modal open ariaLabel={heading} width={448} onClose={close}>
+  return <Modal open placement="center" ariaLabel={heading} width={448} onClose={close}>
     <div className="flex max-h-[calc(var(--my-modal-max-height)-var(--my-space-2))] flex-col">
-    <div className="flex shrink-0 items-center gap-3 border-b border-my-line px-5 py-4"><IntegrationProductIcon provider={provider.id} /><h2 className="min-w-0 flex-1 text-my-lg font-semibold">{heading}</h2><Button size="sm" variant="ghost" aria-label={'关闭 ' + subject + (connection ? ' 编辑' : ' 绑定')} disabled={!jira && busy} onClick={close}><X size={16} /></Button></div>
+    <div className="flex shrink-0 items-center gap-3 border-b border-my-line px-5 py-4"><IntegrationProductIcon provider={provider.id} /><h2 className="min-w-0 flex-1 text-my-lg font-medium">{heading}</h2><button type="button" className="my-icon-control" aria-label={'关闭 ' + subject + (connection ? ' 编辑' : ' 绑定')} disabled={!jira && busy} onClick={close}><X size={16} /></button></div>
     <form className="flex min-h-0 flex-col" onSubmit={(event) => { event.preventDefault(); void save() }}>
       <div className="my-scrollbar min-h-0 max-h-[60vh] space-y-5 overflow-y-auto px-5 py-5">
-        {bridge !== 'ready' && <p role="status" className="rounded-my-md border border-my-line p-3 text-my-sm text-my-secondary">{integrationBridgeMessage(bridge)}</p>}
+        {bridge !== 'ready' && <p role="status" className="rounded-my-base border border-my-line p-3 text-my-sm text-my-secondary">{integrationBridgeMessage(bridge)}</p>}
         <fieldset disabled={locked} className="space-y-5" aria-busy={busy}>
           {jira && primaryFields.filter((field) => field.key === 'baseUrl').map(renderField)}
           {jira && !connection?.legacy && provider.authentication && <div className="space-y-2">
@@ -138,13 +149,13 @@ export function ConnectionEditor({ provider, connection, connections, authorizat
           {jira && !connection?.legacy && method?.oauth && <OAuthSetup provider={provider} method={method} baseUrl={config.baseUrl || ''} redirectUri={config.redirectUri ?? JIRA_OAUTH_REDIRECT_URI} onUseLocalCallback={() => { setConfig((previous) => ({ ...previous, redirectUri: JIRA_OAUTH_REDIRECT_URI })); clearError() }} />}
           {jira ? connection && <>
             <div className="space-y-4 border-t border-my-line pt-4">{managementFields}</div>
-            <details className="integration-disclosure"><summary>查询设置</summary><div className="mt-4 space-y-4">{fields.filter((field) => field.key === 'jql').map(renderField)}</div></details>
-          </> : <details className="integration-disclosure"><summary>高级设置</summary><div className="mt-4 space-y-4">
+            <EditorDisclosure label="查询设置"><div className="mt-4 space-y-4">{fields.filter((field) => field.key === 'jql').map(renderField)}</div></EditorDisclosure>
+          </> : <EditorDisclosure label="高级设置"><div className="mt-4 space-y-4">
             {!connection?.legacy && provider.authentication && <div className="space-y-2"><p id={fieldId + '-authentication'} className="my-item-title">登录方式</p><div className="my-segmented integration-auth-methods" role="group" aria-labelledby={fieldId + '-authentication'}>{[...provider.authentication].sort((left, right) => Number(Boolean(left.oauth)) - Number(Boolean(right.oauth))).map((item) => <button key={item.id} type="button" className="my-segment flex-1" aria-pressed={method?.id === item.id} disabled={locked || Boolean(item.oauth && !oauthAvailable)} onClick={() => { setConfig((previous) => ({ ...previous, authMethod: item.id })); clearError() }}>{item.oauth ? 'OAuth 授权' : '访问令牌（PAT）'}</button>)}</div>{!oauthAvailable && provider.authentication.some((item) => item.oauth) && <p className="text-my-xs text-my-secondary">浏览器授权暂不可用，可使用访问令牌。</p>}</div>}
             {managementFields}
             {fields.filter((field) => advancedKeys.has(field.key)).map(renderField)}
             {!connection?.legacy && method?.oauth && <OAuthSetup provider={provider} method={method} baseUrl={config.baseUrl || ''} />}
-          </div></details>}
+          </div></EditorDisclosure>}
           {connection?.legacy && <p className="my-item-description">原有设置兼容连接，名称不可修改。</p>}
         </fieldset>
         {clear.some((key) => !secrets[key]) && <p role="status" className="text-my-sm text-my-warning-text">保存后将清除选中的凭证，相关连接可能无法继续使用。</p>}
@@ -152,7 +163,7 @@ export function ConnectionEditor({ provider, connection, connections, authorizat
           {busy && <p className="flex items-center gap-2"><LoaderCircle size={14} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />{phase === 'authorizing' ? '请在浏览器完成授权，最多等待 5 分钟。' : submitLabel}</p>}
           {(phase === 'complete' || (phase === 'refreshing' && binding.state.outcome)) && <p className="flex items-start gap-2"><Check size={14} className="mt-0.5 shrink-0" aria-hidden="true" /><span className="break-words">{binding.state.outcome === 'bound' ? binding.saved?.detail || '身份已验证并保存' : '配置已保存'}</span></p>}
         </div>}
-        {error && <div role="alert" className="break-words text-my-sm text-my-danger-text">{error.length > 180 || error.includes('\n') ? <><p>操作未完成，请查看详情后重试。</p><details className="integration-disclosure mt-2"><summary>错误详情</summary><p className="mt-2 whitespace-pre-wrap break-words">{error}</p></details></> : <p>{error}</p>}</div>}
+        {error && <div role="alert" className="break-words text-my-sm text-my-danger-text">{error.length > 180 || error.includes('\n') ? <><p>操作未完成，请查看详情后重试。</p><EditorDisclosure label="错误详情" className="mt-2"><p className="mt-2 whitespace-pre-wrap break-words">{error}</p></EditorDisclosure></> : <p>{error}</p>}</div>}
         {jira && phase === 'uncertain' && <div className="space-y-2"><Button size="sm" onClick={() => void binding.reconcile(finish).then((done) => { if (done) onClose() })}>读取连接并核实</Button>{binding.state.candidates?.map((item) => <Button key={item.id} className="max-w-full" size="sm" onClick={() => binding.resume(item)}><span className="min-w-0 break-all">继续使用 {item.name} · {item.config.baseUrl}</span></Button>)}{binding.state.candidates?.length === 0 && <p className="my-item-description">未找到已保存连接。请关闭后重新读取列表，确认结果再创建。</p>}</div>}
       </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-my-line px-5 py-3">

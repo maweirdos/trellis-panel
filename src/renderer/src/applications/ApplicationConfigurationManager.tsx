@@ -108,9 +108,9 @@ export function ApplicationConfigurationManager({ root, definition, npm, onClose
     ...pendingKeys.map((key) => ({ key, name: cache.current.get(key)?.draft.name || '新建配置', kind: cache.current.get(key)?.draft.kind ?? 'argv' as const }))
   ]
 
-  return <Modal open width="var(--my-run-config-width)" ariaLabel={definition ? '编辑应用' : npm ? '导入 npm 脚本' : '添加应用'} onClose={() => requestClose()}>
+  return <Modal open width="var(--my-run-config-width)" placement="center" ariaLabel={definition ? '编辑应用' : npm ? '导入 npm 脚本' : '添加应用'} onClose={() => requestClose()}>
     <div className="my-run-config-manager">
-      <header className="my-run-config-header"><h2 className="min-w-0 flex-1 text-my-lg font-semibold text-my-primary">运行配置</h2><button type="button" className="my-icon-control" aria-label="关闭应用配置" onClick={() => requestClose()}><X size={16} /></button></header>
+      <header className="my-run-config-header"><h2 className="min-w-0 flex-1 text-my-lg font-medium text-my-primary">运行配置</h2><button type="button" className="my-icon-control" aria-label="关闭应用配置" onClick={() => requestClose()}><X size={16} /></button></header>
       <div className="my-run-config-layout" hidden={notice !== null}>
         <aside className="my-run-config-sidebar" aria-label="运行配置列表">
           <div className="my-run-config-tools">
@@ -136,7 +136,7 @@ export function ApplicationConfigurationManager({ root, definition, npm, onClose
         </div>
       </div>
       {notice && <section className="my-run-config-notice" role="alertdialog" aria-label={notice.kind === 'discard' ? '未保存的运行配置' : '删除应用配置'}>
-        <h3 className="text-my-md font-semibold text-my-primary">{notice.kind === 'discard' ? '还有未保存的配置' : `删除“${notice.definition.name}”？`}</h3>
+        <h3 className="text-my-md font-medium text-my-primary">{notice.kind === 'discard' ? '还有未保存的配置' : `删除“${notice.definition.name}”？`}</h3>
         <p className="mt-2 text-my-sm text-my-secondary">{notice.kind === 'discard' ? '切换配置时已保留草稿。关闭此窗口会放弃这些未保存的更改。' : '只删除本机启动配置，不删除项目文件。'}</p>
         {error && <p role="alert" className="my-application-message mt-3 text-my-danger-text">{error}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">

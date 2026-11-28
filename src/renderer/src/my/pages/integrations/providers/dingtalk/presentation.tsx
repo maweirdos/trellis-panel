@@ -1,16 +1,16 @@
-import type { JSX, ReactNode } from 'react'
-import { X } from 'lucide-react'
-import { Button, Modal } from '../../../../ui'
+import { useState, type JSX, type ReactNode } from 'react'
+import { ChevronRight, X } from 'lucide-react'
+import { Button, DisclosureGrid, Modal } from '../../../../ui'
 import { IntegrationProductIcon } from '../../IntegrationProductIcon'
 
 /** Keep provider dialogs inside the shared themed, scoped Modal. */
 export function DingTalkDialog({ title, subtitle, open = true, busy = false, onClose, children, footer }: { title: string; subtitle?: string; open?: boolean; busy?: boolean; onClose(): void; children: ReactNode; footer?: ReactNode }): JSX.Element {
-  return <Modal open={open} ariaLabel={title} onClose={onClose}>
+  return <Modal open={open} placement="center" ariaLabel={title} onClose={onClose}>
     <div className="flex max-h-[var(--my-modal-max-height)] flex-col">
       <header className="flex shrink-0 items-center gap-3 border-b border-my-line px-5 py-4">
         <IntegrationProductIcon provider="dingtalk" />
-        <div className="min-w-0 flex-1"><h2 className="text-my-lg font-semibold">{title}</h2>{subtitle && <p className="my-item-description mt-1">{subtitle}</p>}</div>
-        <Button variant="ghost" size="sm" disabled={busy} aria-label={`关闭${title}`} onClick={onClose}><X size={16} /></Button>
+        <div className="min-w-0 flex-1"><h2 className="text-my-lg font-medium">{title}</h2>{subtitle && <p className="my-item-description mt-1">{subtitle}</p>}</div>
+        <button type="button" className="my-icon-control" disabled={busy} aria-label={`关闭${title}`} onClick={onClose}><X size={16} /></button>
       </header>
       <div className="my-scrollbar min-h-0 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
       {busy && <p role="status" className="sr-only">正在处理，请稍候。</p>}
@@ -27,5 +27,12 @@ export function DingTalkRow({ title, detail, children }: { title: string; detail
 }
 
 export function DingTalkDetails({ children, label = '查看详情' }: { children: ReactNode; label?: string }): JSX.Element {
-  return <details className="text-my-xs text-my-tertiary"><summary className="cursor-pointer rounded-my-md py-1 focus-visible:[outline:var(--my-focus-width)_solid_var(--my-focus-ring)] focus-visible:outline-offset-2">{label}</summary><div className="mt-2 space-y-2 break-words">{children}</div></details>
+  const [open, setOpen] = useState(false)
+  return <div className="text-my-xs text-my-tertiary" onInvalidCapture={() => setOpen(true)}>
+    <button type="button" className="inline-flex items-center gap-1 rounded-my-base py-1 transition-colors hover:text-my-primary focus-visible:[outline:var(--my-focus-width)_solid_var(--my-focus-ring)] focus-visible:outline-offset-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}><div className="mt-2 space-y-2 break-words">{children}</div></DisclosureGrid>
+  </div>
 }
