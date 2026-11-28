@@ -174,6 +174,7 @@ export interface ConversationDriverSession {
   startThread(model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode): Effect.Effect<string, Error>
   resumeThread?(input: ConversationResumeThreadInput): Effect.Effect<string, Error>
   detachThread?(input: { readonly nativeThreadId: string; assertCurrent(): void }): Effect.Effect<ConversationThreadDetachConfirmation, Error>
+  rollbackThread?(input: { readonly nativeThreadId: string; readonly numTurns: number }): Effect.Effect<void, Error>
   canConfirmWindowsJobClose?(nativeThreadId: string): boolean
   interruptTurn?(input: ConversationInterruptTurnInput): Effect.Effect<void, Error>
   steerTurn?(input: ConversationSteerTurnInput): Effect.Effect<void, Error>

@@ -397,6 +397,97 @@ export class ThreadCommands {
     })
   }
 
+  appendEditAndRerun(
+    input: Extract<ConversationThreadCommand, { type: 'message.edit-and-rerun' }>,
+    authority: ConversationAuthority,
+    selection: DriverSelection,
+    targetOrdinal: number,
+    onTruncate: (occurredAt: string) => void,
+    portableHistory?: readonly PortableHistory[],
+  ): ConversationThreadCommandState {
+    const { threadId, text } = input
+    const requestedAt = now()
+    const runId = `run_${randomUUID()}`
+    const newMessageId = `msg_${randomUUID()}`
+    const threadRow = this.database.prepare('SELECT title, payload_json FROM conversation_v2_projection_threads WHERE thread_id = ?')
+      .get(threadId) as { title: string; payload_json: string } | undefined
+    if (!threadRow) throw new DaemonError('E_CONFLICT', '找不到要重跑的原会话。')
+    const currentThreadPayload = JSON.parse(threadRow.payload_json) as Record<string, unknown>
+    const nextThreadPayload = {
+      ...currentThreadPayload,
+      defaultProvider: input.instanceId,
+      modelSelection: selection.modelSelection,
+      updatedAt: requestedAt,
+    }
+    const run = {
+      id: runId,
+      threadId,
+      ordinal: targetOrdinal,
+      providerInstanceId: input.instanceId,
+      modelSelection: selection.modelSelection,
+      providerThreadId: null,
+      userMessageId: newMessageId,
+      rootNodeId: null,
+      activeAttemptId: null,
+      status: 'queued',
+      requestedAt,
+      startedAt: null,
+      completedAt: null,
+      checkpointId: null,
+      contextHandoffId: null,
+    }
+    const message = {
+      createdBy: 'user',
+      creationSource: 'web',
+      id: newMessageId,
+      threadId,
+      runId,
+      nodeId: null,
+      role: 'user',
+      text,
+      attachments: [],
+      streaming: false,
+      createdAt: requestedAt,
+      updatedAt: requestedAt,
+    }
+    const base = { threadId, runId, occurredAt: requestedAt }
+    return this.commit(input, authority, {
+      target: { run_id: runId, message_id: newMessageId, follows_run: 1 },
+      events: [
+        decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId, occurredAt: requestedAt, payload: nextThreadPayload }),
+        decodeEvent({ ...base, id: randomUUID(), type: 'run.created', payload: run }),
+        decodeEvent({ ...base, id: randomUUID(), type: 'message.updated', payload: message }),
+      ],
+      hostEvents: [
+        lifecycleEvent(threadId, { kind: 'thread-reset', reason: 'edit-and-rerun' }, runId, requestedAt),
+        ...(this.isPaused(threadId) ? [lifecycleEvent(threadId, { kind: 'queue', paused: false }, runId, requestedAt)] : []),
+      ],
+      apply: () => {
+        onTruncate(requestedAt)
+        this.database.prepare('UPDATE conversation_v2_projection_threads SET default_provider = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?')
+          .run(input.instanceId, requestedAt, JSON.stringify(nextThreadPayload), threadId)
+        this.database.prepare(`INSERT INTO conversation_v2_projection_runs
+          (run_id, thread_id, ordinal, provider, provider_instance_id, status, requested_at, payload_json)
+          VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`)
+          .run(runId, threadId, targetOrdinal, selection.driverKind, input.instanceId, requestedAt, JSON.stringify(run))
+        this.database.prepare(`INSERT INTO conversation_v2_projection_messages
+          (message_id, thread_id, run_id, role, streaming, created_at, updated_at, payload_json)
+          VALUES (?, ?, ?, 'user', 0, ?, ?, ?)`)
+          .run(newMessageId, threadId, runId, requestedAt, requestedAt, JSON.stringify(message))
+        this.database.prepare(`UPDATE conversation_v2_effect_outbox
+          SET status = 'cancelled', last_error = '用户已编辑历史消息重跑，跳过原自动续接。', updated_at = ?, completed_at = ?
+          WHERE thread_id = ? AND effect_type = 'provider-runtime.continue' AND status = 'pending'`)
+          .run(requestedAt, requestedAt, threadId)
+        this.insertEffect(input, 'provider-turn.start', {
+          runId,
+          configurationFingerprint: selection.configurationFingerprint,
+          ...(portableHistory?.length && { portableHistory }),
+        }, requestedAt)
+        this.setPaused(threadId, false)
+      },
+    })
+  }
+
   compact(
     input: Extract<ConversationThreadCommand, { type: 'thread.compact' }>, authority: ConversationAuthority,
     selection: DriverSelection, compaction: ConversationCompaction,

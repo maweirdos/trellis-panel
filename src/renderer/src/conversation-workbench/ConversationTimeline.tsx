@@ -184,6 +184,8 @@ export function ConversationTimeline({
   onLoadEarlier,
   onQuote,
   onEdit,
+  onEditAndRerun,
+  onRollbackRun,
   onOpenRelatedThread,
   onStopSubagent,
   stoppingChildThreadId,
@@ -562,6 +564,7 @@ export function ConversationTimeline({
                 open={openWorkLogs.has(item.id)}
                 onOpenChange={open => setWorkLogOpen(item.id, open)}
               /> : <ConversationRow row={item} onQuote={onQuote} onEdit={onEdit}
+                onEditAndRerun={onEditAndRerun} onRollbackRun={onRollbackRun}
                 onOpenRelatedThread={onOpenRelatedThread} onStopSubagent={onStopSubagent}
                 stoppingChildThreadId={stoppingChildThreadId} onForkFromRun={onForkFromRun}
                 onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined} />}
@@ -636,6 +639,8 @@ function ConversationRow({
   row,
   onQuote,
   onEdit,
+  onEditAndRerun,
+  onRollbackRun,
   onOpenRelatedThread,
   onStopSubagent,
   stoppingChildThreadId,
@@ -647,6 +652,8 @@ function ConversationRow({
   readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' }>
   readonly onQuote?: ConversationTimelineProps['onQuote']
   readonly onEdit?: ConversationTimelineProps['onEdit']
+  readonly onEditAndRerun?: ConversationTimelineProps['onEditAndRerun']
+  readonly onRollbackRun?: ConversationTimelineProps['onRollbackRun']
   readonly onOpenRelatedThread?: ConversationTimelineProps['onOpenRelatedThread']
   readonly onStopSubagent?: ConversationTimelineProps['onStopSubagent']
   readonly stoppingChildThreadId?: string | null
@@ -725,7 +732,8 @@ function ConversationRow({
     )
   }
   return row.message.role === 'user'
-    ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onOpenCitation={onOpenCitation} />
+    ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onEditAndRerun={onEditAndRerun}
+      onRollbackRun={onRollbackRun} onOpenCitation={onOpenCitation} />
     : <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId}
-      onForkFromRun={onForkFromRun} />
+      onForkFromRun={onForkFromRun} onRollbackRun={onRollbackRun} />
 }

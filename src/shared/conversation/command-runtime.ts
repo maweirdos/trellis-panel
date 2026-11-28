@@ -65,6 +65,14 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
     ...base, ...conversationAttachmentReferenceFields, type: z.literal('runtime-request.respond'), requestId: id, generation: z.number().int().positive().safe(),
     decision: decision.optional(), answers: answers.optional(), attachmentQuestionId: id.optional(),
   }).strict(),
+  z.strictObject({
+    ...base, type: z.literal('checkpoint.rollback'), targetRunId: id, boundary: z.enum(['before', 'after']), restoreFiles: z.boolean(),
+  }),
+  z.strictObject({
+    ...base, type: z.literal('message.edit-and-rerun'), targetRunId: id, messageId: id,
+    text: text.refine(value => value.trim().length > 0), restoreFiles: z.boolean(), instanceId, model,
+    options: conversationModelOptionsSchema.optional(),
+  }),
 ]).superRefine((input, context) => {
   if (input.type === 'message.dispatch' && input.manualContinuationOfRunId) {
     if (input.deliveryIntent === 'steer' || input.attachmentIds?.length || input.references?.length) {
@@ -217,6 +225,21 @@ export interface ConversationUsageLimitRecovery {
   readonly updatedAt: string
 }
 
+export interface ConversationCheckpointSummary {
+  readonly checkpointId: string
+  readonly threadId: string
+  readonly runId: string
+  readonly phase: 'before' | 'after'
+  readonly cwd: string
+  readonly gitTreeRef: string | null
+  readonly headRef: string | null
+  readonly dirtyFileCount: number
+  readonly untrackedCount: number
+  readonly status: 'captured' | 'skipped' | 'failed'
+  readonly detail?: string
+  readonly createdAt: string
+}
+
 export interface ConversationThreadSnapshot {
   readonly thread: OrchestrationV2AppThread
   readonly runs: ReadonlyArray<OrchestrationV2Run & ConversationRunEvidence & {
@@ -235,6 +258,7 @@ export interface ConversationThreadSnapshot {
   readonly relations?: ConversationThreadRelations
   readonly goal?: ConversationGoal | null
   readonly usageLimitRecovery?: ConversationUsageLimitRecovery | null
+  readonly checkpoints?: readonly ConversationCheckpointSummary[]
 }
 
 export interface ConversationLifecycleEventPage extends Omit<ConversationEventPage, 'events'> {
@@ -268,6 +292,8 @@ type LifecyclePayload =
   | { readonly kind: 'compaction'; readonly compaction: ConversationCompaction }
   | { readonly kind: 'handoff'; readonly handoff: ConversationHandoff }
   | { readonly kind: 'usage-limit-recovery'; readonly recovery: ConversationUsageLimitRecovery | null }
+  | { readonly kind: 'checkpoint'; readonly checkpoint: ConversationCheckpointSummary }
+  | { readonly kind: 'thread-reset'; readonly reason: 'rollback' | 'edit-and-rerun' }
 
 export interface ConversationLifecycleEvent {
   readonly id: string

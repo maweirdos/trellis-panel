@@ -1,6 +1,7 @@
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type {
+  ConversationCheckpointSummary,
   ConversationCompaction,
   ConversationGoal,
   ConversationHandoff,
@@ -132,6 +133,7 @@ export interface ConversationThreadProjection {
   readonly relations: ConversationThreadRelations
   readonly goal: ConversationGoal | null
   readonly usageLimitRecovery: ConversationUsageLimitRecovery | null
+  readonly checkpoints: readonly ConversationCheckpointSummary[]
 }
 
 export interface ThreadReadTarget {
@@ -621,6 +623,7 @@ export function snapshotProjection(snapshot: ConversationThreadSnapshot): Conver
     relations,
     goal: snapshot.goal ?? null,
     usageLimitRecovery: snapshot.usageLimitRecovery ?? null,
+    checkpoints: snapshot.checkpoints ?? [],
     queuePaused: snapshot.queuePaused,
     runtimeRequests: snapshot.runtimeRequests,
     queuedRuns: runs.filter((run) => isQueuedRun(run)),
@@ -673,6 +676,7 @@ export function applyEventPage(
   let parent = projection.relations?.parent ?? null
   let goal = projection.goal ?? null
   let usageLimitRecovery = projection.usageLimitRecovery ?? null
+  let checkpoints = [...projection.checkpoints]
   const children = new Map((projection.relations?.children ?? []).map(item => [item.id, item]))
   const items = new Map((projection.turnItems ?? []).map(item => [item.id, item]))
   const updateRun = (id: unknown, update: (run: ConversationRun) => ConversationRun): void => {
@@ -700,6 +704,14 @@ export function applyEventPage(
       }
       if (body.kind === 'goal') goal = body.goal
       if (body.kind === 'usage-limit-recovery') usageLimitRecovery = body.recovery
+      if (body.kind === 'checkpoint') {
+        const index = checkpoints.findIndex(
+          item => item.checkpointId === body.checkpoint.checkpointId
+            || (item.runId === body.checkpoint.runId && item.phase === body.checkpoint.phase),
+        )
+        if (index === -1) checkpoints.push(body.checkpoint)
+        else checkpoints[index] = body.checkpoint
+      }
       if (body.kind === 'usage') updateRun(event.runId, run => ({ ...run, usage: body.usage }))
       if (body.kind === 'compaction') updateRun(event.runId, run => ({ ...run, compaction: body.compaction }))
       if (body.kind === 'handoff') updateRun(event.runId, run => ({ ...run, handoff: body.handoff }))
@@ -800,6 +812,7 @@ export function applyEventPage(
     relations,
     goal,
     usageLimitRecovery,
+    checkpoints,
     rows: deriveTimelineRows(messages, runs, turnItems, relations.children),
     queuedRuns: runs.filter((run) => isQueuedRun(run)),
     activeRun,

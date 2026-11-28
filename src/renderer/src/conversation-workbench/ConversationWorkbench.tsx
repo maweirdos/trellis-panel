@@ -309,6 +309,23 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const [cleanupPending, setCleanupPending] = useState(false)
   const [controlFailure, setControlFailure] = useState<Extract<ConversationApplyResult, { ok: false }>>()
   const [queueEdit, setQueueEdit] = useState<{ threadId: string; runId: string; text: string }>()
+  const [rollbackDialog, setRollbackDialog] = useState<{
+    readonly threadId: string
+    readonly targetRunId: string
+    readonly boundary: 'before' | 'after'
+    readonly restoreFiles: boolean
+    readonly pending: boolean
+    readonly error?: string
+  }>()
+  const [editRerunDialog, setEditRerunDialog] = useState<{
+    readonly threadId: string
+    readonly targetRunId: string
+    readonly messageId: string
+    readonly text: string
+    readonly restoreFiles: boolean
+    readonly pending: boolean
+    readonly error?: string
+  }>()
   const changingThread = useRef(false)
   const [target, setTarget] = useState<ThreadReadTarget | null>(() => {
     const pending = useConversationNavigation.getState().pendingOpen
@@ -574,6 +591,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setTarget(next)
     setControlFailure(undefined)
     setQueueEdit(undefined)
+    setRollbackDialog(undefined)
+    setEditRerunDialog(undefined)
     setSidebarOpen(false)
   }
 
@@ -1381,6 +1400,131 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         </div>
       </form>}
     </Modal>
+    <Modal open={Boolean(rollbackDialog)} onClose={() => { if (!rollbackDialog?.pending) setRollbackDialog(undefined) }}
+      ariaLabel="回滚会话到指定轮次" width={480}>
+      {rollbackDialog && (() => {
+        const matchedCheckpoint = projection?.checkpoints.find(
+          item => item.runId === rollbackDialog.targetRunId && item.phase === rollbackDialog.boundary && item.status === 'captured',
+        )
+        const changeCount = (matchedCheckpoint?.dirtyFileCount ?? 0) + (matchedCheckpoint?.untrackedCount ?? 0)
+        return <form className="space-y-4 p-4" onSubmit={event => {
+          event.preventDefault()
+          if (rollbackDialog.pending || targetRef.current?.threadId !== rollbackDialog.threadId) return
+          const snapshotDialog = rollbackDialog
+          setRollbackDialog(current => current ? { ...current, pending: true, error: undefined } : undefined)
+          void controller.rollbackCheckpoint({
+            targetRunId: snapshotDialog.targetRunId,
+            boundary: snapshotDialog.boundary,
+            restoreFiles: Boolean(matchedCheckpoint && snapshotDialog.restoreFiles),
+          }).then(result => {
+            if (!mounted.current) return
+            if (result.ok) {
+              setRollbackDialog(undefined)
+              setListRevision(value => value + 1)
+            } else {
+              setRollbackDialog(current => current ? { ...current, pending: false, error: result.reason } : undefined)
+            }
+          })
+        }}>
+          <h2 className="text-my-lg font-medium">{rollbackDialog.boundary === 'before' ? '回滚到此消息之前' : '回滚到此回合结果'}</h2>
+          <p className="my-item-description">
+            {rollbackDialog.boundary === 'before'
+              ? '将移除这条消息及其之后的所有对话轮次、工具记录与工作项，操作不可撤销。'
+              : '将保留这一回合的回复，并移除其之后的所有对话轮次、工具记录与工作项，操作不可撤销。'}
+          </p>
+          {matchedCheckpoint ? (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-my-base border border-my-line bg-my-panel p-3 text-my-sm text-my-primary">
+              <input type="checkbox" className="mt-0.5" checked={rollbackDialog.restoreFiles}
+                disabled={rollbackDialog.pending}
+                onChange={event => setRollbackDialog(current => current ? { ...current, restoreFiles: event.target.checked } : undefined)} />
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="block font-normal">同时还原工作区文件到此检查点</span>
+                <span className="block text-my-xs text-my-tertiary tabular-nums">
+                  {changeCount > 0 ? `快照当时记录 ${changeCount} 项工作区变更；还原会覆盖其后未提交修改。` : '快照当时工作区干净；还原将清除其后新建或修改的文件。'}
+                </span>
+              </span>
+            </label>
+          ) : (
+            <p className="rounded-my-base border border-my-line bg-my-panel p-3 text-my-xs text-my-tertiary">
+              此回合未捕获可用的 Git 文件检查点，本次仅回退对话历史，不改动磁盘文件。
+            </p>
+          )}
+          {rollbackDialog.error && <FeedbackNotice variant="bar-compact" tone="error" title="无法完成回滚" description={rollbackDialog.error} />}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" disabled={rollbackDialog.pending} onClick={() => setRollbackDialog(undefined)}>取消</Button>
+            <Button type="submit" variant="danger" disabled={rollbackDialog.pending}>
+              {rollbackDialog.pending ? '正在回滚…' : '确认回滚'}
+            </Button>
+          </div>
+        </form>
+      })()}
+    </Modal>
+    <Modal open={Boolean(editRerunDialog)} onClose={() => { if (!editRerunDialog?.pending) setEditRerunDialog(undefined) }}
+      ariaLabel="编辑历史消息并重跑" width={540}>
+      {editRerunDialog && (() => {
+        const matchedCheckpoint = projection?.checkpoints.find(
+          item => item.runId === editRerunDialog.targetRunId && item.phase === 'before' && item.status === 'captured',
+        )
+        const targetModel = selectedModel ?? (projection ? {
+          instanceId: projection.thread.modelSelection.instanceId,
+          id: projection.thread.modelSelection.model,
+          displayName: projection.thread.modelSelection.model,
+          options: projection.thread.modelSelection.options,
+        } : null)
+        return <form className="space-y-4 p-4" onSubmit={event => {
+          event.preventDefault()
+          if (editRerunDialog.pending || !editRerunDialog.text.trim() || !targetModel || targetRef.current?.threadId !== editRerunDialog.threadId) return
+          const snapshotDialog = editRerunDialog
+          setEditRerunDialog(current => current ? { ...current, pending: true, error: undefined } : undefined)
+          void controller.editAndRerun({
+            targetRunId: snapshotDialog.targetRunId,
+            messageId: snapshotDialog.messageId,
+            text: snapshotDialog.text,
+            restoreFiles: Boolean(matchedCheckpoint && snapshotDialog.restoreFiles),
+            instanceId: targetModel.instanceId,
+            model: targetModel.id,
+            ...(targetModel.options?.length ? { options: targetModel.options } : {}),
+          }).then(result => {
+            if (!mounted.current) return
+            if (result.ok) {
+              setEditRerunDialog(undefined)
+              setListRevision(value => value + 1)
+            } else {
+              setEditRerunDialog(current => current ? { ...current, pending: false, error: result.reason } : undefined)
+            }
+          })
+        }}>
+          <h2 className="text-my-lg font-medium">编辑历史消息并重跑</h2>
+          <p className="my-item-description">将从这条消息起重新生成回复，原后续对话轮次将被替换。</p>
+          <textarea className="my-input w-full" rows={5} aria-label="编辑后的消息内容" maxLength={CONVERSATION_TEXT_LIMIT}
+            disabled={editRerunDialog.pending} value={editRerunDialog.text}
+            onChange={event => setEditRerunDialog(current => current ? { ...current, text: event.target.value } : undefined)} />
+          {matchedCheckpoint ? (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-my-base border border-my-line bg-my-panel p-3 text-my-sm text-my-primary">
+              <input type="checkbox" className="mt-0.5" checked={editRerunDialog.restoreFiles}
+                disabled={editRerunDialog.pending}
+                onChange={event => setEditRerunDialog(current => current ? { ...current, restoreFiles: event.target.checked } : undefined)} />
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="block font-normal">同时还原工作区文件到此轮执行前</span>
+                <span className="block text-my-xs text-my-tertiary">取消勾选则保留当前工作区文件，仅修改提示词重跑对话。</span>
+              </span>
+            </label>
+          ) : (
+            <p className="rounded-my-base border border-my-line bg-my-panel p-3 text-my-xs text-my-tertiary">
+              此轮未记录执行前 Git 检查点，将保留当前文件并重跑对话。
+            </p>
+          )}
+          {editRerunDialog.error && <FeedbackNotice variant="bar-compact" tone="error" title="无法重跑" description={editRerunDialog.error} />}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" disabled={editRerunDialog.pending} onClick={() => setEditRerunDialog(undefined)}>取消</Button>
+            <Button type="submit" variant="primary"
+              disabled={editRerunDialog.pending || !editRerunDialog.text.trim() || !targetModel}>
+              {editRerunDialog.pending ? '正在重跑…' : '保存并重跑'}
+            </Button>
+          </div>
+        </form>
+      })()}
+    </Modal>
     <Modal open={Boolean(management)} onClose={() => setManagement(undefined)} ariaLabel={management?.action === 'delete' ? '删除会话' : '重命名会话'} width={420}>
       {management && <form className="space-y-4 p-4" onSubmit={event => {
         event.preventDefault()
@@ -1696,6 +1840,24 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           onForkFromRun={writable && projection && !archivedThread ? runId => {
             void sideChat.open({ sourcePoint: { type: 'run', runId } })
           } : undefined}
+          onRollbackRun={supportsPersonalModes && projection && !activeRun && writable && !read?.error
+            ? (runId, boundary) => {
+                setRollbackDialog({ threadId: projection.thread.id, targetRunId: runId, boundary, restoreFiles: false, pending: false })
+              }
+            : undefined}
+          onEditAndRerun={supportsPersonalModes && projection && !activeRun && writable && !read?.error
+            ? message => {
+                if (!message.runId) return
+                setEditRerunDialog({
+                  threadId: projection.thread.id,
+                  targetRunId: message.runId,
+                  messageId: message.id,
+                  text: message.text,
+                  restoreFiles: false,
+                  pending: false,
+                })
+              }
+            : undefined}
           working={submitting || loadingThread || runPending && !read?.error}
           workingLabel={loadingThread ? '正在读取会话…' : submitting && !target ? '正在发送给 Crux…'
             : run?.status === 'queued' || run?.status === 'preparing' ? '已受理，等待模型…'

@@ -1,18 +1,22 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Brain, Check, Copy, GitFork, Pencil, Reply, TriangleAlert } from 'lucide-react'
+import { Check, Copy, GitFork, LoaderCircle, Pencil, Reply, RotateCcw, TriangleAlert } from 'lucide-react'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
 import { collectAssistantCitations } from '../../../shared/conversation/assistantCitationText'
+import { parseLeadingSlashCommand } from '../../../shared/conversation/slashCommands'
 import { useCopyFeedback } from '../utils/use-copy-feedback'
 import { AssistantCitationChip, type OpenAssistantCitation } from './AssistantCitationChip'
 import { captureAssistantCitation } from './AssistantCitationSource'
 import { ChatMarkdown } from './ChatMarkdown'
+import { SlashCommandChip } from './SlashCommandChip'
 import type { ConversationMessage, ConversationTimelineRow } from './useConversationThread'
 import { formatDayAwareTimestamp } from './chatTimestamp'
 
 export interface TimelineMessageActions {
   readonly onQuote?: (message: ConversationMessage, text: string) => void
   readonly onEdit?: (message: ConversationMessage) => void
+  readonly onEditAndRerun?: (message: ConversationMessage) => void
+  readonly onRollbackRun?: (runId: string, boundary: 'before' | 'after') => void
   readonly onForkFromRun?: (runId: string) => void
   readonly onCite?: (citation: AssistantCitation) => void
   readonly onOpenCitation?: OpenAssistantCitation
@@ -88,7 +92,7 @@ function MessageActions({ children }: { children: ReactNode }) {
   return <div className="conversation-message-actions">{children}</div>
 }
 
-function UserMessageContextChips({ text, onOpenCitation }: { readonly text: string; readonly onOpenCitation?: OpenAssistantCitation }) {
+function UserMessageBodyContent({ text, onOpenCitation }: { readonly text: string; readonly onOpenCitation?: OpenAssistantCitation }) {
   const matches = collectAssistantCitations(text)
   if (!matches.length) return <ChatMarkdown text={text} user />
   let offset = 0
@@ -105,7 +109,24 @@ function UserMessageContextChips({ text, onOpenCitation }: { readonly text: stri
   </div>
 }
 
-export function UserMessageRow({ row, onQuote, onEdit, onOpenCitation }: MessageRowProps) {
+function isInlineSlashBody(body: string): boolean {
+  const trimmed = body.trim()
+  if (!trimmed || trimmed.includes('\n')) return false
+  if (collectAssistantCitations(trimmed).length > 0) return false
+  return !/^(?:#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```|~~~|\|)/.test(trimmed)
+}
+
+function UserMessageContextChips({ text, onOpenCitation }: { readonly text: string; readonly onOpenCitation?: OpenAssistantCitation }) {
+  const command = parseLeadingSlashCommand(text)
+  if (!command) return <UserMessageBodyContent text={text} onOpenCitation={onOpenCitation} />
+  const inline = Boolean(command.body && isInlineSlashBody(command.body))
+  return <div className="conversation-slash-message" data-inline={inline ? 'true' : undefined}>
+    <SlashCommandChip command={command} />
+    {command.body && <UserMessageBodyContent text={command.body} onOpenCitation={onOpenCitation} />}
+  </div>
+}
+
+export function UserMessageRow({ row, onQuote, onEdit, onEditAndRerun, onRollbackRun, onOpenCitation }: MessageRowProps) {
   const { message } = row
   return (
     <article className="conversation-message conversation-message-user" data-user-message-row>
@@ -120,15 +141,24 @@ export function UserMessageRow({ row, onQuote, onEdit, onOpenCitation }: Message
         <span className="conversation-action-group">
           <MessageCopyButton message={message} user />
           {onQuote && <MessageReplyButton message={message} onQuote={onQuote} label="引用这条消息" />}
-          {onEdit && <button type="button" className="my-icon-control" title="编辑这条消息" aria-label="编辑这条消息"
-            onClick={() => onEdit(message)}><Pencil size={12} aria-hidden="true" /></button>}
+          {onEditAndRerun && message.runId ? (
+            <button type="button" className="my-icon-control" title="编辑并重跑" aria-label="编辑并重跑"
+              onClick={() => onEditAndRerun(message)}><Pencil size={12} aria-hidden="true" /></button>
+          ) : onEdit && (
+            <button type="button" className="my-icon-control" title="编辑这条消息" aria-label="编辑这条消息"
+              onClick={() => onEdit(message)}><Pencil size={12} aria-hidden="true" /></button>
+          )}
+          {onRollbackRun && message.runId && (
+            <button type="button" className="my-icon-control" title="回滚到此消息之前" aria-label="回滚到此消息之前"
+              onClick={() => onRollbackRun(message.runId!, 'before')}><RotateCcw size={12} aria-hidden="true" /></button>
+          )}
         </span>
       </MessageActions>
     </article>
   )
 }
 
-export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sourceThreadId }: MessageRowProps) {
+export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onRollbackRun, onCite, sourceThreadId }: MessageRowProps) {
   const { message, forkRunId, showAssistantMeta = !message.streaming } = row
   const isCitationSource = message.role === 'assistant' && !message.streaming && Boolean(sourceThreadId)
   const canCite = isCitationSource && Boolean(onCite)
@@ -144,6 +174,10 @@ export function AssistantTimelineRow({ row, onQuote, onForkFromRun, onCite, sour
       </div>
       {showAssistantMeta && <MessageActions>
         {message.text && <MessageCopyButton message={message} user={false} />}
+        {forkRunId && onRollbackRun && <button type="button" className="my-icon-control" title="回滚到此回合结果"
+          aria-label="回滚到此回合结果" onClick={() => onRollbackRun(forkRunId, 'after')}>
+          <RotateCcw size={12} aria-hidden="true" />
+        </button>}
         {forkRunId && onForkFromRun && <button type="button" className="my-icon-control" title="从此回合创建分支"
           aria-label="从此回合创建分支" onClick={() => onForkFromRun(forkRunId)}>
           <GitFork size={12} aria-hidden="true" />
@@ -178,18 +212,15 @@ export function WorkingTimelineRow({ startedAt, label, showStatus }: {
   readonly showStatus: boolean
 }) {
   const elapsed = useElapsedLabel(startedAt)
-  const status = label ?? '正在工作…'
+  const status = label ?? '正在思考与处理…'
+  const visibleStatus = showStatus || !startedAt ? status : '正在继续生成…'
   return (
-    <div className="conversation-working">
-      {startedAt && <div className="conversation-working-time">已工作 {elapsed}</div>}
-      {(showStatus || !startedAt) && <div className="conversation-working-status" role="status">
-        {startedAt && <Brain size={16} aria-hidden="true" />}
-        <span className="conversation-live-label" aria-hidden="true">
-          {status}
-          <span className="conversation-live-focus"><span>{status}</span></span>
-        </span>
-        <span className="conversation-sr-only">{status}</span>
-      </div>}
+    <div className="conversation-working" role="status">
+      <div className="conversation-working-status">
+        <LoaderCircle size={13} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+        <span className="conversation-live-label">{visibleStatus}</span>
+        {startedAt && <span className="conversation-working-time">· {elapsed}</span>}
+      </div>
     </div>
   )
 }

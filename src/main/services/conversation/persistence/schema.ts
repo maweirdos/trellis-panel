@@ -352,4 +352,30 @@ CREATE TABLE IF NOT EXISTS conversation_v2_usage_limit_recoveries (
   reason TEXT,
   updated_at TEXT NOT NULL
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_checkpoints (
+  checkpoint_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL REFERENCES conversation_v2_projection_threads(thread_id),
+  run_id TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK (phase IN ('before', 'after')),
+  cwd TEXT NOT NULL,
+  git_tree_ref TEXT,
+  head_ref TEXT,
+  dirty_file_count INTEGER NOT NULL DEFAULT 0,
+  untracked_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('captured', 'skipped', 'failed')),
+  detail TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(thread_id, run_id, phase)
+) STRICT;
+CREATE INDEX IF NOT EXISTS conversation_v2_checkpoints_thread_created_idx
+  ON conversation_v2_checkpoints(thread_id, created_at, checkpoint_id);
+
+CREATE TABLE IF NOT EXISTS conversation_v2_checkpoint_scopes (
+  checkpoint_id TEXT PRIMARY KEY REFERENCES conversation_v2_checkpoints(checkpoint_id) ON DELETE CASCADE,
+  repo_root TEXT NOT NULL,
+  canonical_cwd TEXT NOT NULL,
+  git_ref_name TEXT,
+  untracked_manifest_json TEXT
+) STRICT;
 `

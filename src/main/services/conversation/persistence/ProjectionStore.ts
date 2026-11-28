@@ -1,5 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite'
-import type { ConversationProjectedWorkItem, ConversationUsageLimitRecovery } from '../../../../shared/conversation/command-runtime'
+import type {
+  ConversationCheckpointSummary,
+  ConversationProjectedWorkItem,
+  ConversationUsageLimitRecovery,
+} from '../../../../shared/conversation/command-runtime'
 import type { ThreadEffectRow } from '../orchestration/ThreadCommands'
 
 export interface NativeBindingRow {
@@ -349,5 +353,207 @@ export class ConversationProjectionStore {
       ...(row.reason ? { reason: row.reason } : {}),
       updatedAt: row.updated_at,
     }))
+  }
+
+  upsertCheckpoint(
+    summary: ConversationCheckpointSummary,
+    scope?: {
+      readonly repoRoot: string
+      readonly canonicalCwd: string
+      readonly gitRefName?: string | null
+      readonly untrackedManifestJson?: string | null
+    },
+  ): void {
+    this.database.prepare(`INSERT INTO conversation_v2_checkpoints
+      (checkpoint_id, thread_id, run_id, phase, cwd, git_tree_ref, head_ref, dirty_file_count, untracked_count, status, detail, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(thread_id, run_id, phase) DO UPDATE SET
+        checkpoint_id = excluded.checkpoint_id,
+        cwd = excluded.cwd,
+        git_tree_ref = excluded.git_tree_ref,
+        head_ref = excluded.head_ref,
+        dirty_file_count = excluded.dirty_file_count,
+        untracked_count = excluded.untracked_count,
+        status = excluded.status,
+        detail = excluded.detail,
+        created_at = excluded.created_at`)
+      .run(
+        summary.checkpointId,
+        summary.threadId,
+        summary.runId,
+        summary.phase,
+        summary.cwd,
+        summary.gitTreeRef,
+        summary.headRef,
+        summary.dirtyFileCount,
+        summary.untrackedCount,
+        summary.status,
+        summary.detail ?? null,
+        summary.createdAt,
+      )
+    if (scope) {
+      this.database.prepare(`INSERT INTO conversation_v2_checkpoint_scopes
+        (checkpoint_id, repo_root, canonical_cwd, git_ref_name, untracked_manifest_json)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(checkpoint_id) DO UPDATE SET
+          repo_root = excluded.repo_root,
+          canonical_cwd = excluded.canonical_cwd,
+          git_ref_name = excluded.git_ref_name,
+          untracked_manifest_json = excluded.untracked_manifest_json`)
+        .run(
+          summary.checkpointId,
+          scope.repoRoot,
+          scope.canonicalCwd,
+          scope.gitRefName ?? null,
+          scope.untrackedManifestJson ?? null,
+        )
+    }
+  }
+
+  listCheckpoints(threadId: string): readonly ConversationCheckpointSummary[] {
+    const rows = this.database.prepare(`SELECT checkpoint_id, thread_id, run_id, phase, cwd, git_tree_ref, head_ref,
+      dirty_file_count, untracked_count, status, detail, created_at
+      FROM conversation_v2_checkpoints WHERE thread_id = ?
+      ORDER BY created_at ASC, checkpoint_id ASC`).all(threadId) as Array<{
+      checkpoint_id: string
+      thread_id: string
+      run_id: string
+      phase: 'before' | 'after'
+      cwd: string
+      git_tree_ref: string | null
+      head_ref: string | null
+      dirty_file_count: number
+      untracked_count: number
+      status: 'captured' | 'skipped' | 'failed'
+      detail: string | null
+      created_at: string
+    }>
+    return rows.map(row => ({
+      checkpointId: row.checkpoint_id,
+      threadId: row.thread_id,
+      runId: row.run_id,
+      phase: row.phase,
+      cwd: row.cwd,
+      gitTreeRef: row.git_tree_ref,
+      headRef: row.head_ref,
+      dirtyFileCount: row.dirty_file_count,
+      untrackedCount: row.untracked_count,
+      status: row.status,
+      ...(row.detail ? { detail: row.detail } : {}),
+      createdAt: row.created_at,
+    }))
+  }
+
+  readCheckpointWithScope(
+    threadId: string,
+    runId: string,
+    phase: 'before' | 'after',
+  ): {
+    readonly checkpoint: ConversationCheckpointSummary
+    readonly scope: {
+      readonly repoRoot: string
+      readonly canonicalCwd: string
+      readonly gitRefName: string | null
+    } | null
+  } | null {
+    const row = this.database.prepare(`SELECT c.checkpoint_id, c.thread_id, c.run_id, c.phase, c.cwd, c.git_tree_ref, c.head_ref,
+      c.dirty_file_count, c.untracked_count, c.status, c.detail, c.created_at,
+      s.repo_root, s.canonical_cwd, s.git_ref_name
+      FROM conversation_v2_checkpoints c
+      LEFT JOIN conversation_v2_checkpoint_scopes s ON s.checkpoint_id = c.checkpoint_id
+      WHERE c.thread_id = ? AND c.run_id = ? AND c.phase = ?`)
+      .get(threadId, runId, phase) as {
+      checkpoint_id: string
+      thread_id: string
+      run_id: string
+      phase: 'before' | 'after'
+      cwd: string
+      git_tree_ref: string | null
+      head_ref: string | null
+      dirty_file_count: number
+      untracked_count: number
+      status: 'captured' | 'skipped' | 'failed'
+      detail: string | null
+      created_at: string
+      repo_root: string | null
+      canonical_cwd: string | null
+      git_ref_name: string | null
+    } | undefined
+    if (!row) return null
+    return {
+      checkpoint: {
+        checkpointId: row.checkpoint_id,
+        threadId: row.thread_id,
+        runId: row.run_id,
+        phase: row.phase,
+        cwd: row.cwd,
+        gitTreeRef: row.git_tree_ref,
+        headRef: row.head_ref,
+        dirtyFileCount: row.dirty_file_count,
+        untrackedCount: row.untracked_count,
+        status: row.status,
+        ...(row.detail ? { detail: row.detail } : {}),
+        createdAt: row.created_at,
+      },
+      scope: row.repo_root && row.canonical_cwd
+        ? { repoRoot: row.repo_root, canonicalCwd: row.canonical_cwd, gitRefName: row.git_ref_name }
+        : null,
+    }
+  }
+
+  truncateThreadFromOrdinal(threadId: string, minOrdinalToRemove: number, updatedAt: string): readonly string[] {
+    const runRows = this.database.prepare(
+      'SELECT run_id FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal >= ? ORDER BY ordinal ASC',
+    ).all(threadId, minOrdinalToRemove) as Array<{ run_id: string }>
+    const removedRunIds = runRows.map(row => row.run_id)
+    if (removedRunIds.length > 0) {
+      const placeholders = removedRunIds.map(() => '?').join(',')
+      const effectRows = this.database.prepare(`SELECT effect_id FROM conversation_v2_effect_outbox
+        WHERE thread_id = ? AND json_extract(payload_json, '$.runId') IN (${placeholders})`)
+        .all(threadId, ...removedRunIds) as Array<{ effect_id: string }>
+      const effectIds = effectRows.map(row => row.effect_id)
+      const requestRows = this.database.prepare(`SELECT runtime_request_id FROM conversation_v2_projection_runtime_requests
+        WHERE thread_id = ? AND node_id IN (${placeholders})`)
+        .all(threadId, ...removedRunIds) as Array<{ runtime_request_id: string }>
+      const requestIds = requestRows.map(row => row.runtime_request_id)
+
+      if (requestIds.length > 0) {
+        const reqPh = requestIds.map(() => '?').join(',')
+        this.database.prepare(`DELETE FROM conversation_v2_runtime_request_bindings WHERE request_id IN (${reqPh})`).run(...requestIds)
+      }
+      if (effectIds.length > 0) {
+        const effPh = effectIds.map(() => '?').join(',')
+        this.database.prepare(`DELETE FROM conversation_v2_runtime_request_bindings
+          WHERE attempt_id IN (SELECT attempt_id FROM conversation_v2_dispatch_attempts WHERE effect_id IN (${effPh}))`)
+          .run(...effectIds)
+        this.database.prepare(`DELETE FROM conversation_v2_native_terminal_evidence WHERE effect_id IN (${effPh})`).run(...effectIds)
+        this.database.prepare(`DELETE FROM conversation_v2_dispatch_attempts WHERE effect_id IN (${effPh})`).run(...effectIds)
+        this.database.prepare(`DELETE FROM conversation_v2_effect_outbox WHERE effect_id IN (${effPh})`).run(...effectIds)
+      }
+
+      this.database.prepare(`DELETE FROM conversation_v2_projection_runtime_requests WHERE thread_id = ? AND node_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_turn_items WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_messages WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_plans WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_nodes WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_run_attempts WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_checkpoints WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+      this.database.prepare(`DELETE FROM conversation_v2_projection_runs WHERE thread_id = ? AND run_id IN (${placeholders})`)
+        .run(threadId, ...removedRunIds)
+    }
+
+    this.database.prepare('DELETE FROM conversation_v2_usage_limit_recoveries WHERE thread_id = ?').run(threadId)
+    this.database.prepare('DELETE FROM conversation_v2_native_bindings WHERE thread_id = ?').run(threadId)
+    this.database.prepare('UPDATE conversation_v2_projection_runs SET provider_thread_id = NULL WHERE thread_id = ?').run(threadId)
+    this.database.prepare('UPDATE conversation_v2_projection_threads SET active_provider_thread_id = NULL, updated_at = ? WHERE thread_id = ?')
+      .run(updatedAt, threadId)
+    return removedRunIds
   }
 }

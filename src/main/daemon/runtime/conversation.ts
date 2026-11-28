@@ -38,6 +38,7 @@ import {
 } from '../../services/conversation/orchestration/ProviderEventIngestor'
 import { RunFinalizationService } from '../../services/conversation/orchestration/RunFinalizationService'
 import { UsageLimitRecoveryWorker } from '../../services/conversation/orchestration/UsageLimitRecoveryWorker'
+import { CheckpointService } from '../../services/conversation/orchestration/CheckpointService'
 import {
   RESTART_CONTINUATION_EFFECT_TYPE,
   buildManualContinuationText,
@@ -156,6 +157,7 @@ export class ConversationRuntime {
   private readonly turnControl: ProviderTurnControlService<ActiveTurn, CommandAuthority>
   private readonly usageLimitRecovery: UsageLimitRecoveryWorker<CommandAuthority>
   private readonly finalization: RunFinalizationService<ActiveTurn, CommandAuthority>
+  private readonly checkpoints: CheckpointService
   private readonly storageId: string
   private readonly deadlines
   private readonly dispatches = new Map<string, { root: string; work: Promise<void> }>()
@@ -267,6 +269,11 @@ export class ConversationRuntime {
         },
         offerDelegatedCompletionDelivery: (threadId, parentRunId) => this.offerDelegatedCompletionDelivery(threadId, parentRunId),
       },
+    )
+    this.checkpoints = new CheckpointService(
+      this.projections,
+      this.eventSink,
+      () => [...this.activeTurns.values()].map(turn => ({ threadId: turn.row.thread_id, cwd: turn.executionRoot })),
     )
     this.worker.reconcile('startup', { continueAfterRestart: this.shouldContinueAfterRestart() })
     this.relations.reconcileAfterRecovery(this.eventSink)
@@ -640,6 +647,70 @@ export class ConversationRuntime {
           this.runtimeRequests.clearSessionApprovals(command.threadId)
         }
         return this.commands.setThreadMode(command, authority)
+      }
+      case 'checkpoint.rollback':
+      case 'message.edit-and-rerun': {
+        if (restrictedRelation || authority.binding.kind !== 'personal' || this.commands.isArchived(command.threadId)) {
+          throw new DaemonError('E_DENIED', '仅可在未归档的个人会话中执行回滚或编辑重跑。')
+        }
+        if (active || this.activeTurns.has(command.threadId)) {
+          throw new DaemonError('E_BUSY', '当前会话正在运行中，请先停止后再回滚。')
+        }
+        this.usageLimitRecovery.cancel(command.threadId, '用户执行了会话回滚或编辑重跑。')
+        this.runtimeRequests.clearSessionApprovals(command.threadId)
+        const targetRun = this.commands.run(command.threadId, command.targetRunId)
+        if (!targetRun) {
+          throw new DaemonError('E_CONFLICT', '找不到要回滚的目标回合。')
+        }
+        const boundary = command.type === 'message.edit-and-rerun' ? 'before' : command.boundary
+        const minOrdinalToRemove = boundary === 'before' ? targetRun.ordinal : targetRun.ordinal + 1
+        if (command.type === 'message.edit-and-rerun') {
+          const runPayload = JSON.parse(targetRun.payload_json) as { userMessageId?: string }
+          if (runPayload.userMessageId !== command.messageId) {
+            throw new DaemonError('E_CONFLICT', '要编辑的历史消息与目标回合不匹配。')
+          }
+          const registration = this.requireDriver(command.instanceId, false)
+          if (command.options?.length && !registration.turnModelOptions) {
+            throw new DaemonError('E_UNAVAILABLE', '所选引擎不支持此模型参数。')
+          }
+          const modelSelection = decodeModelSelection({ instanceId: registration.instanceId, model: command.model, options: command.options })
+          if (command.restoreFiles) {
+            await this.checkpoints.restoreFiles({ threadId: command.threadId, runId: command.targetRunId, phase: 'before', cwd: authority.cwd })
+          }
+          const keptHistory = minOrdinalToRemove > 1
+            ? this.contextHandoff.capture({ threadId: command.threadId }, authority, minOrdinalToRemove - 1, false, true)
+            : undefined
+          const selection = {
+            driverKind: registration.driverKind,
+            modelSelection,
+            configurationFingerprint: this.bindingFingerprint(registration),
+          }
+          const receipt = this.commands.appendEditAndRerun(
+            command,
+            authority,
+            selection,
+            targetRun.ordinal,
+            occurredAt => { this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, occurredAt) },
+            keptHistory && keptHistory.messages.length > 0 ? [keptHistory] : undefined,
+          )
+          this.sessions.loadedThreads.delete(command.threadId)
+          this.resolvePendingAsyncUserInputs(command.threadId)
+          this.authorizations.set(command.commandId, authority)
+          this.scheduleNext(command.threadId, authority)
+          return receipt
+        }
+        if (command.restoreFiles) {
+          await this.checkpoints.restoreFiles({ threadId: command.threadId, runId: command.targetRunId, phase: boundary, cwd: authority.cwd })
+        }
+        const receipt = this.commands.commit(command, authority, {
+          target: { run_id: command.targetRunId },
+          hostEvents: [lifecycleEvent(command.threadId, { kind: 'thread-reset', reason: 'rollback' })],
+          apply: () => {
+            this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, new Date().toISOString())
+          },
+        })
+        this.sessions.loadedThreads.delete(command.threadId)
+        return receipt
       }
       case 'queued-message.promote-to-steer': {
         const turn = this.requireControlTurn(active, 'steerTurn', command.targetRunId)
@@ -1492,14 +1563,22 @@ export class ConversationRuntime {
       const threadModes = restricted || managedExecution
         ? { runtimeMode: 'approval-required' as const, interactionMode: 'default' as const }
         : this.projections.readThreadModes(threadId)
+      const hadExistingNativeBinding = Boolean(this.projections.readNativeBindingOrRunFallback(threadId))
+      if (authority.binding.kind === 'personal' && !restricted && !compaction) {
+        await this.checkpoints.capture({ threadId, runId, phase: 'before', cwd }).catch(() => undefined)
+        await this.assertCurrent(threadId, authority)
+        fence()
+      }
       const allowResumeFallback = !handoffSource && !compaction && !completion
       const opened = await this.sessions.driverFence.run(fence, () =>
         this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource), artifactMcp, allowResumeFallback, expectedFingerprint, threadModes.runtimeMode))
       const nativeThreadId = opened.nativeThreadId
       if (!nativeThreadId) throw new ConversationTurnRejectedError('引擎未返回接力会话身份。')
       if (completion && nativeThreadId !== completion.nativeThreadId) throw new ConversationTurnRejectedError('引擎没有接回原委派的父会话。')
-      if (opened.recoveredFrom && !histories.some(history => history.sourceThreadId === threadId)) {
-        histories.unshift(this.contextHandoff.capture({ threadId }, authority, run.ordinal - 1, false, true))
+      if ((opened.recoveredFrom || (!intent.handoff && !compaction && !hadExistingNativeBinding && run.ordinal > 1))
+        && !histories.some(history => history.sourceThreadId === threadId)) {
+        const prior = this.contextHandoff.capture({ threadId }, authority, run.ordinal - 1, false, true)
+        if (prior.messages.length > 0) histories.unshift(prior)
       }
       const effectiveHandoffSource = handoffSource ?? (opened.recoveredFrom?.previous_run_id ? {
         instance_id: opened.recoveredFrom.instance_id,
@@ -2166,6 +2245,21 @@ export class ConversationRuntime {
       isPersonal: authorityForRetry?.binding.kind === 'personal',
       delegated,
     })
+    const captureCwd = turn?.executionRoot ?? authorityForRetry?.cwd
+    if (
+      !this.closing
+      && authorityForRetry?.binding.kind === 'personal'
+      && !this.relations.restrictedParent(threadId)
+      && run
+      && !compactionFromPayload(run.payload_json)
+      && captureCwd
+    ) {
+      const dispatchKey = `checkpoint-after:${runId}`
+      const work = this.checkpoints.capture({ threadId, runId, phase: 'after', cwd: captureCwd })
+        .then(() => undefined, () => undefined)
+        .finally(() => { this.dispatches.delete(dispatchKey) })
+      this.dispatches.set(dispatchKey, { root: captureCwd, work })
+    }
   }
 
   private dispatchUsageLimitAutoRetry(
@@ -2617,6 +2711,7 @@ export class ConversationRuntime {
       relations: this.relations.read(threadId),
       goal: this.continuation.readGoal(threadId),
       usageLimitRecovery: this.usageLimitRecovery.readScheduled(threadId),
+      checkpoints: this.projections.listCheckpoints(threadId),
     }
   }
 
@@ -2647,6 +2742,10 @@ export class ConversationRuntime {
       return snapshot && { kind: 'reset', snapshot }
     }
     const page = this.eventSink.readLifecyclePage(threadId, cursor.sequence, this.pageLimit(input.limit, THREAD_RESUME_MAX_REPLAY_EVENTS))
+    if (page.events.some(entry => entry.event.type === 'crux.lifecycle' && entry.event.payload.kind === 'thread-reset')) {
+      const snapshot = this.snapshot(threadId)
+      return snapshot && { kind: 'reset', snapshot }
+    }
     return { ...page, kind: 'events', cursor: { storageId: this.storageId, threadId, sequence: page.nextSequence } }
   }
 

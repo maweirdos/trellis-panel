@@ -167,6 +167,20 @@ export interface ConversationThreadController {
   readonly retryUsageLimitRecoveryNow: () => Promise<ConversationApplyResult>
   readonly setRuntimeMode: (runtimeMode: RuntimeMode) => Promise<ConversationApplyResult>
   readonly setInteractionMode: (interactionMode: ProviderInteractionMode) => Promise<ConversationApplyResult>
+  readonly rollbackCheckpoint: (input: {
+    readonly targetRunId: string
+    readonly boundary: 'before' | 'after'
+    readonly restoreFiles: boolean
+  }) => Promise<ConversationApplyResult>
+  readonly editAndRerun: (input: {
+    readonly targetRunId: string
+    readonly messageId: string
+    readonly text: string
+    readonly restoreFiles: boolean
+    readonly instanceId: string
+    readonly model: string
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+  }) => Promise<ConversationApplyResult>
   readonly resume: (input?: {
     readonly sourceRunId: string
     readonly instanceId: string
@@ -225,6 +239,8 @@ function commandAction(command: ConversationThreadCommand): string {
     case 'usage-limit-recovery.retry-now': return 'usage-limit-recovery.retry-now'
     case 'thread.runtime-mode.set': return 'runtime-mode'
     case 'thread.interaction-mode.set': return 'interaction-mode'
+    case 'checkpoint.rollback': return 'checkpoint.rollback'
+    case 'message.edit-and-rerun': return 'message.edit-and-rerun'
     case 'runtime-request.respond': return `respond:${command.requestId}:${command.generation}`
     default: return `command:${command.commandId}`
   }
@@ -639,6 +655,58 @@ export function useConversationThread(
     [applyRemembered, threadId],
   )
 
+  const rollbackCheckpoint = useCallback(
+    (input: {
+      readonly targetRunId: string
+      readonly boundary: 'before' | 'after'
+      readonly restoreFiles: boolean
+    }) =>
+      threadId
+        ? applyRemembered('checkpoint.rollback', () => ({
+          type: 'checkpoint.rollback',
+          threadId,
+          targetRunId: input.targetRunId,
+          boundary: input.boundary,
+          restoreFiles: input.restoreFiles,
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
+  const editAndRerun = useCallback(
+    (input: {
+      readonly targetRunId: string
+      readonly messageId: string
+      readonly text: string
+      readonly restoreFiles: boolean
+      readonly instanceId: string
+      readonly model: string
+      readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>
+    }) =>
+      threadId
+        ? applyRemembered('message.edit-and-rerun', () => ({
+          type: 'message.edit-and-rerun',
+          threadId,
+          targetRunId: input.targetRunId,
+          messageId: input.messageId,
+          text: input.text,
+          restoreFiles: input.restoreFiles,
+          instanceId: input.instanceId,
+          model: input.model,
+          ...(input.options?.length ? { options: input.options.map(option => ({ id: option.id, value: option.value })) } : {}),
+          commandId: crypto.randomUUID(),
+        })).then(result => {
+          if (result.ok) reload()
+          return result
+        })
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, reload, threadId],
+  )
+
   const resume = useCallback(
     (input?: {
       readonly sourceRunId: string
@@ -753,11 +821,13 @@ export function useConversationThread(
     () => ({
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
+      rollbackCheckpoint, editAndRerun,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     }),
     [
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
       cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
+      rollbackCheckpoint, editAndRerun,
       resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     ],
   )
