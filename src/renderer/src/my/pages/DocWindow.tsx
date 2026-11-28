@@ -11,7 +11,7 @@ import { useDocumentReader } from '../../reader/use-document-reader'
 import { attachDocumentChangedSource } from '../../reader/document-session-hub'
 import { computeHeadingAnchors } from '../../reader/heading-anchors'
 import { dispatchEscKey } from '../../utils/esc-layer'
-import { Button } from '../ui'
+import { Button, DisclosureGrid } from '../ui'
 import { projectRootKey } from '../navigation'
 import { PublishWorkflowVersionButton } from '../../team/PublishWorkflowVersionButton'
 
@@ -93,7 +93,9 @@ function RegisteredDocBody({ bootstrap }: { bootstrap: DocumentWindowBootstrap }
     <div className="my-page-toolbar-row shrink-0"><Button size="sm" variant="ghost" disabled={headings.length === 0} onClick={() => setOutline((v) => !v)}>目录</Button><span className="min-w-0 truncate text-my-xs text-my-secondary" title={sourceDetail}>{sourceCaption}</span>{sourceActive && reader.doc?.fixedVersion && <PublishWorkflowVersionButton expectedRoot={bootstrap.projectRoot} source={{ kind: 'fixed-document', token: reader.doc.fixedVersion.token }} title={reader.doc.fixedVersion.title} />}</div>
     {!sourceActive && <p role="status" className="px-4 py-2 text-my-xs text-my-secondary">{sourceStateUnavailable ? '来源状态暂不能确认，固定版本保持可读；核对来源后再发布。' : '来源项目已切换，固定版本保持可读。返回来源后重新打开可恢复文件跟踪。'}</p>}
     {notice && <p role="status" className="px-4 py-2 text-my-xs text-my-secondary">{notice}</p>}
-    {outline && <nav aria-label="文档目录" className="max-h-48 shrink-0 overflow-auto border-b border-my-line px-4 py-2">{headings.map((h) => <button key={h.id} type="button" className="block w-full truncate py-1 text-left text-my-xs text-my-secondary hover:text-my-accent-text" style={{ paddingLeft: `${Math.min(h.level - 1, 3) * 12}px` }} onClick={() => { const target = [...(body.current?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((node) => node.id === h.id); if (target) target.scrollIntoView({ block: 'start' }); else setNotice('请切回渲染视图后定位章节') }}>{h.text}</button>)}</nav>}
+    <DisclosureGrid open={outline} innerClassName="border-b border-my-line">
+      <nav aria-label="文档目录" className="my-scrollbar max-h-48 overflow-auto px-4 py-2">{headings.map((h) => <button key={h.id} type="button" className="block w-full truncate py-1 text-left text-my-xs text-my-secondary transition-colors hover:text-my-accent-text" style={{ paddingLeft: `${Math.min(h.level - 1, 3) * 12}px` }} onClick={() => { const target = [...(body.current?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((node) => node.id === h.id); if (target) target.scrollIntoView({ block: 'start' }); else setNotice('请切回渲染视图后定位章节') }}>{h.text}</button>)}</nav>
+    </DisclosureGrid>
     <div ref={body} className="my-scrollbar min-h-0 flex-1 overflow-auto" style={{ fontSize: 'var(--my-text-document)', lineHeight: 'var(--my-line-document)' }}><PageContent variant="full"><DocumentReaderSurface reader={reader} relativePath={bootstrap.document.source.relativePath} showOutline={false} origin={bootstrap.origin ?? undefined} /></PageContent></div>
   </div>
 }
@@ -135,40 +137,44 @@ function LegacyDocWindowApp(): JSX.Element {
         <span className="min-w-0 flex-1 truncate text-my-sm text-my-secondary" title={taskTitle}>
           {taskTitle}
         </span>
-        <span className="shrink-0 rounded-my-sm bg-my-layer-3 px-1.5 py-0.5 text-my-2xs text-my-tertiary">{docName}</span>
+        <span className="my-chip shrink-0 text-my-tertiary">{docName}</span>
         <button
           type="button"
           title="最小化"
+          aria-label="最小化"
           onClick={() => api.windowMinimize()}
-          className="no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          className="my-icon-control no-drag shrink-0"
         >
           <Minus size={13} />
         </button>
         <button
           type="button"
           title={maximized ? '还原' : '最大化'}
+          aria-label={maximized ? '还原' : '最大化'}
           onClick={() => api.windowMaximize()}
-          className="no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          className="my-icon-control no-drag shrink-0"
         >
           {maximized ? <Copy size={11} /> : <Square size={11} />}
         </button>
         <button
           type="button"
           title={pinned ? '取消置顶' : '置顶'}
+          aria-label={pinned ? '取消置顶' : '置顶'}
           onClick={() => {
             const next = !pinned
             setPinned(next)
             void api.docSetPin(next)
           }}
-          className="no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          className="my-icon-control no-drag shrink-0"
         >
           {pinned ? <Pin size={13} className="fill-current text-my-accent-text" /> : <PinOff size={13} />}
         </button>
         <button
           type="button"
           title="关闭"
+          aria-label="关闭"
           onClick={() => window.close()}
-          className="no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-my-md text-my-icon-secondary hover:bg-my-layer-1-hover hover:text-my-primary"
+          className="my-icon-control no-drag shrink-0"
         >
           <X size={14} />
         </button>

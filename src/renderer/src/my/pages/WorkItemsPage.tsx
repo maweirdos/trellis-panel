@@ -307,7 +307,7 @@ function GroupBadge({ meta, size = 12 }: { meta: GroupMeta; size?: number }): JS
     return (
       <span
         title={`模块：${meta.pkg || '未分组'}`}
-        className="flex shrink-0 items-center justify-center rounded-my-sm border border-my-line-strong text-my-2xs font-semibold text-my-tertiary"
+        className="flex shrink-0 items-center justify-center rounded-my-base border border-my-line-strong text-my-2xs font-medium text-my-tertiary"
         style={{ width: size + 6, height: size + 6 }}
       >
         {(meta.pkg || '·').slice(0, 1)}
@@ -409,7 +409,7 @@ const BARE_TRIGGER: SelectStyle = {
 }
 const BOX_TRIGGER: SelectStyle = {
   trigger:
-    'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-my-md border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary hover:bg-my-layer-1-hover'
+    'flex h-7 w-full min-w-0 items-center gap-1.5 rounded-my-base border border-my-line bg-my-layer-1 px-2 text-my-sm text-my-secondary transition-colors duration-100 hover:bg-my-layer-1-hover'
 }
 
 /** 状态字段 → Trellis 工作流入口。生命周期状态由 task.py 管理，面板不直接写
@@ -974,7 +974,7 @@ function BoardLayout({
                   <BoardCard key={i.id} issue={i} ident={ident} draggable={source.kind === 'native' || groupBy === 'state' && canEditWorkItem(source, 'stateId', i.id)} onDrag={setDragging} />
                 ))}
                 {g.issues.length === 0 && (
-                  <div className="mx-2.5 mt-2 rounded-my-md border border-dashed border-my-line py-5 text-center text-my-xs text-my-disabled">
+                  <div className="mx-2.5 mt-2 rounded-my-base border border-dashed border-my-line py-5 text-center text-my-xs text-my-disabled">
                     暂无工作项
                   </div>
                 )}
@@ -1412,7 +1412,7 @@ function CalendarLayout({ issues }: { issues: Issue[] }): JSX.Element {
             >
               <span
                 className={clsx(
-                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-my-md px-1 text-my-xs',
+                  'inline-flex h-5 min-w-5 items-center justify-end self-end rounded-my-base px-1 text-my-xs',
                   isToday
                     ? 'bg-my-accent font-medium text-my-on-accent'
                     : inMonth
@@ -1716,7 +1716,7 @@ function WorkItemsPageInner(): JSX.Element {
   return (
     <PageLayout variant={PAGE_LAYOUTS.tasks}>
       <PageHeader className="my-work-items-header">
-        <h1 className="shrink-0 text-my-md font-semibold text-my-primary">{source.presentation?.title ?? (workItemsView === 'iterations' ? '迭代' : '全部')}</h1>
+        <h1 className="shrink-0 text-my-md font-medium text-my-primary">{source.presentation?.title ?? (workItemsView === 'iterations' ? '迭代' : '全部')}</h1>
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
           {/* 布局切换器：保留原有 5 格切换布局，统一 28px 小号高度与弹簧滑动底托 */}

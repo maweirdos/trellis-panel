@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { FolderOpen, Loader2, Play, RefreshCw, Square } from 'lucide-react'
+import { ChevronRight, FolderOpen, Loader2, Play, RefreshCw, Square } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { productTaskEngineSchema, type ProductTaskApi, type ProductTaskReply, type ProductTaskView } from '@shared/product-task-entry'
 import type { NativeTaskStart } from '@shared/native-task-execution'
 import { isAcpPermissionReviewable } from '@shared/acp-permission-review'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
+
+function InlineDisclosure({ label, defaultOpen = false, className, children }: { label: ReactNode; defaultOpen?: boolean; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen)
+  return <div className={className}>
+    <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={open || undefined} />
+      <span>{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 import { ConversationModelPicker } from '../../conversation-workbench/ConversationModelPicker'
 import { unavailableModelReason, useConversationModelCatalog } from '../../conversation-workbench/useConversationModelCatalog'
 import type { ComposerModel } from '../../conversation-workbench/useComposerSend'
@@ -172,13 +183,13 @@ export function ProductTaskEntry({ task, openRequest = 0, resourceRefresh = 0, p
     conversation: { instanceId: model.instanceId, model: model.id, options: model.options } })
   const engine = selected && selected.success ? selected.data : undefined
   const canPrepare = Boolean(view && (!entryId || view.successor) && view.blockers.every(b => ['directory', 'runtime'].includes(b.target)) && engine && writable && !loading)
-  return <section ref={root} tabIndex={-1} aria-label="任务开发环境" className="mt-3 min-w-0 space-y-3 rounded-my-md border border-my-line bg-my-surface-1 p-3">
+  return <section ref={root} tabIndex={-1} aria-label="任务开发环境" className="my-card mt-3 min-w-0 space-y-3 p-3">
     <header className="flex flex-wrap items-center gap-2"><FolderOpen size={15} className="text-my-icon-secondary" /><h3 className="flex-1 text-my-sm font-medium text-my-primary">{view?.readOnly ? '执行记录' : view?.historical ? '上次开发环境' : '本机开发环境'}</h3><span role="status" className="text-my-xs text-my-secondary">{view?.readOnly ? '任务已结束' : stopping ? '正在停止' : permissions.length ? '等待确认' : view?.preparationPending ? '正在准备' : starting && view?.state === 'prepared' ? '启动中' : loading && !view ? '正在核对…' : view ? labels[view.state] : '暂不可用'}</span><Button size="sm" variant="ghost" aria-label="核对开发环境" onClick={() => { if (inFlight.current) void readLive(); else setRefresh(n => n + 1) }}><RefreshCw size={13} className={loading ? 'animate-spin motion-reduce:animate-none' : undefined} /></Button></header>
     {view && <>
       {(view.resourceName || view.directoryName || view.nodeName) && <p className="flex flex-wrap gap-x-3 gap-y-1 text-my-xs text-my-secondary">{view.resourceName && <span>{view.resourceName}</span>}{view.directoryName && <span>{view.directoryName}</span>}{view.nodeName && <span>{view.nodeName}</span>}</p>}
       {view.blockers.map((blocker, index) => <div key={`${blocker.target}-${index}`} className="flex flex-wrap items-center gap-2 text-my-xs text-my-warning-text"><span className="min-w-0 flex-1">{blocker.message}</span>{['inputs', 'workflow'].includes(blocker.target) && onOpenInputs && <Button size="sm" variant="ghost" onClick={onOpenInputs}>采用输入</Button>}{blocker.target === 'runtime' && <Button size="sm" variant="ghost" onClick={() => useApp.getState().setPage('settings')}>模型与执行配置</Button>}{blocker.target === 'resource' && <Button size="sm" variant="ghost" onClick={() => root.current?.closest('[aria-label="任务详情"]')?.querySelector<HTMLElement>('[aria-label="任务代码资源"]')?.scrollIntoView({ block: 'nearest' })}>代码资源</Button>}</div>)}
-      {view.materials.length > 0 && <details className="text-my-xs text-my-secondary"><summary className="cursor-pointer">已采用材料</summary><ul className="mt-2 space-y-1">{view.materials.map((m, index) => <li key={index} className="flex flex-wrap gap-x-2"><span className="my-item-title">{m.title}</span><span className="my-item-description">{m.version.startsWith('R') ? m.version : '已确认版本'}</span></li>)}</ul></details>}
-      {(view.successor?.feedback ?? view.feedback) && <details open className="text-my-xs text-my-secondary"><summary className="cursor-pointer">退回反馈</summary><p className="my-scrollbar mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{(view.successor?.feedback ?? view.feedback)?.body}</p></details>}
+      {view.materials.length > 0 && <InlineDisclosure label="已采用材料"><ul className="mt-2 space-y-1 text-my-xs text-my-secondary">{view.materials.map((m, index) => <li key={index} className="flex flex-wrap gap-x-2"><span className="my-item-title">{m.title}</span><span className="my-item-description">{m.version.startsWith('R') ? m.version : '已确认版本'}</span></li>)}</ul></InlineDisclosure>}
+      {(view.successor?.feedback ?? view.feedback) && <InlineDisclosure defaultOpen label="退回反馈"><p className="my-scrollbar mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-my-xs text-my-secondary">{(view.successor?.feedback ?? view.feedback)?.body}</p></InlineDisclosure>}
       {!view.readOnly && (!entryId || view.successor) && <div ref={modelAnchor} className="flex flex-wrap items-center gap-2">
         <ConversationModelPicker anchor={modelAnchor} catalog={catalog} value={model}
           onChange={value => { if (writable && source.owns()) setModel(value) }} disabled={!writable || loading} />
@@ -201,17 +212,17 @@ export function ProductTaskEntry({ task, openRequest = 0, resourceRefresh = 0, p
         const review = p.reviewContext, key = `${entryId}:${p.requestId}`
         return <fieldset key={p.requestId} className="min-w-0 space-y-2 text-my-xs text-my-primary" aria-label="操作确认">
           <legend className="my-item-title">{p.tool ?? '操作确认'}</legend>
-          {review?.command && <pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-md bg-my-surface-2 p-2 text-my-primary">{review.command}</pre>}
+          {review?.command && <pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-base bg-my-surface-2 p-2 text-my-primary">{review.command}</pre>}
           {review?.cwd && <p className="break-all text-my-secondary">运行目录：{review.cwd}</p>}
           {review?.changes?.map((change, index) => <div key={`${change.path}:${index}`} className="min-w-0 space-y-1">
             <p className="break-all text-my-secondary">{change.path}</p>
-            {change.patch !== undefined ? <pre className="my-scrollbar max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-my-md bg-my-surface-2 p-2">{change.patch}</pre> : <>
-              <p className="text-my-secondary">变更前片段</p><pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-md bg-my-surface-2 p-2">{change.oldText ?? '未提供'}</pre>
-              <p className="text-my-secondary">变更后片段</p><pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-md bg-my-surface-2 p-2">{change.newText ?? '未提供'}</pre>
+            {change.patch !== undefined ? <pre className="my-scrollbar max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-my-base bg-my-surface-2 p-2">{change.patch}</pre> : <>
+              <p className="text-my-secondary">变更前片段</p><pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-base bg-my-surface-2 p-2">{change.oldText ?? '未提供'}</pre>
+              <p className="text-my-secondary">变更后片段</p><pre className="my-scrollbar max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-my-base bg-my-surface-2 p-2">{change.newText ?? '未提供'}</pre>
             </>}
           </div>)}
           {!isAcpPermissionReviewable(review) && <p className="text-my-warning-text">{review?.unavailable ?? '执行引擎未提供可审查的操作内容，请拒绝或停止后核对。'}</p>}
-          {review?.details && <details className="text-my-secondary"><summary className="cursor-pointer">操作详情</summary><pre className="my-scrollbar mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{review.details}</pre></details>}
+          {review?.details && <InlineDisclosure label="操作详情"><pre className="my-scrollbar mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-my-xs text-my-secondary">{review.details}</pre></InlineDisclosure>}
           <div className="flex flex-wrap gap-2">{p.options.map(option => <Button key={option.optionId} size="sm" variant="outline" disabled={!canRespond || stopping || Boolean(permissionPending[key]) || Boolean(view.blockers.length) || view.historical || !option.kind?.startsWith('reject') && !isAcpPermissionReviewable(review)} onClick={() => void respond(p.requestId, option.optionId)}>{option.name}</Button>)}</div>
           {permissionErrors[key] && <p role="alert" className="text-my-danger-text">{permissionErrors[key]}</p>}
         </fieldset>

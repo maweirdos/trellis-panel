@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { FileText, FolderOpen, Loader2, RefreshCw, Save, Square } from 'lucide-react'
+import { FileText, FolderOpen, Loader2, RefreshCw, Save, Square, ChevronRight } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { TaskPlanningRuntimeCatalog } from '@shared/conversation/task-planning-runtime'
 import type { TaskPlanningApi, TaskPlanningReply, TaskPlanningView } from '@shared/task-planning'
 import type { TeamTaskMaterialMetadata, TeamTaskMaterialReceipt } from '@shared/team-task-materials'
 import { cleanModelDisplayName } from '@shared/model-selection'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { Select } from '../../components/Select'
 import { ConversationModelPicker } from '../../conversation-workbench/ConversationModelPicker'
 import type { ComposerModel } from '../../conversation-workbench/useComposerSend'
@@ -40,6 +40,7 @@ function PlanningCard({ snapshot, task, onOpenMaterial, onOwnerChange }: TaskPla
   const [documents, setDocuments] = useState<TeamTaskMaterialMetadata[]>([]), [targetId, setTargetId] = useState(''), [approverId, setApproverId] = useState('')
   const [canCreateDocument, setCanCreateDocument] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const live = useRef(true), pending = useRef(false), reads = useRef(0), prepareId = useRef<string | null>(null)
   const reading = useRef(false), operations = useRef(0)
   const stopRequest = useRef(false)
@@ -209,7 +210,7 @@ function PlanningCard({ snapshot, task, onOpenMaterial, onOwnerChange }: TaskPla
   const members = snapshot.members.filter(member => snapshot.spaces.find(space => space.id === task.spaceId)?.memberIds.includes(member.id))
   const mayDisplayPlan = Boolean(actor && actor === handler && readGeneration === task.assigneeGeneration)
   const save = mayDisplayPlan ? view?.save : undefined
-  return <section aria-label="任务技术方案" className="min-w-0 space-y-3 rounded-my-md border border-my-line bg-my-surface-1 p-3">
+  return <section aria-label="任务技术方案" className="my-card min-w-0 space-y-3 p-3">
     <header className="flex flex-wrap items-center gap-2"><FileText size={15} className="text-my-icon-secondary" /><h3 className="flex-1 text-my-sm font-medium text-my-primary">技术方案</h3>
       <span role="status" className="text-my-xs text-my-secondary">{stopping ? '正在停止原进程…' : loading && !view ? '正在核对…' : view
         ? view.cleanupConfirmed && view.state !== 'empty' && view.state !== 'prepared' ? `原进程已停止 · ${labels[view.state]}` : labels[view.state] : ''}</span>
@@ -226,7 +227,15 @@ function PlanningCard({ snapshot, task, onOpenMaterial, onOwnerChange }: TaskPla
       }}><FolderOpen size={13} />{planningId ? '重新准备' : '选择工程'}</Button>
     </div>}
     {mayDisplayPlan && view?.directoryName && <div className="flex flex-wrap items-center gap-2"><span className="my-item-title">{view.directoryName}</span><span className="my-item-description">{modelCaption(view.modelId ?? '')}</span></div>}
-    {mayDisplayPlan && view && view.sources.length > 0 && <details className="text-my-xs text-my-secondary"><summary className="cursor-pointer">规划依据</summary><ul className="mt-2 space-y-1">{view.sources.map((item, index) => <li key={`${item.title}:${index}`} className="break-words"><span className="my-item-title">{item.title}</span></li>)}</ul></details>}
+    {mayDisplayPlan && view && view.sources.length > 0 && <div className="text-my-xs text-my-secondary">
+      <button type="button" className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={sourcesOpen} onClick={() => setSourcesOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={sourcesOpen || undefined} />
+        <span>规划依据</span>
+      </button>
+      <DisclosureGrid open={sourcesOpen}>
+        <ul className="mt-2 space-y-1">{view.sources.map((item, index) => <li key={`${item.title}:${index}`} className="break-words"><span className="my-item-title">{item.title}</span></li>)}</ul>
+      </DisclosureGrid>
+    </div>}
     {planningId && view?.state === 'prepared' && canPlan && <div className="flex flex-wrap items-center gap-2">
       <Button size="sm" variant="ghost" disabled={busy || !view.current} onClick={() => void act(() => client.selectSources({ planningId }))}>选取工程资料</Button>
       <Button size="sm" disabled={busy || !view.current || !view.sourceDigest} onClick={() => { if (view.sourceDigest) generatePlan(planningId, view.sourceDigest) }}>{busy && <Loader2 size={13} className="animate-spin motion-reduce:animate-none" />}生成技术方案</Button>

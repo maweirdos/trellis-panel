@@ -1,8 +1,8 @@
 import { useMemo, useState, type JSX } from 'react'
-import { ArrowLeft, Code2, FolderOpen, GitBranch, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Code2, FolderOpen, GitBranch, Loader2 } from 'lucide-react'
 import { useApp } from '../../store'
 import { projectRootKey } from '../../my/navigation'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { useMy } from '../../my/store'
 import { useGitWorkspace } from '../../git-workspace/useGitWorkspace'
 import { TaskApplicationServices } from '../../applications/TaskApplicationServices'
@@ -29,6 +29,7 @@ export function DevelopmentContextBar(): JSX.Element | null {
   const snapshot = useApp((state) => state.snapshot)
   const git = useGitWorkspace()
   const [error, setError] = useState('')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const members = useMemo(() => {
     const space = teamSnapshot?.spaces.find((item) => item.id === origin?.spaceId)
     return teamSnapshot?.members.filter((member) => space?.memberIds.includes(member.id)).map(({ id, name }) => ({ id, name })) ?? []
@@ -60,6 +61,14 @@ export function DevelopmentContextBar(): JSX.Element | null {
     </div>
     {!canResume && <p role="status" className="mt-1 text-my-xs text-my-secondary">原任务当前无法核实或继续开发，当前独立查看工程。原服务可在本机运行中核对。</p>}
     {error && <p role="alert" className="mt-2 break-words text-my-xs text-my-danger-text">{error}</p>}
-    {taskMode && target && <details className="mt-1 text-my-xs text-my-secondary"><summary className="cursor-pointer">开发环境、任务服务与产物</summary><div className="my-scrollbar max-h-80 min-w-0 space-y-3 overflow-y-auto py-3"><dl className="space-y-1 break-all"><div>原副本：{origin.projectRoot}</div><div>资源：{origin.local.resourceBinding?.resourceId ?? '本机项目'}</div><div>准备时分支：{origin.local.development?.branch ?? '未核实'} · HEAD：{origin.local.development?.head ?? '未核实'}</div><div>当前 Git 改动：{actualGit ? actualGit.clean ? '工作树干净' : `${actualGit.staged.length + actualGit.unstaged.length + actualGit.untracked.length} 项` : '待核对'}</div></dl><TaskApplicationServices key={key} query={{ workspaceKey: target.workspaceKey, taskId: target.taskId }} expected={target.expected} contextKey={key} /><div className="border-t border-my-line pt-3"><TaskOutputs key={key} query={{ workspaceKey: target.workspaceKey, taskId: target.taskId }} expected={target.expected} contextKey={key} members={members} /></div></div></details>}
+    {taskMode && target && <div className="mt-1 text-my-xs text-my-secondary">
+      <button type="button" className="flex cursor-pointer items-center gap-1.5 text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={detailsOpen || undefined} />
+        <span>开发环境、任务服务与产物</span>
+      </button>
+      <DisclosureGrid open={detailsOpen}>
+        <div className="my-scrollbar max-h-80 min-w-0 space-y-3 overflow-y-auto py-3"><dl className="space-y-1 break-all"><div>原副本：{origin.projectRoot}</div><div>资源：{origin.local.resourceBinding?.resourceId ?? '本机项目'}</div><div>准备时分支：{origin.local.development?.branch ?? '未核实'} · HEAD：{origin.local.development?.head ?? '未核实'}</div><div>当前 Git 改动：{actualGit ? actualGit.clean ? '工作树干净' : `${actualGit.staged.length + actualGit.unstaged.length + actualGit.untracked.length} 项` : '待核对'}</div></dl><TaskApplicationServices key={key} query={{ workspaceKey: target.workspaceKey, taskId: target.taskId }} expected={target.expected} contextKey={key} /><div className="border-t border-my-line pt-3"><TaskOutputs key={key} query={{ workspaceKey: target.workspaceKey, taskId: target.taskId }} expected={target.expected} contextKey={key} members={members} /></div></div>
+      </DisclosureGrid>
+    </div>}
   </section>
 }

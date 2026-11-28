@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { Check, Copy, Loader2 } from 'lucide-react'
+import { Check, ChevronRight, Copy, Loader2 } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { CruxWorkspaceContext } from '@shared/crux-remote'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { taskActorId } from '../pages/task-detail/use-task-source'
 import { textareaClass } from '../ui'
 
@@ -24,6 +24,7 @@ export function DesktopTaskLocator({ snapshot, task, context, available, ownsSou
 }): JSX.Element {
   const [status, setStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
   const [expanded, setExpanded] = useState(false)
+  const [identityOpen, setIdentityOpen] = useState(false)
   const [copyValue, setCopyValue] = useState('')
   const [copyKind, setCopyKind] = useState<'number' | 'context'>('context')
   const mounted = useRef(false), pending = useRef(false), requests = useRef(0)
@@ -77,7 +78,15 @@ export function DesktopTaskLocator({ snapshot, task, context, available, ownsSou
   return <div className="min-w-0 space-y-3 text-my-xs text-my-secondary" aria-label="桌面任务定位">
     <p className="font-medium text-my-primary">{task.id} · {task.title}</p><p>{instructions}</p>
     <div className="flex flex-wrap items-center gap-2"><Button variant="outline" size="sm" disabled={status === 'copying'} onClick={() => void copy('number')}>{status === 'copied' && copyKind === 'number' ? <Check size={13} /> : <Copy size={13} />}{status === 'copied' && copyKind === 'number' ? '已复制任务编号' : '复制任务编号'}</Button><Button variant="ghost" size="sm" disabled={status === 'copying'} onClick={() => void copy()}>{status === 'copying' && copyKind === 'context' ? <Loader2 size={13} className="animate-spin" /> : status === 'copied' && copyKind === 'context' ? <Check size={13} /> : <Copy size={13} />}{status === 'copied' && copyKind === 'context' ? '已复制完整定位信息' : '复制完整定位信息'}</Button><Button variant="ghost" size="sm" aria-expanded={expanded} onClick={() => { if (ownsSource()) setExpanded((value) => !value) }}>{expanded ? '收起定位文本' : '展开定位文本'}</Button></div>
-    <details><summary className="cursor-pointer">核对原团队与任务身份</summary><dl className="mt-2 min-w-0 space-y-1">{fields.map(({ label, value }) => <div key={label} className="flex min-w-0 flex-wrap gap-x-2"><dt className="shrink-0 text-my-tertiary">{label}</dt><dd className="min-w-0 break-all text-my-primary">{value}</dd></div>)}</dl></details>
+    <div>
+      <button type="button" className="flex cursor-pointer items-center gap-1.5 text-my-xs font-medium text-my-primary transition-colors hover:text-my-primary" aria-expanded={identityOpen} onClick={() => setIdentityOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={identityOpen || undefined} />
+        <span>核对原团队与任务身份</span>
+      </button>
+      <DisclosureGrid open={identityOpen}>
+        <dl className="mt-2 min-w-0 space-y-1">{fields.map(({ label, value }) => <div key={label} className="flex min-w-0 flex-wrap gap-x-2"><dt className="shrink-0 text-my-tertiary">{label}</dt><dd className="min-w-0 break-all text-my-primary">{value}</dd></div>)}</dl>
+      </DisclosureGrid>
+    </div>
     {status === 'error' && <p role="alert">复制不可用，请选中下方定位文本复制。</p>}
     {expanded && <textarea ref={textArea} readOnly rows={10} aria-label="可选中的任务定位文本" className={`${textareaClass} font-mono text-my-xs`} value={status === 'error' ? copyValue : locationText} />}
   </div>

@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
-import { ArrowRight, Check, FolderOpen, GitBranch, History, Loader2, RefreshCw } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { ArrowRight, Check, ChevronRight, FolderOpen, GitBranch, History, Loader2, RefreshCw } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import type { CruxDevelopmentSummary, CruxDevelopmentView, CruxWorkChangeInput, CruxWorkLocal, CruxWorkResult } from '@shared/crux-work'
 import type { TeamTaskCodeResourceDto } from '@shared/team-code-resources'
 import { api } from '../../api'
-import { Button, Modal } from '../../my/ui'
+import { Button, Checkbox, DisclosureGrid, Modal } from '../../my/ui'
 import { useCrux } from '../store'
 import { taskSourceKey, useTaskSource, useTaskSurfaceGeneration } from '../pages/task-detail/use-task-source'
 import { nativeDevelopmentApi } from './bridge'
@@ -18,6 +18,17 @@ const stageLabels: Record<CruxDevelopmentSummary['stage'], string> = { registere
 const short = (value: string | null | undefined): string => value ? value.slice(0, 12) : '未核实'
 const copyName = (root: string): string => root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || root
 const errorText = (cause: unknown): string => cause instanceof Error ? cause.message : '开发环境暂不可用，请重试。'
+
+function InlineDisclosure({ label, defaultOpen = false, className, children }: { label: ReactNode; defaultOpen?: boolean; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen)
+  return <div className={className}>
+    <button type="button" className="flex cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={open || undefined} />
+      <span className="flex items-center gap-1">{label}</span>
+    </button>
+    <DisclosureGrid open={open}>{children}</DisclosureGrid>
+  </div>
+}
 
 export function TaskDevelopmentCard(props: { snapshot: CruxSnapshot; task: CruxTask; resourceRefresh?: number; planningOwnerRevision?: number; openRequest?: number; onOpenInputs?(): void; onExecutionChanged?(): void; onEnter(local: CruxWorkLocal): Promise<void> }): JSX.Element {
   const context = useCrux((state) => state.workspaceContext), surface = useTaskSurfaceGeneration()
@@ -47,6 +58,9 @@ function DevelopmentCard({ snapshot, task, resourceRefresh = 0, openRequest = 0,
   const [refresh, setRefresh] = useState(0), [dialog, setDialog] = useState<'first' | 'choose-copy' | 'adopt-inputs' | null>(null)
   const [candidateId, setCandidateId] = useState(''), [acknowledged, setAcknowledged] = useState(false)
   const [journalVersion, setJournalVersion] = useState(0)
+  const lastDialogRef = useRef<'first' | 'choose-copy' | 'adopt-inputs' | null>(null)
+  if (dialog) lastDialogRef.current = dialog
+  const activeDialog = dialog ?? lastDialogRef.current
   const requests = useRef(0), inFlight = useRef(false), mounted = useRef(false), root = useRef<HTMLElement>(null)
   const handledOpenRequest = useRef(openRequest)
   const view = read?.view, active = view?.active
@@ -154,20 +168,20 @@ function DevelopmentCard({ snapshot, task, resourceRefresh = 0, openRequest = 0,
   const boundResourceName = active?.resourceId
     ? read?.resource?.resource?.resourceId === active.resourceId ? resourceName : `原资源 ${active.resourceId}`
     : '本机项目'
-  return <section ref={root} className="mt-3 min-w-0 space-y-3 rounded-my-md border border-my-line p-3" aria-label="任务开发环境" data-journal-version={journalVersion}>
+  return <section ref={root} className="my-card mt-3 min-w-0 space-y-3 p-3" aria-label="任务开发环境" data-journal-version={journalVersion}>
     <header className="flex flex-wrap items-center gap-2"><FolderOpen size={15} className="text-my-secondary" /><h3 className="min-w-0 flex-1 text-my-sm font-medium text-my-primary">本机开发环境</h3>{active && <span className="my-chip text-my-secondary">{stageLabels[active.stage]}</span>}{bridge && <Button variant="ghost" size="sm" disabled={Boolean(operation) || loading} onClick={() => setRefresh((value) => value + 1)} aria-label="核对开发环境"><RefreshCw size={13} className={loading ? 'animate-spin' : undefined} /></Button>}</header>
     {!bridge ? <DesktopTaskLocator snapshot={snapshot} task={task} context={context} available={source.available} ownsSource={live} /> : <>
       {!['local', 'connected'].includes(context.state) && <p role="status" className="text-my-xs text-my-secondary">连接不可用，暂无法核对本机开发环境。</p>}
       {loading && !read && <p role="status" className="flex items-center gap-2 text-my-xs text-my-secondary"><Loader2 size={13} className="animate-spin" />正在核对原绑定与可用副本</p>}
       {active && <><dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 text-my-xs"><div className="min-w-0"><dt className="text-my-tertiary">代码资源</dt><dd className="break-words text-my-primary">{boundResourceName}</dd></div><div className="min-w-0"><dt className="text-my-tertiary">当前副本</dt><dd className="break-words text-my-primary" title={active.projectRoot}>{copyName(active.projectRoot)}</dd></div><div><dt className="text-my-tertiary">准备时分支</dt><dd className="flex min-w-0 items-center gap-1 text-my-primary"><GitBranch size={12} className="shrink-0" /><span className="min-w-0 break-all">{active.branch ?? '分支未核实'}</span></dd></div><div><dt className="text-my-tertiary">当前采用输入</dt><dd className="font-mono text-my-primary">{short(active.inputVersion)}</dd></div></dl>
-        <details className="text-my-xs text-my-secondary"><summary className="cursor-pointer">环境详情与最后核对</summary><dl className="mt-2 space-y-1 break-all"><div>副本：{active.projectRoot}</div><div>本机任务：{active.taskDir ?? '目录尚未核实'}</div><div>HEAD：{active.head ?? '未核实'}</div><div>输入：{active.inputVersion}</div><div>尝试：{active.ref.generation} · {active.ref.contextId}</div><div>最后读取：{read ? new Date(read.at).toLocaleString() : '未核对'}</div></dl></details></>}
+        <InlineDisclosure label="环境详情与最后核对"><dl className="mt-2 space-y-1 break-all text-my-xs text-my-secondary"><div>副本：{active.projectRoot}</div><div>本机任务：{active.taskDir ?? '目录尚未核实'}</div><div>HEAD：{active.head ?? '未核实'}</div><div>输入：{active.inputVersion}</div><div>尝试：{active.ref.generation} · {active.ref.contextId}</div><div>最后读取：{read ? new Date(read.at).toLocaleString() : '未核对'}</div></dl></InlineDisclosure></>}
       {view && !active && <p className="text-my-xs text-my-secondary">尚未选择本机开发环境{resourceName ? ` · ${resourceName}` : ''}</p>}
       {view?.sourceError && <p role="alert" className="break-words text-my-xs text-my-danger-text">{view.sourceError}</p>}
       {!developmentAllowed && <p role="status" className="text-my-xs text-my-secondary">当前阶段仅可核对开发记录，原文件与服务保留。</p>}
       {inputChanged && <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-warning-text"><span className="min-w-0 flex-1">任务采用输入已变化，当前尝试仍保留 {short(active?.inputVersion)}。</span><Button variant="outline" size="sm" disabled={!writable || unknown || !view?.currentInputVersion} onClick={() => choose('adopt-inputs')}>比较并采用新输入</Button></div>}
       {(error || readError || statusError) && <p role="alert" className="break-words text-my-xs text-my-danger-text">{error || readError || statusError}</p>}
       {notice && <p role="status" className="text-my-xs text-my-secondary">{notice}</p>}
-      {unknown && <div className="space-y-2 rounded-my-md bg-my-layer-1 p-2 text-my-xs text-my-secondary"><p>原操作结果待核对，当前不能建立替代尝试。</p>{(pending ?? original)?.state !== 'settled' && (pending ?? original) && <Button variant="outline" size="sm" disabled={!writable} onClick={() => { const command = pending ?? original; if (command) void change(command.input.mode, command) }}>重试原更换操作</Button>}<Button variant="ghost" size="sm" disabled={Boolean(operation) || loading || !source.owns() || !ownsSurface()} onClick={() => setRefresh((value) => value + 1)}>核对原结果</Button>{active && !active.changeCommandId && !pending && <Button variant="outline" size="sm" disabled={!writable} onClick={() => void prepare()}>恢复原准备</Button>}</div>}
+      {unknown && <div className="space-y-2 rounded-my-base bg-my-layer-1 p-2 text-my-xs text-my-secondary"><p>原操作结果待核对，当前不能建立替代尝试。</p>{(pending ?? original)?.state !== 'settled' && (pending ?? original) && <Button variant="outline" size="sm" disabled={!writable} onClick={() => { const command = pending ?? original; if (command) void change(command.input.mode, command) }}>重试原更换操作</Button>}<Button variant="ghost" size="sm" disabled={Boolean(operation) || loading || !source.owns() || !ownsSurface()} onClick={() => setRefresh((value) => value + 1)}>核对原结果</Button>{active && !active.changeCommandId && !pending && <Button variant="outline" size="sm" disabled={!writable} onClick={() => void prepare()}>恢复原准备</Button>}</div>}
       <div className="flex flex-wrap gap-2">
         {view && !active && !unknown && <Button size="sm" disabled={!writable || Boolean(view.sourceError)} onClick={() => choose('first')}>选择本机开发环境</Button>}
         {active && ready && !unknown && <Button size="sm" disabled={!writable || Boolean(view?.sourceError)} onClick={() => void enter()}><ArrowRight size={13} />{task.workflow?.stage === 'dev_ready' ? '确认并进入规划' : '继续开发'}</Button>}
@@ -176,15 +190,15 @@ function DevelopmentCard({ snapshot, task, resourceRefresh = 0, openRequest = 0,
         {active && !ready && !unknown && !inputChanged && active.changeCommandId && original && <Button variant="outline" size="sm" disabled={!writable} onClick={() => void change(original.input.mode, original)}>恢复原更换操作</Button>}
       </div>
       {operation && <p role="status" className="flex items-center gap-2 text-my-xs text-my-secondary"><Loader2 size={13} className="animate-spin" />{operation}</p>}
-      {view && view.history.length > 0 && <details className="text-my-xs text-my-secondary"><summary className="cursor-pointer"><History size={12} className="mr-1 inline" />原开发尝试（{view.history.length}{view.historyHasMore ? '+' : ''}）</summary><ol className="mt-2 space-y-2">{view.history.map((entry) => <li key={entry.ref.contextId} className="min-w-0 space-y-1 rounded-my-md border border-my-line p-2"><p>尝试 {entry.ref.generation} · {stageLabels[entry.stage]} · 历史记录</p><p className="break-all">{entry.projectRoot}</p><p>分支：{entry.branch ?? '未核实'} · HEAD：{short(entry.head)}</p><p className="break-all">采用输入：{entry.inputVersion}</p><p className="break-all">本机任务：{entry.taskDir ?? '目录尚未核实'}</p></li>)}</ol>{view.historyHasMore && <p className="mt-2">更早记录仍保留在本机，当前显示最近记录。</p>}</details>}
+      {view && view.history.length > 0 && <InlineDisclosure label={<><History size={12} className="inline" />原开发尝试（{view.history.length}{view.historyHasMore ? '+' : ''}）</>}><ol className="mt-2 space-y-2 text-my-xs text-my-secondary">{view.history.map((entry) => <li key={entry.ref.contextId} className="min-w-0 space-y-1 rounded-my-base border border-my-line p-2"><p>尝试 {entry.ref.generation} · {stageLabels[entry.stage]} · 历史记录</p><p className="break-all">{entry.projectRoot}</p><p>分支：{entry.branch ?? '未核实'} · HEAD：{short(entry.head)}</p><p className="break-all">采用输入：{entry.inputVersion}</p><p className="break-all">本机任务：{entry.taskDir ?? '目录尚未核实'}</p></li>)}</ol>{view.historyHasMore && <p className="mt-2 text-my-xs text-my-secondary">更早记录仍保留在本机，当前显示最近记录。</p>}</InlineDisclosure>}
     </>}
-    {dialog && view && <Modal open onClose={() => { if (!operation) setDialog(null) }} width={640} ariaLabel={dialog === 'first' ? '选择本机开发环境' : dialog === 'adopt-inputs' ? '比较并采用新输入' : '更换开发副本'}>
-      <div className="min-w-0 space-y-4 p-4"><h3 className="text-my-md font-semibold text-my-primary">{dialog === 'first' ? '选择本机开发环境' : dialog === 'adopt-inputs' ? '比较并采用新输入' : '更换开发副本'}</h3><p className="break-words text-my-xs text-my-secondary">{snapshot.spaces.find((space) => space.id === task.spaceId)?.name} / {task.id} · {task.title}</p>
-        {active && <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="space-y-1 rounded-my-md border border-my-line p-3 text-my-xs"><p className="font-medium">原尝试 {active.ref.generation}</p><p className="break-all">{active.projectRoot}</p><p>分支：{active.branch ?? '未核实'}</p><p className="break-all">输入：{active.inputVersion}</p></div><div className="space-y-1 rounded-my-md border border-my-line p-3 text-my-xs"><p className="font-medium">新尝试</p><p className="break-all">{dialog === 'adopt-inputs' ? active.projectRoot : view.candidates.find((candidate) => candidate.id === candidateId)?.projectRoot ?? '下一步选择目录并原生核对'}</p><p className="break-all">输入：{view.currentInputVersion ?? '尚未核实'}</p><p>分支、改动与占用将在本机确认时核对。</p></div></div>}
-        {dialog !== 'adopt-inputs' && <fieldset className="min-w-0 space-y-2"><legend className="mb-2 text-my-xs text-my-secondary">此设备已核对的候选副本</legend>{view.candidates.map((candidate) => <label key={candidate.id} className="flex min-w-0 items-start gap-2 rounded-my-md border border-my-line p-3 text-my-xs"><input type="radio" name="development-copy" className="mt-0.5 shrink-0" checked={candidateId === candidate.id} onChange={() => setCandidateId(candidate.id)} /><span className="min-w-0 flex-1"><span className="block break-all font-medium">{copyName(candidate.projectRoot)}</span><span className="block break-all text-my-secondary">{candidate.projectRoot}</span><span className="block text-my-tertiary">核对于 {new Date(candidate.checkedAt).toLocaleString()}</span></span>{candidateId === candidate.id && <Check size={13} />}</label>)}{!view.candidates.length && <p className="text-my-xs text-my-secondary">暂无可复用候选，请选择此电脑已有的 clone 或 worktree。</p>}<label className="flex items-center gap-2 text-my-xs"><input type="radio" name="development-copy" checked={!candidateId} onChange={() => setCandidateId('')} />选择其他本机目录…</label></fieldset>}
-        <label className="flex items-start gap-2 text-my-xs text-my-secondary"><input type="checkbox" className="mt-0.5 shrink-0" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>{active ? '保留原文件、材料、会话与服务；新尝试分别准备，不自动启动 Agent 或服务。' : '核对实际资源、副本、分支与占用后绑定；准备不启动 Agent 或服务。'}</span></label>
-        <footer className="flex flex-wrap justify-end gap-2"><Button variant="ghost" onClick={() => setDialog(null)}>取消</Button><Button disabled={!acknowledged || !writable || unknown || Boolean(view.sourceError)} onClick={() => { const mode = dialog; setDialog(null); if (mode === 'first') void prepare(candidateId || undefined); else void change(mode) }}>{dialog === 'first' ? '确认绑定并进入' : dialog === 'adopt-inputs' ? '核对并准备新尝试' : '下一步：本机核对'}</Button></footer>
-      </div>
-    </Modal>}
+    <Modal open={Boolean(dialog && view)} onClose={() => { if (!operation) setDialog(null) }} width={640} placement="center" ariaLabel={activeDialog === 'first' ? '选择本机开发环境' : activeDialog === 'adopt-inputs' ? '比较并采用新输入' : '更换开发副本'}>
+      {activeDialog && view && <div className="min-w-0 space-y-4 px-6 py-5"><h3 className="text-my-md font-medium text-my-primary">{activeDialog === 'first' ? '选择本机开发环境' : activeDialog === 'adopt-inputs' ? '比较并采用新输入' : '更换开发副本'}</h3><p className="break-words text-my-xs text-my-secondary">{snapshot.spaces.find((space) => space.id === task.spaceId)?.name} / {task.id} · {task.title}</p>
+        {active && <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="space-y-1 rounded-my-base border border-my-line p-3 text-my-xs"><p className="font-medium">原尝试 {active.ref.generation}</p><p className="break-all">{active.projectRoot}</p><p>分支：{active.branch ?? '未核实'}</p><p className="break-all">输入：{active.inputVersion}</p></div><div className="space-y-1 rounded-my-base border border-my-line p-3 text-my-xs"><p className="font-medium">新尝试</p><p className="break-all">{activeDialog === 'adopt-inputs' ? active.projectRoot : view.candidates.find((candidate) => candidate.id === candidateId)?.projectRoot ?? '下一步选择目录并原生核对'}</p><p className="break-all">输入：{view.currentInputVersion ?? '尚未核实'}</p><p>分支、改动与占用将在本机确认时核对。</p></div></div>}
+        {activeDialog !== 'adopt-inputs' && <fieldset className="min-w-0 space-y-2"><legend className="mb-2 text-my-xs text-my-secondary">此设备已核对的候选副本</legend>{view.candidates.map((candidate) => <label key={candidate.id} className="flex min-w-0 cursor-pointer items-start gap-2 rounded-my-base border border-my-line p-3 text-my-xs"><input type="radio" name="development-copy" className="mt-0.5 shrink-0" checked={candidateId === candidate.id} onChange={() => setCandidateId(candidate.id)} /><span className="min-w-0 flex-1"><span className="block break-all font-medium">{copyName(candidate.projectRoot)}</span><span className="block break-all text-my-secondary">{candidate.projectRoot}</span><span className="block text-my-tertiary">核对于 {new Date(candidate.checkedAt).toLocaleString()}</span></span>{candidateId === candidate.id && <Check size={13} />}</label>)}{!view.candidates.length && <p className="text-my-xs text-my-secondary">暂无可复用候选，请选择此电脑已有的 clone 或 worktree。</p>}<label className="flex cursor-pointer items-center gap-2 text-my-xs"><input type="radio" name="development-copy" checked={!candidateId} onChange={() => setCandidateId('')} />选择其他本机目录…</label></fieldset>}
+        <label className="flex cursor-pointer items-start gap-2 text-my-xs text-my-secondary"><Checkbox checked={acknowledged} onChange={setAcknowledged} ariaLabel="确认保留原记录" /><span>{active ? '保留原文件、材料、会话与服务；新尝试分别准备，不自动启动 Agent 或服务。' : '核对实际资源、副本、分支与占用后绑定；准备不启动 Agent 或服务。'}</span></label>
+        <footer className="flex flex-wrap justify-end gap-2"><Button variant="ghost" onClick={() => setDialog(null)}>取消</Button><Button disabled={!acknowledged || !writable || unknown || Boolean(view.sourceError)} onClick={() => { const mode = activeDialog; setDialog(null); if (mode === 'first') void prepare(candidateId || undefined); else void change(mode) }}>{activeDialog === 'first' ? '确认绑定并进入' : activeDialog === 'adopt-inputs' ? '核对并准备新尝试' : '下一步：本机核对'}</Button></footer>
+      </div>}
+    </Modal>
   </section>
 }

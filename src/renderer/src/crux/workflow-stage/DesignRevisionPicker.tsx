@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { FileText, RefreshCw } from 'lucide-react'
+import { ChevronRight, FileText, RefreshCw } from 'lucide-react'
 import type { CruxTask } from '@shared/crux'
 import type { TeamTaskMaterialMetadata, TeamTaskMaterialView } from '@shared/team-task-materials'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { TeamMarkdown } from '../../team/TeamMarkdown'
 import { useCrux } from '../store'
 import { useInteractionActive } from '../../utils/interaction-scope'
@@ -28,8 +28,13 @@ export function DesignRevisionPicker({ task, purpose, value, onChange, disabled 
   const [view, setView] = useState<TeamTaskMaterialView | null>(null)
   const [error, setError] = useState(''), [loading, setLoading] = useState(false), [refresh, setRefresh] = useState(0)
   const [hasMore, setHasMore] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(purpose === 'read')
+  const [digestOpen, setDigestOpen] = useState(false)
   const requests = useRef(0)
   const selectedKey = value ? JSON.stringify(value) : ''
+  useEffect(() => {
+    setPreviewOpen(purpose === 'read')
+  }, [purpose, view?.selected.versionId])
   useEffect(() => {
     if (!active || !bridge || context.state === 'local' || !latest.current.owns()) return
     const ticket = ++requests.current
@@ -69,6 +74,24 @@ export function DesignRevisionPicker({ task, purpose, value, onChange, disabled 
     <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary"><span className="min-w-0 flex-1">{loading ? '正在核对设计版本…' : purpose === 'read' ? '交接采用的固定设计版本' : documents?.length === 0 ? '尚无共享设计，可先在设计工作区创建。' : purpose === 'approve' ? '文档批准后，在此关联版本并确认开发交接。' : '固定版本随交接保留，后续编辑不会替换本次版本。'}</span><Button size="sm" variant="ghost" disabled={loading || disabled} aria-label="刷新设计版本" onClick={() => setRefresh((current) => current + 1)}><RefreshCw size={13} /></Button></div>
     {hasMore && <p className="text-my-xs text-my-warning-text">目录尚未全部载入；可在共享材料中核对其余设计。</p>}
     {error && <p role="alert" className="collab-inline-error">{error}</p>}
-    {view && <details className="rounded-my-md border border-my-line p-3" open={purpose === 'read'}><summary className="cursor-pointer text-my-sm font-medium"><FileText size={14} className="mr-1 inline" />{view.selected.title} · v{view.selected.number}{view.document.approved?.versionId === view.selected.versionId ? ' · 已批准' : ' · 未批准'}</summary><div className="my-scrollbar mt-3 max-h-64 overflow-auto"><TeamMarkdown text={view.text} identity={`${view.document.documentId}:${view.selected.versionId}:${view.selected.bodyDigest}`} /></div><details className="mt-2 text-my-2xs text-my-tertiary"><summary className="cursor-pointer">版本核对信息</summary><p className="mt-1 break-all">版本：{view.selected.versionId} · SHA-256：{view.selected.bodyDigest}</p></details></details>}
+    {view && <div className="rounded-my-base border border-my-line p-3">
+      <button type="button" className="flex w-full cursor-pointer items-center gap-1.5 text-left text-my-sm font-medium text-my-primary transition-colors hover:text-my-primary" aria-expanded={previewOpen} onClick={() => setPreviewOpen((v) => !v)}>
+        <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={previewOpen || undefined} />
+        <FileText size={14} className="shrink-0 text-my-icon-secondary" />
+        <span className="min-w-0 flex-1">{view.selected.title} · v{view.selected.number}{view.document.approved?.versionId === view.selected.versionId ? ' · 已批准' : ' · 未批准'}</span>
+      </button>
+      <DisclosureGrid open={previewOpen}>
+        <div className="my-scrollbar mt-3 max-h-64 overflow-auto"><TeamMarkdown text={view.text} identity={`${view.document.documentId}:${view.selected.versionId}:${view.selected.bodyDigest}`} /></div>
+        <div className="mt-2 text-my-2xs text-my-tertiary">
+          <button type="button" className="flex cursor-pointer items-center gap-1 text-my-2xs text-my-tertiary transition-colors hover:text-my-secondary" aria-expanded={digestOpen} onClick={() => setDigestOpen((v) => !v)}>
+            <ChevronRight size={11} className="my-disclosure-chevron shrink-0" data-open={digestOpen || undefined} />
+            <span>版本核对信息</span>
+          </button>
+          <DisclosureGrid open={digestOpen}>
+            <p className="mt-1 break-all">版本：{view.selected.versionId} · SHA-256：{view.selected.bodyDigest}</p>
+          </DisclosureGrid>
+        </div>
+      </DisclosureGrid>
+    </div>}
   </section>
 }

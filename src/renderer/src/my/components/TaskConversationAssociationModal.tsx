@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowUpRight, Check, Info, RefreshCw, X } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, Info, RefreshCw, X } from 'lucide-react'
 import { Select } from '../../components/Select'
 import { ToolBrandIcon } from '../../components/ToolBrandIcon'
 import { useInteractionActive, useInteractionGuard } from '../../utils/interaction-scope'
 import { relTime } from '../../utils/format'
 import { errorText } from '../../../../shared/errors'
 import { taskConversationSourceSchema, type ExternalConversation, type TaskConversationCandidates, type TaskConversationPreview, type TaskConversationSource } from '../../../../shared/task-conversations'
-import { Button, Modal, SearchInput } from '../ui'
+import { Button, DisclosureGrid, Modal, SearchInput, Tooltip } from '../ui'
 import { TASK_CONVERSATION_SOURCE_LABELS, taskConversationDirectory, type TaskConversationController } from '../use-task-conversations'
 import { TaskConversationEntry } from './TaskConversationEntry'
 
@@ -36,6 +36,7 @@ export function TaskConversationAssociationModal({ taskDir, taskTitle, controlle
   const [selected, setSelected] = useState<string | null>(null)
   const [previewState, setPreviewState] = useState<{ id: string; loading: boolean; value?: TaskConversationPreview; error?: string } | null>(null)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const previewSequence = useRef(0)
   const { discover, preview } = controller
   const busy = controller.pendingTaskDir !== null
@@ -99,12 +100,14 @@ export function TaskConversationAssociationModal({ taskDir, taskTitle, controlle
   const root = controller.data?.projectRoot ?? ''
   const feedback = showFeedback && controller.feedback?.taskDir && taskConversationDirectory(root, controller.feedback.taskDir) === taskConversationDirectory(root, taskDir) ? controller.feedback : null
   const selectedPreview = previewState?.id === selected ? previewState : null
+  const saveDisabledReason = alreadyLinked ? '该会话已关联到此任务' : !selected ? '请先选择一个原生会话' : busy ? '正在处理中…' : (loading || selectedPreview?.loading) ? '正在读取会话片段…' : !selectedPreview?.value ? '当前会话暂无可核对片段' : ''
+  const saveButton = <Button variant="primary" size="sm" disabled={Boolean(saveDisabledReason)} onClick={() => { setShowFeedback(true); void attach() }}>{busy ? '处理中…' : '保存执行入口'}</Button>
 
-  return <Modal open={active} onClose={onClose} width={640} ariaLabel="修复任务执行入口">
+  return <Modal open={active} onClose={onClose} width={640} placement="center" ariaLabel="修复任务执行入口">
     <div className="my-modal-content my-task-conversation-association">
       <header className="my-task-conversation-association__header">
-        <div className="min-w-0"><h2 className="text-my-lg font-semibold text-my-primary">修复执行入口</h2><p className="my-task-conversation-association__task">{taskTitle}</p></div>
-        <Button variant="ghost" size="sm" aria-label="关闭执行入口修复" onClick={onClose}><X size={16} /></Button>
+        <div className="min-w-0"><h2 className="text-my-lg font-medium text-my-primary">修复执行入口</h2><p className="my-task-conversation-association__task">{taskTitle}</p></div>
+        <Button variant="ghost" size="sm" className="my-icon-control" aria-label="关闭执行入口修复" onClick={onClose}><X size={16} /></Button>
       </header>
       {bindings.length > 0 && <section aria-label="已关联会话" className="my-task-conversation-association__section">
         <h3 className="text-my-xs font-medium text-my-secondary">当前执行入口</h3>
@@ -168,11 +171,19 @@ export function TaskConversationAssociationModal({ taskDir, taskTitle, controlle
         </>}
       </section>}
       {candidates?.truncated && <p className="text-my-xs text-my-secondary">本次扫描结果已截断。</p>}
-      {sources.length > 0 && <details className="my-task-conversation-association__sources"><summary>原生来源读取状态</summary><ul>{sources.map((item) => <li key={item.source}>{TASK_CONVERSATION_SOURCE_LABELS[item.source]} · {item.available ? '读取可用' : '暂不可用'}{item.detail ? ` · ${item.detail}` : ''}</li>)}</ul></details>}
+      {sources.length > 0 && <div className="my-task-conversation-association__sources">
+        <button type="button" className="flex w-full cursor-pointer items-center gap-1.5 text-left text-my-xs text-my-secondary transition-colors hover:text-my-primary" aria-expanded={sourcesOpen} onClick={() => setSourcesOpen((v) => !v)}>
+          <ChevronRight size={12} className="my-disclosure-chevron shrink-0 text-my-tertiary" data-open={sourcesOpen || undefined} />
+          <span>原生来源读取状态</span>
+        </button>
+        <DisclosureGrid open={sourcesOpen}>
+          <ul className="mt-2">{sources.map((item) => <li key={item.source}>{TASK_CONVERSATION_SOURCE_LABELS[item.source]} · {item.available ? '读取可用' : '暂不可用'}{item.detail ? ` · ${item.detail}` : ''}</li>)}</ul>
+        </DisclosureGrid>
+      </div>}
       {(feedback || message) && <p className={feedback?.error ? 'text-my-xs text-my-danger-text' : 'text-my-xs text-my-secondary'} role={feedback?.error ? 'alert' : 'status'}>{feedback?.message ?? message}</p>}
       <footer className="my-task-conversation-association__footer">
         <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
-        <Button variant="primary" size="sm" disabled={!selected || alreadyLinked || busy || loading || selectedPreview?.loading || !selectedPreview?.value} onClick={() => { setShowFeedback(true); void attach() }}>{busy ? '处理中…' : '保存执行入口'}</Button>
+        {saveDisabledReason ? <Tooltip label={saveDisabledReason}>{saveButton}</Tooltip> : saveButton}
       </footer>
     </div>
   </Modal>

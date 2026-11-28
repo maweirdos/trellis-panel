@@ -120,7 +120,7 @@ function SummaryCard({ label, value, unit, note, icon: Icon }: {
 }): JSX.Element {
   return <article className="my-home-pulse-card">
     <div className="my-home-pulse-top"><h2 className="my-home-pulse-label">{label}</h2><Icon size={14} className="text-my-icon-tertiary" /></div>
-    <div className="my-home-pulse-value-row"><span className="my-home-pulse-value">{value}</span><span className="my-home-pulse-unit">{unit}</span></div>
+    <div className="my-home-pulse-value-row"><span className="my-home-pulse-value tabular-nums">{value}</span><span className="my-home-pulse-unit">{unit}</span></div>
     <p className="my-home-pulse-hint">{note}</p>
   </article>
 }
@@ -191,36 +191,39 @@ function CleanTaskRow({ task, state, favorite, onInspect, onToggleFavorite, conv
     <span className="my-home-task-status"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span></span>
     <span className="my-home-task-time" title={timeTitle}>{timeText}</span>
     <button type="button" className="my-home-star-btn" data-starred={favorite} aria-pressed={favorite} aria-label={favorite ? '取消收藏' : '收藏任务'} onClick={() => onToggleFavorite(task.id)}>
-      <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
+      <Star size={13} fill={favorite ? 'currentColor' : 'none'} className={`transition-transform duration-150 ${favorite ? 'my-star-pop' : ''}`} />
     </button>
   </li>
 }
 
-function HomeQuickPeekModal({ task, state, onClose, onRepair }: { task: HomeTask | null; state?: WorkItemState; onClose: () => void; onRepair: (task: HomeTask) => void }): JSX.Element | null {
-  if (!task) return null
-  const status = taskStatus(task, state)
-  const docNames = task.artifacts.filter((file) => file.kind === 'file').map((file) => file.name)
-  return <Modal open onClose={onClose} width={520}>
-    <div className="my-modal-content my-home-task-preview flex flex-col gap-4">
+function HomeQuickPeekModal({ task, state, onClose, onRepair }: { task: HomeTask | null; state?: WorkItemState; onClose: () => void; onRepair: (task: HomeTask) => void }): JSX.Element {
+  const lastRef = useRef<{ task: HomeTask; state?: WorkItemState } | null>(null)
+  if (task) lastRef.current = { task, state }
+  const displayTask = task ?? lastRef.current?.task ?? null
+  const displayState = task ? state : lastRef.current?.state
+  const status = displayTask ? taskStatus(displayTask, displayState) : null
+  const docNames = displayTask ? displayTask.artifacts.filter((file) => file.kind === 'file').map((file) => file.name) : []
+  return <Modal open={Boolean(task)} onClose={onClose} width={520} placement="center" ariaLabel={displayTask?.title ?? '任务预览'}>
+    {displayTask && status && <div className="my-modal-content my-home-task-preview flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>{task.completedAt && <span className="text-my-xs text-my-tertiary">完成于 {task.completedAt}</span>}</div>
-          <h3 className="text-my-lg font-semibold text-my-primary">{task.title}</h3>
+          <div className="flex flex-wrap items-center gap-2"><span className="my-home-status-pill" data-tone={status.tone}>{status.label}</span>{displayTask.completedAt && <span className="text-my-xs text-my-tertiary">完成于 {displayTask.completedAt}</span>}</div>
+          <h3 className="text-my-lg font-medium text-my-primary">{displayTask.title}</h3>
         </div>
         <div className="flex items-center gap-1">
-          <Dropdown align="right" trigger={({ open, toggle }) => <Button variant="ghost" size="sm" aria-label="任务更多操作" aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>
-            {(close) => <DropdownItem disabled={!task.path} onClick={() => { close(); onRepair(task) }}>修复执行入口</DropdownItem>}
+          <Dropdown align="right" trigger={({ open, toggle }) => <Button variant="ghost" size="sm" className="my-icon-control" aria-label="任务更多操作" aria-expanded={open} onClick={toggle}><MoreHorizontal size={15} /></Button>}>
+            {(close) => <DropdownItem disabled={!displayTask.path} onClick={() => { close(); onRepair(displayTask) }}>修复执行入口</DropdownItem>}
           </Dropdown>
-          <Button variant="ghost" size="sm" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
+          <Button variant="ghost" size="sm" className="my-icon-control" aria-label="关闭任务预览" onClick={onClose}><X size={15} /></Button>
         </div>
       </div>
-      <p className="whitespace-pre-wrap break-words text-my-sm leading-relaxed text-my-secondary">{task.description || '暂无任务描述'}</p>
+      <p className="whitespace-pre-wrap break-words text-my-sm leading-relaxed text-my-secondary">{displayTask.description || '暂无任务描述'}</p>
       {docNames.length > 0 && <div className="flex flex-wrap items-center gap-1.5"><span className="text-my-xs text-my-tertiary">任务材料</span>{docNames.slice(0, 5).map((name, index) => <span key={`${name}:${index}`} className="my-chip bg-my-layer-1 text-my-secondary"><FileText size={11} />{name}</span>)}</div>}
       <div className="flex justify-end gap-2 border-t border-my-line pt-3">
         <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
-        {task.path && <Button variant="neutral" size="sm" onClick={() => { if (!task.path) return; onClose(); useApp.getState().showTask(task.path, task.archived) }}>查看完整任务<ArrowUpRight size={13} /></Button>}
+        {displayTask.path && <Button variant="neutral" size="sm" onClick={() => { if (!displayTask.path) return; onClose(); useApp.getState().showTask(displayTask.path, displayTask.archived) }}>查看完整任务<ArrowUpRight size={13} /></Button>}
       </div>
-    </div>
+    </div>}
   </Modal>
 }
 
@@ -488,7 +491,7 @@ export function YourWorkPage(): JSX.Element {
                 <header className="my-home-list-toolbar">
                   <div className="my-home-tabs" role="group" aria-label="任务来源">
                     {tabs.map((tab) => <button key={tab.id} type="button" aria-pressed={view === tab.id} disabled={tab.disabled} data-active={view === tab.id} className="my-home-tab" title={tab.disabled ? '当前项目尚未设置开发者身份' : undefined} onClick={() => { setView(tab.id); setStatus(tab.id === 'assigned' ? 'open' : 'all'); setExpanded(false) }}>
-                      <span>{tab.label}</span><span className="my-home-tab-count">{tab.count}</span>
+                      <span>{tab.label}</span><span className="my-home-tab-count tabular-nums">{tab.count}</span>
                     </button>)}
                   </div>
                   <div className="my-home-list-controls">
@@ -498,15 +501,17 @@ export function YourWorkPage(): JSX.Element {
                   </div>
                 </header>
                 {!me && <p className="my-home-scope-note">当前项目未设置开发者身份，暂展示项目任务。</p>}
-                {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar my-fade-scroll" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
-                  {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onInstructions={showInstructions} />)}
-                </ul> : <div className="my-home-empty" role="status">
-                  <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
-                  {(status !== 'all' || searchQuery) && <Button variant="ghost" size="sm" onClick={() => { setStatus('all'); setSearchQuery(''); setExpanded(false) }}>重置筛选条件</Button>}
-                </div>}
+                <div key={view} className="my-subview-stage min-h-0 flex flex-1 flex-col">
+                  {filteredTasks.length > 0 ? <ul className="my-home-task-rows my-scrollbar my-fade-scroll" aria-label="筛选后的任务" aria-description="窄窗口中可左右滚动查看全部字段" tabIndex={0}>
+                    {visibleTasks.map((task) => <CleanTaskRow key={`${task.archived ? 'arch' : 'act'}:${task.path ?? task.id}`} task={task} state={states.get(task.stateId)} favorite={favorites.includes(task.id)} onInspect={inspectTask} onToggleFavorite={toggleFavorite} conversations={conversations} projectRoot={projectRoot ?? ''} onInstructions={showInstructions} />)}
+                  </ul> : <div className="my-home-empty" role="status">
+                    <ListTodo size={18} /><span>当前筛选条件下暂无任务</span>
+                    {(status !== 'all' || searchQuery) && <Button variant="ghost" size="sm" onClick={() => { setStatus('all'); setSearchQuery(''); setExpanded(false) }}>重置筛选条件</Button>}
+                  </div>}
+                </div>
                 <footer className="my-home-list-footer">
                   <div className="my-home-conversation-refresh">
-                    <span>显示 {visibleTasks.length} / {filteredTasks.length} 项</span>
+                    <span className="tabular-nums">显示 {visibleTasks.length} / {filteredTasks.length} 项</span>
                     {conversations.data && <time dateTime={new Date(conversations.data.refreshedAt).toISOString()}>会话读取于 {new Date(conversations.data.refreshedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>}
                     <Button variant="ghost" size="sm" aria-label="刷新任务会话" disabled={!conversations.available || conversations.loading || conversations.refreshing || conversations.pendingTaskDir !== null} onClick={() => { void conversations.refresh() }}><RefreshCw size={12} />{conversations.loading || conversations.refreshing ? '读取中…' : '刷新'}</Button>
                   </div>
@@ -522,7 +527,7 @@ export function YourWorkPage(): JSX.Element {
             <aside className="my-home-side-col my-scrollbar" aria-label="待办与最近访问">
               <section className="my-home-side-card" aria-labelledby="home-inbox-title">
                 <header className="my-home-side-header">
-                  <div className="flex items-center gap-2"><h2 id="home-inbox-title" className="my-home-side-title">待办收件箱</h2><span className="my-home-tab-count">{pendingTodos.length}</span></div>
+                  <div className="flex items-center gap-2"><h2 id="home-inbox-title" className="my-home-side-title">待办收件箱</h2><span className="my-home-tab-count tabular-nums">{pendingTodos.length}</span></div>
                   <Button variant="ghost" size="sm" onClick={() => useApp.getState().setPage('inbox')}>查看全部<ArrowUpRight size={12} /></Button>
                 </header>
                 {pendingTodos.length > 0 ? <ul className="my-home-side-list">{pendingTodos.slice(0, 3).map((todo) => <li key={todo.id}>

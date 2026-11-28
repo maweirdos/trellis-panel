@@ -44,7 +44,7 @@ export function WorkflowAgentSetup({ snapshot, task, onCreated, onClose }: {
       else setError('创建已有回执，请在执行 Agent 列表中核对新配置。')
     } finally { flight.current = false }
   }
-  return <section className="workflow-agent-setup space-y-3 rounded-my-md border border-my-line bg-my-layer-1 p-3" aria-label="在当前空间创建 Agent">
+  return <section className="workflow-agent-setup space-y-3 rounded-my-base border border-my-line bg-my-layer-1 p-3" aria-label="在当前空间创建 Agent">
     <h4 className="text-my-sm font-medium">新建空间 Agent · {snapshot.spaces.find((space) => space.id === task.spaceId)?.name}</h4>
     <Field label="Agent 名称"><input className={inputClass} value={name} maxLength={200} disabled={busy} onChange={(event) => setName(event.target.value)} /></Field>
     <Field label="工作指令"><textarea className={textareaClass} rows={4} value={instructions} disabled={busy} placeholder="职责、动手前检查、验证方式与汇报要求" onChange={(event) => setInstructions(event.target.value)} /></Field>

@@ -110,7 +110,7 @@ function CreatedClosedChart({ bars }: { bars: WeekBar[] }): JSX.Element {
 function MetricCard({ label, value }: { label: string; value: number }): JSX.Element {
   return (
     <div className="my-card p-3">
-      <div className="text-my-display font-semibold text-my-primary">{value}</div>
+      <div className="text-my-display font-medium tabular-nums text-my-primary">{value}</div>
       <div className="my-item-description mt-0.5">{label}</div>
     </div>
   )
@@ -197,13 +197,13 @@ export function AnalyticsPage(): JSX.Element {
     <PageContent className="my-locked-canvas gap-5">
       <div className="shrink-0"><Tabs tabs={[{ id: 'snapshot', label: '概览' }, { id: 'flow', label: '流转' }, { id: 'workflow', label: '流程' }]} active={section} onChange={setSection} /></div>
       <div className="my-locked-scroll my-scrollbar">
-      <div className="space-y-5">
+      <div key={section} className="my-subview-stage space-y-5">
       {section === 'flow' ? <><p className="my-item-description">流转数来自项目历史日志，日趋势为近 14 天；周期按当前未归档的已完成任务计算，停滞包含规划中、进行中与评审中任务。</p><TeamEfficiency /></> : section === 'workflow' ? <><p className="my-item-description">当前项目任务的流程配置与停滞情况。</p><TeamWorkflow /></> : <>
         <p className="my-item-description">当前未归档任务的快照；关闭数仅计已完成，近 8 周按创建和完成日期汇总。</p>
 
       <div className="space-y-3">
         {/* 指标卡 */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <MetricCard label="已创建" value={createdCount} />
           <MetricCard label="已关闭" value={closedCount} />
           <MetricCard label="进行中" value={startedCount} />
@@ -211,17 +211,17 @@ export function AnalyticsPage(): JSX.Element {
         </div>
 
         {/* 图表区：左柱状图（占 2 列）+ 右状态/优先级分布（占 2 列） */}
-        <div className="grid grid-cols-4 gap-3">
-          <div className="my-card col-span-2 p-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          <div className="my-card p-4 lg:col-span-2">
             <div className="flex items-center justify-between">
               <h2 className="my-item-title">创建 vs 关闭（近 8 周）</h2>
               <div className="flex items-center gap-3 text-my-xs text-my-tertiary">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-my-xs bg-my-accent" />
+                  <span className="h-2 w-2 rounded-full bg-my-accent" />
                   创建
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-my-xs bg-[var(--my-txt-icon-states-completed)]" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--my-txt-icon-states-completed)]" />
                   关闭
                 </span>
               </div>
@@ -231,7 +231,7 @@ export function AnalyticsPage(): JSX.Element {
             </div>
           </div>
 
-          <div className="col-span-2 flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:col-span-2">
             {/* 状态分布 */}
             <div className="my-card p-4">
               <h2 className="my-item-title">状态分布</h2>
@@ -251,7 +251,7 @@ export function AnalyticsPage(): JSX.Element {
                   <span key={r.state.id} className="flex items-center gap-1.5 text-my-sm text-my-secondary">
                     <StateGroupIcon stateGroup={r.state.group} color={r.state.color} size={12} />
                     {r.state.name}
-                    <span className="text-my-tertiary">{r.count}</span>
+                    <span className="tabular-nums text-my-tertiary">{r.count}</span>
                   </span>
                 ))}
               </div>
@@ -275,7 +275,7 @@ export function AnalyticsPage(): JSX.Element {
                         }}
                       />
                     </div>
-                    <span className="w-7 shrink-0 text-right text-my-sm text-my-tertiary">{r.count}</span>
+                    <span className="w-7 shrink-0 text-right text-my-sm tabular-nums text-my-tertiary">{r.count}</span>
                   </div>
                 ))}
               </div>
@@ -284,7 +284,7 @@ export function AnalyticsPage(): JSX.Element {
         </div>
 
         {/* 模块维度 + 周环比 */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="my-card p-4">
             <h2 className="my-item-title">模块分布（未完结 / 已完成）</h2>
             <div className="mt-3 space-y-2.5">
@@ -301,7 +301,7 @@ export function AnalyticsPage(): JSX.Element {
                       className="h-full bg-[var(--my-txt-icon-states-completed)]"
                     />
                   </div>
-                  <span className="w-16 shrink-0 text-right text-my-xs text-my-tertiary">
+                  <span className="shrink-0 whitespace-nowrap text-right text-my-xs tabular-nums text-my-tertiary">
                     未结 {r.open} · 完成 {r.done}
                   </span>
                 </div>
@@ -311,15 +311,15 @@ export function AnalyticsPage(): JSX.Element {
           <div className="my-card p-4">
             <h2 className="my-item-title">周环比</h2>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="rounded-my-md border border-my-line p-3">
+              <div className="rounded-my-base border border-my-line p-3">
                 <div className="text-my-xs text-my-tertiary">本周新增</div>
-                <div className="mt-1 text-my-xl font-semibold text-my-primary">{weekStats.createdThis}</div>
-                <div className="text-my-xs text-my-tertiary">上周 {weekStats.createdLast}</div>
+                <div className="mt-1 text-my-xl font-medium tabular-nums text-my-primary">{weekStats.createdThis}</div>
+                <div className="text-my-xs tabular-nums text-my-tertiary">上周 {weekStats.createdLast}</div>
               </div>
-              <div className="rounded-my-md border border-my-line p-3">
+              <div className="rounded-my-base border border-my-line p-3">
                 <div className="text-my-xs text-my-tertiary">本周完成</div>
-                <div className="mt-1 text-my-xl font-semibold text-my-primary">{weekStats.doneThis}</div>
-                <div className="text-my-xs text-my-tertiary">上周 {weekStats.doneLast}</div>
+                <div className="mt-1 text-my-xl font-medium tabular-nums text-my-primary">{weekStats.doneThis}</div>
+                <div className="text-my-xs tabular-nums text-my-tertiary">上周 {weekStats.doneLast}</div>
               </div>
             </div>
           </div>
@@ -336,7 +336,7 @@ export function AnalyticsPage(): JSX.Element {
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-my-layer-3">
                   <div className="h-full rounded-full bg-my-accent" style={{ width: `${(r.count / memberMax) * 100}%` }} />
                 </div>
-                <span className="w-7 shrink-0 text-right text-my-sm text-my-tertiary">{r.count}</span>
+                <span className="w-7 shrink-0 text-right text-my-sm tabular-nums text-my-tertiary">{r.count}</span>
               </div>
             ))}
             {memberRows.length === 0 && (
