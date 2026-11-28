@@ -507,6 +507,48 @@ export class CodexDriver implements ConversationDriverSession {
     )
   }
 
+  readonly rollbackThread: NonNullable<ConversationDriverSession['rollbackThread']> = ({ nativeThreadId, numTurns }) => {
+    const driver = this
+    return Effect.gen(function* () {
+      if (driver.activeTurns.has(nativeThreadId)) {
+        return yield* Effect.fail(new DaemonError('E_BUSY', 'Codex 原线程仍持有活动回合，无法原地回退。'))
+      }
+      if (!Number.isInteger(numTurns) || numTurns <= 0) return
+      const client = driver.requireClient()
+      let remaining = numTurns
+      let beforeTurnId: string | undefined
+      let cursor: string | null = null
+      const visited = new Set<string | null>()
+      while (remaining > 0) {
+        if (visited.has(cursor)) {
+          return yield* Effect.fail(new Error('Codex 回合历史分页游标重复，无法确认回退位置。'))
+        }
+        visited.add(cursor)
+        const page: { readonly data: ReadonlyArray<{ readonly id: string }>; readonly nextCursor?: string | null } = yield* driver.guard(client.request('thread/turns/list', {
+          threadId: nativeThreadId,
+          cursor,
+          limit: Math.min(remaining, 100),
+          sortDirection: 'desc',
+          itemsView: 'summary',
+        })).pipe(Effect.timeout(REQUEST_TIMEOUT))
+        for (const turn of page.data) {
+          beforeTurnId = turn.id
+          if (--remaining === 0) break
+        }
+        cursor = page.nextCursor ?? null
+        if (cursor === null) break
+      }
+      if (beforeTurnId === undefined) {
+        yield* driver.guard(client.request('thread/read', { threadId: nativeThreadId, includeTurns: false }))
+          .pipe(Effect.timeout(REQUEST_TIMEOUT))
+      } else {
+        yield* driver.guard(client.request('thread/revert', { threadId: nativeThreadId, beforeTurnId }))
+          .pipe(Effect.timeout(REQUEST_TIMEOUT))
+      }
+      driver.observedTurns.delete(nativeThreadId)
+    }).pipe(Effect.mapError(asError))
+  }
+
   readonly detachThread: NonNullable<ConversationDriverSession['detachThread']> = ({ nativeThreadId, assertCurrent }) =>
     Effect.suspend(() => {
       try {

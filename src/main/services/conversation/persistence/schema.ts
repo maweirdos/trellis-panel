@@ -378,4 +378,11 @@ CREATE TABLE IF NOT EXISTS conversation_v2_checkpoint_scopes (
   git_ref_name TEXT,
   untracked_manifest_json TEXT
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS conversation_v2_session_approvals (
+  thread_id TEXT NOT NULL REFERENCES conversation_v2_projection_threads(thread_id) ON DELETE CASCADE,
+  scope_key TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (thread_id, scope_key)
+) STRICT;
 `

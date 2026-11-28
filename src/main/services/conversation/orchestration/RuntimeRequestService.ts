@@ -56,15 +56,33 @@ export class RuntimeRequestService<TTurn extends RuntimeRequestTurnRef = Runtime
     const rules = this.sessionApprovals.get(threadId) ?? new Set<string>()
     rules.add(clean)
     this.sessionApprovals.set(threadId, rules)
+    try {
+      this.projections.addSessionApproval(threadId, clean)
+    } catch {
+      // 忽略因会话已删除导致的外键冲突
+    }
   }
 
   isSessionApproved(threadId: string, scopeKey?: string): boolean {
     const clean = scopeKey?.trim()
-    return Boolean(clean && this.sessionApprovals.get(threadId)?.has(clean))
+    if (!clean) return false
+    if (this.sessionApprovals.get(threadId)?.has(clean)) return true
+    if (this.projections.hasSessionApproval(threadId, clean)) {
+      const rules = this.sessionApprovals.get(threadId) ?? new Set<string>()
+      rules.add(clean)
+      this.sessionApprovals.set(threadId, rules)
+      return true
+    }
+    return false
   }
 
   clearSessionApprovals(threadId: string): void {
     this.sessionApprovals.delete(threadId)
+    try {
+      this.projections.clearSessionApprovals(threadId)
+    } catch {
+      // 忽略清理异常
+    }
   }
 
   shouldAutoApprove(threadId: string, payload: ConversationDriverRuntimeRequest): boolean {

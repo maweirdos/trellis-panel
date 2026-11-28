@@ -73,6 +73,7 @@ import { prepareDelegatedWorktree, recoverDelegatedWorktreePreparation, verifyDe
 import { pathKey } from '../../services/task-conversations/lib/paths'
 import type {
   ConversationAuthority,
+  ConversationCheckpointDiffResult,
   ConversationCommandState,
   ConversationEventPage,
   ConversationRunEvidence,
@@ -313,6 +314,7 @@ export class ConversationRuntime {
       this.projections,
       this.eventSink,
       () => [...this.activeTurns.values()].map(turn => ({ threadId: turn.row.thread_id, cwd: turn.executionRoot })),
+      ports.directory,
     )
     this.searchIndex = new ConversationSearchIndex(this.database)
     this.searchIndex.ensureBackfilled()
@@ -819,6 +821,29 @@ export class ConversationRuntime {
         }
         const boundary = command.type === 'message.edit-and-rerun' ? 'before' : command.boundary
         const minOrdinalToRemove = boundary === 'before' ? targetRun.ordinal : targetRun.ordinal + 1
+        const removedExecutedTurns = (this.database.prepare(
+          "SELECT COUNT(*) AS count FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal >= ? AND status IN ('completed', 'failed', 'cancelled', 'interrupted')",
+        ).get(command.threadId, minOrdinalToRemove) as { count: number }).count
+        const nativeBinding = this.projections.readNativeBindingOrRunFallback(command.threadId)
+        const loadedHandle = this.sessions.loadedThreads.get(command.threadId)
+        let nativeRollbackApplied = false
+        if (
+          loadedHandle?.driver.rollbackThread
+          && removedExecutedTurns > 0
+          && (command.type === 'checkpoint.rollback' || nativeBinding?.instance_id === command.instanceId)
+        ) {
+          try {
+            await runBounded(
+              loadedHandle.driver.rollbackThread({ nativeThreadId: loadedHandle.nativeThreadId, numTurns: removedExecutedTurns }),
+              this.deadlines.control,
+              '回退引擎原生会话历史',
+              this.shutdownController.signal,
+            )
+            nativeRollbackApplied = true
+          } catch {
+            nativeRollbackApplied = false
+          }
+        }
         if (command.type === 'message.edit-and-rerun') {
           const runPayload = JSON.parse(targetRun.payload_json) as { userMessageId?: string }
           if (runPayload.userMessageId !== command.messageId) {
@@ -832,7 +857,7 @@ export class ConversationRuntime {
           if (command.restoreFiles) {
             await this.checkpoints.restoreFiles({ threadId: command.threadId, runId: command.targetRunId, phase: 'before', cwd: authority.cwd })
           }
-          const keptHistory = minOrdinalToRemove > 1
+          const keptHistory = !nativeRollbackApplied && minOrdinalToRemove > 1
             ? this.contextHandoff.capture({ threadId: command.threadId }, authority, minOrdinalToRemove - 1, false, true)
             : undefined
           const selection = {
@@ -845,7 +870,11 @@ export class ConversationRuntime {
             authority,
             selection,
             targetRun.ordinal,
-            occurredAt => { this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, occurredAt) },
+            occurredAt => {
+              this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, occurredAt, {
+                preserveNativeBinding: nativeRollbackApplied,
+              })
+            },
             keptHistory && keptHistory.messages.length > 0 ? [keptHistory] : undefined,
           )
           const editThreadRow = this.projections.readThreadPayload(command.threadId)
@@ -857,7 +886,7 @@ export class ConversationRuntime {
             title: editTitle,
             body: command.text,
           })
-          this.sessions.loadedThreads.delete(command.threadId)
+          if (!nativeRollbackApplied) this.sessions.loadedThreads.delete(command.threadId)
           this.resolvePendingAsyncUserInputs(command.threadId)
           this.authorizations.set(command.commandId, authority)
           this.scheduleNext(command.threadId, authority)
@@ -870,10 +899,12 @@ export class ConversationRuntime {
           target: { run_id: command.targetRunId },
           hostEvents: [lifecycleEvent(command.threadId, { kind: 'thread-reset', reason: 'rollback' })],
           apply: () => {
-            this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, new Date().toISOString())
+            this.projections.truncateThreadFromOrdinal(command.threadId, minOrdinalToRemove, new Date().toISOString(), {
+              preserveNativeBinding: nativeRollbackApplied,
+            })
           },
         })
-        this.sessions.loadedThreads.delete(command.threadId)
+        if (!nativeRollbackApplied) this.sessions.loadedThreads.delete(command.threadId)
         return receipt
       }
       case 'queued-message.promote-to-steer': {
@@ -2905,6 +2936,23 @@ export class ConversationRuntime {
     this.ports.assertOwner()
     if (!this.commands.hasThread(threadId, authority)) return []
     return this.searchService.findInThread(threadId, query)
+  }
+
+  async readCheckpointDiff(
+    input: {
+      readonly threadId: string
+      readonly runId: string
+      readonly fromPhase?: 'before' | 'after'
+      readonly toPhase?: 'before' | 'after' | 'workspace'
+      readonly ignoreWhitespace?: boolean
+    },
+    authority: ConversationAuthority,
+  ): Promise<ConversationCheckpointDiffResult> {
+    this.ports.assertOwner()
+    if (!this.commands.hasThread(input.threadId, authority)) {
+      throw new DaemonError('E_CONFLICT', '会话不存在或不属于当前工程。')
+    }
+    return this.checkpoints.readCheckpointDiff(input)
   }
 
   readThread(threadId: string, ownerId: string, spaceId: string, projectId: string): ConversationThreadSnapshot | null {

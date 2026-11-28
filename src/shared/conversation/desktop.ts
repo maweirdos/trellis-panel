@@ -102,4 +102,21 @@ export interface ConversationAggregatedSearchMatch extends ConversationSearchMat
   readonly projectName: string
 }
 
+export interface ConversationCheckpointDiffFile {
+  readonly path: string
+  readonly status: 'added' | 'modified' | 'deleted' | 'renamed'
+  readonly additions: number
+  readonly deletions: number
+}
+
+export interface ConversationCheckpointDiffResult {
+  readonly threadId: string
+  readonly runId: string
+  readonly fromPhase: 'before' | 'after'
+  readonly toPhase: 'before' | 'after' | 'workspace'
+  readonly files: readonly ConversationCheckpointDiffFile[]
+  readonly diff: string
+  readonly truncated: boolean
+}
+
 export const CONVERSATION_READ_PAGE_LIMIT = 100

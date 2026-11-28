@@ -502,6 +502,10 @@ export function createDaemonRuntime(ports: DaemonRuntimePorts): DaemonRuntime {
       const { ownerId, spaceId, projectId } = await scopedConversation()
       return conversation.searchThreads(ownerId, spaceId, projectId, filter)
     }
+    if (method === 'runtime.conversationCheckpointDiff') {
+      const input = runtimeBodies[method].parse(raw)
+      return conversation.readCheckpointDiff(input, await scopedConversation())
+    }
     if (method === 'runtime.conversationRead') {
       const input = runtimeBodies[method].parse(raw)
       const { ownerId, spaceId, projectId } = await scopedConversation()

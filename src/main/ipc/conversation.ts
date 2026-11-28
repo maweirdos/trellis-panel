@@ -19,7 +19,7 @@ import {
   applyConversationCommand, createConversationThread, describeConversationDriver, listConversationDrivers, listConversationModels,
   listConversationThreads, readConversationCommand, readConversationEventDelta, readConversationEvents, readConversationHistory,
   readConversationThread, readConversationThreadCommand, listConversationAttachments, readConversationAttachment,
-  readConversationTaskScope, releaseConversationAttachment, searchConversationThreads, stageConversationAttachment,
+  readConversationTaskScope, releaseConversationAttachment, readConversationCheckpointDiff, searchConversationThreads, stageConversationAttachment,
 } from '../services/daemon-client/conversation'
 import { readHostConversationAttachmentFile } from '../services/conversation/attachments'
 import { captureDesktopConversationTask, conversationTaskDirectoryName } from '../services/conversation/task-scope'
@@ -46,6 +46,7 @@ const deltaSchema = runtimeBodies['runtime.conversationEventDelta'].extend(deskt
 const historySchema = runtimeBodies['runtime.conversationHistory'].extend(desktopTaskScope)
 const listSchema = runtimeBodies['runtime.conversationList'].extend(desktopConversationTaskFields)
 const searchSchema = runtimeBodies['runtime.conversationSearch'].extend(desktopTaskScope)
+const checkpointDiffSchema = runtimeBodies['runtime.conversationCheckpointDiff'].extend(desktopTaskScope)
 const searchAllSchema = z.object({
   query: z.string().trim().min(1).max(160),
   archived: z.boolean().optional(),
@@ -286,6 +287,14 @@ export function registerConversationIpc(getMain: () => BrowserWindow | null): vo
     const { cwd, ...body } = parsed.data
     if (!scope.matchesRoot(cwd)) return changed()
     return inScope(scope, () => searchConversationThreads(scope.root, withTask(scope, body), scope.isCurrent))
+  })
+
+  register(ipcInvoke.conversation.checkpointDiff, (scope, [input, ...extra]) => {
+    const parsed = checkpointDiffSchema.safeParse(input)
+    if (extra.length || !parsed.success) return invalid()
+    const { cwd, ...body } = parsed.data
+    if (!scope.matchesRoot(cwd)) return changed()
+    return inScope(scope, () => readConversationCheckpointDiff(scope.root, withTask(scope, body), scope.isCurrent))
   })
 
   handle(ipcInvoke.conversation.searchAll, async (event, rawInput: unknown, ...extra: unknown[]) => {

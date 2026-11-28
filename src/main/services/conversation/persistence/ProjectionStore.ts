@@ -508,7 +508,34 @@ export class ConversationProjectionStore {
     }
   }
 
-  truncateThreadFromOrdinal(threadId: string, minOrdinalToRemove: number, updatedAt: string): readonly string[] {
+  addSessionApproval(threadId: string, scopeKey: string, createdAt = new Date().toISOString()): void {
+    this.database.prepare(`INSERT INTO conversation_v2_session_approvals (thread_id, scope_key, created_at)
+      VALUES (?, ?, ?) ON CONFLICT(thread_id, scope_key) DO NOTHING`).run(threadId, scopeKey, createdAt)
+  }
+
+  hasSessionApproval(threadId: string, scopeKey: string): boolean {
+    return this.database.prepare(
+      'SELECT 1 FROM conversation_v2_session_approvals WHERE thread_id = ? AND scope_key = ?',
+    ).get(threadId, scopeKey) !== undefined
+  }
+
+  listSessionApprovals(threadId: string): readonly string[] {
+    const rows = this.database.prepare(
+      'SELECT scope_key FROM conversation_v2_session_approvals WHERE thread_id = ? ORDER BY created_at ASC',
+    ).all(threadId) as Array<{ scope_key: string }>
+    return rows.map(row => row.scope_key)
+  }
+
+  clearSessionApprovals(threadId: string): void {
+    this.database.prepare('DELETE FROM conversation_v2_session_approvals WHERE thread_id = ?').run(threadId)
+  }
+
+  truncateThreadFromOrdinal(
+    threadId: string,
+    minOrdinalToRemove: number,
+    updatedAt: string,
+    options?: { readonly preserveNativeBinding?: boolean },
+  ): readonly string[] {
     const runRows = this.database.prepare(
       'SELECT run_id FROM conversation_v2_projection_runs WHERE thread_id = ? AND ordinal >= ? ORDER BY ordinal ASC',
     ).all(threadId, minOrdinalToRemove) as Array<{ run_id: string }>
@@ -569,10 +596,15 @@ export class ConversationProjectionStore {
     }
 
     this.database.prepare('DELETE FROM conversation_v2_usage_limit_recoveries WHERE thread_id = ?').run(threadId)
-    this.database.prepare('DELETE FROM conversation_v2_native_bindings WHERE thread_id = ?').run(threadId)
-    this.database.prepare('UPDATE conversation_v2_projection_runs SET provider_thread_id = NULL WHERE thread_id = ?').run(threadId)
-    this.database.prepare('UPDATE conversation_v2_projection_threads SET active_provider_thread_id = NULL, updated_at = ? WHERE thread_id = ?')
-      .run(updatedAt, threadId)
+    if (!options?.preserveNativeBinding) {
+      this.database.prepare('DELETE FROM conversation_v2_native_bindings WHERE thread_id = ?').run(threadId)
+      this.database.prepare('UPDATE conversation_v2_projection_runs SET provider_thread_id = NULL WHERE thread_id = ?').run(threadId)
+      this.database.prepare('UPDATE conversation_v2_projection_threads SET active_provider_thread_id = NULL, updated_at = ? WHERE thread_id = ?')
+        .run(updatedAt, threadId)
+    } else {
+      this.database.prepare('UPDATE conversation_v2_projection_threads SET updated_at = ? WHERE thread_id = ?')
+        .run(updatedAt, threadId)
+    }
     return removedRunIds
   }
 }

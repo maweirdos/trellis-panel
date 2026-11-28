@@ -1,6 +1,6 @@
 /** GUI native facade for the new conversation kernel. */
 import type { TrellisApi } from '../../../shared/types'
-import type { ConversationCommandState, ConversationEventPage, ConversationSearchMatch } from '../../../shared/conversation/desktop'
+import type { ConversationCheckpointDiffResult, ConversationCommandState, ConversationEventPage, ConversationSearchMatch } from '../../../shared/conversation/desktop'
 import type { ConversationThreadCommandState, ConversationThreadEventPage, ConversationThreadHistoryPage, ConversationThreadSnapshot } from '../../../shared/conversation/command-runtime'
 import type { ConversationDriverDescriptor } from '../../../shared/conversation/driverCatalog'
 import type { ConversationAttachmentBytesInput, ConversationAttachmentContent, StagedConversationAttachment } from '../../../shared/conversation/attachments'
@@ -63,6 +63,23 @@ export const searchConversationThreads = async (
       isCurrent,
     )
     return { ok: true, matches }
+  } catch (error) { return failure(error) }
+}
+
+export const readConversationCheckpointDiff = async (
+  root: string,
+  input: RuntimeBody<'runtime.conversationCheckpointDiff'>,
+  isCurrent?: () => boolean,
+): Promise<Awaited<ReturnType<TrellisApi['conversationCheckpointDiff']>>> => {
+  try {
+    const result = await runtimeCall<ConversationCheckpointDiffResult, 'runtime.conversationCheckpointDiff'>(
+      root,
+      'runtime.conversationCheckpointDiff',
+      input,
+      undefined,
+      isCurrent,
+    )
+    return { ok: true, result }
   } catch (error) { return failure(error) }
 }
 

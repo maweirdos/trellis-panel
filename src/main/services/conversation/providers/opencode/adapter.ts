@@ -12,13 +12,14 @@ import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverOpenInput, type ConversationDriverSession, type ConversationDriverEventListener,
-  type ConversationDriverWorkItem,
+  type ConversationDriverWorkItem, type ConversationForkThreadInput, type ConversationRespondToRuntimeRequestInput,
   type ConversationResumeThreadInput, type ConversationInterruptTurnInput, type ConversationSteerTurnInput, type ConversationStartTurnContext,
 } from '../registry'
 import { subscribeOpenCode, type OpenCodeNativeEvent } from './OpenCode2Client'
 import { openCodeConfigurationKey, openCodeServer } from './OpenCode2Server'
 
 type OpenCodeSdk = typeof import('@opencode/client/effect')
+type OpenCodePermissionRule = { readonly action: string; readonly resource: string; readonly effect: 'allow' | 'deny' | 'ask' }
 const unavailable = (detail: string): DaemonError => new DaemonError('E_UNAVAILABLE', detail)
 const asError = (error: unknown): Error => error instanceof Error ? error : new Error(String(error))
 const run = <Value>(action: () => Promise<Value>): Effect.Effect<Value, Error> => Effect.tryPromise({ try: action, catch: asError })
@@ -26,8 +27,40 @@ const samePath = (left: string, right: string): boolean => process.platform === 
   ? realpathSync.native(left).toLowerCase() === realpathSync.native(right).toLowerCase()
   : realpathSync.native(left) === realpathSync.native(right)
 const clearPromptRejections = new Set(['InvalidRequestError', 'ConflictError', 'UnauthorizedError', 'CommandNotFoundError', 'SkillNotFoundError'])
-const denyAll = [{ action: '*', resource: '*', effect: 'deny' as const }]
-const artifactAllowRule = { action: 'mcp__open-artifact__*', resource: '*', effect: 'allow' as const }
+const denyAll: readonly OpenCodePermissionRule[] = [{ action: '*', resource: '*', effect: 'deny' }]
+const artifactAllowRule: OpenCodePermissionRule = { action: 'mcp__open-artifact__*', resource: '*', effect: 'allow' }
+const safeReadActions = ['read', 'glob', 'grep', 'list', 'todoread'] as const
+const safeEditActions = ['edit', 'write', 'patch', 'multiedit', 'todowrite'] as const
+
+function resolveOpenCodePermissions(
+  ordinaryTask: boolean,
+  runtimeMode: RuntimeMode | undefined,
+  artifactMcp?: OpenArtifactMcpGrant,
+): OpenCodePermissionRule[] {
+  const prefix: OpenCodePermissionRule[] = artifactMcp ? [artifactAllowRule] : []
+  if (ordinaryTask) return [...prefix, ...denyAll]
+  if (runtimeMode === 'full-access') {
+    return [...prefix, { action: '*', resource: '*', effect: 'allow' }]
+  }
+  if (runtimeMode === 'auto-accept-edits') {
+    return [
+      ...prefix,
+      ...[...safeReadActions, ...safeEditActions].map(action => ({ action, resource: '*', effect: 'allow' as const })),
+      { action: '*', resource: '*', effect: 'ask' },
+    ]
+  }
+  return [
+    ...prefix,
+    ...safeReadActions.map(action => ({ action, resource: '*', effect: 'allow' as const })),
+    { action: '*', resource: '*', effect: 'ask' },
+  ]
+}
+
+function openCodeApprovalReply(decision: 'accept' | 'acceptForSession' | 'acceptAlways' | 'decline' | 'cancel'): 'once' | 'always' | 'reject' {
+  if (decision === 'accept') return 'once'
+  if (decision === 'acceptForSession' || decision === 'acceptAlways') return 'always'
+  return 'reject'
+}
 
 function buildOpenCodeWorkItem(
   id: string,
@@ -68,6 +101,7 @@ type ActiveTurn = {
 export class OpenCodeDriver implements ConversationDriverSession {
   private readonly turns = new Map<string, ActiveTurn>()
   private readonly sessions = new Map<string, string>()
+  private readonly sessionModes = new Map<string, RuntimeMode>()
   private readonly unsettled = new Set<string>()
   private readonly controls = new Map<string, Promise<unknown>>()
   private readonly abort = new AbortController()
@@ -131,8 +165,12 @@ export class OpenCodeDriver implements ConversationDriverSession {
       actions: driverActionEvidence({
         chat: { state: 'verified', source: 'native-catalog', detail: '已核对原生 v2 HTTP 服务和模型目录。' },
         planning: hostUnsupported('OpenCode 原生服务尚未接入团队规划权限。'),
-        execution: hostUnsupported('当前 OpenCode 会话禁止工具运行。'),
-        toolApproval: hostUnsupported('当前会话采用拒绝工具的固定规则。'),
+        execution: this.input.ordinaryTask
+          ? hostUnsupported('普通任务会话禁止工具运行。')
+          : { state: 'verified', source: 'native-catalog', detail: '支持按运行模式动态配置 OpenCode 工具权限。' },
+        toolApproval: this.input.ordinaryTask
+          ? hostUnsupported('普通任务会话采用拒绝工具的固定规则。')
+          : { state: 'verified', source: 'native-catalog', detail: '已桥接 OpenCode 原生权限询问与审批回复接口。' },
         ...(this.resumeVerified && { resume: { state: 'verified', source: 'native-session', detail: '已读取并核对相同原生会话。' } as const }),
         ...(this.cancelVerified && { cancel: { state: 'verified', source: 'native-session', detail: '已收到匹配的原生中断结束事件。' } as const }),
       }),
@@ -147,29 +185,36 @@ export class OpenCodeDriver implements ConversationDriverSession {
     cwd: string,
   ): string {
     const selected = session.model && `${session.model.providerID}/${session.model.id}`
-    const lastPermission = session.permissions?.at(-1)
-    const leadingRules = session.permissions?.slice(0, -1) ?? []
-    const onlyAllowlistedArtifacts = leadingRules.every(rule => rule.action === artifactAllowRule.action && rule.resource === '*' && rule.effect === 'allow')
-    if (selected !== model || !samePath(session.location.directory, cwd)
-      || !onlyAllowlistedArtifacts
-      || lastPermission?.action !== '*' || lastPermission.resource !== '*' || lastPermission.effect !== 'deny') {
-      throw new DaemonError('E_CONFLICT', 'OpenCode 未确认所选模型、工程根或工具禁止规则。')
+    if (selected !== model || !samePath(session.location.directory, cwd)) {
+      throw new DaemonError('E_CONFLICT', 'OpenCode 未确认所选模型或工程根目录。')
+    }
+    if (this.input.ordinaryTask) {
+      const lastPermission = session.permissions?.at(-1)
+      const leadingRules = session.permissions?.slice(0, -1) ?? []
+      const onlyAllowlistedArtifacts = leadingRules.every(rule => rule.action === artifactAllowRule.action && rule.resource === '*' && rule.effect === 'allow')
+      if (!onlyAllowlistedArtifacts || lastPermission?.action !== '*' || lastPermission.resource !== '*' || lastPermission.effect !== 'deny') {
+        throw new DaemonError('E_CONFLICT', 'OpenCode 未确认任务会话的工具禁止规则。')
+      }
     }
     this.sessions.set(session.id, model)
     return session.id
   }
 
-  readonly startThread = (model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, _runtimeMode?: RuntimeMode) => run(async () => {
+  readonly startThread = (model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode) => run(async () => {
     this.assertCurrent(cwd)
     if (!(await Effect.runPromise(this.listModels())).some(candidate => candidate.id === model)) {
       throw unavailable(`OpenCode 未报告所选模型 ${model}。`)
     }
+    const effectiveMode: RuntimeMode = this.input.ordinaryTask ? 'approval-required' : (runtimeMode ?? 'approval-required')
+    const permissions = resolveOpenCodePermissions(Boolean(this.input.ordinaryTask), effectiveMode, artifactMcp)
     const created = await Effect.runPromise(this.requireClient().session.create({
       location: this.sdk.Location.PublicRef.make({ directory: this.sdk.AbsolutePath.make(cwd) }),
       model: this.sdk.Model.Ref.parse(model),
-      permissions: artifactMcp ? [artifactAllowRule, ...denyAll] : denyAll,
+      permissions,
     }))
-    return this.verifyThread(created, model, cwd)
+    const id = this.verifyThread(created, model, cwd)
+    this.sessionModes.set(id, effectiveMode)
+    return id
   })
 
   readonly resumeThread = ({ nativeThreadId, cwd, model }: ConversationResumeThreadInput) => run(async () => {
@@ -178,6 +223,29 @@ export class OpenCodeDriver implements ConversationDriverSession {
     if (session.id !== nativeThreadId) throw new DaemonError('E_CONFLICT', 'OpenCode 原生恢复返回了其他会话。')
     const id = this.verifyThread(session, model, cwd)
     this.resumeVerified = true
+    return id
+  })
+
+  readonly forkThread: NonNullable<ConversationDriverSession['forkThread']> = (input: ConversationForkThreadInput) => run(async () => {
+    this.assertCurrent(input.cwd)
+    if (this.input.ordinaryTask) {
+      throw new DaemonError('E_DENIED', '受限任务会话不支持原生派生。')
+    }
+    const forked = await Effect.runPromise(this.requireClient().session.fork({
+      sessionID: this.sdk.Session.ID.make(input.sourceNativeThreadId),
+    }))
+    if (forked.id === input.sourceNativeThreadId) {
+      throw new DaemonError('E_CONFLICT', 'OpenCode 原生派生返回了与原会话相同的编号。')
+    }
+    const id = this.verifyThread(forked, input.model, input.cwd)
+    if (input.runtimeMode) {
+      const permissions = resolveOpenCodePermissions(false, input.runtimeMode)
+      await Effect.runPromise(this.requireClient().session.update({
+        sessionID: this.sdk.Session.ID.make(id),
+        permissions,
+      })).catch(() => undefined)
+      this.sessionModes.set(id, input.runtimeMode)
+    }
     return id
   })
 
@@ -195,6 +263,14 @@ export class OpenCodeDriver implements ConversationDriverSession {
         this.verifyThread(original, model, cwd)
       } catch (cause) {
         throw new ConversationTurnRejectedError('OpenCode 未确认原任务会话仍禁止工具操作。', { cause })
+      }
+    } else if (context?.runtimeMode && this.sessionModes.get(id) !== context.runtimeMode) {
+      try {
+        const permissions = resolveOpenCodePermissions(false, context.runtimeMode, context.artifactMcp)
+        await Effect.runPromise(client.session.update({ sessionID, permissions }))
+        this.sessionModes.set(id, context.runtimeMode)
+      } catch {
+        // 保持当前会话继续执行，避免动态权限更新失败阻断对话
       }
     }
     const occupied = await Effect.runPromise(client.session.active().pipe(Effect.timeout('5 seconds'))).catch(cause => {
@@ -324,6 +400,32 @@ export class OpenCodeDriver implements ConversationDriverSession {
           })
         }
         return
+      case 'permission.asked':
+        if (turn.delivered && turn.started) {
+          const action = event.data.action || 'tool'
+          const resources = event.data.resources.filter(Boolean)
+          const details = [event.data.message, resources.length ? resources.join('\n') : undefined]
+            .filter(Boolean)
+            .join('\n')
+          const scopeKey = `opencode:${action.toLowerCase()}`
+          turn.publish({
+            type: 'runtime-request',
+            ...identity,
+            nativeRequestId: event.data.id,
+            request: {
+              kind: 'approval',
+              title: `OpenCode 请求执行权限：${action}`,
+              ...(details ? { details } : {}),
+              approvalScopeKey: scopeKey,
+              options: [
+                { decision: 'accept', label: '允许一次' },
+                { decision: 'acceptForSession', label: '本会话允许' },
+                { decision: 'decline', label: '拒绝' },
+              ],
+            },
+          })
+        }
+        return
       case 'session.execution.succeeded':
       case 'session.execution.failed':
       case 'session.execution.interrupted':
@@ -364,6 +466,25 @@ export class OpenCodeDriver implements ConversationDriverSession {
       sessionID: this.sdk.Session.ID.make(input.nativeThreadId), id, text: input.text, delivery: 'steer',
     }))
   }))
+
+  readonly respondToRuntimeRequest: NonNullable<ConversationDriverSession['respondToRuntimeRequest']> = (
+    input: ConversationRespondToRuntimeRequestInput,
+  ) => run(async () => {
+    this.assertCurrent()
+    const turn = this.turns.get(input.nativeThreadId)
+    if (!turn || !turn.delivered || !turn.started || turn.id !== input.turnId) {
+      throw new DaemonError('E_CONFLICT', 'OpenCode 权限回复不属于当前活动回合。')
+    }
+    if (input.response.kind !== 'approval') {
+      throw new DaemonError('E_UNAVAILABLE', 'OpenCode 暂仅支持权限审批回复。')
+    }
+    await Effect.runPromise(this.requireClient().permission.reply({
+      sessionID: this.sdk.Session.ID.make(input.nativeThreadId),
+      requestID: input.nativeRequestId as never,
+      decision: openCodeApprovalReply(input.response.decision),
+      ...(input.response.feedback ? { message: input.response.feedback } : {}),
+    }))
+  })
 
   private transportEnded(cause: unknown): void {
     this.stopped = true
