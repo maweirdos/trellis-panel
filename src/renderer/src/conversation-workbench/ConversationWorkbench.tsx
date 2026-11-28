@@ -62,6 +62,7 @@ import { ConversationSideThreadComposer, sideThreadDraftScope } from './Conversa
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
 import { ThreadFindBar } from './ThreadFindBar'
 import { ThreadTagsSnoozeModal, formatSnoozeLabel } from './ThreadTagsSnoozeModal'
+import { deriveNextPromptSuggestion } from './promptSuggestion'
 import { useConversationNavigation } from './conversation-navigation-store'
 import { conversationArtifactSurface, conversationCheckpointsSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
@@ -2316,6 +2317,14 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           placeholder={read?.error ? '当前会话暂不可用，请先处理上方提示' : undefined}
           disabledReason={target && !projection && !read?.error ? '正在读取原会话…' : undefined}
           editorRef={composerRef} previousPrompt={previousPrompt?.text}
+          promptHistoryMessages={projection?.messages}
+          promptSuggestion={projection && !archivedThread && !read?.error ? deriveNextPromptSuggestion({
+            threadId: projection.thread.id,
+            runs: projection.runs,
+            messages: projection.messages,
+            turnItems: projection.turnItems,
+            interactionMode: effectiveInteractionMode,
+          }) : null}
           onOpenCitation={openAssistantCitation}
           projectPaths={code && projectAvailable && projection ? { cwd: root, threadId: projection.thread.id, task } : undefined}
           artifactBanner={artifactBanner}

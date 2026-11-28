@@ -1,5 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
-import { ArrowUp, Archive, ArchiveRestore, Check, ChevronDown, Compass, File as FileIcon, Image, LoaderCircle, Mic, MicOff, Play, Quote, Shield, Square, X } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
+import { ArrowUp, Check, ChevronDown, Compass, File as FileIcon, Image, LoaderCircle, Mic, MicOff, Play, Quote, Shield, Sparkles, Square, X } from 'lucide-react'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import type { ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
@@ -7,11 +7,20 @@ import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conve
 import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
 import { ComposerPromptEditorTiptap, type ComposerPromptEditorHandle, type ComposerPromptSnapshot } from './ComposerPromptEditorTiptap'
+import { ComposerStashMenu } from './ComposerStashMenu'
 import { ComposerSurface } from './ComposerSurface'
 import { composerSuggestionOptionId, ConversationComposerMenu } from './ConversationComposerMenu'
 import { ConversationModelPicker } from './ConversationModelPicker'
+import {
+  buildComposerPromptHistoryEntries,
+  shouldTriggerPromptHistory,
+  stepComposerPromptHistory,
+  type ComposerPromptHistoryMessage,
+  type ComposerPromptHistoryPosition,
+} from './composerPromptHistory'
+import type { PromptSuggestion } from './promptSuggestion'
 import { shouldAttachPastedText } from './useComposerAttachments'
-import { CONVERSATION_TEXT_LIMIT } from './useComposerDraft'
+import { CONVERSATION_TEXT_LIMIT, updateComposerDraft } from './useComposerDraft'
 import { unavailableModelReason, type ConversationModelCatalog } from './useConversationModelCatalog'
 import { detectComposerTrigger, useComposerMenuItems, type ComposerMentionableThread, type ComposerMenuItem } from './useComposerMenuItems'
 import { conversationError, type ComposerModel, type useComposerSend } from './useComposerSend'
@@ -62,6 +71,8 @@ export interface ConversationComposerProps {
   readonly onDrop?: React.DragEventHandler<HTMLFormElement>
   readonly onDragOver?: React.DragEventHandler<HTMLFormElement>
   readonly previousPrompt?: string
+  readonly promptHistoryMessages?: readonly ComposerPromptHistoryMessage[]
+  readonly promptSuggestion?: PromptSuggestion | null
   readonly mentionableThreads?: readonly ComposerMentionableThread[]
   readonly onOpenCitation?: OpenAssistantCitation
   readonly projectPaths?: ComposerProjectPathTarget
@@ -143,6 +154,7 @@ export function ConversationComposer({
   onForceStop, forceStopping = false, stopUnconfirmed = false,
   canResume = false, resuming = false, resumeLabel = '继续对话', onResume, queuePaused,
   canSteer, disabledReason, placeholder, editorRef, leadingControls, contextControl, draftReferences, artifactBanner, onPaste, onDrop, onDragOver, previousPrompt,
+  promptHistoryMessages, promptSuggestion,
   taskSection, mentionableThreads = noThreads, onOpenCitation, projectPaths,
   runtimeMode = 'approval-required', interactionMode = 'default', onRuntimeModeChange, onInteractionModeChange, modesDisabled = false,
 }: ConversationComposerProps): JSX.Element {
@@ -165,6 +177,22 @@ export function ConversationComposer({
   latestDraftKey.current = send.draftKey
   const state = send.state
   const [copyFailure, setCopyFailure] = useState<string>()
+  const [dismissedSuggestionKey, setDismissedSuggestionKey] = useState<string | null>(null)
+  const historyNavRef = useRef<{
+    draftKey: string
+    position: ComposerPromptHistoryPosition | null
+    liveDraft: string
+  }>({ draftKey: send.draftKey, position: null, liveDraft: '' })
+  const applyingHistoryRef = useRef(false)
+  if (historyNavRef.current.draftKey !== send.draftKey) {
+    historyNavRef.current = { draftKey: send.draftKey, position: null, liveDraft: '' }
+  }
+  const historyEntries = useMemo(() => {
+    if (promptHistoryMessages && promptHistoryMessages.length > 0) {
+      return buildComposerPromptHistoryEntries(promptHistoryMessages)
+    }
+    return previousPrompt?.trim() ? [{ id: 'previous', prompt: previousPrompt.trim() }] : []
+  }, [previousPrompt, promptHistoryMessages])
   const speech = useComposerSpeech({
     ownerKey: send.draftKey,
     disabled: !interactive,
@@ -235,6 +263,17 @@ export function ConversationComposer({
   const menuItems = useComposerMenuItems(activeTrigger, skills, mentionableThreads, attachmentAvailable && !attachmentPending,
     { available: interactive && send.sideChatAvailable }, files)
   const menuOpen = activeTrigger !== null
+  const visibleSuggestion = !running && !send.hasContent && interactive && !menuOpen
+    && promptSuggestion && dismissedSuggestionKey !== promptSuggestion.key
+    ? promptSuggestion
+    : null
+  const acceptPromptSuggestion = (): void => {
+    if (!visibleSuggestion) return
+    const nextText = visibleSuggestion.text
+    restoredSelection.current = { key: send.draftKey, start: nextText.length, end: nextText.length }
+    send.setDraft(nextText)
+    promptRef.current?.focus()
+  }
   const activeIndex = highlight?.triggerKey === triggerKey
     ? Math.max(0, menuItems.findIndex(item => item.id === highlight.itemId)) : 0
   const selectedMenuItem = menuItems[activeIndex]
@@ -410,6 +449,9 @@ export function ConversationComposer({
         onChange={(snapshot, textChanged) => {
           if (document.activeElement === promptRef.current?.element) trackCaret(snapshot)
           if (!textChanged) return
+          if (!applyingHistoryRef.current) {
+            historyNavRef.current = { draftKey: send.draftKey, position: null, liveDraft: '' }
+          }
           setReferenceError(undefined)
           send.setDraft(snapshot.value)
         }}
@@ -457,11 +499,53 @@ export function ConversationComposer({
               return
             }
           }
-          if (event.key === 'ArrowUp' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-            !send.hasContent && previousPrompt && interactive) {
-            event.preventDefault()
-            send.setDraft(previousPrompt)
-            return
+          if (!menuOpen && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            if (event.key === 'Tab' && visibleSuggestion) {
+              event.preventDefault()
+              acceptPromptSuggestion()
+              return
+            }
+            if (event.key === 'Escape' && visibleSuggestion) {
+              event.preventDefault()
+              setDismissedSuggestionKey(visibleSuggestion.key)
+              return
+            }
+            if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && historyEntries.length > 0 && interactive) {
+              const direction = event.key === 'ArrowUp' ? 'backward' : 'forward'
+              const snapshot = promptRef.current?.readSnapshot()
+              const value = snapshot?.value ?? send.draft
+              const selectionStart = snapshot?.selection.start ?? value.length
+              const selectionEnd = snapshot?.selection.end ?? value.length
+              const nav = historyNavRef.current
+              if (shouldTriggerPromptHistory({
+                value,
+                selectionStart,
+                selectionEnd,
+                direction,
+                inHistoryMode: nav.position !== null,
+              })) {
+                const stepped = stepComposerPromptHistory({
+                  direction,
+                  entries: historyEntries,
+                  position: nav.position,
+                  currentDraft: value,
+                  liveDraft: nav.liveDraft,
+                })
+                if (stepped) {
+                  event.preventDefault()
+                  historyNavRef.current = {
+                    draftKey: send.draftKey,
+                    position: stepped.position,
+                    liveDraft: stepped.liveDraft,
+                  }
+                  applyingHistoryRef.current = true
+                  restoredSelection.current = { key: send.draftKey, start: stepped.prompt.length, end: stepped.prompt.length }
+                  send.setDraft(stepped.prompt)
+                  queueMicrotask(() => { applyingHistoryRef.current = false })
+                  return
+                }
+              }
+            }
           }
           if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey) return
           if (!interactive || (event.altKey && (!running || !canSteerDraft))) return
@@ -474,6 +558,29 @@ export function ConversationComposer({
         onHighlight={index => { if (index !== activeIndex) setHighlight({ triggerKey, itemId: menuItems[index].id }) }}
         onSelect={item => void pickMenuItem(item)} />}
       {reason && <div id={diagnosticId} className="px-4 pb-2 text-my-xs text-my-secondary break-words" role="status">{reason}</div>}
+      {visibleSuggestion && (
+        <div className="conversation-prompt-suggestion" role="region" aria-label="下一步续问建议">
+          <button
+            type="button"
+            className="conversation-prompt-suggestion-accept"
+            title={`${visibleSuggestion.reason}：按 Tab 或点击采纳`}
+            onClick={acceptPromptSuggestion}
+          >
+            <Sparkles size={13} className="shrink-0" aria-hidden="true" />
+            <span className="conversation-prompt-suggestion-text">{visibleSuggestion.text}</span>
+            <kbd className="my-kbd shrink-0">Tab</kbd>
+          </button>
+          <button
+            type="button"
+            className="my-icon-control"
+            title="忽略此建议 (Esc)"
+            aria-label="忽略此建议"
+            onClick={() => setDismissedSuggestionKey(visibleSuggestion.key)}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       <div className="acp-composer-toolbar conversation-composer-toolbar" ref={toolbar}>
         <ComposerAddMenu interactive={interactive}
           attachment={{
@@ -522,18 +629,31 @@ export function ConversationComposer({
               onClick={() => { onInteractionModeChange('plan'); close() }}>规划模式</DropdownItem>
           </>}
         </Dropdown>}
-        {(send.hasContent || send.stash) && <Dropdown disabled={!interactive} placement="top"
-          trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="草稿暂存"
-            aria-expanded={open} onClick={toggle} disabled={!interactive}>
-            <Archive size={15} aria-hidden="true" />
-          </button>}>
-          {close => <>
-            <DropdownItem icon={<Archive size={14} />} disabled={!send.hasContent || Boolean(send.stash)}
-              onClick={() => { send.stashDraft(); close() }}>暂存草稿</DropdownItem>
-            <DropdownItem icon={<ArchiveRestore size={14} />} disabled={send.hasContent || !send.stash}
-              onClick={() => { send.restoreStash(); close() }}>取回草稿</DropdownItem>
-          </>}
-        </Dropdown>}
+        <ComposerStashMenu
+          disabled={!interactive}
+          hasContent={send.hasContent}
+          draftText={send.draft}
+          references={send.references}
+          hasAttachments={send.attachments.length > 0}
+          legacyStash={send.stash}
+          onClearDraft={() => {
+            updateComposerDraft(send.draftKey, (current) => ({ ...current, text: '', references: [] }))
+          }}
+          onApplyEntry={(entry) => {
+            restoredSelection.current = { key: send.draftKey, start: entry.prompt.length, end: entry.prompt.length }
+            updateComposerDraft(send.draftKey, (current) => ({
+              ...current,
+              text: entry.prompt,
+              references: [...entry.references],
+            }))
+            promptRef.current?.focus()
+          }}
+          onLegacyStash={() => send.stashDraft()}
+          onLegacyRestore={() => {
+            send.restoreStash()
+            promptRef.current?.focus()
+          }}
+        />
         <div className="spacer" />
         <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
           onChange={onModelChange} disabled={!interactive} />
