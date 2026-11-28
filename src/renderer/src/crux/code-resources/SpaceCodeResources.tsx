@@ -1,7 +1,7 @@
 import { type JSX } from 'react'
 import { Plus } from 'lucide-react'
 import type { TeamCodeResource, TeamSpaceResourceLink } from '@shared/team-code-resources'
-import { Button } from '../../my/ui'
+import { Button, Checkbox } from '../../my/ui'
 import { useCrux } from '../store'
 import { Field, inputClass, textareaClass, Select } from '../ui'
 import { ResourceLoadState, ResourceRecovery, ResourceSummary } from './ResourceControls'
@@ -49,7 +49,7 @@ function SpaceResources({ spaceId }: { spaceId: string }): JSX.Element {
       ? { kind: 'update', commandId, expectedEpoch: editor.epoch, expectedRevision: editor.resource.revision, resourceId: editor.resource.resourceId, name: editor.name, purpose: editor.purpose, moduleDescription: editor.moduleDescription, disabled: editor.disabled }
       : { kind: 'create', commandId, expectedEpoch: editor.epoch, expectedRevision: 0, resourceId: crypto.randomUUID(), name: editor.name, purpose: editor.purpose, moduleDescription: editor.moduleDescription, source: { provider: editor.provider, repositoryId: editor.repositoryId, repositoryUrl: editor.repositoryUrl } })
   }
-  return <section className="min-w-0 space-y-3 rounded-my-md border border-my-line p-4" aria-label="空间代码资源">
+  return <section className="my-card min-w-0 shrink-0 space-y-3 p-4" aria-label="空间代码资源">
     <header className="flex flex-wrap items-center gap-2"><h3 className="flex-1 text-my-sm font-medium text-my-primary">代码资源</h3>{canManage && <Button size="sm" disabled={locked || Boolean(editor)} onClick={() => edit(null)}><Plus size={14} />新建资源</Button>}</header>
     {local ? <p className="text-my-xs text-my-secondary">共享代码资源需要团队连接。本机独立任务仍可继续使用。</p> : !owner.bridge ? <p className="text-my-xs text-my-secondary">当前客户端不支持代码资源，请更新客户端后重试。</p> : <>
       <ResourceLoadState loading={resources.loading || Boolean(canManage && catalogue.loading)} error={resources.error || (canManage ? catalogue.error : '')} refresh={() => { void resources.load(); if (canManage) void catalogue.load(); void commands.refreshPending() }} />
@@ -57,7 +57,16 @@ function SpaceResources({ spaceId }: { spaceId: string }): JSX.Element {
       {canManage && <p className="text-my-xs text-my-secondary">关联到当前空间后成员可选择使用；默认资源只作为未选择任务的候选。</p>}
       {resources.page && (canManage ? all : resources.page.items).length === 0 && <p className="text-my-sm text-my-tertiary">{canManage ? '暂无代码资源，可先新建资源。' : '当前空间没有允许的代码资源，请联系空间管理员。'}</p>}
       <ul className="divide-y divide-my-line">{(canManage ? all : resources.page?.items ?? []).map((resource) => <li key={resource.resourceId} className="flex min-w-0 flex-wrap items-start gap-3 py-3">
-        {canManage && <input className="mt-1" type="checkbox" aria-label={`关联 ${resource.name}`} disabled={locked || resource.disabled && !displayedLinks.includes(resource.resourceId) || displayedLinks.length >= 64 && !displayedLinks.includes(resource.resourceId)} checked={displayedLinks.includes(resource.resourceId)} onChange={(event) => changeLinks(event.target.checked ? [...displayedLinks, resource.resourceId] : displayedLinks.filter((id) => id !== resource.resourceId), !event.target.checked && defaultId === resource.resourceId ? null : defaultId ?? null)} />}
+        {canManage && (
+          <div className="mt-0.5">
+            <Checkbox
+              ariaLabel={`关联 ${resource.name}`}
+              disabled={locked || resource.disabled && !displayedLinks.includes(resource.resourceId) || displayedLinks.length >= 64 && !displayedLinks.includes(resource.resourceId)}
+              checked={displayedLinks.includes(resource.resourceId)}
+              onChange={(checked) => changeLinks(checked ? [...displayedLinks, resource.resourceId] : displayedLinks.filter((id) => id !== resource.resourceId), !checked && defaultId === resource.resourceId ? null : defaultId ?? null)}
+            />
+          </div>
+        )}
         <div className="min-w-0 flex-1"><ResourceSummary resource={resource} /></div>
         <div className="flex flex-wrap items-center gap-2">{defaultId === resource.resourceId && <span className="my-chip text-my-secondary">空间默认</span>}{canManage && <><Button size="sm" variant="ghost" disabled={locked || resource.disabled || !displayedLinks.includes(resource.resourceId)} onClick={() => changeLinks(displayedLinks, defaultId === resource.resourceId ? null : resource.resourceId)}>{defaultId === resource.resourceId ? '取消默认' : '设为默认'}</Button><Button size="sm" variant="ghost" disabled={locked || Boolean(editor)} onClick={() => edit(resource)}>编辑</Button></>}</div>
       </li>)}</ul>
@@ -72,7 +81,7 @@ function SpaceResources({ spaceId }: { spaceId: string }): JSX.Element {
           <Field label="资源名称"><input aria-label="资源名称" className={inputClass} required maxLength={120} value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} /></Field>
           <Field label="用途"><input aria-label="用途" className={inputClass} required maxLength={1000} value={editor.purpose} onChange={(event) => setEditor({ ...editor, purpose: event.target.value })} /></Field>
           <Field label="完整基座与模块说明"><textarea aria-label="完整基座与模块说明" className={textareaClass} required rows={3} maxLength={2000} value={editor.moduleDescription} onChange={(event) => setEditor({ ...editor, moduleDescription: event.target.value.replace(/[\r\n]/g, ' ') })} /></Field>
-          {editor.resource ? <><ResourceSummary resource={editor.resource} /><label className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" checked={editor.disabled} onChange={(event) => setEditor({ ...editor, disabled: event.target.checked })} />停用此资源</label>{editor.disabled && <p className="text-my-xs text-my-warning-text">停用后已有选择会显示失效，需要重新核对；不会自动替换为其他资源。</p>}</> : <>
+          {editor.resource ? <><ResourceSummary resource={editor.resource} /><label className="flex cursor-pointer items-center gap-2 text-my-sm text-my-secondary"><Checkbox checked={editor.disabled} ariaLabel="停用此资源" onChange={(disabled) => setEditor({ ...editor, disabled })} /><span>停用此资源</span></label>{editor.disabled && <p className="text-my-xs text-my-warning-text">停用后已有选择会显示失效，需要重新核对；不会自动替换为其他资源。</p>}</> : <>
             <Field label="仓库服务"><Select ariaLabel="仓库服务" value={editor.provider} onChange={(value) => setEditor({ ...editor, provider: value as Editor['provider'] })} options={['git', 'github', 'gitlab', 'azure-devops', 'other']} /></Field>
             <Field label="仓库标识"><input aria-label="仓库标识" className={inputClass} required maxLength={256} placeholder="organization/repository" value={editor.repositoryId} onChange={(event) => setEditor({ ...editor, repositoryId: event.target.value })} /></Field>
             <Field label="仓库地址" hint="HTTP(S) 或 SSH 地址，不包含密码、查询参数或本机路径。"><input aria-label="仓库地址" className={inputClass} required maxLength={2048} placeholder="https://git.example.com/team/repository.git" value={editor.repositoryUrl} onChange={(event) => setEditor({ ...editor, repositoryUrl: event.target.value })} /></Field>

@@ -117,7 +117,7 @@ export function GetStartedWidget({ variant = 'overview' }: { variant?: 'sidebar'
           aria-label={`新手指引，已完成 ${completedCount}/${steps.length}`}
         >
           <span className="inline-flex min-w-0 items-center gap-2">
-            <span className="collab-tone-avatar grid h-5 w-5 shrink-0 place-items-center rounded-my-sm" data-tone="indigo">
+            <span className="collab-tone-avatar grid h-5 w-5 shrink-0 place-items-center rounded-my-base" data-tone="indigo">
               <Rocket size={12} />
             </span>
             <span className="truncate">新手指引</span>
@@ -138,11 +138,11 @@ export function GetStartedWidget({ variant = 'overview' }: { variant?: 'sidebar'
   }
 
   return (
-    <section aria-label="新手指引" className="rounded-my-base border border-my-line bg-my-panel p-4">
+    <section aria-label="新手指引" className="my-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-my-sm font-semibold text-my-primary">新手指引 · 开始第一次 AI 协作</h2>
+            <h2 className="text-my-sm font-medium text-my-primary">新手指引 · 开始第一次 AI 协作</h2>
             <span className="my-chip tabular-nums">已完成 {completedCount}/{steps.length}（{percent}%）</span>
           </div>
           <p className="mt-0.5 text-my-xs text-my-tertiary">按真实数据自动点亮进度，带你走完从机器准备、创建 Agent 到任务验收的全流程。</p>
@@ -156,7 +156,7 @@ export function GetStartedWidget({ variant = 'overview' }: { variant?: 'sidebar'
         {steps.map((step, index) => (
           <div
             key={step.id}
-            className={`flex flex-col justify-between gap-2.5 rounded-my-base border p-3 ${step.done ? 'border-my-line bg-my-layer-1' : 'border-my-line-strong bg-my-canvas'}`}
+            className={`flex flex-col justify-between gap-2.5 rounded-my-base border p-3 transition-colors duration-150 ${step.done ? 'border-my-line bg-my-layer-1' : 'border-my-line-strong bg-my-canvas'}`}
           >
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-my-xs font-medium">

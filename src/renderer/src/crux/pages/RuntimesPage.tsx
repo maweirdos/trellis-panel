@@ -9,7 +9,7 @@ export function RuntimesPage(): JSX.Element {
   const setModule = useCrux((state) => state.setModule)
 
   return (
-    <div className="my-fade flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <MachineRuntimeConsole
         onOpenModels={() => setPage('models')}
         onOpenGateway={() => setPage('gateway')}

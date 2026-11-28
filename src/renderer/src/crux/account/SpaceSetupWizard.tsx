@@ -13,7 +13,7 @@ import {
   SPACE_TEMPLATE_PRESETS
 } from '@shared/crux-space-presets'
 import { api } from '../../api'
-import { Button } from '../../my/ui'
+import { Button, Checkbox, Tooltip } from '../../my/ui'
 import { Select } from '../ui'
 import { useCrux } from '../store'
 
@@ -183,6 +183,31 @@ export function SpaceSetupWizard({
 
   const activePreset = getSpaceTemplatePreset(template)
   const working = submitting || busy
+  const nextDisabledReason = !nameValid ? '请先输入空间名称' : !keyValid ? '任务前缀需为 2～7 位大写字母或数字' : null
+  const submitDisabledReason = !nameValid ? '请输入空间名称' : !keyValid ? '任务前缀需为 2～7 位大写字母或数字' : taskTypes.length === 0 ? '请至少选择一种任务类型' : null
+
+  const nextButton = (
+    <Button
+      variant="primary"
+      size="sm"
+      disabled={working || Boolean(nextDisabledReason)}
+      onClick={() => setStep('modules')}
+    >
+      下一步：配置模块
+    </Button>
+  )
+
+  const submitButton = (
+    <Button
+      variant="primary"
+      size="sm"
+      disabled={working || Boolean(submitDisabledReason)}
+      onClick={() => void submit()}
+    >
+      {working && <LoaderCircle size={14} className="account-spinner" aria-hidden="true" />}
+      {mode === 'initialize' ? '完成并进入空间' : '创建空间'}
+    </Button>
+  )
 
   return <section className="space-wizard" aria-label={mode === 'initialize' ? '初始化默认空间' : '新建空间'}>
     <header className="space-wizard-header">
@@ -199,6 +224,7 @@ export function SpaceSetupWizard({
 
     {error && <div role="alert" className="account-inline-error">{error}</div>}
 
+    <div key={step} className="my-subview-stage flex min-h-0 flex-1 flex-col">
     {step === 'template' ? (
       <div className="space-wizard-body my-scrollbar">
         {mode === 'create' && (
@@ -338,11 +364,11 @@ export function SpaceSetupWizard({
             })}
           </div>
           <label className="space-wizard-starter-option">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={seedStarterTask}
               disabled={working}
-              onChange={(event) => setSeedStarterTask(event.target.checked)}
+              ariaLabel="自动生成 1 条示例任务"
+              onChange={setSeedStarterTask}
             />
             <span>自动生成 1 条示例任务，进入空间后可直接体验看板与派发</span>
           </label>
@@ -350,6 +376,7 @@ export function SpaceSetupWizard({
         </section>
       </div>
     )}
+    </div>
 
     <footer className="space-wizard-footer">
       {step === 'modules' ? (
@@ -364,24 +391,9 @@ export function SpaceSetupWizard({
 
       <div className="flex items-center gap-2">
         {step === 'template' ? (
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={working || (mode === 'create' && (!nameValid || !keyValid))}
-            onClick={() => setStep('modules')}
-          >
-            下一步：配置模块
-          </Button>
+          mode === 'create' && nextDisabledReason ? <Tooltip label={nextDisabledReason}>{nextButton}</Tooltip> : nextButton
         ) : (
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={working || !nameValid || !keyValid || taskTypes.length === 0}
-            onClick={() => void submit()}
-          >
-            {working && <LoaderCircle size={14} className="account-spinner" aria-hidden="true" />}
-            {mode === 'initialize' ? '完成并进入空间' : '创建空间'}
-          </Button>
+          submitDisabledReason ? <Tooltip label={submitDisabledReason}>{submitButton}</Tooltip> : submitButton
         )}
       </div>
     </footer>

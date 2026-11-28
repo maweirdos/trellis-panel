@@ -1,10 +1,10 @@
 /** 本地名册与团队成员入口；团队邀请必须使用服务端真实回执。 */
-import { useState } from 'react'
-import { Check, Copy, Link2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Check, Copy, Link2, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { CruxMember, CruxRole } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { Button, EmptyState, Modal, Switch } from '../../my/ui'
+import { Button, Checkbox, EmptyState, Modal, SearchInput, Switch, Tooltip } from '../../my/ui'
 import { useCollaborationPlatform } from '../collaboration-platform-store'
 import { FlowIcon } from '../icons'
 import { MemberInvitationDialog } from '../account/MemberInvitationDialog'
@@ -61,7 +61,7 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader title="同事" description={shared ? `已登录的团队成员 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人` : `本机同事名册 · ${snapshot.members.length} 人，当前空间 ${spaceMemberIds.size} 人 · 添加不会发送邀请`}
         actions={shared ? <Button variant="primary" size="sm" disabled={busy || !canInvite} onClick={() => { if (workspace.connectionId) setInviting(true); else webInvitation?.open() }}><Plus size={14} />邀请成员</Button> : <Button variant="primary" size="sm" disabled={busy} onClick={() => setEditing('new')}><Plus size={14} />添加同事</Button>} />
-      <section className="flex flex-wrap items-center gap-3 rounded-my-base border border-my-line bg-my-panel px-3.5 py-2.5" aria-label="组织邀请链接">
+      <section className="my-card flex flex-wrap items-center gap-3 px-4 py-3" aria-label="组织邀请链接">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <Link2 size={15} className="shrink-0 text-my-icon-secondary" />
           <div className="min-w-0 flex-1">
@@ -82,53 +82,88 @@ export function MembersPage({ webInvitation }: { webInvitation?: WebInvitationCa
           <Button size="sm" variant="outline" disabled={!orgInviteLink.enabled} onClick={() => void copyInviteLink()}>
             {copiedLink ? <><Check size={13} />已复制</> : <><Copy size={13} />复制链接</>}
           </Button>
-          <Button size="sm" variant="ghost" title="重置邀请链接" onClick={regenerateOrgInviteLink}>
-            <RefreshCw size={13} />重置
-          </Button>
+          <Tooltip label="重置邀请链接">
+            <Button size="sm" variant="ghost" aria-label="重置邀请链接" onClick={regenerateOrgInviteLink}>
+              <RefreshCw size={13} />重置
+            </Button>
+          </Tooltip>
           <Switch label="启用组织邀请链接" checked={orgInviteLink.enabled} onChange={(enabled) => updateOrgInviteLink({ enabled })} />
         </div>
       </section>
       <div className="flex flex-wrap items-center gap-3">
-        <input className={`${inputClass} max-w-xs`} aria-label="搜索同事" placeholder="搜索姓名、邮箱或职位" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-        <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={onlySpace} onChange={(event) => setOnlySpace(event.target.checked)} />仅当前空间</label>
+        <SearchInput size="sm" value={keyword} onChange={setKeyword} placeholder="搜索姓名、邮箱或职位" ariaLabel="搜索同事" className="w-64" />
+        <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+          <Checkbox checked={onlySpace} onChange={setOnlySpace} ariaLabel="仅当前空间" />
+          <span>仅当前空间</span>
+        </label>
+        <span className="text-my-xs tabular-nums text-my-tertiary">{members.length} 人</span>
       </div>
       {members.length === 0 ? <EmptyState title="没有匹配的同事" description="调整搜索，或添加一位同事" /> : (
-        <div className="my-scrollbar min-h-0 flex-1 overflow-auto rounded-my-md border border-my-line">
+        <div className="my-card my-scrollbar min-h-0 flex-1 overflow-auto">
           <table className="w-full border-collapse text-left text-my-sm">
-            <thead className="sticky top-0 bg-my-canvas text-my-xs text-my-tertiary"><tr className="border-b border-my-line">
-              <th className="px-3 py-2 font-medium">同事</th><th className="px-2 py-2 font-medium">角色</th><th className="px-2 py-2 font-medium">职位</th>
-              <th className="px-2 py-2 font-medium">任务负载</th>
-              <th className="px-2 py-2 font-medium">空间</th><th className="px-3 py-2 font-medium">操作</th>
-            </tr></thead>
+            <thead className="sticky top-0 z-10 bg-my-panel/95 text-my-xs text-my-tertiary backdrop-blur-sm">
+              <tr className="border-b border-my-line">
+                <th className="px-3 py-2 font-medium">同事</th>
+                <th className="px-2 py-2 font-medium">角色</th>
+                <th className="px-2 py-2 font-medium">职位</th>
+                <th className="px-2 py-2 font-medium">任务负载</th>
+                <th className="px-2 py-2 font-medium">空间</th>
+                <th className="px-3 py-2 font-medium">操作</th>
+              </tr>
+            </thead>
             <tbody>{members.map((member) => {
               const lastOwner = member.role === 'owner' && owners === 1
               const assignedTasks = snapshot.tasks.filter((task) => task.assigneeIds.includes(member.id))
               const openTasks = assignedTasks.filter((task) => !['done', 'cancelled'].includes(statusOf(snapshot, task.statusId)?.category ?? '')).length
-              return <tr key={member.id} className="border-b border-my-line hover:bg-my-layer-1-hover">
+              const spaceDisabled = busy || !space || (shared && !workspace.canManage)
+              return <tr key={member.id} className="border-b border-my-line transition-colors duration-100 last:border-b-0 hover:bg-my-layer-1-hover">
                 <td className="px-3 py-2"><MemberChip member={member} /><p className="mt-1 text-my-xs text-my-tertiary">{member.email || '未填写邮箱'}</p></td>
                 <td className="px-2 py-2"><span className="flex items-center gap-1.5 text-my-xs text-my-secondary"><FlowIcon name="members" size={14} />{ROLE_LABEL[member.role]}</span></td>
                 <td className="px-2 py-2 text-my-secondary">{member.title || '—'}</td>
                 <td className="px-2 py-2 text-my-xs tabular-nums text-my-secondary">进行中 {openTasks} / 共 {assignedTasks.length}</td>
                 <td className="px-2 py-2">
-                  <label className="flex items-center gap-1.5 text-my-xs text-my-secondary"><input type="checkbox" disabled={busy || !space || (shared && !workspace.canManage)} checked={spaceMemberIds.has(member.id)} onChange={() => toggleSpaceMember(member.id)} />{space?.name ?? '未选择空间'}</label>
+                  <label className={`flex items-center gap-1.5 text-my-xs text-my-secondary ${spaceDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                    <Checkbox
+                      checked={spaceMemberIds.has(member.id)}
+                      disabled={spaceDisabled}
+                      ariaLabel={`将 ${member.name} 加入 ${space?.name ?? '当前空间'}`}
+                      onChange={() => toggleSpaceMember(member.id)}
+                    />
+                    <span>{space?.name ?? '未选择空间'}</span>
+                  </label>
                   <p className="mt-1 text-my-2xs text-my-tertiary">{snapshot.spaces.filter((item) => item.memberIds.includes(member.id)).map((item) => item.name).join('、') || '尚未加入空间'}</p>
                 </td>
                 <td className="px-3 py-2">{shared ? <span className="text-my-xs text-my-tertiary">账号与权限由团队服务管理</span> : <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" disabled={busy} aria-label={`编辑 ${member.name}`} onClick={() => setEditing(member)}><Pencil size={13} />编辑</Button>
-                  <Button variant="ghost" size="sm" disabled={busy || lastOwner} title={lastOwner ? '需保留至少一位 Owner' : '移除同事'} aria-label={`移除 ${member.name}`} onClick={() => void remove(member)}><Trash2 size={13} /></Button>
+                  <Tooltip label={lastOwner ? '需保留至少一位 Owner' : '移除同事'}>
+                    <Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || lastOwner} aria-label={`移除 ${member.name}`} onClick={() => void remove(member)}><Trash2 size={13} /></Button>
+                  </Tooltip>
                 </div>}</td>
               </tr>
             })}</tbody>
           </table>
         </div>
       )}
-      {editing && <MemberEditor key={`${currentSpaceId}:${editing === 'new' ? 'new' : editing.id}`} member={editing === 'new' ? null : editing} spaceId={space?.id} spaceName={space?.name} onClose={() => setEditing(null)} />}
+      <MemberEditor open={Boolean(editing)} member={editing === 'new' ? null : editing} spaceId={space?.id} spaceName={space?.name} onClose={() => setEditing(null)} />
       <MemberInvitationDialog open={inviting} currentConnectionId={workspace.connectionId} currentSpace={space ? { id: space.id, name: space.name } : undefined} onClose={() => setInviting(false)} />
     </div>
   )
 }
 
-function MemberEditor({ member, spaceId, spaceName, onClose }: { member: CruxMember | null; spaceId?: string; spaceName?: string; onClose: () => void }): JSX.Element {
+function MemberEditor({ open, member, spaceId, spaceName, onClose }: { open: boolean; member: CruxMember | null; spaceId?: string; spaceName?: string; onClose: () => void }): JSX.Element {
+  const busy = useCrux((state) => state.busy)
+  const lastContextRef = useRef<{ member: CruxMember | null; spaceId?: string; spaceName?: string }>({ member, spaceId, spaceName })
+  if (open) lastContextRef.current = { member, spaceId, spaceName }
+  const display = open ? { member, spaceId, spaceName } : lastContextRef.current
+
+  return (
+    <Modal open={open} onClose={() => { if (!busy) onClose() }} width={460} placement="center" ariaLabel={display.member ? '编辑同事' : '添加同事'}>
+      {open && <MemberEditorForm key={`${display.spaceId ?? 'none'}:${display.member?.id ?? 'new'}`} member={display.member} spaceId={display.spaceId} spaceName={display.spaceName} onClose={onClose} />}
+    </Modal>
+  )
+}
+
+function MemberEditorForm({ member, spaceId, spaceName, onClose }: { member: CruxMember | null; spaceId?: string; spaceName?: string; onClose: () => void }): JSX.Element {
   const run = useCrux((state) => state.run)
   const busy = useCrux((state) => state.busy)
   const snapshot = useCrux((state) => state.snapshot)
@@ -145,25 +180,43 @@ function MemberEditor({ member, spaceId, spaceName, onClose }: { member: CruxMem
       : api.crux.inviteMember({ name: name.trim(), email: email.trim() || undefined, title: title.trim() || undefined, role, spaceId: joinSpace ? spaceId : undefined }))
     if (result?.ok) onClose()
   }
-  return <Modal open onClose={() => { if (!busy) onClose() }} width={460} ariaLabel={member ? '编辑同事' : '添加同事'}>
-    <div className="flex max-h-[var(--my-modal-max-height)] flex-col gap-3 p-4">
-      <h2 className="text-sm font-semibold text-my-primary">{member ? `编辑 ${member.name}` : '添加同事'}</h2>
-      <div className="my-scrollbar min-h-0 overflow-y-auto pr-1"><div className="flex flex-col gap-3">
-      <Field label="姓名"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
-      <Field label="邮箱（可选，仅作联系记录）"><input className={inputClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-      <Field label="职位（可选）"><input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
-      <Field label="名册角色" hint={lastOwner ? '需保留至少一位 Owner；先为另一位成员设置 Owner 后才能调整。' : '组织角色不自动加入任何空间。'}>
-        <Select
-          className="w-full"
-          disabled={lastOwner}
-          value={role}
-          onChange={(val) => setRole(val as CruxRole)}
-          options={((['owner', 'admin', 'member'] as const)).map((value) => ({ value, label: ROLE_LABEL[value] }))}
-        />
-      </Field>
-      {!member && spaceId && <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={joinSpace} onChange={(event) => setJoinSpace(event.target.checked)} />同时加入「{spaceName}」</label>}
-      </div></div>
-      <div className="flex shrink-0 justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button><Button variant="primary" size="sm" disabled={busy || !name.trim()} onClick={() => void submit()}>{busy ? '保存中…' : member ? '保存' : '添加'}</Button></div>
+
+  const submitButton = (
+    <Button variant="primary" size="sm" disabled={busy || !name.trim()} onClick={() => void submit()}>
+      {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+      {busy ? '保存中…' : member ? '保存' : '添加'}
+    </Button>
+  )
+
+  return (
+    <div className="flex max-h-[var(--my-modal-max-height)] flex-col gap-3 px-6 py-5">
+      <h2 className="text-my-md font-medium text-my-primary">{member ? `编辑 ${member.name}` : '添加同事'}</h2>
+      <div className="my-scrollbar min-h-0 overflow-y-auto pr-1" style={{ scrollbarGutter: 'stable' }}>
+        <div className="flex flex-col gap-3">
+          <Field label="姓名"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
+          <Field label="邮箱（可选，仅作联系记录）"><input className={inputClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+          <Field label="职位（可选）"><input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
+          <Field label="名册角色" hint={lastOwner ? '需保留至少一位 Owner；先为另一位成员设置 Owner 后才能调整。' : '组织角色不自动加入任何空间。'}>
+            <Select
+              className="w-full"
+              disabled={lastOwner}
+              value={role}
+              onChange={(val) => setRole(val as CruxRole)}
+              options={((['owner', 'admin', 'member'] as const)).map((value) => ({ value, label: ROLE_LABEL[value] }))}
+            />
+          </Field>
+          {!member && spaceId && (
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox checked={joinSpace} onChange={setJoinSpace} ariaLabel={`同时加入「${spaceName}」`} />
+              <span>同时加入「{spaceName}」</span>
+            </label>
+          )}
+        </div>
+      </div>
+      <div className="flex shrink-0 justify-end gap-2">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button>
+        {!name.trim() ? <Tooltip label="请输入同事姓名">{submitButton}</Tooltip> : submitButton}
+      </div>
     </div>
-  </Modal>
+  )
 }

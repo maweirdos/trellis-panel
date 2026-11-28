@@ -57,7 +57,7 @@ function TaskResources({ task, onSelected }: { task: CruxTask; onSelected(): voi
       expectedTaskCreatedAt: draft.dto.taskCreatedAt, expectedSpaceId: draft.dto.spaceId, expectedTaskUpdatedAt: draft.dto.taskUpdatedAt,
       expectedSpaceRevision: draft.dto.spaceRevision, expectedResourceRevision: draft.resource?.revision ?? null }))
   }
-  return <section className="min-w-0 space-y-3 rounded-my-md border border-my-line p-3" aria-label="任务代码资源">
+  return <section className="my-card min-w-0 space-y-3 p-3" aria-label="任务代码资源">
     <header className="flex items-center gap-2"><h3 className="text-my-sm font-medium text-my-primary">代码资源</h3></header>
     {owner.context.state === 'local' ? <p className="text-my-xs text-my-secondary">共享代码资源需要团队连接。本机独立任务仍可继续使用。</p> : !owner.bridge ? <p className="text-my-xs text-my-secondary">当前客户端不支持代码资源，请更新客户端。</p> : <>
       <ResourceLoadState loading={loading || resources.loading} error={error || resources.error} refresh={() => { void load(); void resources.load(); void commands.refreshPending() }} />
@@ -66,10 +66,10 @@ function TaskResources({ task, onSelected }: { task: CruxTask; onSelected(): voi
         {dto.resource && <ResourceSummary resource={dto.resource} />}
         {!dto.resource && dto.selection?.resourceId && <p className="break-all text-my-xs text-my-tertiary">原选择：{dto.selection.resourceId}</p>}
         {!dto.canSelect && <p className="text-my-xs text-my-tertiary">当前账号不能修改此任务的代码资源。</p>}
-        {dto.defaultResource && !dto.selection?.resourceId && <div className="space-y-2 rounded-my-md bg-my-layer-1 p-3"><p className="text-my-xs text-my-secondary">空间默认候选 · 尚未保存到任务</p><ResourceSummary resource={dto.defaultResource} />{dto.canSelect && <Button size="sm" disabled={locked || dto.defaultResource.disabled} onClick={() => choose(dto.defaultResource)}>选择此候选</Button>}</div>}
+        {dto.defaultResource && !dto.selection?.resourceId && <div className="space-y-2 rounded-my-base bg-my-layer-1 p-3"><p className="text-my-xs text-my-secondary">空间默认候选 · 尚未保存到任务</p><ResourceSummary resource={dto.defaultResource} />{dto.canSelect && <Button size="sm" disabled={locked || dto.defaultResource.disabled} onClick={() => choose(dto.defaultResource)}>选择此候选</Button>}</div>}
         {dto.canSelect && <fieldset disabled={locked} className="block min-w-0 space-y-2"><legend className="mb-2 text-my-xs text-my-secondary">选择当前空间允许的资源</legend>
           {options.length === 0 && !resources.loading && <p className="text-my-xs text-my-tertiary">当前没有允许资源，请联系空间管理员。</p>}
-          {options.map((resource) => <div key={resource.resourceId} className="flex min-w-0 items-start gap-2 rounded-my-md border border-my-line p-3 hover:bg-my-layer-1-hover"><input className="mt-1 h-4 w-4 shrink-0 p-0" aria-label={`选择 ${resource.name}`} type="radio" name={`resource-${task.id}`} checked={draft?.resource?.resourceId === resource.resourceId} disabled={locked || resource.disabled} onChange={() => choose(resource)} /><div className="min-w-0 flex-1"><ResourceSummary resource={resource} /></div></div>)}
+          {options.map((resource) => <div key={resource.resourceId} className="flex min-w-0 items-start gap-2 rounded-my-base border border-my-line p-3 transition-colors duration-100 hover:bg-my-layer-1-hover"><input className="mt-1 h-4 w-4 shrink-0 p-0" aria-label={`选择 ${resource.name}`} type="radio" name={`resource-${task.id}`} checked={draft?.resource?.resourceId === resource.resourceId} disabled={locked || resource.disabled} onChange={() => choose(resource)} /><div className="min-w-0 flex-1"><ResourceSummary resource={resource} /></div></div>)}
           <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input className="h-4 w-4 shrink-0 p-0" type="radio" name={`resource-${task.id}`} checked={Boolean(draft && !draft.resource)} onChange={() => choose(null)} />不选择代码资源</label>
         </fieldset>}
         {resources.page?.hasMore && <Button size="sm" disabled={resources.loading} onClick={() => void resources.load(true)}>加载更多资源（列表尚未完整）</Button>}

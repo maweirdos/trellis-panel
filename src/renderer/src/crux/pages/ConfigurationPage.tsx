@@ -1,9 +1,9 @@
-import { useState, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import { Archive, GitBranch, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { CruxSnapshot, CruxStatusCategory, CruxTaskType } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { Button, EmptyState, Modal, SearchInput, Tooltip } from '../../my/ui'
+import { Button, Checkbox, EmptyState, Modal, SearchInput, Tabs, Tooltip } from '../../my/ui'
 import {
   useCollaborationPlatform,
   workflowKey,
@@ -65,16 +65,16 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
   }
 
   return (
-    <div className="my-fade flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <PageHeader
         title={TITLES[kind]}
         description={kind === 'types'
-          ? '为每种任务类型定义可用状态与流转规则矩阵（对标 HiFox Task Type Workflow），看板与任务详情自动按规则流转。'
+          ? '为每种任务类型定义可用状态与流转规则，看板与任务详情自动按规则流转。'
           : kind === 'statuses'
             ? '按 7 大标准状态分类管理空间状态；报表、看板与自动化始终以状态分类为基准。'
             : '统一管理组织级与空间级任务标签。'}
         actions={
-          <Tooltip label={`新建${TITLES[kind]}`} side="bottom">
+          <Tooltip label={canConfigure ? `新建${TITLES[kind]}` : '当前空间只读或无管理权限'} side="bottom">
             <Button variant="primary" size="sm" disabled={busy || !canConfigure} onClick={() => { if (space) setEditing({ kind, spaceId: space.id }) }}>
               <Plus size={14} />新建
             </Button>
@@ -83,9 +83,14 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
       />
       {!space || !canRead ? <EmptyState title={!space ? '未选择空间' : '加入空间后可查看配置'} /> : <>
         <div className="flex flex-wrap items-center gap-3">
-          <SearchInput value={keyword} onChange={setKeyword} placeholder={`搜索${TITLES[kind]}`} />
-          <span className="text-my-xs text-my-tertiary">{count} 项</span>
-          {kind === 'labels' && <label className="flex items-center gap-2 text-my-xs text-my-secondary"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />含已归档</label>}
+          <SearchInput size="sm" value={keyword} onChange={setKeyword} placeholder={`搜索${TITLES[kind]}`} ariaLabel={`搜索${TITLES[kind]}`} className="w-56" />
+          <span className="text-my-xs tabular-nums text-my-tertiary">{count} 项</span>
+          {kind === 'labels' && (
+            <label className="flex cursor-pointer items-center gap-2 text-my-xs text-my-secondary">
+              <Checkbox checked={showArchived} onChange={setShowArchived} ariaLabel="含已归档" />
+              <span>含已归档</span>
+            </label>
+          )}
           {space.archived && <span className="text-my-xs text-my-tertiary">空间已归档</span>}
         </div>
 
@@ -95,7 +100,7 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
               {CATEGORIES.map(([catKey, catLabel, catDesc]) => {
                 const group = statuses.filter((status) => status.category === catKey)
                 return (
-                  <section key={catKey} className="rounded-my-base border border-my-line bg-my-panel p-3">
+                  <section key={catKey} className="my-card p-3.5">
                     <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <h2 className="my-item-title">{catLabel}</h2>
@@ -131,9 +136,9 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
               })}
             </div>
           ) : count === 0 ? <EmptyState title={keyword ? '没有匹配项' : `暂无${TITLES[kind]}`} /> : (
-            <div className="overflow-hidden rounded-my-base border border-my-line">
+            <div className="my-card overflow-auto">
               <table className="w-full border-collapse text-left text-my-sm">
-                <thead className="sticky top-0 bg-my-canvas text-my-xs text-my-tertiary">
+                <thead className="sticky top-0 z-10 bg-my-panel/95 text-my-xs text-my-tertiary backdrop-blur-sm">
                   <tr className="border-b border-my-line">
                     <th className="px-3 py-2 font-medium">名称</th>
                     <th className="px-3 py-2 font-medium">{kind === 'types' ? '工作流与可用状态' : '范围'}</th>
@@ -146,7 +151,7 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
                     const available = snapshot.taskStatuses.filter((status) => status.spaceId === spaceId && (!type.statusIds?.length || type.statusIds.includes(status.id))).sort((a, b) => a.order - b.order)
                     const wf = typeWorkflows[workflowKey(space.id, type.id)]
                     return (
-                      <tr key={type.id} className="border-b border-my-line hover:bg-my-layer-1-hover">
+                      <tr key={type.id} className="border-b border-my-line transition-colors duration-100 last:border-b-0 hover:bg-my-layer-1-hover">
                         <td className="px-3 py-2.5 text-my-primary">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{type.name}</span>
@@ -175,10 +180,10 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
                     )
                   })}
                   {kind === 'labels' && labels.map((label) => (
-                    <tr key={label.id} className="border-b border-my-line hover:bg-my-layer-1-hover">
+                    <tr key={label.id} className="border-b border-my-line transition-colors duration-100 last:border-b-0 hover:bg-my-layer-1-hover">
                       <td className="px-3 py-2"><span className={label.archived ? 'opacity-50' : undefined}><LabelChip label={label} /></span>{label.archived && <span className="ml-2 text-my-xs text-my-tertiary">已归档</span>}</td>
                       <td className="px-3 py-2 text-my-secondary">{label.spaceId ? space.name : '组织'}</td>
-                      <td className="px-3 py-2"><div className="flex justify-end"><Tooltip label={`归档 ${label.name}`}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure || label.archived} aria-label={`归档 ${label.name}`} onClick={() => void remove(label.id, label.name)}><Archive size={14} /></Button></Tooltip></div></td>
+                      <td className="px-3 py-2"><div className="flex justify-end"><Tooltip label={label.archived ? '标签已归档' : `归档 ${label.name}`}><Button variant="ghost" size="sm" className="my-icon-control" disabled={busy || !canConfigure || label.archived} aria-label={`归档 ${label.name}`} onClick={() => void remove(label.id, label.name)}><Archive size={14} /></Button></Tooltip></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -187,23 +192,68 @@ export function ConfigurationPage({ kind }: { kind: ConfigurationKind }): JSX.El
           )}
         </div>
       </>}
-      {editing && editing.kind === kind && editing.spaceId === spaceId && canConfigure && (
-        <ConfigurationEditor
-          key={`${editing.spaceId}:${kind}:${editing.type?.id ?? 'new'}`}
-          kind={kind}
-          spaceId={editing.spaceId}
-          snapshot={snapshot}
-          existing={editing.type}
-          existingWorkflow={editing.type ? typeWorkflows[workflowKey(editing.spaceId, editing.type.id)] : undefined}
-          onSaveWorkflow={saveTypeWorkflow}
-          onClose={() => setEditing(null)}
-        />
-      )}
+      <ConfigurationEditor
+        open={Boolean(editing && editing.kind === kind && editing.spaceId === spaceId && canConfigure)}
+        kind={kind}
+        spaceId={editing?.spaceId ?? spaceId ?? ''}
+        snapshot={snapshot}
+        existing={editing?.type}
+        existingWorkflow={editing?.type && editing.spaceId ? typeWorkflows[workflowKey(editing.spaceId, editing.type.id)] : undefined}
+        onSaveWorkflow={saveTypeWorkflow}
+        onClose={() => setEditing(null)}
+      />
     </div>
   )
 }
 
 function ConfigurationEditor({
+  open,
+  kind,
+  spaceId,
+  snapshot,
+  existing,
+  existingWorkflow,
+  onSaveWorkflow,
+  onClose
+}: {
+  open: boolean
+  kind: ConfigurationKind
+  spaceId: string
+  snapshot: CruxSnapshot
+  existing?: CruxTaskType
+  existingWorkflow?: TaskTypeWorkflowConfig
+  onSaveWorkflow: (spaceId: string, typeId: string, config: Omit<TaskTypeWorkflowConfig, 'updatedAt'>) => void
+  onClose: () => void
+}): JSX.Element {
+  const busy = useCrux((state) => state.busy)
+  const lastRef = useRef<{ kind: ConfigurationKind; spaceId: string; existing?: CruxTaskType; existingWorkflow?: TaskTypeWorkflowConfig }>({
+    kind,
+    spaceId,
+    existing,
+    existingWorkflow
+  })
+  if (open) lastRef.current = { kind, spaceId, existing, existingWorkflow }
+  const display = open ? { kind, spaceId, existing, existingWorkflow } : lastRef.current
+
+  return (
+    <Modal open={open} onClose={() => { if (!busy) onClose() }} width={display.kind === 'types' ? 680 : 460} placement="center" ariaLabel={`${display.existing ? '编辑' : '新建'}${TITLES[display.kind]}`}>
+      {open && (
+        <ConfigurationEditorForm
+          key={`${display.spaceId}:${display.kind}:${display.existing?.id ?? 'new'}`}
+          kind={display.kind}
+          spaceId={display.spaceId}
+          snapshot={snapshot}
+          existing={display.existing}
+          existingWorkflow={display.existingWorkflow}
+          onSaveWorkflow={onSaveWorkflow}
+          onClose={onClose}
+        />
+      )}
+    </Modal>
+  )
+}
+
+function ConfigurationEditorForm({
   kind,
   spaceId,
   snapshot,
@@ -244,6 +294,7 @@ function ConfigurationEditor({
 
   const activeStatuses = allStatuses ? statuses : statuses.filter((status) => statusIds.includes(status.id))
   const invalidStatuses = kind === 'types' && !allStatuses && statusIds.length === 0
+  const disabledReason = !name.trim() ? `请输入${TITLES[kind]}名称` : invalidStatuses ? '请至少选择一个可用状态' : null
 
   const toggleTransition = (fromId: string, toId: string): void => {
     setTransitions((prev) => {
@@ -280,158 +331,156 @@ function ConfigurationEditor({
     else setError('保存失败，请重试。')
   }
 
-  return (
-    <Modal open onClose={() => { if (!busy) onClose() }} width={kind === 'types' ? 680 : 460} ariaLabel={`${existing ? '编辑' : '新建'}${TITLES[kind]}`}>
-      <fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 p-4">
-        <header className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-my-md font-semibold text-my-primary">{existing ? '编辑' : '新建'}{TITLES[kind]}</h2>
-          {kind === 'types' && (
-            <div className="flex items-center gap-1" role="tablist" aria-label="任务工作流编辑分页">
-              {([
-                ['basic', '基本信息'],
-                ['statuses', `状态定义 (${activeStatuses.length})`],
-                ['transitions', '流转规则']
-              ] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  onClick={() => setTab(id)}
-                  className={`my-control my-control-sm ${tab === id ? 'bg-my-navigation-selected font-medium text-my-primary' : 'text-my-secondary hover:bg-my-navigation-hover'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </header>
+  const saveButton = (
+    <Button variant="primary" size="sm" aria-busy={busy} disabled={busy || Boolean(disabledReason)} onClick={() => void save()}>
+      {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+      {existing ? '保存配置' : '创建'}
+    </Button>
+  )
 
-        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto pr-1" style={{ scrollbarGutter: 'stable' }}>
-          <div className="flex flex-col gap-3">
-            {(kind !== 'types' || tab === 'basic') && (
-              <>
-                <Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
-                {kind === 'types' && (
-                  <>
-                    <Field label="流转模式" hint="自由模式允许在可用状态间任意切换；严格模式按「流转规则」矩阵控制下一步可流转状态。">
-                      <Select
-                        className="w-full"
-                        value={workflowMode}
-                        onChange={(val) => setWorkflowMode(val as WorkflowMode)}
-                        options={[
-                          { value: 'simple', label: '自由流转模式（Simple）' },
-                          { value: 'strict', label: '严格流转规则模式（Transitions）' }
-                        ]}
-                      />
-                    </Field>
-                    <Field label="新建任务默认初始状态">
-                      <Select
-                        className="w-full"
-                        value={defaultStatusId}
-                        onChange={setDefaultStatusId}
-                        options={activeStatuses.map((status) => ({ value: status.id, label: statusDisplayName(status) }))}
-                      />
-                    </Field>
-                  </>
-                )}
-                {kind === 'statuses' && (
-                  <Field label="状态分类">
+  return (
+    <fieldset disabled={busy} className="flex max-h-[var(--my-modal-max-height)] min-w-0 flex-col gap-4 px-6 py-5">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-my-md font-medium text-my-primary">{existing ? '编辑' : '新建'}{TITLES[kind]}</h2>
+        {kind === 'types' && (
+          <Tabs
+            tabs={[
+              { id: 'basic', label: '基本信息' },
+              { id: 'statuses', label: '状态定义', count: activeStatuses.length },
+              { id: 'transitions', label: '流转规则' }
+            ]}
+            active={tab}
+            onChange={setTab}
+            ariaLabel="任务工作流编辑分页"
+          />
+        )}
+      </header>
+
+      <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto pr-1" style={{ scrollbarGutter: 'stable' }}>
+        <div key={kind === 'types' ? tab : 'single'} className="my-subview-stage flex flex-col gap-3">
+          {(kind !== 'types' || tab === 'basic') && (
+            <>
+              <Field label="名称"><input className={inputClass} autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
+              {kind === 'types' && (
+                <>
+                  <Field label="流转模式" hint="自由模式允许在可用状态间任意切换；严格模式按「流转规则」矩阵控制下一步可流转状态。">
                     <Select
                       className="w-full"
-                      value={category}
-                      onChange={(val) => { const found = CATEGORIES.find(([v]) => v === val); if (found) setCategory(found[0]) }}
-                      options={CATEGORIES.map(([v, label]) => ({ value: v, label }))}
-                    />
-                  </Field>
-                )}
-                {kind === 'labels' && (
-                  <Field label="范围">
-                    <Select
-                      className="w-full"
-                      value={organization ? 'organization' : 'space'}
-                      onChange={(val) => setOrganization(val === 'organization')}
+                      value={workflowMode}
+                      onChange={(val) => setWorkflowMode(val as WorkflowMode)}
                       options={[
-                        { value: 'space', label: '当前空间' },
-                        { value: 'organization', label: '组织内所有空间' }
+                        { value: 'simple', label: '自由流转模式（Simple）' },
+                        { value: 'strict', label: '严格流转规则模式（Transitions）' }
                       ]}
                     />
                   </Field>
-                )}
-              </>
-            )}
+                  <Field label="新建任务默认初始状态">
+                    <Select
+                      className="w-full"
+                      value={defaultStatusId}
+                      onChange={setDefaultStatusId}
+                      options={activeStatuses.map((status) => ({ value: status.id, label: statusDisplayName(status) }))}
+                    />
+                  </Field>
+                </>
+              )}
+              {kind === 'statuses' && (
+                <Field label="状态分类">
+                  <Select
+                    className="w-full"
+                    value={category}
+                    onChange={(val) => { const found = CATEGORIES.find(([v]) => v === val); if (found) setCategory(found[0]) }}
+                    options={CATEGORIES.map(([v, label]) => ({ value: v, label }))}
+                  />
+                </Field>
+              )}
+              {kind === 'labels' && (
+                <Field label="范围">
+                  <Select
+                    className="w-full"
+                    value={organization ? 'organization' : 'space'}
+                    onChange={(val) => setOrganization(val === 'organization')}
+                    options={[
+                      { value: 'space', label: '当前空间' },
+                      { value: 'organization', label: '组织内所有空间' }
+                    ]}
+                  />
+                </Field>
+              )}
+            </>
+          )}
 
-            {kind === 'types' && tab === 'statuses' && (
-              <fieldset className="flex flex-col gap-2">
-                <legend className="my-item-title mb-1">可用状态集合</legend>
-                <label className="flex items-center gap-2 text-my-sm text-my-secondary">
-                  <input type="checkbox" checked={allStatuses} onChange={(event) => setAllStatuses(event.target.checked)} />
-                  使用当前空间的全部状态
-                </label>
-                {!allStatuses && (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    {statuses.map((status) => (
-                      <label key={status.id} className="flex items-center gap-2 rounded-my-base border border-my-line bg-my-panel px-2.5 py-2">
-                        <input
-                          type="checkbox"
-                          checked={statusIds.includes(status.id)}
-                          onChange={(event) => setStatusIds((previous) => event.target.checked ? [...previous, status.id] : previous.filter((id) => id !== status.id))}
-                        />
-                        <StatusBadge status={status} />
-                      </label>
-                    ))}
-                  </div>
-                )}
-                {invalidStatuses && <p role="alert" className="mt-2 text-my-xs text-my-danger-text">至少选择一个状态。</p>}
-              </fieldset>
-            )}
-
-            {kind === 'types' && tab === 'transitions' && (
-              <div className="flex flex-col gap-3">
-                <p className="my-item-description">
-                  {workflowMode === 'strict'
-                    ? '勾选每个源状态允许直接流转到的目标状态；看板拖拽与任务详情流转栏将严格按此规则生效。'
-                    : '当前为自由流转模式，下方规则已预配置；如需强制生效，请在「基本信息」切换为严格流转规则模式。'}
-                </p>
-                <div className="flex flex-col gap-2.5">
-                  {activeStatuses.map((source) => {
-                    const allowed = transitions[source.id] ?? activeStatuses.filter((t) => t.id !== source.id).map((t) => t.id)
-                    return (
-                      <div key={source.id} className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
-                        <div className="mb-2 flex items-center gap-2">
-                          <StatusBadge status={source} />
-                          <span className="text-my-xs text-my-tertiary">可流转至：</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {activeStatuses.filter((target) => target.id !== source.id).map((target) => {
-                            const checked = allowed.includes(target.id)
-                            return (
-                              <label key={target.id} className={`flex cursor-pointer items-center gap-1.5 rounded-my-base border px-2 py-1 text-my-xs ${checked ? 'border-my-line-strong bg-my-panel text-my-primary' : 'border-my-line text-my-tertiary'}`}>
-                                <input type="checkbox" checked={checked} onChange={() => toggleTransition(source.id, target.id)} />
-                                {statusDisplayName(target)}
-                              </label>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
+          {kind === 'types' && tab === 'statuses' && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="my-item-title mb-1">可用状态集合</legend>
+              <label className="flex cursor-pointer items-center gap-2 text-my-sm text-my-secondary">
+                <Checkbox checked={allStatuses} onChange={setAllStatuses} ariaLabel="使用当前空间的全部状态" />
+                <span>使用当前空间的全部状态</span>
+              </label>
+              {!allStatuses && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {statuses.map((status) => (
+                    <label key={status.id} className="flex cursor-pointer items-center gap-2 rounded-my-base border border-my-line bg-my-panel px-2.5 py-2 transition-colors duration-100 hover:bg-my-layer-1-hover">
+                      <Checkbox
+                        checked={statusIds.includes(status.id)}
+                        ariaLabel={`启用状态 ${statusDisplayName(status)}`}
+                        onChange={(checked) => setStatusIds((previous) => checked ? [...previous, status.id] : previous.filter((id) => id !== status.id))}
+                      />
+                      <StatusBadge status={status} />
+                    </label>
+                  ))}
                 </div>
+              )}
+              {invalidStatuses && <p role="alert" className="mt-2 text-my-xs text-my-danger-text">至少选择一个状态。</p>}
+            </fieldset>
+          )}
+
+          {kind === 'types' && tab === 'transitions' && (
+            <div className="flex flex-col gap-3">
+              <p className="my-item-description">
+                {workflowMode === 'strict'
+                  ? '勾选每个源状态允许直接流转到的目标状态；看板拖拽与任务详情流转栏将严格按此规则生效。'
+                  : '当前为自由流转模式，下方规则已预配置；如需强制生效，请在「基本信息」切换为严格流转规则模式。'}
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {activeStatuses.map((source) => {
+                  const allowed = transitions[source.id] ?? activeStatuses.filter((t) => t.id !== source.id).map((t) => t.id)
+                  return (
+                    <div key={source.id} className="rounded-my-base border border-my-line bg-my-layer-1 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <StatusBadge status={source} />
+                        <span className="text-my-xs text-my-tertiary">可流转至：</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeStatuses.filter((target) => target.id !== source.id).map((target) => {
+                          const checked = allowed.includes(target.id)
+                          return (
+                            <label key={target.id} className={`flex cursor-pointer items-center gap-1.5 rounded-my-base border px-2 py-1 text-my-xs transition-colors duration-100 ${checked ? 'border-my-line-strong bg-my-panel text-my-primary' : 'border-my-line text-my-tertiary hover:bg-my-panel/60'}`}>
+                              <Checkbox
+                                checked={checked}
+                                ariaLabel={`允许 ${statusDisplayName(source)} 流转至 ${statusDisplayName(target)}`}
+                                onChange={() => toggleTransition(source.id, target.id)}
+                              />
+                              <span>{statusDisplayName(target)}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            )}
+            </div>
+          )}
 
-            {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
-          </div>
+          {error && <p role="alert" className="text-my-xs text-my-danger-text">{error}</p>}
         </div>
+      </div>
 
-        <div className="flex justify-end gap-2 border-t border-my-line pt-3">
-          <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button>
-          <Button variant="primary" size="sm" aria-busy={busy} disabled={busy || !name.trim() || invalidStatuses} onClick={() => void save()}>
-            {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-            {existing ? '保存配置' : '创建'}
-          </Button>
-        </div>
-      </fieldset>
-    </Modal>
+      <div className="flex justify-end gap-2 border-t border-my-line pt-3">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>取消</Button>
+        {disabledReason ? <Tooltip label={disabledReason}>{saveButton}</Tooltip> : saveButton}
+      </div>
+    </fieldset>
   )
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { ChevronRight } from 'lucide-react'
 import type { GovernanceCommand, GovernancePending, GovernanceReceipt, GovernanceRecoveryScope, TeamGovernanceApi } from '@shared/team-governance'
 import type { TaskInputCommand, TaskInputReceipt } from '@shared/team-task-inputs'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 
 export function useGovernanceCommands(api: TeamGovernanceApi, scope: GovernanceRecoveryScope, confirmed: () => void): {
   busy: boolean; locked: boolean; pending: GovernancePending[]; error: string; notice: string;
@@ -53,17 +54,29 @@ export function useGovernanceCommands(api: TeamGovernanceApi, scope: GovernanceR
 }
 
 export function GovernanceRecovery({ commands }: { commands: ReturnType<typeof useGovernanceCommands> }): JSX.Element {
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({})
   return <div className="space-y-2">
     {commands.error && <p role="alert" className="text-my-xs text-my-danger-text">{commands.error}</p>}
     {commands.notice && <p role="status" className="text-my-xs text-my-secondary">{commands.notice}</p>}
-    {commands.pending.length > 0 && <div className="space-y-2 rounded-my-md border border-my-line bg-my-layer-1 p-3" aria-label="原操作核对">
+    {commands.pending.length > 0 && <div className="space-y-2 rounded-my-base border border-my-line bg-my-layer-1 p-3" aria-label="原操作核对">
       <h4 className="text-my-xs font-medium text-my-primary">待核对操作</h4>
-      {commands.pending.map(row => <div key={row.commandId} className="flex flex-wrap items-center gap-2 text-my-xs text-my-secondary">
-        <span className="min-w-0 flex-1">{row.state === 'rejected' ? '操作被拒绝' : '结果待核对'}{row.error ? ` · ${row.error}` : ''}</span>
-        <Button size="sm" disabled={commands.busy} onClick={() => void commands.recover(row.commandId, false)}>核对原回执</Button>
-        {row.canRetry && <Button size="sm" disabled={commands.busy} onClick={() => void commands.recover(row.commandId, true)}>重试原操作</Button>}
-        <details className="w-full"><summary className="cursor-pointer text-my-tertiary">操作编号</summary><code className="break-all">{row.commandId}</code></details>
-      </div>)}
+      {commands.pending.map(row => {
+        const isOpen = Boolean(openRows[row.commandId])
+        return <div key={row.commandId} className="flex flex-wrap items-center gap-2 text-my-xs text-my-secondary">
+          <span className="min-w-0 flex-1">{row.state === 'rejected' ? '操作被拒绝' : '结果待核对'}{row.error ? ` · ${row.error}` : ''}</span>
+          <Button size="sm" disabled={commands.busy} onClick={() => void commands.recover(row.commandId, false)}>核对原回执</Button>
+          {row.canRetry && <Button size="sm" disabled={commands.busy} onClick={() => void commands.recover(row.commandId, true)}>重试原操作</Button>}
+          <div className="w-full">
+            <button type="button" aria-expanded={isOpen} onClick={() => setOpenRows(prev => ({ ...prev, [row.commandId]: !prev[row.commandId] }))} className="flex cursor-pointer items-center gap-1 text-left text-my-tertiary hover:text-my-primary">
+              <ChevronRight size={12} className="my-disclosure-chevron shrink-0" data-open={isOpen || undefined} />
+              <span>操作编号</span>
+            </button>
+            <DisclosureGrid open={isOpen} innerClassName="pt-1.5">
+              <code className="break-all text-my-tertiary">{row.commandId}</code>
+            </DisclosureGrid>
+          </div>
+        </div>
+      })}
     </div>}
   </div>
 }

@@ -40,7 +40,7 @@ export function ConnectionPanel({ trigger = 'compact', open: controlledOpen, onO
       type="button"
       disabled={!hasIpc}
       onClick={() => setOpen(true)}
-      className="flex min-h-8 w-full items-center gap-2 rounded-my-md py-1 text-left text-my-xs text-my-secondary hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex min-h-8 w-full items-center gap-2 rounded-my-base py-1 text-left text-my-xs text-my-secondary transition-colors duration-100 hover:text-my-primary disabled:cursor-not-allowed disabled:opacity-50"
       aria-label={workspaceContext.state === 'local' ? '登录团队账号或创建组织' : trigger === 'connect' ? '管理账号与组织' : '切换组织或本机模式'}
     >
       <Globe size={15} />

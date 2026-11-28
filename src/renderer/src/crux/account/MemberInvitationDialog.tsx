@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { Check, Copy, Link2, LoaderCircle, X } from 'lucide-react'
 import type { TeamRole } from '@shared/team-platform'
-import { Button, Modal } from '../../my/ui'
+import { Button, Checkbox, Modal, Tooltip } from '../../my/ui'
 import { useCopyFeedback } from '../../utils/use-copy-feedback'
 import { Field, inputClass, Select } from '../ui'
 import { DesktopAccountReplyError, desktopAccountAdapter, type DesktopAccountAdapter } from './desktop-account-adapter'
@@ -150,13 +150,17 @@ export function MemberInvitationDialog({ open, currentConnectionId, currentSpace
             <div className="member-invite-method"><span><Link2 size={16} /></span><div><strong>邀请链接</strong><p>为指定账号创建专属链接，发送给对方后加入。</p></div></div>
             <Field label="成员账号" hint="输入对方在此团队服务使用的本地用户名。"><input ref={usernameRef} className={inputClass} autoFocus value={username} disabled={submitting || outcomeUnknown} onChange={(event) => { setUsername(event.target.value); setError(null) }} placeholder="输入用户名" autoComplete="off" spellCheck={false} /></Field>
             <div className="member-invite-section"><Field label="组织角色"><Select value={organizationRole} disabled={submitting || outcomeUnknown} onChange={(value) => setOrganizationRole(value as Exclude<OrganizationMembershipRole, 'owner'>)} options={(['member', 'admin'] as const).map((role) => ({ value: role, label: organizationRoleLabels[role] }))} /></Field></div>
-            <fieldset><legend>工作区职责</legend><p className="member-invite-hint">可多选，至少选择一项。</p><div className="member-invite-roles">{(['product', 'pm', 'developer', 'tester', 'admin'] as const).map((role) => <label key={role}><input type="checkbox" disabled={submitting || outcomeUnknown} checked={workspaceRoles.includes(role)} onChange={() => toggleRole(role)} />{workspaceRoleLabels[role]}</label>)}</div></fieldset>
+            <fieldset><legend>工作区职责</legend><p className="member-invite-hint">可多选，至少选择一项。</p><div className="member-invite-roles">{(['product', 'pm', 'developer', 'tester', 'admin'] as const).map((role) => <label key={role} className="flex cursor-pointer items-center gap-2"><Checkbox disabled={submitting || outcomeUnknown} checked={workspaceRoles.includes(role)} ariaLabel={workspaceRoleLabels[role]} onChange={() => toggleRole(role)} /><span>{workspaceRoleLabels[role]}</span></label>)}</div></fieldset>
             {currentSpace && <Field label="加入空间（可选）" hint="接受邀请后成为该空间成员；邀请人需要有管理该空间的权限。"><Select value={includeSpace ? 'current' : 'none'} disabled={submitting || outcomeUnknown} onChange={(value) => setIncludeSpace(value === 'current')} options={[{ value: 'current', label: currentSpace.name }, { value: 'none', label: '暂不加入空间' }]} /></Field>}
             {!adapter.capabilities.memberInvitation && <p role="status" className="member-invite-muted">当前版本无法创建邀请，请重新打开应用后重试。</p>}
           </>}
         </>}
       </div>
-      <footer className="member-invite-footer"><Button variant="ghost" disabled={submitting} onClick={onClose}>{result ? '完成' : '取消'}</Button>{!result && <Button variant="primary" disabled={loading || submitting || !owner || !username.trim() || workspaceRoles.length === 0 || !adapter.capabilities.memberInvitation} onClick={() => void submit()}>{submitting ? '正在创建…' : outcomeUnknown ? '核对并重试' : '创建邀请链接'}</Button>}</footer>
+      <footer className="member-invite-footer"><Button variant="ghost" disabled={submitting} onClick={onClose}>{result ? '完成' : '取消'}</Button>{!result && (() => {
+        const disabledReason = !owner ? '工作区身份不可用' : !username.trim() ? '请先输入成员用户名' : workspaceRoles.length === 0 ? '请至少选择一项工作区职责' : !adapter.capabilities.memberInvitation ? '当前版本不支持创建邀请' : null
+        const btn = <Button variant="primary" disabled={loading || submitting || Boolean(disabledReason)} onClick={() => void submit()}>{submitting ? '正在创建…' : outcomeUnknown ? '核对并重试' : '创建邀请链接'}</Button>
+        return disabledReason ? <Tooltip label={disabledReason}>{btn}</Tooltip> : btn
+      })()}</footer>
     </form>
   </Modal>
 }

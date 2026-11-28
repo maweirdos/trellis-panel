@@ -100,7 +100,7 @@ export function WorkspaceNavigation({
 
   return <>
     <div className="flex h-my-header shrink-0 items-center justify-between px-3">
-      <h1 className="text-my-md font-semibold text-my-primary">首页</h1>
+      <h1 className="text-my-md font-medium text-my-primary">首页</h1>
       <Dropdown
         align="right"
         width={184}
@@ -564,7 +564,7 @@ export function WorkspaceNavigation({
 
     <GetStartedWidget variant="sidebar" />
 
-    <Modal open={createSpaceOpen} onClose={() => setCreateSpaceOpen(false)} width={760} ariaLabel="新建空间">
+    <Modal open={createSpaceOpen} onClose={() => setCreateSpaceOpen(false)} width={760} placement="center" ariaLabel="新建空间">
       <SpaceSetupWizard
         mode="create"
         organizationName={workspaceContext.projectName}

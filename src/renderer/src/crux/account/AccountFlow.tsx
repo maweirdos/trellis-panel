@@ -8,7 +8,7 @@ import { teamLocalUsernameSchema } from '@shared/team-auth'
 import { teamAuthFailure } from '@shared/team-auth-feedback'
 import { deriveSpaceKeyFromName } from '@shared/crux-space-presets'
 import { useApp } from '../../store'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { Field, inputClass } from '../ui'
 import { useCrux } from '../store'
 import { releaseCommandId, retainCommandId } from './command-identity'
@@ -91,6 +91,8 @@ export function AccountFlow({
   const [confirmLogoutId, setConfirmLogoutId] = useState<string | null>(null)
   const [setupSpaceId, setSetupSpaceId] = useState<string | null>(null)
   const [setupOrgName, setSetupOrgName] = useState<string | null>(null)
+  const [originOpen, setOriginOpen] = useState(false)
+  const [pendingOpen, setPendingOpen] = useState(false)
 
   const openRef = useRef(open)
   openRef.current = open
@@ -100,7 +102,6 @@ export function AccountFlow({
   const authOptionsTicket = useRef(0)
   const operationLock = useRef(false)
   const autoRoutedRef = useRef(false)
-  const originDetailsRef = useRef<HTMLDetailsElement>(null)
   const usernameRef = useRef<HTMLInputElement>(null)
   const displayNameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -200,7 +201,7 @@ export function AccountFlow({
     }).catch((cause) => {
       if (ticket === authOptionsTicket.current && openRef.current) {
         setAuthOptionsError(errorMessage(cause))
-        if (originDetailsRef.current) originDetailsRef.current.open = true
+        setOriginOpen(true)
       }
     })
     return () => { authOptionsTicket.current++ }
@@ -280,7 +281,7 @@ export function AccountFlow({
 
   const handleAuthSubmit = async (): Promise<void> => {
     if (!draft.origin.trim()) {
-      if (originDetailsRef.current) originDetailsRef.current.open = true
+      setOriginOpen(true)
       focusAndFail('请输入团队服务地址。')
       return
     }
@@ -529,14 +530,24 @@ export function AccountFlow({
               </div>
             )}
 
-            <details ref={originDetailsRef} className="account-service-settings">
-              <summary><Cloud size={14} /><span>团队服务地址</span><code>{draft.origin || '未设置'}</code></summary>
-              <div className="mt-2">
+            <div className="account-service-settings">
+              <button
+                type="button"
+                aria-expanded={originOpen}
+                onClick={() => setOriginOpen((v) => !v)}
+                className="grid min-h-[var(--my-space-40)] w-full cursor-pointer grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-[var(--my-space-6)] text-left text-my-xs text-my-tertiary hover:text-my-primary"
+              >
+                <ChevronRight size={12} className="my-disclosure-chevron shrink-0" data-open={originOpen || undefined} />
+                <Cloud size={14} className="shrink-0" />
+                <span>团队服务地址</span>
+                <code className="truncate text-right">{draft.origin || '未设置'}</code>
+              </button>
+              <DisclosureGrid open={originOpen} innerClassName="pt-1 pb-[var(--my-space-8)]">
                 <Field label="服务地址">
                   <input className={inputClass} value={draft.origin} disabled={working} onChange={(event) => updateDraft('origin', event.target.value)} inputMode="url" spellCheck={false} />
                 </Field>
-              </div>
-            </details>
+              </DisclosureGrid>
+            </div>
           </form>
 
           <div className="flex items-center justify-between text-my-xs text-my-tertiary">
@@ -686,17 +697,27 @@ export function AccountFlow({
           })}
 
           {snapshot.pendingCommands.length > 0 && (
-            <details className="account-retained-operations">
-              <summary>{snapshot.pendingCommands.length} 条历史待核对操作</summary>
-              <p>这些操作属于原组织连接，可核对重试或直接清理。</p>
-              {snapshot.pendingCommands.map((command) => (
-                <div key={command.commandId}>
-                  <span>{command.operation}<small>{command.outcomeUnknown ? '结果待确认' : '尚未同步'}</small></span>
-                  <Button size="sm" variant="ghost" disabled={working} onClick={() => void handlePendingCommand(command.commandId, false)}>重试核对</Button>
-                  {!command.outcomeUnknown && <Button size="sm" variant="ghost" disabled={working} onClick={() => void handlePendingCommand(command.commandId, true)}>放弃</Button>}
-                </div>
-              ))}
-            </details>
+            <div className="my-card px-3 py-2">
+              <button
+                type="button"
+                aria-expanded={pendingOpen}
+                onClick={() => setPendingOpen((v) => !v)}
+                className="flex min-h-[var(--my-space-36)] w-full cursor-pointer items-center gap-1.5 py-1 text-left text-my-xs text-my-secondary hover:text-my-primary"
+              >
+                <ChevronRight size={12} className="my-disclosure-chevron shrink-0" data-open={pendingOpen || undefined} />
+                <span>{snapshot.pendingCommands.length} 条历史待核对操作</span>
+              </button>
+              <DisclosureGrid open={pendingOpen} innerClassName="pb-1 pt-1">
+                <p className="mb-2 text-my-2xs text-my-tertiary">这些操作属于原组织连接，可核对重试或直接清理。</p>
+                {snapshot.pendingCommands.map((command) => (
+                  <div key={command.commandId} className="flex flex-wrap items-center gap-1.5 border-t border-my-line py-1.5">
+                    <span className="min-w-0 flex-1 text-my-xs text-my-secondary">{command.operation}<small className="block text-my-tertiary">{command.outcomeUnknown ? '结果待确认' : '尚未同步'}</small></span>
+                    <Button size="sm" variant="ghost" disabled={working} onClick={() => void handlePendingCommand(command.commandId, false)}>重试核对</Button>
+                    {!command.outcomeUnknown && <Button size="sm" variant="ghost" disabled={working} onClick={() => void handlePendingCommand(command.commandId, true)}>放弃</Button>}
+                  </div>
+                ))}
+              </DisclosureGrid>
+            </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
