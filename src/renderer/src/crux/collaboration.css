@@ -536,7 +536,7 @@
   gap: var(--my-space-4);
   color: var(--my-txt-tertiary);
   font-size: var(--my-text-2xs);
-  font-weight: var(--my-weight-medium);
+  font-weight: var(--my-weight-normal);
   letter-spacing: 0.03em;
 }
 .collab-nav-section-heading .collab-nav-collapse-btn:hover {
@@ -617,7 +617,7 @@
   padding-left: var(--my-space-2);
   color: var(--my-txt-secondary);
   font-size: var(--my-text-xs);
-  font-weight: var(--my-weight-medium);
+  font-weight: var(--my-weight-normal);
   line-height: 1.3;
 }
 .collab-form-hint {
@@ -638,7 +638,7 @@
 
 .collab-avatar-grid {
   display: grid;
-  grid-template-columns: repeat(5, var(--my-space-44));
+  grid-template-columns: repeat(4, var(--my-space-44));
   gap: var(--my-space-4);
 }
 .my-root .collab-avatar-grid .my-menu-item {

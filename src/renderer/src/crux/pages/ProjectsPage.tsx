@@ -1,109 +1,357 @@
-import { useState } from 'react'
-import { Bot, Plus, X } from 'lucide-react'
+import { useRef, useState, type JSX } from 'react'
+import { FolderKanban, MoreHorizontal, Pencil, Archive, CheckCircle2, Plus, RotateCcw } from 'lucide-react'
+import type { CruxProject } from '@shared/crux'
 import { api } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
-import { useCrux, statusOf, memberOf } from '../store'
-import { PageHeader, Field, inputClass, textareaClass, StatusBadge, MemberChip, Select } from '../ui'
-import { FlowIcon } from '../icons'
-import { Button, EmptyState, Modal, SearchInput, Tabs, TriProgressBar } from '../../my/ui'
+import { Button, Dropdown, DropdownItem, EmptyState, Modal, SearchInput, Tabs, Tooltip, TriProgressBar } from '../../my/ui'
+import { memberOf, statusOf, useCrux } from '../store'
+import { Field, inputClass, MemberChip, PageHeader, Select, StatusBadge, textareaClass } from '../ui'
 import { NewTaskModal } from './TaskDetailDrawer'
-import type { CruxProject, CruxSnapshot } from '@shared/crux'
 
-type ProjectFilterTab = 'all' | 'active' | 'done' | 'archived'
+type ProjectTab = CruxProject['status']
 
 export function ProjectsPage(): JSX.Element | null {
-  const snapshot = useCrux((s) => s.snapshot)
-  const spaceId = useCrux((s) => s.currentSpaceId)
-  const run = useCrux((s) => s.run)
-  const busy = useCrux((s) => s.busy)
-  const openTask = useCrux((s) => s.openTask)
-  const [statusTab, setStatusTab] = useState<ProjectFilterTab>('active')
+  const { snapshot, currentSpaceId, setTaskFilter, setModule, openTask, run, busy } = useCrux()
+  const [tab, setTab] = useState<ProjectTab>('active')
   const [keyword, setKeyword] = useState('')
-  const [editing, setEditing] = useState<CruxProject | 'new' | null>(null)
-  const [newTaskProject, setNewTaskProject] = useState<string | null>(null)
-  const [scopeProject, setScopeProject] = useState<string | null>(null)
-  const [taskId, setTaskId] = useState('')
-  if (!snapshot) return null
-  const allProjects = snapshot.projects.filter((p) => p.spaceId === spaceId)
-  const projects = allProjects.filter((p) =>
-    (statusTab === 'all' || p.status === statusTab)
-    && `${p.name} ${p.goal ?? ''}`.toLowerCase().includes(keyword.trim().toLowerCase())
-  )
-  const archive = async (project: CruxProject): Promise<void> => {
-    if (!await confirmDialog({ title: `归档专项「${project.name}」？`, message: '归档后保留专项与已有任务记录。', confirmText: '归档' })) return
-    await run('归档专项', () => api.crux.updateProject({ id: project.id, status: 'archived' }))
-  }
-  const addTask = async (): Promise<void> => {
-    if (!taskId || !scopeProject || busy) return
-    const result = await run('归入专项', () => api.crux.updateTask({ id: taskId, patch: { projectId: scopeProject } }))
-    if (result?.ok) setTaskId('')
-  }
-  return <div className="flex min-h-0 flex-1 flex-col gap-3">
-    <PageHeader title="专项" description="围绕共同目标汇总任务，按状态筛选跟踪负责人、AI 委派进度与整体完成率。" actions={<Button variant="primary" size="sm" disabled={!spaceId} onClick={() => setEditing('new')}><Plus size={14} />新建专项</Button>} />
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <Tabs
-        active={statusTab}
-        onChange={(id) => setStatusTab(id as ProjectFilterTab)}
-        tabs={[
-          { id: 'active', label: '进行中', count: allProjects.filter((p) => p.status === 'active').length },
-          { id: 'done', label: '已完成', count: allProjects.filter((p) => p.status === 'done').length },
-          { id: 'archived', label: '已归档', count: allProjects.filter((p) => p.status === 'archived').length },
-          { id: 'all', label: '全部', count: allProjects.length }
-        ]}
-      />
-      <SearchInput value={keyword} onChange={setKeyword} placeholder="搜索专项名称或目标" />
-    </div>
-    {projects.length === 0 ? <EmptyState title="暂无匹配专项" description="创建专项或切换筛选标签，将相关任务归入同一目标" /> : <div className="my-scrollbar grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-3 overflow-y-auto xl:grid-cols-2" style={{ scrollbarGutter: 'stable' }}>{projects.map((project) => {
-      const tasks = snapshot.tasks.filter((t) => t.projectId === project.id)
-      const done = tasks.filter((t) => statusOf(snapshot, t.statusId)?.category === 'done').length
-      const started = tasks.filter((t) => ['in_progress', 'in_review', 'blocked'].includes(statusOf(snapshot, t.statusId)?.category ?? '')).length
-      const cancelled = tasks.filter((t) => statusOf(snapshot, t.statusId)?.category === 'cancelled').length
-      const delegated = tasks.filter((t) => Boolean(t.executor)).length
-      const percent = tasks.length ? Math.round(done / tasks.length * 100) : 0
-      return <section key={project.id} className="flex flex-col gap-3 rounded-my-md border border-my-line bg-my-layer-1 p-4" aria-label={`专项 ${project.name}`}>
-        <header className="flex items-start gap-2"><FlowIcon name="projects" /><h2 className="min-w-0 flex-1 text-my-md font-medium text-my-primary">{project.name}</h2><span className="rounded-my-sm bg-my-layer-1-active px-2 py-1 text-my-xs text-my-secondary">{project.status === 'active' ? '进行中' : project.status === 'done' ? '已完成' : '已归档'}</span></header>
-        <p className="whitespace-pre-wrap text-my-sm text-my-secondary">{project.goal || '尚未填写目标'}</p>
-        <div className="flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">
-          <span className="tabular-nums">已完成 {done}/{tasks.length} · 进行中 {started}{cancelled > 0 ? ` · 已取消 ${cancelled}` : ''}</span>
-          {delegated > 0 && <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs text-my-secondary"><Bot size={11} />AI 委派 {delegated}</span>}
-          <span className="ml-auto tabular-nums">{percent}%</span>
-        </div>
-        <div role="progressbar" aria-label={`${project.name} 完成率`} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
-          <TriProgressBar done={done} started={started} total={tasks.length} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2"><span className="text-my-xs text-my-tertiary">负责人</span>{project.ownerIds.map((id) => <MemberChip key={id} member={memberOf(snapshot, id)} />)}{project.ownerIds.length === 0 && <span className="text-my-xs text-my-tertiary">尚未指定</span>}</div>
-        <ul className="my-scrollbar max-h-64 space-y-1 overflow-y-auto">{tasks.map((task) => <li key={task.id} className="flex items-center gap-1"><button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-my-md px-2 py-2 text-left hover:bg-my-layer-1-active" onClick={() => openTask(task.id)}><span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span><span className="min-w-0 flex-1 truncate text-my-xs text-my-secondary">{task.title}</span><StatusBadge status={statusOf(snapshot, task.statusId)} /></button>{project.status === 'active' && <Button variant="ghost" size="sm" disabled={busy} aria-label={`移出专项 ${task.id}`} onClick={() => void run('移出专项', () => api.crux.updateTask({ id: task.id, patch: { projectId: null } }))}><X size={14} /></Button>}</li>)}</ul>
-        {tasks.length === 0 && <p className="text-my-xs text-my-tertiary">专项中还没有任务。</p>}
-        <div className="flex flex-wrap justify-end gap-2">{project.status !== 'archived' && <Button size="sm" onClick={() => setEditing(project)}>编辑目标</Button>}{project.status === 'active' ? <><Button size="sm" onClick={() => { setScopeProject(project.id); setTaskId('') }}>添加已有任务</Button><Button size="sm" onClick={() => setNewTaskProject(project.id)}>新建任务</Button><Button size="sm" disabled={busy} onClick={() => void run('完成专项', () => api.crux.updateProject({ id: project.id, status: 'done' }))}>标记完成</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void archive(project)}>归档</Button></> : <Button size="sm" disabled={busy} onClick={() => void run('重新打开专项', () => api.crux.updateProject({ id: project.id, status: 'active' }))}>重新打开</Button>}</div>
-      </section>
-    })}</div>}
-    {editing && spaceId && <ProjectEditor key={editing === 'new' ? 'new' : editing.id} snapshot={snapshot} spaceId={spaceId} project={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
-    <Modal open={Boolean(scopeProject)} onClose={() => setScopeProject(null)} width={460} ariaLabel="添加已有任务"><div className="flex flex-col gap-3 p-4"><h2 className="text-my-md font-medium text-my-primary">添加已有任务</h2><Field label="任务">
-      <Select
-        className="w-full"
-        value={taskId}
-        onChange={setTaskId}
-        options={[
-          { value: '', label: '选择任务…' },
-          ...snapshot.tasks.filter((t) => t.spaceId === spaceId && t.projectId !== scopeProject).map((t) => ({ value: t.id, label: `${t.id} · ${t.title}${t.projectId ? '（将从原专项移入）' : ''}` }))
-        ]}
-      />
-    </Field><div className="flex justify-end gap-2"><Button size="sm" onClick={() => setScopeProject(null)}>关闭</Button><Button variant="primary" size="sm" disabled={!taskId || busy} onClick={() => void addTask()}>添加到专项</Button></div></div></Modal>
-    <NewTaskModal open={Boolean(newTaskProject)} onClose={() => setNewTaskProject(null)} projectId={newTaskProject ?? undefined} />
-  </div>
-}
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<CruxProject | null>(null)
+  const [name, setName] = useState('')
+  const [goal, setGoal] = useState('')
+  const [ownerId, setOwnerId] = useState('')
+  const [newTaskProjectId, setNewTaskProjectId] = useState<string | null>(null)
 
-function ProjectEditor({ snapshot, spaceId, project, onClose }: { snapshot: CruxSnapshot; spaceId: string; project?: CruxProject; onClose: () => void }): JSX.Element {
-  const run = useCrux((s) => s.run)
-  const busy = useCrux((s) => s.busy)
-  const [name, setName] = useState(project?.name ?? '')
-  const [goal, setGoal] = useState(project?.goal ?? '')
-  const [ownerIds, setOwnerIds] = useState<string[]>(project?.ownerIds ?? [])
-  const members = snapshot.members.filter((m) => snapshot.spaces.find((s) => s.id === spaceId)?.memberIds.includes(m.id))
-  const save = async (): Promise<void> => {
-    if (busy || !name.trim()) return
-    const result = await run(project ? '更新专项' : '创建专项', () => project ? api.crux.updateProject({ id: project.id, name: name.trim(), goal: goal.trim(), ownerIds }) : api.crux.createProject({ spaceId, name: name.trim(), goal: goal.trim(), ownerIds }))
-    if (result?.ok) onClose()
+  const editorSnapshotRef = useRef({ title: '新建专项', isEdit: false })
+  if (editorOpen) {
+    editorSnapshotRef.current = {
+      title: editing ? '编辑专项' : '新建专项',
+      isEdit: Boolean(editing)
+    }
   }
-  return <Modal open onClose={onClose} width={480} ariaLabel={project ? '编辑专项' : '新建专项'}><fieldset disabled={busy} className="flex min-w-0 flex-col gap-3 p-4"><h2 className="text-my-md font-semibold text-my-primary">{project ? '编辑专项' : '新建专项'}</h2><Field label="专项名称"><input autoFocus className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="如：协作体验升级" /></Field><Field label="专项目标"><textarea className={textareaClass} style={{ minHeight: 'var(--my-space-80)' }} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="要达成什么，如何判断完成" /></Field>{<section><h3 className="mb-2 text-my-xs text-my-tertiary">负责人</h3><div className="flex flex-wrap gap-2">{members.map((m) => <label key={m.id} className="flex items-center gap-2 text-my-sm text-my-secondary"><input type="checkbox" checked={ownerIds.includes(m.id)} onChange={(e) => setOwnerIds((prev) => e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id))} />{m.name}</label>)}</div></section>}<div className="flex justify-end gap-2"><Button size="sm" onClick={onClose}>取消</Button><Button size="sm" variant="primary" disabled={!name.trim()} onClick={() => void save()}>{project ? '保存专项' : '创建专项'}</Button></div></fieldset></Modal>
+
+  if (!snapshot) return null
+
+  const space = snapshot.spaces.find((item) => item.id === currentSpaceId)
+  const readOnly = Boolean(space?.archived)
+  const members = space
+    ? snapshot.members.filter((member) => space.memberIds.includes(member.id))
+    : snapshot.members
+  const allProjects = snapshot.projects.filter((project) => !currentSpaceId || project.spaceId === currentSpaceId)
+
+  const counts = {
+    active: allProjects.filter((project) => project.status === 'active').length,
+    done: allProjects.filter((project) => project.status === 'done').length,
+    archived: allProjects.filter((project) => project.status === 'archived').length
+  }
+
+  const projects = allProjects.filter((project) => {
+    if (project.status !== tab) return false
+    if (!keyword.trim()) return true
+    const query = keyword.trim().toLowerCase()
+    return project.name.toLowerCase().includes(query) || (project.goal ?? '').toLowerCase().includes(query)
+  })
+
+  const openEditor = (project?: CruxProject): void => {
+    setEditing(project ?? null)
+    setName(project?.name ?? '')
+    setGoal(project?.goal ?? '')
+    setOwnerId(project?.ownerIds[0] ?? '')
+    setEditorOpen(true)
+  }
+
+  const save = async (): Promise<void> => {
+    if (!currentSpaceId || !name.trim()) return
+    const ownerIds = ownerId ? [ownerId] : []
+    const result = await run(editing ? '更新专项' : '创建专项', () =>
+      editing
+        ? api.crux.updateProject({
+            id: editing.id,
+            name: name.trim(),
+            goal: goal.trim(),
+            ownerIds
+          })
+        : api.crux.createProject({
+            spaceId: currentSpaceId,
+            name: name.trim(),
+            goal: goal.trim() || undefined,
+            ownerIds
+          })
+    )
+    if (result?.ok) setEditorOpen(false)
+  }
+
+  const updateStatus = async (project: CruxProject, nextStatus: CruxProject['status']): Promise<void> => {
+    if (nextStatus === 'archived') {
+      const ok = await confirmDialog({
+        title: `归档专项「${project.name}」？`,
+        message: '归档后保留专项与已有任务记录，可在已归档标签中查看。',
+        confirmText: '归档'
+      })
+      if (!ok) return
+    }
+    await run('更新专项状态', () => api.crux.updateProject({ id: project.id, status: nextStatus }))
+  }
+
+  const openProjectTasks = (project: CruxProject): void => {
+    setTaskFilter({ projectId: project.id })
+    setModule('tasks')
+  }
+
+  const saveDisabledReason = readOnly
+    ? '已归档空间仅支持只读查看'
+    : !name.trim()
+      ? '请先输入专项名称'
+      : null
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <PageHeader
+        title="专项"
+        description="按目标或产品线聚合长期任务，持续追踪完成进度与负责人。"
+        actions={
+          <Button size="sm" variant="primary" disabled={!currentSpaceId || busy || readOnly} onClick={() => openEditor()}>
+            <Plus size={14} />
+            <span>新建专项</span>
+          </Button>
+        }
+      />
+
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <Tabs
+          tabs={[
+            { id: 'active' as ProjectTab, label: '进行中', count: counts.active },
+            { id: 'done' as ProjectTab, label: '已完成', count: counts.done },
+            { id: 'archived' as ProjectTab, label: '已归档', count: counts.archived }
+          ]}
+          active={tab}
+          onChange={setTab}
+          ariaLabel="专项状态筛选"
+        />
+        <SearchInput
+          size="sm"
+          value={keyword}
+          onChange={setKeyword}
+          placeholder="搜索专项名称或目标"
+          ariaLabel="搜索专项"
+          className="w-60"
+        />
+      </div>
+
+      {projects.length === 0 ? (
+        <EmptyState
+          icon={<FolderKanban size={28} />}
+          title={keyword.trim() ? '没有匹配的专项' : tab === 'active' ? '当前没有进行中的专项' : '当前分类下暂无专项'}
+          description={keyword.trim() ? '尝试调整搜索关键词或切换上方状态标签。' : '为跨迭代的长期目标创建一个专项，集中跟踪相关任务进展。'}
+          action={
+            !keyword.trim() && tab === 'active' && currentSpaceId && !readOnly ? (
+              <Button size="sm" variant="primary" onClick={() => openEditor()}>
+                <Plus size={14} />
+                <span>新建专项</span>
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+          <div key={tab} className="my-subview-stage grid gap-3 md:grid-cols-2">
+            {projects.map((project) => {
+            const projectTasks = snapshot.tasks.filter((task) => task.projectId === project.id)
+            const doneCount = projectTasks.filter((task) => statusOf(snapshot, task.statusId)?.category === 'done').length
+            const activeCount = projectTasks.filter((task) => {
+              const category = statusOf(snapshot, task.statusId)?.category
+              return category === 'in_progress' || category === 'in_review'
+            }).length
+            const owner = project.ownerIds[0] ? memberOf(snapshot, project.ownerIds[0]) : undefined
+            const previewTasks = projectTasks.slice(0, 3)
+
+            return (
+              <article key={project.id} className="my-card flex flex-col gap-3 p-4 transition-colors hover:border-my-line-strong">
+                <header className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <h2 className="my-item-title truncate text-my-sm font-medium text-my-primary">{project.name}</h2>
+                    {project.goal && <p className="line-clamp-2 text-my-xs text-my-secondary">{project.goal}</p>}
+                  </div>
+                  <Dropdown
+                    align="right"
+                    width={156}
+                    trigger={({ toggle, open }) => (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`专项 ${project.name} 更多操作`}
+                        aria-expanded={open}
+                        onClick={toggle}
+                      >
+                        <MoreHorizontal size={14} />
+                      </Button>
+                    )}
+                  >
+                    {(close) => (
+                      <>
+                        <DropdownItem
+                          disabled={busy || readOnly}
+                          onClick={() => {
+                            close()
+                            openEditor(project)
+                          }}
+                        >
+                          <Pencil size={13} />
+                          <span>编辑专项</span>
+                        </DropdownItem>
+                        <DropdownItem
+                          disabled={busy || readOnly}
+                          onClick={() => {
+                            close()
+                            setNewTaskProjectId(project.id)
+                          }}
+                        >
+                          <Plus size={13} />
+                          <span>新建关联任务</span>
+                        </DropdownItem>
+                        {project.status === 'active' ? (
+                          <DropdownItem
+                            disabled={busy || readOnly}
+                            onClick={() => {
+                              close()
+                              void updateStatus(project, 'done')
+                            }}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>标记完成</span>
+                          </DropdownItem>
+                        ) : (
+                          <DropdownItem
+                            disabled={busy || readOnly}
+                            onClick={() => {
+                              close()
+                              void updateStatus(project, 'active')
+                            }}
+                          >
+                            <RotateCcw size={13} />
+                            <span>恢复进行中</span>
+                          </DropdownItem>
+                        )}
+                        {project.status !== 'archived' && (
+                          <DropdownItem
+                            disabled={busy || readOnly}
+                            onClick={() => {
+                              close()
+                              void updateStatus(project, 'archived')
+                            }}
+                          >
+                            <Archive size={13} />
+                            <span>归档专项</span>
+                          </DropdownItem>
+                        )}
+                      </>
+                    )}
+                  </Dropdown>
+                </header>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-my-xs text-my-secondary">
+                    <span className="tabular-nums">已完成 {doneCount} / {projectTasks.length}</span>
+                    {owner && <MemberChip member={owner} />}
+                  </div>
+                  <TriProgressBar
+                    total={projectTasks.length}
+                    done={doneCount}
+                    started={activeCount}
+                  />
+                </div>
+
+                {previewTasks.length > 0 && (
+                  <ul className="space-y-1 border-t border-my-line pt-2.5">
+                    {previewTasks.map((task) => (
+                      <li key={task.id}>
+                        <button
+                          type="button"
+                          onClick={() => openTask(task.id)}
+                          className="flex w-full items-center gap-2 rounded-my-sm px-1.5 py-1 text-left transition-colors hover:bg-my-layer-1"
+                        >
+                          <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{task.id}</span>
+                          <span className="min-w-0 flex-1 truncate text-my-xs text-my-primary">{task.title}</span>
+                          <StatusBadge status={statusOf(snapshot, task.statusId)} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <footer className="mt-auto flex items-center justify-end border-t border-my-line pt-2.5">
+                  <Button size="sm" variant="ghost" onClick={() => openProjectTasks(project)}>
+                    在任务列表查看
+                  </Button>
+                </footer>
+              </article>
+            )
+          })}
+          </div>
+        </div>
+      )}
+
+      <Modal open={editorOpen} onClose={() => setEditorOpen(false)} width={480} placement="center" ariaLabel={editorSnapshotRef.current.title}>
+        <div className="flex max-h-[82vh] flex-col">
+          <header className="shrink-0 border-b border-my-line px-6 py-4">
+            <h2 className="text-my-base font-medium text-my-primary">{editorSnapshotRef.current.title}</h2>
+          </header>
+          <div className="my-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <Field label="专项名称">
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="例如：多 Agent 协作工作流重构"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="核心目标（可选）">
+              <textarea
+                rows={3}
+                value={goal}
+                onChange={(event) => setGoal(event.target.value)}
+                placeholder="简要描述本专项的关键产出与交付边界"
+                className={textareaClass}
+              />
+            </Field>
+            <Field label="专项负责人">
+              <Select
+                ariaLabel="专项负责人"
+                value={ownerId}
+                onChange={setOwnerId}
+                options={[
+                  { value: '', label: '暂不指定负责人' },
+                  ...members.map((member) => ({ value: member.id, label: member.name }))
+                ]}
+              />
+            </Field>
+          </div>
+          <footer className="flex shrink-0 justify-end gap-2 border-t border-my-line px-6 py-3.5">
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditorOpen(false)}>
+              取消
+            </Button>
+            {saveDisabledReason ? (
+              <Tooltip label={saveDisabledReason} wrap>
+                <span className="inline-flex">
+                  <Button size="sm" variant="primary" disabled>
+                    {editorSnapshotRef.current.isEdit ? '保存更改' : '创建专项'}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>
+                {editorSnapshotRef.current.isEdit ? '保存更改' : '创建专项'}
+              </Button>
+            )}
+          </footer>
+        </div>
+      </Modal>
+
+      <NewTaskModal
+        open={Boolean(newTaskProjectId)}
+        onClose={() => setNewTaskProjectId(null)}
+        spaceId={currentSpaceId ?? undefined}
+        projectId={newTaskProjectId ?? undefined}
+      />
+    </div>
+  )
 }

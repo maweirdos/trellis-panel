@@ -1,278 +1,304 @@
-import { useMemo, type JSX } from 'react'
-import { AlertTriangle, Bot, CheckCircle2, Clock, Play, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Users } from 'lucide-react'
+import type { CruxPriority } from '@shared/crux'
+import type { AcpAgentStatus } from '../../../../shared/types'
+import { ensureRuntimeInventoryLoaded, getRuntimeInventorySnapshot, subscribeRuntimeInventory } from '../../acp/useRuntimeInventoryRefresh'
+import { PriorityIcon, StateGroupIcon } from '../../my/icons'
 import { Button, EmptyState, TriProgressBar } from '../../my/ui'
-import { statusOf, useCrux } from '../store'
+import { AgentAvatar } from '../AgentAvatar'
+import { matchDetectedRuntime, useLocalExecutionSlot } from '../local-execution-slot'
+import { PRIORITY_LABEL, spaceTasks, statusDisplayName, statusOf, useCrux } from '../store'
 import { AGENT_PRESENCE_META, computeAgentPresence, isActiveRunStatus, useTaskRuns } from '../task-run-store'
-import { MemberChip, PageHeader, StatusBadge } from '../ui'
+import { CRUX_STATE_GROUPS, cruxStatusColor } from '../task-workspace-adapter'
+import { MemberChip, PageHeader } from '../ui'
 
-const TONE_CLASS: Record<'neutral' | 'info' | 'warning' | 'success' | 'danger', string> = {
-  neutral: 'bg-my-layer-2 text-my-tertiary',
-  info: 'bg-my-info-subtle text-my-info-text',
-  warning: 'bg-my-warning-subtle text-my-warning-text',
-  success: 'bg-my-success-subtle text-my-success-text',
-  danger: 'bg-my-danger-subtle text-my-danger-text'
-}
-
-const CATEGORY_ORDER = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled'] as const
-const CATEGORY_LABEL: Record<string, string> = {
-  triage: '待分拣',
-  backlog: '待规划',
-  todo: '待开始',
-  in_progress: '进行中',
-  in_review: '待评审',
-  blocked: '已受阻',
-  done: '已完成',
-  cancelled: '已取消'
-}
+const PRIORITY_ORDER: CruxPriority[] = ['urgent', 'high', 'medium', 'low', 'none']
 
 export function AnalyticsPage(): JSX.Element | null {
-  const snapshot = useCrux((state) => state.snapshot)
-  const spaceId = useCrux((state) => state.currentSpaceId)
-  const openTask = useCrux((state) => state.openTask)
-  const setModule = useCrux((state) => state.setModule)
-  const runs = useTaskRuns((state) => state.runs)
+  const snapshot = useCrux((s) => s.snapshot)
+  const currentSpaceId = useCrux((s) => s.currentSpaceId)
+  const setModule = useCrux((s) => s.setModule)
+  const runs = useTaskRuns((s) => s.runs)
+  const resolveAgentSlot = useLocalExecutionSlot((s) => s.resolveAgentSlot)
+  const [detectedRuntimes, setDetectedRuntimes] = useState<AcpAgentStatus[]>(getRuntimeInventorySnapshot)
 
-  const metrics = useMemo(() => {
-    if (!snapshot || !spaceId) return null
-    const tasks = snapshot.tasks.filter((task) => task.spaceId === spaceId)
-    const spaceRuns = runs.filter((run) => run.spaceId === spaceId)
-    const done = tasks.filter((task) => statusOf(snapshot, task.statusId)?.category === 'done')
-    const inProgress = tasks.filter((task) => ['in_progress', 'in_review'].includes(statusOf(snapshot, task.statusId)?.category ?? ''))
-    const blocked = tasks.filter((task) => statusOf(snapshot, task.statusId)?.category === 'blocked')
-    const triage = tasks.filter((task) => task.triagePending === true)
-    const aiDelegated = tasks.filter((task) => Boolean(task.executor))
-    const activeRuns = spaceRuns.filter((run) => isActiveRunStatus(run.status))
-    const waitingRuns = spaceRuns.filter((run) => (run.interaction && !run.interaction.resolvedAt) || run.status === 'waiting_local_directory')
-    const completedRuns = spaceRuns.filter((run) => run.status === 'completed')
-    const failedRuns = spaceRuns.filter((run) => run.status === 'failed')
+  useEffect(() => {
+    const unsubscribe = subscribeRuntimeInventory(setDetectedRuntimes)
+    void ensureRuntimeInventoryLoaded()
+    return unsubscribe
+  }, [])
 
-    const byCategory = CATEGORY_ORDER.map((category) => {
-      const count = tasks.filter((task) => {
-        if (category === 'triage') return task.triagePending === true
-        return !task.triagePending && statusOf(snapshot, task.statusId)?.category === category
+  const stats = useMemo(() => {
+    if (!snapshot) return null
+    const tasks = spaceTasks(snapshot, currentSpaceId)
+    const space = snapshot.spaces.find((item) => item.id === currentSpaceId)
+    const members = space
+      ? snapshot.members.filter((member) => space.memberIds.includes(member.id))
+      : snapshot.members
+    const agents = snapshot.agents.filter((agent) => (!currentSpaceId || agent.spaceId === currentSpaceId) && !agent.archived)
+
+    let done = 0
+    let inProgress = 0
+    let blocked = 0
+    const statusBuckets = new Map<string, { id: string; name: string; category: keyof typeof CRUX_STATE_GROUPS; count: number }>()
+    const priorityCounts: Record<CruxPriority, number> = { urgent: 0, high: 0, medium: 0, low: 0, none: 0 }
+
+    for (const task of tasks) {
+      priorityCounts[task.priority]++
+      const st = statusOf(snapshot, task.statusId)
+      if (!st) continue
+      if (st.category === 'done') done++
+      else if (st.category === 'in_progress' || st.category === 'in_review') inProgress++
+      else if (st.category === 'blocked') blocked++
+
+      const existing = statusBuckets.get(st.id)
+      if (existing) existing.count++
+      else statusBuckets.set(st.id, { id: st.id, name: statusDisplayName(st), category: st.category, count: 1 })
+    }
+
+    const memberLoads = members.map((member) => {
+      const assigned = tasks.filter((task) => task.assigneeIds.includes(member.id))
+      const finished = assigned.filter((task) => statusOf(snapshot, task.statusId)?.category === 'done').length
+      const active = assigned.filter((task) => {
+        const category = statusOf(snapshot, task.statusId)?.category
+        return category === 'in_progress' || category === 'in_review'
       }).length
-      return { category, label: CATEGORY_LABEL[category], count }
-    }).filter((entry) => entry.count > 0)
+      return { member, total: assigned.length, done: finished, inProgress: active }
+    })
 
-    const space = snapshot.spaces.find((item) => item.id === spaceId)
-    const memberLoads = snapshot.members
-      .filter((member) => space?.memberIds.includes(member.id))
-      .map((member) => {
-        const assigned = tasks.filter((task) => task.assigneeIds.includes(member.id))
-        const memberDone = assigned.filter((task) => statusOf(snapshot, task.statusId)?.category === 'done').length
-        const memberActive = assigned.filter((task) => ['in_progress', 'in_review', 'blocked'].includes(statusOf(snapshot, task.statusId)?.category ?? '')).length
-        return { member, total: assigned.length, done: memberDone, active: memberActive }
-      })
-      .sort((a, b) => b.active - a.active || b.total - a.total)
-
-    const agentLoads = snapshot.agents
-      .filter((agent) => agent.spaceId === spaceId && !agent.archived)
-      .map((agent) => {
-        const assigned = tasks.filter((task) => task.executor?.kind === 'agent' && task.executor.id === agent.id)
-        const agentRuns = spaceRuns.filter((run) => run.executorKind === 'agent' && run.executorId === agent.id)
-        const succeeded = agentRuns.filter((run) => run.status === 'completed').length
-        const presence = computeAgentPresence(agent.id, spaceRuns, agent.enabled)
-        return { agent, assignedCount: assigned.length, runCount: agentRuns.length, succeeded, presence }
-      })
-      .sort((a, b) => b.runCount - a.runCount || b.assignedCount - a.assignedCount)
+    const spaceRuns = runs.filter((run) => !currentSpaceId || run.spaceId === currentSpaceId)
+    const activeRuns = spaceRuns.filter((run) => isActiveRunStatus(run.status)).length
 
     return {
       total: tasks.length,
-      doneCount: done.length,
-      inProgressCount: inProgress.length,
+      done,
+      inProgress,
       blocked,
-      triageCount: triage.length,
-      aiDelegatedCount: aiDelegated.length,
-      completionRate: tasks.length > 0 ? Math.round((done.length / tasks.length) * 100) : 0,
-      activeRuns,
-      waitingRuns,
-      completedRunsCount: completedRuns.length,
-      failedRunsCount: failedRuns.length,
-      runSuccessRate: completedRuns.length + failedRuns.length > 0
-        ? Math.round((completedRuns.length / (completedRuns.length + failedRuns.length)) * 100)
-        : 100,
-      byCategory,
+      completionRate: tasks.length ? Math.round((done / tasks.length) * 100) : 0,
+      statusList: Array.from(statusBuckets.values()).sort((a, b) => b.count - a.count),
+      priorityCounts,
       memberLoads,
-      agentLoads
+      agents,
+      activeRuns,
+      totalRuns: spaceRuns.length
     }
-  }, [snapshot, spaceId, runs])
+  }, [snapshot, currentSpaceId, runs])
 
-  if (!snapshot || !spaceId || !metrics) {
-    return <EmptyState title="请先选择一个空间" description="选择协作空间后查看任务吞吐、成员负载与 AI 执行统计。" />
-  }
+  if (!snapshot || !stats) return null
 
   return (
-    <div className="my-fade flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
       <PageHeader
         title="统计分析"
-        description="实时汇总当前空间的任务交付进度、人机协同负载与 AI Run 执行健康度。"
+        description="基于当前空间实时任务快照、成员负载与 Agent 运行记录生成的统计视图。"
         actions={
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setModule('triage')}>分拣台 ({metrics.triageCount})</Button>
-            <Button size="sm" variant="outline" onClick={() => setModule('runtimes')}>运行环境</Button>
-          </div>
+          <Button size="sm" variant="outline" onClick={() => setModule('tasks')}>
+            返回任务列表
+          </Button>
         }
       />
 
-      <div className="my-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1" style={{ scrollbarGutter: 'stable' }}>
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="核心交付指标">
-          <div className="rounded-my-base border border-my-line bg-my-panel p-3.5">
-            <div className="text-my-xs text-my-tertiary">空间总任务</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-my-primary">{metrics.total}</div>
-            <div className="mt-1 text-my-2xs text-my-secondary">完成率 {metrics.completionRate}%</div>
-          </div>
-          <div className="rounded-my-base border border-my-line bg-my-panel p-3.5">
-            <div className="text-my-xs text-my-tertiary">进行中 / 待评审</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-my-primary">{metrics.inProgressCount}</div>
-            <div className="mt-1 text-my-2xs text-my-secondary">已完成 {metrics.doneCount} 条</div>
-          </div>
-          <div className="rounded-my-base border border-my-line bg-my-panel p-3.5">
-            <div className="text-my-xs text-my-tertiary">受阻 / 待分拣</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-my-primary">{metrics.blocked.length} / {metrics.triageCount}</div>
-            <div className="mt-1 text-my-2xs text-my-secondary">需重点协调项</div>
-          </div>
-          <div className="rounded-my-base border border-my-line bg-my-panel p-3.5">
-            <div className="text-my-xs text-my-tertiary">AI 委派任务</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-my-primary">{metrics.aiDelegatedCount}</div>
-            <div className="mt-1 text-my-2xs text-my-secondary">活跃 Run {metrics.activeRuns.length} 个</div>
-          </div>
-          <div className="rounded-my-base border border-my-line bg-my-panel p-3.5">
-            <div className="text-my-xs text-my-tertiary">Run 成功率</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-my-primary">{metrics.runSuccessRate}%</div>
-            <div className="mt-1 text-my-2xs text-my-secondary">完成 {metrics.completedRunsCount} · 失败 {metrics.failedRunsCount}</div>
-          </div>
-        </section>
+      {stats.total === 0 ? (
+        <EmptyState
+          icon={<BarChart3 size={28} />}
+          title="暂无可统计的任务数据"
+          description="创建并推进首批任务后，这里将自动呈现完成率、状态分布及成员负载均衡。"
+          action={
+            <Button size="sm" variant="primary" onClick={() => setModule('tasks')}>
+              前往任务工作区
+            </Button>
+          }
+        />
+      ) : (
+        <div className="my-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="统计核心指标">
+            <div className="my-card flex flex-col gap-2 p-4">
+              <span className="flex items-center gap-1.5 text-my-xs text-my-secondary">
+                <CheckCircle2 size={14} className="text-my-success-text" />
+                <span>总体完成率</span>
+              </span>
+              <strong className="collab-stat text-my-xl font-medium tabular-nums text-my-primary">
+                {stats.completionRate}%
+              </strong>
+              <span className="text-my-xs tabular-nums text-my-tertiary">
+                已完成 {stats.done} / {stats.total} 项
+              </span>
+            </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <section className="flex flex-col gap-3 rounded-my-base border border-my-line bg-my-panel p-4" aria-label="任务状态分布">
-            <header className="flex items-center justify-between">
-              <h2 className="my-item-title">任务状态分布</h2>
-              <span className="text-my-xs tabular-nums text-my-tertiary">共 {metrics.total} 条</span>
-            </header>
-            {metrics.byCategory.length === 0 ? (
-              <p className="text-my-xs text-my-tertiary">当前空间暂无任务数据。</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {metrics.byCategory.map((item) => {
-                  const pct = metrics.total > 0 ? Math.round((item.count / metrics.total) * 100) : 0
-                  return (
-                    <div key={item.category} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between text-my-xs">
-                        <span className="text-my-secondary">{item.label}</span>
-                        <span className="tabular-nums text-my-tertiary">{item.count} ({pct}%)</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-my-layer-2">
-                        <div className="h-full rounded-full bg-my-accent" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <div className="my-card flex flex-col gap-2 p-4">
+              <span className="flex items-center gap-1.5 text-my-xs text-my-secondary">
+                <Clock size={14} className="text-my-info-text" />
+                <span>推进中任务</span>
+              </span>
+              <strong className="collab-stat text-my-xl font-medium tabular-nums text-my-primary">
+                {stats.inProgress}
+              </strong>
+              <span className="text-my-xs text-my-tertiary">包含进行中与待评审状态</span>
+            </div>
+
+            <div className="my-card flex flex-col gap-2 p-4">
+              <span className="flex items-center gap-1.5 text-my-xs text-my-secondary">
+                <AlertTriangle size={14} className={stats.blocked > 0 ? 'text-my-danger-text' : 'text-my-tertiary'} />
+                <span>受阻待解除</span>
+              </span>
+              <strong className="collab-stat text-my-xl font-medium tabular-nums text-my-primary">
+                {stats.blocked}
+              </strong>
+              <span className="text-my-xs text-my-tertiary">
+                {stats.blocked > 0 ? '建议优先排查依赖阻塞' : '当前无受阻任务'}
+              </span>
+            </div>
+
+            <div className="my-card flex flex-col gap-2 p-4">
+              <span className="flex items-center gap-1.5 text-my-xs text-my-secondary">
+                <Users size={14} className="text-my-secondary" />
+                <span>AI 执行记录</span>
+              </span>
+              <strong className="collab-stat text-my-xl font-medium tabular-nums text-my-primary">
+                {stats.totalRuns}
+              </strong>
+              <span className="text-my-xs tabular-nums text-my-tertiary">
+                当前运行中 {stats.activeRuns} 条
+              </span>
+            </div>
           </section>
 
-          <section className="flex flex-col gap-3 rounded-my-base border border-my-line bg-my-panel p-4" aria-label="需关注阻塞与等待确认">
-            <header className="flex items-center justify-between">
-              <h2 className="my-item-title flex items-center gap-1.5"><AlertTriangle size={15} />需要立即介入</h2>
-              <span className="text-my-xs tabular-nums text-my-tertiary">{metrics.blocked.length + metrics.waitingRuns.length} 项</span>
-            </header>
-            {metrics.blocked.length === 0 && metrics.waitingRuns.length === 0 ? (
-              <div className="flex items-center gap-2 rounded-my-base bg-my-layer-1 px-3 py-4 text-my-xs text-my-secondary">
-                <CheckCircle2 size={15} className="text-my-success-text" />
-                当前没有受阻任务或等待确认的 Agent 执行。
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {metrics.waitingRuns.map((run) => {
-                  const taskTitle = snapshot.tasks.find((item) => item.id === run.taskId)?.title ?? run.taskId
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="my-card flex flex-col gap-3 p-4">
+              <header className="flex items-center justify-between">
+                <h2 className="my-item-title text-my-sm font-medium text-my-primary">状态分布</h2>
+                <span className="text-my-xs tabular-nums text-my-tertiary">共 {stats.total} 项</span>
+              </header>
+              <ul className="space-y-2.5">
+                {stats.statusList.map((bucket) => {
+                  const pct = Math.round((bucket.count / stats.total) * 100)
+                  const color = cruxStatusColor(bucket.category)
                   return (
-                    <li key={run.id} className="flex items-center justify-between gap-2 rounded-my-base border border-my-line bg-my-warning-subtle px-3 py-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-my-xs font-medium text-my-warning-text">{run.executorName} 等待你确认</div>
-                        <div className="truncate text-my-2xs text-my-secondary">{run.taskId} · {taskTitle}</div>
+                    <li key={bucket.id} className="space-y-1">
+                      <div className="flex items-center justify-between text-my-xs">
+                        <span className="inline-flex items-center gap-1.5 text-my-primary">
+                          <StateGroupIcon stateGroup={CRUX_STATE_GROUPS[bucket.category]} size={13} color={color} />
+                          <span>{bucket.name}</span>
+                        </span>
+                        <span className="tabular-nums text-my-secondary">
+                          {bucket.count} ({pct}%)
+                        </span>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => openTask(run.taskId)}>立即处理</Button>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-my-layer-1">
+                        <div
+                          className="h-full rounded-full transition-[width] duration-200 ease-out"
+                          style={{ width: `${pct}%`, backgroundColor: color }}
+                        />
+                      </div>
                     </li>
                   )
                 })}
-                {metrics.blocked.slice(0, 6).map((task) => (
-                  <li key={task.id} className="flex items-center justify-between gap-2 rounded-my-base border border-my-line bg-my-layer-1 px-3 py-2">
-                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openTask(task.id)}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-my-2xs text-my-tertiary">{task.id}</span>
-                        <span className="truncate text-my-xs font-medium text-my-primary">{task.title}</span>
-                      </div>
-                    </button>
-                    <StatusBadge status={statusOf(snapshot, task.statusId)} />
-                  </li>
-                ))}
               </ul>
-            )}
-          </section>
-        </div>
+            </section>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <section className="flex flex-col gap-3 rounded-my-base border border-my-line bg-my-panel p-4" aria-label="成员负载">
-            <header className="flex items-center justify-between">
-              <h2 className="my-item-title flex items-center gap-1.5"><Users size={15} />成员交付与负载</h2>
-              <span className="text-my-xs text-my-tertiary">{metrics.memberLoads.length} 人</span>
-            </header>
-            {metrics.memberLoads.length === 0 ? (
-              <p className="text-my-xs text-my-tertiary">当前空间暂无成员。</p>
-            ) : (
-              <ul className="divide-y divide-my-line">
-                {metrics.memberLoads.map(({ member, total, done, active }) => (
-                  <li key={member.id} className="flex items-center gap-3 py-2">
-                    <MemberChip member={member} />
-                    <div className="ml-auto flex w-36 items-center gap-2">
-                      <TriProgressBar done={done} started={active} total={total} />
-                      <span className="w-12 text-right text-my-xs tabular-nums text-my-tertiary">{done}/{total}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3 rounded-my-base border border-my-line bg-my-panel p-4" aria-label="AI Agent 吞吐">
-            <header className="flex items-center justify-between">
-              <h2 className="my-item-title flex items-center gap-1.5"><Bot size={15} />AI Agent 运行吞吐</h2>
-              <Button size="sm" variant="ghost" onClick={() => setModule('agents')}>管理 Agent</Button>
-            </header>
-            {metrics.agentLoads.length === 0 ? (
-              <p className="text-my-xs text-my-tertiary">当前空间尚未配置 AI Agent。</p>
-            ) : (
-              <ul className="divide-y divide-my-line">
-                {metrics.agentLoads.map(({ agent, assignedCount, runCount, succeeded, presence }) => (
-                  <li key={agent.id} className="flex items-center gap-3 py-2 text-my-xs">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium text-my-primary">{agent.name}</span>
-                        <span className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs ${TONE_CLASS[AGENT_PRESENCE_META[presence.state].tone]}`}>
-                          {AGENT_PRESENCE_META[presence.state].label}
+            <section className="my-card flex flex-col gap-3 p-4">
+              <header className="flex items-center justify-between">
+                <h2 className="my-item-title text-my-sm font-medium text-my-primary">优先级构成</h2>
+                <span className="text-my-xs text-my-tertiary">按任务数量</span>
+              </header>
+              <ul className="space-y-2.5">
+                {PRIORITY_ORDER.map((priority) => {
+                  const count = stats.priorityCounts[priority]
+                  const pct = Math.round((count / stats.total) * 100)
+                  return (
+                    <li key={priority} className="space-y-1">
+                      <div className="flex items-center justify-between text-my-xs">
+                        <span className="inline-flex items-center gap-1.5 text-my-primary">
+                          <PriorityIcon priority={priority} size={13} />
+                          <span>{PRIORITY_LABEL[priority]}</span>
+                        </span>
+                        <span className="tabular-nums text-my-secondary">
+                          {count} ({pct}%)
                         </span>
                       </div>
-                      <div className="mt-0.5 text-my-2xs text-my-tertiary">
-                        委派任务 {assignedCount} · 执行 {runCount} 次 · 成功 {succeeded} 次
+                      <div className="h-1.5 overflow-hidden rounded-full bg-my-layer-1">
+                        <div
+                          className="h-full rounded-full bg-my-accent transition-[width] duration-200 ease-out"
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
-                    </div>
-                    {presence.queuedCount > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs tabular-nums text-my-secondary">
-                        <Clock size={11} />排队 {presence.queuedCount}
-                      </span>
-                    )}
-                    {presence.activeRun && (
-                      <span className="inline-flex items-center gap-1 rounded-my-sm bg-my-info-subtle px-1.5 py-0.5 text-my-2xs text-my-info-text">
-                        <Play size={11} />运行中
-                      </span>
-                    )}
-                  </li>
-                ))}
+                    </li>
+                  )
+                })}
               </ul>
-            )}
-          </section>
+            </section>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="my-card flex flex-col gap-3 p-4">
+              <header className="flex items-center justify-between">
+                <h2 className="my-item-title text-my-sm font-medium text-my-primary">成员任务负载</h2>
+                <span className="text-my-xs tabular-nums text-my-tertiary">{stats.memberLoads.length} 人</span>
+              </header>
+              {stats.memberLoads.length === 0 ? (
+                <p className="py-4 text-center text-my-xs text-my-tertiary">当前空间暂无成员数据。</p>
+              ) : (
+                <ul className="space-y-3">
+                  {stats.memberLoads.map((entry) => (
+                    <li key={entry.member.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 text-my-xs">
+                        <MemberChip member={entry.member} />
+                        <span className="tabular-nums text-my-secondary">
+                          完成 {entry.done} · 推进中 {entry.inProgress} · 共 {entry.total}
+                        </span>
+                      </div>
+                      <TriProgressBar
+                        total={entry.total}
+                        done={entry.done}
+                        started={entry.inProgress}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="my-card flex flex-col gap-3 p-4">
+              <header className="flex items-center justify-between">
+                <h2 className="my-item-title text-my-sm font-medium text-my-primary">Agent 在线状态</h2>
+                <Button size="sm" variant="ghost" onClick={() => setModule('agents')}>
+                  管理 Agent
+                </Button>
+              </header>
+              {stats.agents.length === 0 ? (
+                <p className="py-4 text-center text-my-xs text-my-tertiary">当前空间暂无配置的 Agent。</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {stats.agents.map((agent) => {
+                    const resolved = resolveAgentSlot(agent.id, { runtimeKind: agent.runtimeKind, workingDirectory: agent.workingDirectory }).slot
+                    const matched = matchDetectedRuntime(detectedRuntimes, resolved.runtimeKind, resolved.runtimeId)
+                    const presence = computeAgentPresence(agent.id, runs, Boolean(matched?.available && !matched?.setupRequired))
+                    const meta = AGENT_PRESENCE_META[presence.state]
+                    const toneClass =
+                      meta.tone === 'success'
+                        ? 'bg-my-success-subtle text-my-success-text'
+                        : meta.tone === 'info'
+                          ? 'bg-my-info-subtle text-my-info-text'
+                          : meta.tone === 'warning'
+                            ? 'bg-my-warning-subtle text-my-warning-text'
+                            : meta.tone === 'danger'
+                              ? 'bg-my-danger-subtle text-my-danger-text'
+                              : 'bg-my-layer-1 text-my-tertiary'
+                    return (
+                      <li key={agent.id} className="flex items-center gap-2.5 rounded-my-base px-2 py-1.5">
+                        <AgentAvatar avatarId={agent.avatarId} size={24} />
+                        <span className="min-w-0 flex-1 truncate text-my-sm text-my-primary">{agent.name}</span>
+                        <span className="text-my-2xs text-my-tertiary">{agent.runtimeKind}</span>
+                        <span className={`rounded-my-sm px-1.5 py-0.5 text-my-2xs ${toneClass}`}>{meta.label}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </section>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

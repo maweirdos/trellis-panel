@@ -1,275 +1,292 @@
-import { formatCollaborationTime } from '../ui'
-/**
- * 收件箱（对标 HiFox Master-Detail 双栏布局）：
- * 左侧：全部/重要/其他 + 稍后 + 已清理分区、任务级聚合、Agent 待确认执行提醒与快捷稍后/清理；
- * 右侧：原地嵌入任务详情，无需跳出收件箱即可回复评论、确认 Agent 交互和流转状态。
- */
-import { useLayoutEffect, useRef, useState } from 'react'
-import { AlarmClock, ArchiveRestore, Bot, Check, Eraser, Inbox } from 'lucide-react'
-import { api } from '../../api'
-import { inboxGroups, statusOf, useCrux } from '../store'
-import { useTaskRuns } from '../task-run-store'
-import { PageHeader, inputClass } from '../ui'
-import { Button, EmptyState, Tabs } from '../../my/ui'
-import { useNow } from '../../my/ui'
-import { EmbeddedTaskPost } from './TaskDetailDrawer'
+import { useLayoutEffect, useState, type JSX } from 'react'
+import { AlarmClock, ArchiveRestore, ArrowLeft, Check, CheckCheck, Eraser, Inbox } from 'lucide-react'
 import type { CruxInboxItem, CruxInboxKind } from '@shared/crux'
+import { api } from '../../api'
+import { confirmDialog } from '../../components/Dialogs'
+import { Button, Dropdown, DropdownItem, EmptyState, Tabs, Tooltip, useNow } from '../../my/ui'
+import { inboxGroups, statusOf, useCrux } from '../store'
+import { formatCollaborationTime, PageHeader, StatusBadge } from '../ui'
+import { EmbeddedTaskPost } from './TaskDetailDrawer'
+
+type InboxTab = 'important' | 'other' | 'snoozed' | 'cleared'
 
 const KIND_LABEL: Record<CruxInboxKind, string> = {
-  assign: '被指派', mention: '提及', status: '状态', dispatch: '派发', automation: '自动化', triage: '分拣'
+  assign: '任务指派',
+  mention: '@提及',
+  status: '状态更新',
+  dispatch: '派发动态',
+  automation: '自动化结果',
+  triage: '待分拣提醒'
 }
 
-type InboxTab = 'all' | 'important' | 'other' | 'snoozed' | 'cleared'
-let lastInbox: { owner: string; tab: InboxTab; keyword: string; scrollTop: number; expanded: Set<string> } | undefined
-
-export function InboxPage(): JSX.Element {
-  const owner = useCrux(s => JSON.stringify([s.workspaceContext.key, s.workspaceContext.actorId, s.workspaceContext.epoch]))
-  return <InboxContents key={owner} owner={owner} />
-}
-
-function InboxContents({ owner }: { owner: string }): JSX.Element {
+export function InboxPage(): JSX.Element | null {
   const snapshot = useCrux((s) => s.snapshot)
-  const run = useCrux((s) => s.run)
-  const openTaskId = useCrux((s) => s.openTaskId)
+  const currentSpaceId = useCrux((s) => s.currentSpaceId)
   const openTask = useCrux((s) => s.openTask)
-  const runs = useTaskRuns((s) => s.runs)
-  const [initial] = useState(() => lastInbox?.owner === owner ? lastInbox : undefined)
-  const [tab, setTab] = useState<InboxTab>(initial?.tab ?? 'all')
-  const [keyword, setKeyword] = useState(initial?.keyword ?? '')
-  const [expanded, setExpanded] = useState<Set<string>>(() => initial?.expanded ?? new Set())
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId)
-  const listElement = useRef<HTMLDivElement>(null)
+  const run = useCrux((s) => s.run)
+  const busy = useCrux((s) => s.busy)
+  const owner = useCrux((s) => JSON.stringify([s.workspaceContext.key, s.workspaceContext.actorId, s.workspaceContext.epoch]))
 
-  useLayoutEffect(() => {
-    if (listElement.current && lastInbox?.owner === owner) listElement.current.scrollTop = lastInbox.scrollTop
-  }, [owner])
-  useLayoutEffect(() => {
-    lastInbox = { owner, tab, keyword, expanded, scrollTop: lastInbox?.owner === owner ? lastInbox.scrollTop : 0 }
-  }, [owner, tab, keyword, expanded])
   const now = useNow()
-  if (!snapshot) return <></>
+  const [tab, setTab] = useState<InboxTab>('important')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const groups = inboxGroups(snapshot.inbox, now)
-  const rawList: CruxInboxItem[] =
-    tab === 'all' ? [...groups.important, ...groups.other]
-    : tab === 'snoozed' ? groups.snoozed
-    : tab === 'cleared' ? groups.cleared
-    : groups[tab]
+  useLayoutEffect(() => {
+    setSelectedId(null)
+  }, [owner])
 
-  const lowerKeyword = keyword.trim().toLowerCase()
-  const list = lowerKeyword
-    ? rawList.filter((i) => `${i.title} ${i.body ?? ''} ${i.taskId ?? ''}`.toLowerCase().includes(lowerKeyword))
-    : rawList
+  if (!snapshot) return null
 
-  const requiresAction = (item: CruxInboxItem): boolean => {
-    const task = item.taskId ? snapshot.tasks.find((candidate) => candidate.id === item.taskId) : undefined
-    const category = task ? statusOf(snapshot, task.statusId)?.category : undefined
-    return Boolean(task && !task.completedAt && !['done', 'cancelled'].includes(category ?? '') && ['assign', 'dispatch', 'triage'].includes(item.kind))
+  const taskMap = new Map(snapshot.tasks.map((task) => [task.id, task]))
+  const scopedItems = snapshot.inbox.filter((item) => {
+    if (!currentSpaceId) return true
+    if (item.spaceId) return item.spaceId === currentSpaceId
+    if (item.taskId) return taskMap.get(item.taskId)?.spaceId === currentSpaceId
+    return true
+  })
+
+  const groups = inboxGroups(scopedItems, now)
+  const currentItems: CruxInboxItem[] = groups[tab]
+  const selectedItem = currentItems.find((item) => item.id === selectedId) ?? currentItems[0] ?? null
+  const selectedTask = selectedItem?.taskId ? taskMap.get(selectedItem.taskId) ?? null : null
+
+  const activeSection = tab === 'important' || tab === 'other' ? tab : null
+  const totalUnread = groups.unread.important + groups.unread.other
+
+  const markAllRead = async (): Promise<void> => {
+    if (!activeSection) return
+    await run('全部标为已读', () => api.crux.markInboxRead({ all: true, section: activeSection }))
   }
-  const aggregated = new Map<string, { first: CruxInboxItem; count: number; unread: boolean; needsAction: boolean; ids: string[]; items: CruxInboxItem[] }>()
-  for (const item of list) {
-    const key = item.taskId ?? item.id
-    const existing = aggregated.get(key)
-    if (existing) { existing.count += 1; existing.unread = existing.unread || !item.read; existing.needsAction = existing.needsAction || requiresAction(item); existing.ids.push(item.id); existing.items.push(item) }
-    else aggregated.set(key, { first: item, count: 1, unread: !item.read, needsAction: requiresAction(item), ids: [item.id], items: [item] })
+
+  const clearSection = async (): Promise<void> => {
+    if (!activeSection || !currentItems.length) return
+    const ok = await confirmDialog({
+      title: `清理「${activeSection === 'important' ? '重要通知' : '其他动态'}」？`,
+      message: `将 ${currentItems.length} 条通知移入「已清理」，不会删除任何任务或评论记录，需要时可随时恢复。`,
+      confirmText: '移入已清理'
+    })
+    if (!ok) return
+    await run('批量清理通知', () => api.crux.clearInbox({ all: true, section: activeSection }))
   }
 
-  const waitingAgentRuns = runs.filter((entry) => (entry.interaction && !entry.interaction.resolvedAt) || entry.status === 'waiting_local_directory')
-  const activeTaskId = selectedTaskId && snapshot.tasks.some((t) => t.id === selectedTaskId) ? selectedTaskId : null
-
-  const markRead = (ids?: string[]) => void run('标记已读', () => api.crux.markInboxRead({ ids: ids ?? rawList.map((item) => item.id) }))
-  const selectTaskFromItem = (item: CruxInboxItem) => {
-    const ids = aggregated.get(item.taskId ?? item.id)?.ids ?? [item.id]
-    if (aggregated.get(item.taskId ?? item.id)?.unread) {
-      void run('标记已读', () => api.crux.markInboxRead({ ids }))
-    }
-    if (item.taskId) {
-      setSelectedTaskId(item.taskId)
-      openTask(item.taskId)
-    }
+  const snooze = (id: string, option: '20m' | '2h' | 'tomorrow' | 'nextweek'): void => {
+    void run('延后处理通知', () => api.crux.snoozeInbox({ id, option }))
   }
+
+  const markRead = (id: string): void => {
+    void run('标记已读', () => api.crux.markInboxRead({ ids: [id] }))
+  }
+
+  const clearOne = (id: string): void => {
+    void run('清理通知', () => api.crux.clearInbox({ ids: [id] }))
+  }
+
+  const restoreOne = (id: string): void => {
+    void run('恢复通知', () => api.crux.restoreInbox({ id }))
+  }
+
+  const tabOptions: Array<{ id: InboxTab; label: string; count: number }> = [
+    { id: 'important', label: '重要', count: groups.important.length },
+    { id: 'other', label: '其他', count: groups.other.length },
+    { id: 'snoozed', label: '稍后', count: groups.snoozed.length },
+    { id: 'cleared', label: '已清理', count: groups.cleared.length }
+  ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title="收件箱"
-        description="左右分栏处理协作提醒与 AI Agent 交互确认；选中提醒后直接在右侧回复讨论和流转状态。"
+        description={totalUnread > 0 ? `${totalUnread} 条未读提醒，按重要程度自动分区。` : '所有重要提醒均已查看。'}
         actions={
-          <div className="flex items-center gap-2">
-            {tab !== 'cleared' && tab !== 'snoozed' && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => markRead()}><Check size={13} />全部已读</Button>
-                <Button variant="ghost" size="sm" onClick={() => void run('清理通知', () => api.crux.clearInbox({ ids: rawList.map((item) => item.id) }))}>
-                  <Eraser size={13} />全部清理
-                </Button>
-              </>
-            )}
-          </div>
+          activeSection && currentItems.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void markAllRead()}>
+                <CheckCheck size={14} />
+                <span>全部已读</span>
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void clearSection()}>
+                <Eraser size={14} />
+                <span>全部清理</span>
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
-      <div className="collab-inbox-split" data-detail-open={Boolean(activeTaskId) || undefined}>
-        <section className="collab-inbox-pane collab-inbox-list-pane" aria-label="通知列表">
-          <div className="flex flex-col gap-2 border-b border-my-line p-3">
-            <Tabs
-              active={tab}
-              onChange={(id) => setTab(id as typeof tab)}
-              tabs={[
-                { id: 'all', label: '全部' },
-                { id: 'important', label: '重要', count: groups.unread.important },
-                { id: 'other', label: '其他', count: groups.unread.other },
-                { id: 'snoozed', label: '稍后', count: groups.snoozed.length },
-                { id: 'cleared', label: '已清理', count: groups.cleared.length }
-              ]}
-            />
-            <input
-              className={`${inputClass} w-full`}
-              aria-label="搜索协作提醒"
-              placeholder="搜索任务标题 / 评论正文 / 任务号"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-          </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <Tabs tabs={tabOptions} active={tab} onChange={setTab} ariaLabel="收件箱分类" />
+        {activeSection && groups.unread[activeSection] > 0 && (
+          <span className="text-my-xs tabular-nums text-my-tertiary">未读 {groups.unread[activeSection]} 条</span>
+        )}
+      </div>
 
-          {waitingAgentRuns.length > 0 && tab !== 'cleared' && (
-            <div className="flex flex-col gap-1.5 border-b border-my-line bg-my-warning-subtle px-3 py-2">
-              <div className="flex items-center gap-1.5 text-my-2xs font-medium text-my-warning-text">
-                <Bot size={13} />
-                <span>{waitingAgentRuns.length} 个 AI 执行等待你确认</span>
-              </div>
-              {waitingAgentRuns.slice(0, 3).map((entry) => {
-                const taskTitle = snapshot.tasks.find((item) => item.id === entry.taskId)?.title ?? entry.taskId
+      {currentItems.length === 0 ? (
+        <EmptyState
+          icon={<Inbox size={28} />}
+          title={
+            tab === 'important'
+              ? '暂无重要通知'
+              : tab === 'other'
+                ? '暂无其他动态'
+                : tab === 'snoozed'
+                  ? '暂无稍后处理项'
+                  : '暂无已清理记录'
+          }
+          description="与当前空间相关的任务指派、@提及、状态变更及自动化运行提醒会集中展示在这里。"
+        />
+      ) : (
+        <div key={tab} data-detail-open={Boolean(selectedId)} className="my-subview-stage collab-inbox-split min-h-0 flex-1">
+          <div className="collab-inbox-pane collab-inbox-list-pane my-card my-scrollbar min-h-0 overflow-y-auto p-1.5">
+            <ul className="space-y-1">
+              {currentItems.map((item) => {
+                const task = item.taskId ? taskMap.get(item.taskId) : undefined
+                const taskStatus = task ? statusOf(snapshot, task.statusId) : undefined
+                const active = selectedItem?.id === item.id
                 return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => { setSelectedTaskId(entry.taskId); openTask(entry.taskId) }}
-                    className="flex items-center justify-between gap-2 rounded-my-base bg-my-panel px-2.5 py-1.5 text-left text-my-xs text-my-primary hover:bg-my-layer-1-hover"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{entry.executorName} · {taskTitle}</span>
-                    <span className="shrink-0 font-mono text-my-2xs text-my-tertiary">{entry.taskId}</span>
-                  </button>
+                  <li key={item.id}>
+                    <div
+                      className={`group rounded-my-base border px-3 py-2.5 transition-colors duration-150 ease-out ${
+                        active
+                          ? 'border-my-line-strong bg-my-layer-2'
+                          : 'border-transparent hover:bg-my-layer-1'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedId(item.id)
+                          if (!item.read) markRead(item.id)
+                        }}
+                        className="flex w-full flex-col gap-1.5 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              item.read ? 'bg-transparent' : 'bg-my-accent'
+                            }`}
+                          />
+                          <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+                            {KIND_LABEL[item.kind]}
+                          </span>
+                          {task && <span className="font-mono text-my-2xs text-my-tertiary">{task.id}</span>}
+                          <span className="ml-auto shrink-0 text-my-2xs tabular-nums text-my-tertiary">
+                            {formatCollaborationTime(item.at)}
+                          </span>
+                        </div>
+                        <div className="my-item-title truncate text-my-sm font-medium text-my-primary">{item.title}</div>
+                        {item.body && <p className="line-clamp-2 text-my-xs text-my-secondary">{item.body}</p>}
+                      </button>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div>{taskStatus && <StatusBadge status={taskStatus} />}</div>
+                        <div className="flex items-center gap-1 opacity-85 transition-opacity group-hover:opacity-100">
+                          {tab !== 'cleared' ? (
+                            <>
+                              {!item.read && (
+                                <Tooltip label="标记已读">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    aria-label="标记已读"
+                                    disabled={busy}
+                                    onClick={() => markRead(item.id)}
+                                  >
+                                    <Check size={13} />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              <Dropdown
+                                align="right"
+                                width={140}
+                                trigger={({ toggle, open }) => (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    aria-label="稍后提醒"
+                                    aria-expanded={open}
+                                    disabled={busy}
+                                    onClick={toggle}
+                                  >
+                                    <AlarmClock size={13} />
+                                  </Button>
+                                )}
+                              >
+                                {(close) => (
+                                  <>
+                                    <DropdownItem onClick={() => { snooze(item.id, '20m'); close() }}>20 分钟后</DropdownItem>
+                                    <DropdownItem onClick={() => { snooze(item.id, '2h'); close() }}>2 小时后</DropdownItem>
+                                    <DropdownItem onClick={() => { snooze(item.id, 'tomorrow'); close() }}>明天 09:00</DropdownItem>
+                                    <DropdownItem onClick={() => { snooze(item.id, 'nextweek'); close() }}>下周一 09:00</DropdownItem>
+                                  </>
+                                )}
+                              </Dropdown>
+                              <Tooltip label="清理此条">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label="清理此条"
+                                  disabled={busy}
+                                  onClick={() => clearOne(item.id)}
+                                >
+                                  <Eraser size={13} />
+                                </Button>
+                              </Tooltip>
+                            </>
+                          ) : (
+                            <Button size="sm" variant="ghost" disabled={busy} onClick={() => restoreOne(item.id)}>
+                              <ArchiveRestore size={13} />
+                              <span>恢复</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
                 )
               })}
-            </div>
-          )}
-
-          <div
-            ref={listElement}
-            onScroll={event => { if (lastInbox?.owner === owner) lastInbox.scrollTop = event.currentTarget.scrollTop }}
-            className="my-scrollbar min-h-0 flex-1 overflow-y-auto"
-          >
-            {aggregated.size === 0
-              ? <EmptyState title="这里很安静" description={tab === 'snoozed' ? '没有稍后处理的通知' : tab === 'cleared' ? '没有已清理的通知' : '没有待处理的通知'} />
-              : (
-                <ul className="divide-y divide-my-line">
-                  {[...aggregated.values()].map(({ first, count, unread, needsAction, ids, items }) => {
-                    const key = first.taskId ?? first.id
-                    const isExpanded = expanded.has(key)
-                    const isSelected = Boolean(first.taskId && first.taskId === activeTaskId)
-                    return (
-                      <li
-                        key={key}
-                        className={`group flex flex-wrap items-start gap-2.5 px-3 py-2.5 transition-colors ${isSelected ? 'bg-my-navigation-selected' : 'hover:bg-my-layer-1-hover'} ${first.cleared ? 'opacity-55' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          className="mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-my-sm hover:bg-my-layer-2"
-                          aria-label={unread ? '标记这一组已读' : '已读'}
-                          onClick={() => markRead(ids)}
-                        >
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: unread ? 'var(--my-collab-blue)' : 'transparent', border: '1px solid var(--my-border-subtle)' }}
-                          />
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <button type="button" aria-label={`打开提醒：${first.title}`} className="block w-full cursor-pointer text-left" onClick={() => selectTaskFromItem(first)}>
-                            <div className="flex items-center gap-1.5">
-                              {needsAction && <span className="shrink-0 rounded-my-sm bg-my-warning-subtle px-1.5 py-0.5 text-my-2xs text-my-warning-text">待处理</span>}
-                              <p className={`min-w-0 flex-1 truncate text-my-sm ${unread ? 'font-medium text-my-primary' : 'text-my-secondary'}`}>{first.title}</p>
-                            </div>
-                            <p className="mt-0.5 flex items-center gap-1.5 text-my-xs text-my-tertiary">
-                              <span className="rounded-my-sm bg-my-layer-1 px-1 py-0.5 text-my-2xs">{KIND_LABEL[first.kind]}</span>
-                              {first.taskId && <span className="font-mono text-my-2xs">{first.taskId}</span>}
-                              {first.body && <span className="min-w-0 flex-1 truncate">{first.body}</span>}
-                              <span className="shrink-0 tabular-nums">{formatCollaborationTime(first.at)}</span>
-                            </p>
-                          </button>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-my-xs text-my-tertiary">
-                            {count > 1 && (
-                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-my-2xs" aria-expanded={isExpanded} onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })}>
-                                {isExpanded ? '收起记录' : `展开 ${count} 条`}
-                              </Button>
-                            )}
-                            {first.snoozedUntil && !first.cleared && Date.parse(first.snoozedUntil) > now && (
-                              <span className="shrink-0 text-my-warning-text">稍后至 {new Date(first.snoozedUntil).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-0.5">
-                          {first.cleared
-                            ? <Button variant="ghost" size="sm" title="恢复" onClick={() => void run('恢复通知', () => api.crux.restoreInbox({ id: first.id }))}><ArchiveRestore size={13} /></Button>
-                            : (
-                              <>
-                                <Button variant="ghost" size="sm" title="标记已读" aria-label="标记这一组提醒已读" onClick={() => markRead(ids)}><Check size={13} /></Button>
-                                <div className="relative">
-                                  <details className="group/snooze">
-                                    <summary className="grid h-7 w-7 cursor-pointer place-items-center rounded-my-base text-my-icon-secondary hover:bg-my-layer-transparent-hover" title="稍后处理">
-                                      <AlarmClock size={13} />
-                                    </summary>
-                                    <div className="absolute right-0 top-8 z-10 w-28 rounded-my-base border border-my-line bg-my-canvas p-1 shadow-xl">
-                                      {([['20m', '20 分钟后'], ['2h', '2 小时后'], ['tomorrow', '明天'], ['nextweek', '下周']] as const).map(([option, label]) => (
-                                        <button key={option} type="button" className="w-full rounded-my-sm px-2 py-1 text-left text-my-xs text-my-secondary hover:bg-my-layer-1"
-                                          onClick={() => void run('稍后处理', () => api.crux.snoozeInbox({ id: first.id, option }))}>
-                                          {label}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </details>
-                                </div>
-                                <Button variant="ghost" size="sm" title="清理" aria-label="清理这一组提醒" onClick={() => void run('清理通知', () => api.crux.clearInbox({ ids }))}><Eraser size={13} /></Button>
-                              </>
-                            )}
-                        </div>
-                        {isExpanded && (
-                          <div className="basis-full rounded-my-base bg-my-layer-1 px-2.5 py-2 text-my-xs text-my-tertiary" aria-label="任务提醒记录">
-                            <ul className="space-y-1.5">
-                              {items.map((item) => (
-                                <li key={item.id} className="flex items-start gap-2">
-                                  <span className="shrink-0 rounded-my-sm bg-my-layer-2 px-1.5 py-0.5 text-my-2xs">{KIND_LABEL[item.kind]}</span>
-                                  <span className="min-w-0 flex-1 break-words">{item.body || item.title}</span>
-                                  <span className="shrink-0">{item.read ? '已读' : '未读'} · {formatCollaborationTime(item.at)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+            </ul>
           </div>
-        </section>
 
-        <section className="collab-inbox-pane collab-inbox-detail-pane" aria-label="任务详情预览">
-          {activeTaskId ? (
-            <EmbeddedTaskPost
-              taskId={activeTaskId}
-              onClose={() => { setSelectedTaskId(null); openTask(null) }}
-            />
-          ) : (
-            <div className="grid h-full place-items-center p-6">
-              <EmptyState
-                icon={<Inbox size={22} />}
-                title="选择一条提醒查看任务详情"
-                description="点击左侧任意通知，可直接在此处回复讨论、处理 Agent 确认并推进状态，无需切换页面。"
+          <section className="collab-inbox-pane collab-inbox-detail-pane my-card flex min-h-0 flex-col overflow-hidden">
+            {selectedTask ? (
+              <EmbeddedTaskPost
+                key={selectedTask.id}
+                taskId={selectedTask.id}
+                onClose={() => setSelectedId(null)}
               />
-            </div>
-          )}
-        </section>
-      </div>
+            ) : selectedItem ? (
+              <div className="my-scrollbar flex flex-1 flex-col gap-3 overflow-y-auto p-5">
+                <div className="flex items-center gap-2 text-my-xs text-my-tertiary">
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)} className="shrink-0">
+                    <ArrowLeft size={13} />
+                    <span>返回列表</span>
+                  </Button>
+                  <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-secondary">
+                    {KIND_LABEL[selectedItem.kind]}
+                  </span>
+                  <span className="tabular-nums">{formatCollaborationTime(selectedItem.at)}</span>
+                </div>
+                <h2 className="text-my-base font-medium text-my-primary">{selectedItem.title}</h2>
+                {selectedItem.body && (
+                  <p className="whitespace-pre-wrap text-my-sm leading-relaxed text-my-secondary">
+                    {selectedItem.body}
+                  </p>
+                )}
+                {selectedItem.taskId && (
+                  <div className="pt-2">
+                    <Button size="sm" variant="outline" onClick={() => openTask(selectedItem.taskId!)}>
+                      打开关联任务
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <EmptyState icon={<Inbox size={24} />} title="选择一条通知查看详情" description="左侧点击任意通知即可在此就地阅读并直接处理关联任务。" />
+            )}
+          </section>
+        </div>
+      )}
     </div>
   )
 }

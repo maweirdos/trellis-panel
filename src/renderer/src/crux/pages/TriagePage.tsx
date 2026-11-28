@@ -1,365 +1,342 @@
 import { useEffect, useState, type JSX } from 'react'
-import { Bot, Clock, CopyCheck, Plus } from 'lucide-react'
+import { Bot, CheckCircle2, Clock, CopyCheck, Plus } from 'lucide-react'
 import type { CruxApi, CruxExecutorRef, CruxPriority, CruxSnapshot, CruxTriageDisposition } from '@shared/crux'
 import { api } from '../../api'
-import { Button, EmptyState } from '../../my/ui'
-import { useCollaborationPlatform } from '../collaboration-platform-store'
+import { Button, EmptyState, Tooltip } from '../../my/ui'
 import { availableExecutionTargets, PRIORITY_LABEL, useCrux } from '../store'
 import { Field, formatCollaborationTime, PageHeader, PriorityBadge, Select, textareaClass } from '../ui'
-import { NewTaskModal } from './TaskDetailDrawer'
 
-type QueueEntry = Extract<Awaited<ReturnType<CruxApi['triageQueue']>>, { ok: true }>['data'][number]
-type ExtendedDisposition = CruxTriageDisposition | 'duplicate' | 'snooze'
-
-const DISPOSITIONS: Array<{ id: ExtendedDisposition; label: string; hint: string }> = [
-  { id: 'assign', label: '接纳并指派', hint: '安排处理人/Agent 并进入待办' },
-  { id: 'iterate', label: '放入版本', hint: '排入所选迭代版本推进' },
-  { id: 'park', label: '接纳到待规划', hint: '离开分拣台，暂放待办池' },
-  { id: 'duplicate', label: '标记重复', hint: '关联已有原任务并关闭重复项' },
-  { id: 'snooze', label: '暂缓处理', hint: '暂时移出待办，到期自动提醒' },
-  { id: 'close', label: '不采纳 / 关闭', hint: '直接关闭，不再推进' }
-]
-
-const SNOOZE_PRESETS = [
-  { id: '2h', label: '2 小时后', hours: 2 },
-  { id: 'tomorrow', label: '明天上午', hours: 24 },
-  { id: 'nextweek', label: '下周再看', hours: 168 }
-] as const
+type QueueItem = Extract<Awaited<ReturnType<CruxApi['triageQueue']>>, { ok: true }>['data'][number]
 
 export function TriagePage(): JSX.Element | null {
   const snapshot = useCrux((s) => s.snapshot)
-  const spaceId = useCrux((s) => s.currentSpaceId)
-  const triageSnoozes = useCollaborationPlatform((s) => s.triageSnoozes)
-  const clearTriageSnooze = useCollaborationPlatform((s) => s.clearTriageSnooze)
+  const currentSpaceId = useCrux((s) => s.currentSpaceId)
+  const openTask = useCrux((s) => s.openTask)
+  const beginCreateTask = useCrux((s) => s.beginCreateTask)
+  const run = useCrux((s) => s.run)
+  const busy = useCrux((s) => s.busy)
+  const workspaceKey = useCrux((s) => s.workspaceContext.key)
 
-  const [result, setResult] = useState<{ spaceId: string; queue: QueueEntry[] } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [retry, setRetry] = useState(0)
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [filterTab, setFilterTab] = useState<'pending' | 'snoozed'>('pending')
-  const [createOpen, setCreateOpen] = useState(false)
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [disposition, setDisposition] = useState<CruxTriageDisposition>('assign')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [executorValue, setExecutorValue] = useState('')
+  const [iterationId, setIterationId] = useState('')
+  const [note, setNote] = useState('')
 
   useEffect(() => {
-    let owned = true
-    if (!spaceId) { setLoading(false); return }
+    if (!currentSpaceId) {
+      setQueue([])
+      return
+    }
+    let active = true
     setLoading(true)
-    setError(null)
-    void api.crux.triageQueue(spaceId).then((response) => {
-      if (!owned) return
-      if (response.ok) {
-        setResult({ spaceId, queue: response.data })
-        setActiveId((previous) => response.data.some((q) => q.task.id === previous) ? previous : response.data[0]?.task.id ?? null)
-      } else setError(response.error)
-    }).catch((e: unknown) => { if (owned) setError(e instanceof Error ? e.message : String(e)) }).finally(() => { if (owned) setLoading(false) })
-    return () => { owned = false }
-  }, [spaceId, snapshot, retry])
+    void api.crux
+      .triageQueue(currentSpaceId)
+      .then((res) => {
+        if (!active) return
+        if (res.ok) setQueue(res.data)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [currentSpaceId, snapshot?.tasks.length, snapshot?.triageDecisions.length, workspaceKey])
 
   if (!snapshot) return null
-  const allQueue = result?.spaceId === spaceId ? result.queue : []
-  const now = Date.now()
-  const isSnoozed = (taskId: string): boolean => {
-    const entry = triageSnoozes[taskId]
-    return Boolean(entry && Date.parse(entry.until) > now)
+
+  const space = snapshot.spaces.find((item) => item.id === currentSpaceId)
+  const readOnly = Boolean(space?.archived)
+  const members = space
+    ? snapshot.members.filter((member) => space.memberIds.includes(member.id))
+    : snapshot.members
+  const iterations = snapshot.iterations.filter(
+    (item) => (!currentSpaceId || item.spaceId === currentSpaceId) && item.status !== 'completed'
+  )
+  const targets = availableExecutionTargets(snapshot, currentSpaceId)
+
+  const currentItem = queue.find((item) => item.task.id === selectedTaskId) ?? queue[0] ?? null
+  const task = currentItem?.task ?? null
+
+  const parseExecutor = (value: string): CruxExecutorRef | undefined => {
+    if (!value) return undefined
+    const [kind, id] = value.split(':')
+    if (kind === 'agent') {
+      const agent = targets.agents.find((item) => item.id === id)
+      return agent ? { kind: 'agent', id: agent.id, name: agent.name } : undefined
+    }
+    if (kind === 'crew') {
+      const crew = targets.crews.find((item) => item.id === id)
+      return crew ? { kind: 'crew', id: crew.id, name: crew.name } : undefined
+    }
+    return undefined
   }
-  const pendingQueue = allQueue.filter((q) => !isSnoozed(q.task.id))
-  const snoozedQueue = allQueue.filter((q) => isSnoozed(q.task.id))
-  const visibleQueue = filterTab === 'pending' ? pendingQueue : snoozedQueue
-  const entry = visibleQueue.find((q) => q.task.id === activeId) ?? visibleQueue[0]
+
+  const submitDisabledReason = !task
+    ? '当前没有选中的待分拣任务'
+    : readOnly
+      ? '已归档空间仅支持只读查看'
+      : disposition === 'assign' && !assigneeId && !executorValue
+        ? '指派推进前请先选择处理人或执行 Agent / 小队'
+        : disposition === 'iterate' && !iterationId
+          ? '放入迭代前请先选择目标迭代版本'
+          : null
+
+  const applyPriority = async (priority: CruxPriority): Promise<void> => {
+    if (!task || readOnly) return
+    await run('更新优先级', () =>
+      api.crux.updateTask({
+        id: task.id,
+        patch: { priority }
+      })
+    )
+  }
+
+  const submitDecision = async (): Promise<void> => {
+    if (!task || submitDisabledReason) return
+    const nextExecutor = parseExecutor(executorValue)
+    if (disposition === 'assign' && nextExecutor) {
+      await run('设置任务执行者', () =>
+        api.crux.updateTask({
+          id: task.id,
+          patch: { executor: nextExecutor }
+        })
+      )
+    }
+    const result = await run('提交分拣处置', () =>
+      api.crux.triage({
+        taskId: task.id,
+        disposition,
+        assigneeIds: disposition === 'assign' && assigneeId ? [assigneeId] : undefined,
+        iterationId: disposition === 'iterate' ? iterationId : undefined,
+        note: note.trim() || undefined,
+        expectedUpdatedAt: task.updatedAt
+      })
+    )
+    if (result?.ok) {
+      setNote('')
+      const refreshed: { ok: true; data: CruxSnapshot } = result
+      const remaining = refreshed.data.tasks.find((item) => item.spaceId === currentSpaceId && item.triagePending && item.id !== task.id)
+      setSelectedTaskId(remaining?.id ?? null)
+    }
+  }
+
+  const dispositionLabels: Array<{ id: CruxTriageDisposition; label: string; hint: string }> = [
+    { id: 'assign', label: '指派推进', hint: '确认处理人或执行 Agent，进入常规推进队列' },
+    { id: 'iterate', label: '放入迭代', hint: '排入指定版本迭代并明确推进节奏' },
+    { id: 'park', label: '暂存 Backlog', hint: '先移入待规划，稍后再排期' },
+    { id: 'close', label: '关闭任务', hint: '重复、失效或无需处理，直接关闭' }
+  ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <PageHeader
         title="分拣台"
-        description={`待分拣 ${pendingQueue.length} 条 · 已暂缓 ${snoozedQueue.length} 条。对标 HiFox 分拣流程：接纳、指派/委派 Agent、标记重复、暂缓或关闭。`}
-        actions={<Button size="sm" variant="primary" disabled={!spaceId} onClick={() => setCreateOpen(true)}><Plus size={14} />新建待分拣任务</Button>}
+        description="集中评估新收到的外部或草稿需求，补充优先级并决定后续流向。"
+        actions={
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={!currentSpaceId || busy || readOnly}
+            onClick={() => beginCreateTask({ spaceId: currentSpaceId ?? undefined, triagePending: true })}
+          >
+            <Plus size={14} />
+            <span>提交待分拣任务</span>
+          </Button>
+        }
       />
 
-      <div className="flex items-center gap-1" role="tablist" aria-label="分拣队列筛选">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={filterTab === 'pending'}
-          onClick={() => setFilterTab('pending')}
-          className={`my-control my-control-sm ${filterTab === 'pending' ? 'bg-my-navigation-selected font-medium text-my-primary' : 'text-my-secondary hover:bg-my-navigation-hover'}`}
-        >
-          待处理 ({pendingQueue.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={filterTab === 'snoozed'}
-          onClick={() => setFilterTab('snoozed')}
-          className={`my-control my-control-sm ${filterTab === 'snoozed' ? 'bg-my-navigation-selected font-medium text-my-primary' : 'text-my-secondary hover:bg-my-navigation-hover'}`}
-        >
-          已暂缓 ({snoozedQueue.length})
-        </button>
-      </div>
-
-      {error ? (
-        <div role="alert" className="rounded-my-base border border-my-line p-3 text-my-sm text-my-secondary">
-          {error}<Button size="sm" className="ml-2" onClick={() => setRetry((value) => value + 1)}>重试</Button>
-        </div>
-      ) : loading ? (
-        <p role="status" className="text-my-xs text-my-tertiary">正在刷新分拣队列…</p>
-      ) : visibleQueue.length === 0 ? (
-        <EmptyState title={filterTab === 'pending' ? '分拣台已清空' : '暂无已暂缓任务'} description={filterTab === 'pending' ? '所有新进需求都已处置完毕。' : '在待处理任务中选择「暂缓处理」后会显示在这里。'} />
+      {loading && queue.length === 0 ? (
+        <div className="my-card flex items-center justify-center py-12 text-my-sm text-my-tertiary">正在加载待分拣队列...</div>
+      ) : queue.length === 0 ? (
+        <EmptyState
+          icon={<CheckCircle2 size={28} />}
+          title="待分拣队列已清空"
+          description="所有新进入的任务都已经完成归类、排期或分派。"
+          action={
+            !readOnly && currentSpaceId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => beginCreateTask({ spaceId: currentSpaceId, triagePending: true })}
+              >
+                <Plus size={14} />
+                <span>新增待分拣任务</span>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
-          <ul className="my-scrollbar min-h-0 space-y-2 overflow-y-auto pr-1" style={{ scrollbarGutter: 'stable' }}>
-            {visibleQueue.map((q) => {
-              const snoozeInfo = triageSnoozes[q.task.id]
-              const selected = entry?.task.id === q.task.id
-              return (
-                <li key={q.task.id}>
-                  <button
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setActiveId(q.task.id)}
-                    className={`w-full rounded-my-base border p-3 text-left transition-colors ${selected ? 'border-my-line-strong bg-my-navigation-selected' : 'border-my-line bg-my-panel hover:bg-my-layer-1-hover'}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-my-2xs text-my-tertiary">{q.task.id}</span>
-                      {snoozeInfo && filterTab === 'snoozed' && (
-                        <span className="inline-flex items-center gap-1 text-my-2xs text-my-tertiary">
-                          <Clock size={11} />至 {formatCollaborationTime(snoozeInfo.until)}
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(280px,340px)_1fr]">
+          <section className="my-card my-scrollbar min-h-0 overflow-y-auto p-1.5" aria-label="待分拣任务队列">
+            <ul className="space-y-1">
+              {queue.map((item) => {
+                const active = task?.id === item.task.id
+                return (
+                  <li key={item.task.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskId(item.task.id)}
+                      className={`flex w-full flex-col gap-1.5 rounded-my-base border px-3 py-2.5 text-left transition-colors duration-150 ease-out ${
+                        active ? 'border-my-line-strong bg-my-layer-2' : 'border-transparent hover:bg-my-layer-1'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-my-2xs text-my-tertiary">{item.task.id}</span>
+                        <PriorityBadge priority={item.task.priority} />
+                        <span className="ml-auto inline-flex items-center gap-1 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-2xs text-my-secondary">
+                          <Bot size={11} />
+                          <span>建议：{PRIORITY_LABEL[item.suggested]}</span>
                         </span>
-                      )}
-                    </div>
-                    <p className="my-1 text-my-sm font-medium text-my-primary">{q.task.title}</p>
-                    <span className="flex items-center gap-2 text-my-xs text-my-tertiary">
-                      <PriorityBadge priority={q.suggested} />
-                      <span className="truncate">{q.reason}</span>
+                      </div>
+                      <div className="my-item-title truncate text-my-sm font-medium text-my-primary">{item.task.title}</div>
+                      <p className="line-clamp-2 text-my-xs text-my-tertiary">{item.reason}</p>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+
+          {task && (
+            <section className="my-card my-scrollbar flex min-h-0 flex-col gap-4 overflow-y-auto p-5" aria-label="分拣决策面板">
+              <header className="flex flex-wrap items-start justify-between gap-3 border-b border-my-line pb-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2 text-my-xs text-my-tertiary">
+                    <span className="font-mono">{task.id}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={12} />
+                      <span>{formatCollaborationTime(task.createdAt)}</span>
                     </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {entry && (
-            <TriageDecision
-              key={entry.task.id}
-              snapshot={snapshot}
-              entry={entry}
-              snoozed={filterTab === 'snoozed'}
-              onUnsnooze={() => clearTriageSnooze(entry.task.id)}
-            />
+                  </div>
+                  <h2 className="text-my-base font-medium text-my-primary">{task.title}</h2>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => openTask(task.id)}>
+                  查看完整任务
+                </Button>
+              </header>
+
+              {task.description && (
+                <div className="rounded-my-base bg-my-layer-1 px-3.5 py-2.5 text-my-sm leading-relaxed text-my-secondary">
+                  {task.description}
+                </div>
+              )}
+
+              {currentItem && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-my-base border border-my-line px-3.5 py-2.5 text-my-xs">
+                  <div className="flex items-center gap-2 text-my-secondary">
+                    <Bot size={14} className="text-my-accent" />
+                    <span>系统建议优先级为「{PRIORITY_LABEL[currentItem.suggested]}」：{currentItem.reason}</span>
+                  </div>
+                  {task.priority !== currentItem.suggested && !readOnly && (
+                    <Button size="sm" variant="soft" disabled={busy} onClick={() => void applyPriority(currentItem.suggested)}>
+                      采纳建议
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="collab-form-label">选择处置方式</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {dispositionLabels.map((item) => {
+                    const selected = disposition === item.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setDisposition(item.id)}
+                        className={`flex flex-col gap-1 rounded-my-base border px-3 py-2.5 text-left transition-colors duration-150 ease-out ${
+                          selected
+                            ? 'border-my-accent bg-my-accent-subtle text-my-primary'
+                            : 'border-my-line bg-my-canvas text-my-secondary hover:bg-my-layer-1'
+                        }`}
+                      >
+                        <span className="text-my-sm font-medium text-my-primary">{item.label}</span>
+                        <span className="text-my-xs text-my-tertiary">{item.hint}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {disposition === 'assign' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="指派成员">
+                    <Select
+                      ariaLabel="指派成员"
+                      value={assigneeId}
+                      onChange={setAssigneeId}
+                      options={[
+                        { value: '', label: '不指定人工处理人' },
+                        ...members.map((member) => ({ value: member.id, label: member.name }))
+                      ]}
+                    />
+                  </Field>
+                  <Field label="委派 Agent / 小队">
+                    <Select
+                      ariaLabel="委派 Agent 或小队"
+                      value={executorValue}
+                      onChange={setExecutorValue}
+                      options={[
+                        { value: '', label: '暂不委派 AI 执行' },
+                        ...targets.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `Agent · ${agent.name}` })),
+                        ...targets.crews.map((crew) => ({ value: `crew:${crew.id}`, label: `小队 · ${crew.name}` }))
+                      ]}
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {disposition === 'iterate' && (
+                <Field label="目标迭代版本">
+                  <Select
+                    ariaLabel="目标迭代版本"
+                    value={iterationId}
+                    onChange={setIterationId}
+                    options={[
+                      { value: '', label: '请选择一个未完结迭代' },
+                      ...iterations.map((item) => ({ value: item.id, label: item.name }))
+                    ]}
+                  />
+                </Field>
+              )}
+
+              <Field label="分拣备注（可选）">
+                <textarea
+                  rows={2}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="补充背景说明、验收提醒或优先级判定依据"
+                  className={textareaClass}
+                />
+              </Field>
+
+              <footer className="flex items-center justify-end gap-2 border-t border-my-line pt-3">
+                {submitDisabledReason ? (
+                  <Tooltip label={submitDisabledReason} wrap>
+                    <span className="inline-flex">
+                      <Button size="sm" variant="primary" disabled>
+                        <CopyCheck size={14} />
+                        <span>确认并处理下一条</span>
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button size="sm" variant="primary" disabled={busy} onClick={() => void submitDecision()}>
+                    <CopyCheck size={14} />
+                    <span>确认并处理下一条</span>
+                  </Button>
+                )}
+              </footer>
+            </section>
           )}
         </div>
       )}
-      <NewTaskModal open={createOpen} onClose={() => setCreateOpen(false)} triagePending />
     </div>
-  )
-}
-
-function TriageDecision({
-  snapshot,
-  entry,
-  snoozed,
-  onUnsnooze
-}: {
-  snapshot: CruxSnapshot
-  entry: QueueEntry
-  snoozed: boolean
-  onUnsnooze: () => void
-}): JSX.Element {
-  const run = useCrux((s) => s.run)
-  const busy = useCrux((s) => s.busy)
-  const openTask = useCrux((s) => s.openTask)
-  const snoozeTriageTask = useCollaborationPlatform((s) => s.snoozeTriageTask)
-  const clearTriageSnooze = useCollaborationPlatform((s) => s.clearTriageSnooze)
-
-  const [disposition, setDisposition] = useState<ExtendedDisposition>('assign')
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([])
-  const [executorKey, setExecutorKey] = useState<string>('')
-  const [iterationId, setIterationId] = useState('')
-  const [duplicateTargetId, setDuplicateTargetId] = useState('')
-  const [snoozePreset, setSnoozePreset] = useState<'2h' | 'tomorrow' | 'nextweek'>('tomorrow')
-  const [note, setNote] = useState('')
-
-  const task = snapshot.tasks.find((t) => t.id === entry.task.id) ?? entry.task
-  const space = snapshot.spaces.find((s) => s.id === task.spaceId)
-  const members = snapshot.members.filter((m) => space?.memberIds.includes(m.id))
-  const iterations = snapshot.iterations.filter((it) => it.spaceId === task.spaceId && it.status !== 'completed')
-  const { agents, crews } = availableExecutionTargets(snapshot, task.spaceId)
-  const otherTasks = snapshot.tasks.filter((t) => t.spaceId === task.spaceId && t.id !== task.id)
-
-  const apply = async (): Promise<void> => {
-    if (busy) return
-    if (disposition === 'snooze') {
-      const preset = SNOOZE_PRESETS.find((item) => item.id === snoozePreset) ?? SNOOZE_PRESETS[1]
-      const until = new Date(Date.now() + preset.hours * 3600_000).toISOString()
-      snoozeTriageTask(task.id, until, note.trim() || undefined)
-      return
-    }
-    if (disposition === 'duplicate') {
-      if (!duplicateTargetId) return
-      await run('标记重复任务', async () => {
-        const rel = await api.crux.addRelation({ taskId: task.id, relation: { kind: 'duplicate', taskId: duplicateTargetId } })
-        if (!rel.ok) return rel
-        return api.crux.triage({
-          taskId: task.id,
-          disposition: 'close',
-          note: note.trim() ? `与 ${duplicateTargetId} 重复：${note.trim()}` : `标记为与 ${duplicateTargetId} 重复`,
-          actorId: members.find((m) => m.role === 'owner')?.id ?? members[0]?.id
-        })
-      })
-      clearTriageSnooze(task.id)
-      return
-    }
-
-    let selectedExecutor: CruxExecutorRef | null = null
-    if (executorKey.startsWith('agent:')) {
-      const found = agents.find((a) => a.id === executorKey.slice(6))
-      if (found) selectedExecutor = { kind: 'agent', id: found.id, name: found.name }
-    } else if (executorKey.startsWith('crew:')) {
-      const found = crews.find((c) => c.id === executorKey.slice(5))
-      if (found) selectedExecutor = { kind: 'crew', id: found.id, name: found.name }
-    }
-
-    const res = await run('分拣处置', async () => {
-      const triaged = await api.crux.triage({
-        taskId: task.id,
-        disposition,
-        assigneeIds: disposition === 'assign' ? assigneeIds : undefined,
-        iterationId: disposition === 'iterate' ? iterationId : undefined,
-        note: note.trim() || undefined,
-        actorId: members.find((m) => m.role === 'owner')?.id ?? members[0]?.id
-      })
-      if (!triaged.ok || !selectedExecutor || disposition !== 'assign') return triaged
-      return api.crux.updateTask({ id: task.id, patch: { executor: selectedExecutor } })
-    })
-    if (res?.ok) clearTriageSnooze(task.id)
-  }
-
-  const submitDisabled = (disposition === 'assign' && !assigneeIds.length)
-    || (disposition === 'iterate' && !iterationId)
-    || (disposition === 'duplicate' && !duplicateTargetId)
-
-  return (
-    <section className="my-scrollbar min-h-0 overflow-y-auto rounded-my-base border border-my-line bg-my-panel p-4" style={{ scrollbarGutter: 'stable' }}>
-      <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-my-md font-semibold text-my-primary">{task.title}</h2>
-          <div className="flex items-center gap-1.5">
-            {snoozed && <Button size="sm" variant="outline" onClick={onUnsnooze}>取消暂缓</Button>}
-            <Button size="sm" variant="ghost" onClick={() => openTask(task.id)}>打开详情 · {task.id}</Button>
-          </div>
-        </div>
-        {task.description && <p className="whitespace-pre-wrap text-my-sm text-my-secondary">{task.description}</p>}
-
-        <Field label="任务优先级">
-          <Select
-            className="w-full"
-            value={task.priority}
-            onChange={(val) => void run('设置优先级', () => api.crux.updateTask({ id: task.id, patch: { priority: val as CruxPriority } }))}
-            options={(Object.keys(PRIORITY_LABEL) as CruxPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
-          />
-        </Field>
-
-        <div className="flex items-center gap-2 rounded-my-base bg-my-layer-1 px-3 py-2">
-          <p className="min-w-0 flex-1 text-my-xs text-my-tertiary">{entry.reason}</p>
-          <Button size="sm" variant="outline" disabled={task.priority === entry.suggested} onClick={() => void run('采用建议优先级', () => api.crux.updateTask({ id: task.id, patch: { priority: entry.suggested } }))}>采用建议</Button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {DISPOSITIONS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              aria-pressed={disposition === d.id}
-              onClick={() => setDisposition(d.id)}
-              className={`rounded-my-base border p-2.5 text-left transition-colors ${disposition === d.id ? 'border-my-line-strong bg-my-navigation-selected' : 'border-my-line bg-my-layer-1 hover:bg-my-layer-1-hover'}`}
-            >
-              <span className="text-my-xs font-medium text-my-primary">{d.label}</span>
-              <p className="mt-0.5 text-my-2xs text-my-tertiary">{d.hint}</p>
-            </button>
-          ))}
-        </div>
-
-        {disposition === 'assign' && (
-          <div className="flex flex-col gap-3 rounded-my-base border border-my-line bg-my-layer-1 p-3">
-            <section>
-              <h3 className="my-item-title mb-2">人类负责人{!space?.multiAssignee && '（单人）'}</h3>
-              <div className="flex flex-wrap gap-2">
-                {members.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    aria-pressed={assigneeIds.includes(m.id)}
-                    onClick={() => setAssigneeIds((previous) => previous.includes(m.id) ? previous.filter((id) => id !== m.id) : space?.multiAssignee ? [...previous, m.id] : [m.id])}
-                    className={`rounded-my-base border px-2.5 py-1 text-my-xs ${assigneeIds.includes(m.id) ? 'border-my-line-strong bg-my-navigation-selected font-medium text-my-primary' : 'border-my-line bg-my-panel text-my-secondary'}`}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </div>
-            </section>
-            <Field label="同时委派 AI 执行者（选填）" hint="分离人类兜底负责人与 AI 执行者，接纳后即可直接进入执行队列。">
-              <Select
-                className="w-full"
-                value={executorKey}
-                onChange={setExecutorKey}
-                options={[
-                  { value: '', label: '暂不委派 AI（人工推进）' },
-                  ...agents.map((a) => ({ value: `agent:${a.id}`, label: `Agent · ${a.name}` })),
-                  ...crews.map((c) => ({ value: `crew:${c.id}`, label: `小队 · ${c.name}` }))
-                ]}
-              />
-            </Field>
-          </div>
-        )}
-
-        {disposition === 'iterate' && (
-          <Field label="目标版本">
-            <Select
-              className="w-full"
-              value={iterationId}
-              onChange={setIterationId}
-              options={[
-                { value: '', label: '选择版本…' },
-                ...iterations.map((it) => ({ value: it.id, label: `${it.name}（${it.startDate} — ${it.endDate}）` }))
-              ]}
-            />
-          </Field>
-        )}
-
-        {disposition === 'duplicate' && (
-          <Field label="重复的原任务">
-            <Select
-              className="w-full"
-              value={duplicateTargetId}
-              onChange={setDuplicateTargetId}
-              options={[
-                { value: '', label: '选择已有原任务…' },
-                ...otherTasks.map((t) => ({ value: t.id, label: `${t.id} · ${t.title}` }))
-              ]}
-            />
-          </Field>
-        )}
-
-        {disposition === 'snooze' && (
-          <Field label="暂缓至">
-            <Select
-              className="w-full"
-              value={snoozePreset}
-              onChange={(val) => setSnoozePreset(val as '2h' | 'tomorrow' | 'nextweek')}
-              options={SNOOZE_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
-            />
-          </Field>
-        )}
-
-        <Field label="分拣备注">
-          <textarea className={textareaClass} style={{ minHeight: 'var(--my-space-64)' }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录分拣结论、重复原因或后续安排" />
-        </Field>
-
-        <div className="flex justify-end">
-          <Button variant="primary" size="sm" disabled={submitDisabled} onClick={() => void apply()}>
-            {disposition === 'duplicate' ? <CopyCheck size={14} /> : disposition === 'snooze' ? <Clock size={14} /> : executorKey ? <Bot size={14} /> : null}
-            执行处置
-          </Button>
-        </div>
-      </fieldset>
-    </section>
   )
 }

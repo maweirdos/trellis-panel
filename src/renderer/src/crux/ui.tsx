@@ -4,7 +4,7 @@
 import { cloneElement, isValidElement, useId, type ReactNode } from 'react'
 import { Info, X } from 'lucide-react'
 import { Button, Modal, Tooltip } from '../my/ui'
-import { PriorityIcon } from '../my/icons'
+import { PriorityIcon as MyPriorityIcon, StateGroupIcon } from '../my/icons'
 import { Select, type SelectOption } from '../components/Select'
 import { FlowIcon } from './icons'
 import type { FlowIconName } from './icons'
@@ -15,13 +15,14 @@ import type {
   CruxTaskLabel,
   CruxTaskStatus
 } from '@shared/crux'
-import { PRIORITY_ICON_CLASS, PRIORITY_LABEL, STATUS_CATEGORY_CLASS, statusDisplayName } from './store'
+import { PRIORITY_ICON_CLASS, PRIORITY_LABEL, statusDisplayName } from './store'
+import { CRUX_STATE_GROUPS, cruxStatusColor } from './task-workspace-adapter'
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }): JSX.Element {
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-my-line pb-3">
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <h1 className="truncate text-my-lg font-semibold text-my-primary">{title}</h1>
+        <h1 className="truncate text-my-lg font-medium text-my-primary">{title}</h1>
         {description && <Tooltip label={description} side="bottom" wrap><button type="button" aria-label={`关于${title}`} className="my-icon-control shrink-0 text-my-icon-tertiary"><Info size={14} /></button></Tooltip>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -32,11 +33,14 @@ export function PageHeader({ title, description, actions }: { title: string; des
 export function MemberChip({ member, size = 'md' }: { member?: CruxMember; size?: 'sm' | 'md' }): JSX.Element | null {
   if (!member) return null
   const dim = size === 'sm' ? 'h-5 w-5 text-my-2xs' : 'h-6 w-6 text-my-xs'
+  const hue = typeof member.avatarHue === 'number' && Number.isFinite(member.avatarHue)
+    ? member.avatarHue
+    : ((member.name.charCodeAt(0) || 4) * 53) % 360
   return (
     <span className="inline-flex items-center gap-1.5" title={member.title ? `${member.name} · ${member.title}` : member.name}>
       <span
-        className={`grid ${dim} shrink-0 place-items-center rounded-my-md font-medium text-my-on-color`}
-        style={{ backgroundColor: `hsl(${member.avatarHue} 26% 38%)` }}
+        className={`grid ${dim} shrink-0 place-items-center rounded-full font-medium text-my-on-color`}
+        style={{ backgroundColor: `hsl(${hue} 26% 38%)` }}
       >
         {member.name.slice(0, 1)}
       </span>
@@ -48,8 +52,8 @@ export function MemberChip({ member, size = 'md' }: { member?: CruxMember; size?
 export function StatusBadge({ status }: { status?: CruxTaskStatus }): JSX.Element {
   if (!status) return <span className="rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs text-my-tertiary">—</span>
   return (
-    <span className={`inline-flex items-center gap-1 rounded-my-sm px-1.5 py-0.5 text-my-xs font-normal ${STATUS_CATEGORY_CLASS[status.category] ?? 'bg-my-layer-1 text-my-tertiary'}`}>
-      <FlowIcon name={(status.category === 'in_review' ? 'review' : status.category) as FlowIconName} size={13} semantic />
+    <span className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
+      <StateGroupIcon stateGroup={CRUX_STATE_GROUPS[status.category]} size={13} color={cruxStatusColor(status.category)} />
       {statusDisplayName(status)}
     </span>
   )
@@ -58,7 +62,7 @@ export function StatusBadge({ status }: { status?: CruxTaskStatus }): JSX.Elemen
 export function PriorityBadge({ priority }: { priority: CruxPriority }): JSX.Element {
   return (
     <span data-priority={priority} className="inline-flex items-center gap-1.5 rounded-my-sm bg-my-layer-1 px-1.5 py-0.5 text-my-xs font-normal text-my-secondary">
-      <PriorityIcon priority={priority} size={13} className={PRIORITY_ICON_CLASS[priority]} />
+      <MyPriorityIcon priority={priority} size={13} className={PRIORITY_ICON_CLASS[priority]} />
       {PRIORITY_LABEL[priority]}
     </span>
   )
@@ -97,13 +101,13 @@ export function Drawer({ open, title, onClose, children, width = 520 }: { open: 
   return (
     <Modal open={open} onClose={onClose} width={width} ariaLabel={title}>
       <div className="relative flex max-h-[var(--my-modal-max-height)] flex-col bg-my-canvas">
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-my-line px-4">
+        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-my-line px-5">
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium text-my-primary">{title}</h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭详情">
             <X size={16} />
           </Button>
         </header>
-        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <div className="my-scrollbar min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </Modal>
   )

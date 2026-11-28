@@ -1,10 +1,10 @@
 import { useMemo, useState, type JSX } from 'react'
-import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronRight } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useCrux } from '../store'
+import { statusDisplayName, useCrux } from '../store'
 import { workflowActionLabel } from '../TaskWorkflow'
 import { PriorityBadge, Select } from '../ui'
-import { Button } from '../../my/ui'
+import { Button, DisclosureGrid } from '../../my/ui'
 import { api } from '../../api'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
 import { hasLocalWorkBridge } from '../local-work'
@@ -177,10 +177,8 @@ function MyNextStepsSource({ spaceId, iterationId }: { spaceId?: string; iterati
               onClick={toggleCollapsed}
               className="group flex items-center gap-1.5 rounded-my-control px-1.5 py-1 text-left transition-colors hover:bg-my-layer-1"
             >
-              <span className="text-my-icon-tertiary group-hover:text-my-primary">
-                {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-              </span>
-              <span className="my-item-title text-my-sm font-semibold text-my-primary">我的下一步</span>
+              <ChevronRight size={13} className="my-disclosure-chevron text-my-icon-tertiary group-hover:text-my-primary" data-open={!collapsed} />
+              <span className="my-item-title text-my-sm font-medium text-my-primary">我的下一步</span>
               <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-my-layer-2 px-1.5 text-my-2xs font-medium tabular-nums text-my-secondary">
                 {items.length}
               </span>
@@ -225,10 +223,9 @@ function MyNextStepsSource({ spaceId, iterationId }: { spaceId?: string; iterati
           </div>
         </div>
 
-        {/* 待办事项展开列表：高密度单行卡片，最大高度限制，杜绝无限延展挤爆页面 */}
-        {!collapsed && (
+        <DisclosureGrid open={!collapsed}>
           <div className="mt-1 pb-1">
-            <div className="my-scrollbar max-h-[220px] overflow-y-auto pr-0.5" style={{ scrollbarGutter: 'auto' }}>
+            <div className="my-scrollbar max-h-[220px] overflow-y-auto pr-0.5">
               <ul className="flex flex-col gap-1">
                 {visibleItems.map((item) => {
                   const desktopRequired = item.action === 'begin_development' && !hasLocalWorkBridge()
@@ -312,11 +309,11 @@ function MyNextStepsSource({ spaceId, iterationId }: { spaceId?: string; iterati
                           disabled={busy}
                           value={item.task.statusId}
                           onChange={(statusId: string) => changeStatus(item.task.id, item.task.createdAt, statusId)}
-                          options={getCruxLightweightTaskCapabilities(snapshot, item.task, actor).statusOptions.map((status) => ({ value: status.id, label: status.name }))}
+                          options={getCruxLightweightTaskCapabilities(snapshot, item.task, actor).statusOptions.map((status) => ({ value: status.id, label: statusDisplayName(status) }))}
                         /> : null}
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
                           aria-label={`${actionLabel} ${item.task.id}`}
                           onClick={() => open(item.task.id, item.task.createdAt)}
                           className="flex h-6 shrink-0 items-center gap-1 px-2 text-my-xs font-medium"
@@ -345,7 +342,7 @@ function MyNextStepsSource({ spaceId, iterationId }: { spaceId?: string; iterati
               </div>
             )}
           </div>
-        )}
+        </DisclosureGrid>
       </div>
     </section>
   )

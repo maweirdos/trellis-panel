@@ -1,5 +1,5 @@
-import { useId, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowRight, Bell, Bot, Check, Code2, MessageSquare, MoreHorizontal, Star, Trash2, X } from 'lucide-react'
+import { useId, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
+import { ArrowRight, Bell, Bot, Check, ChevronRight, Code2, MessageSquare, MoreHorizontal, Star, Trash2, X } from 'lucide-react'
 import type { CruxSnapshot, CruxTask } from '@shared/crux'
 import { currentPostInput, fixedPostInput } from '@shared/crux'
 import { getCruxLightweightTaskCapabilities } from '@shared/crux-domain/lightweight'
@@ -10,10 +10,52 @@ import type { TaskInputRead } from '@shared/team-task-inputs'
 import { api, hasIpc } from '../../api'
 import { confirmDialog } from '../../components/Dialogs'
 import { PageContent, PageLayout } from '../../my/layout/PageLayout'
-import { Button, Dropdown, DropdownItem, Tooltip } from '../../my/ui'
+import { StateGroupIcon } from '../../my/icons'
+import { Button, DisclosureGrid, Dropdown, DropdownItem, Tabs, Tooltip } from '../../my/ui'
 import { InteractionScope } from '../../utils/interaction-scope'
 import { resolveAllowedTargetStatusIds, useCollaborationPlatform } from '../collaboration-platform-store'
 import { memberOf, statusDisplayName, useCrux } from '../store'
+import { CRUX_STATE_GROUPS, cruxStatusColor } from '../task-workspace-adapter'
+
+function DetailDisclosure({
+  title,
+  open: controlledOpen,
+  onToggle,
+  buttonRef,
+  children,
+  className = ''
+}: {
+  title: string
+  open?: boolean
+  onToggle?: (next: boolean) => void
+  buttonRef?: RefObject<HTMLButtonElement>
+  children: ReactNode
+  className?: string
+}): JSX.Element {
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = controlledOpen ?? localOpen
+  const toggle = (): void => {
+    if (onToggle) onToggle(!open)
+    else setLocalOpen((prev) => !prev)
+  }
+  return (
+    <section className={`rounded-my-base border border-my-line bg-my-canvas/60 px-3 py-2 ${className}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        onClick={toggle}
+        className="my-disclosure-trigger flex w-full items-center gap-1.5 py-0.5 text-left text-my-xs font-medium text-my-secondary transition-colors hover:text-my-primary"
+      >
+        <ChevronRight size={13} className="my-disclosure-chevron shrink-0 text-my-icon-tertiary" data-open={open} />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      </button>
+      <DisclosureGrid open={open}>
+        <div className="space-y-3 pt-2.5">{children}</div>
+      </DisclosureGrid>
+    </section>
+  )
+}
 import { isActiveRunStatus, RUN_STATUS_META, useTaskRuns } from '../task-run-store'
 import { TaskExecutionRunPanel } from '../TaskExecutionRunPanel'
 import { TaskWorkflow } from '../TaskWorkflow'
@@ -111,7 +153,9 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const [conversationPending, setConversationPending] = useState(false)
   const openingConversation = useRef(false)
   const [conversationError, setConversationError] = useState('')
-  const inputsRef = useRef<HTMLDetailsElement>(null)
+  const [starPopKey, setStarPopKey] = useState(0)
+  const [inputsOpen, setInputsOpen] = useState(false)
+  const inputsToggleRef = useRef<HTMLButtonElement>(null)
   const space = snapshot.spaces.find((candidate) => candidate.id === task.spaceId)
   if (!source.available || !space) return null
   const identity = taskActorId(snapshot, context)
@@ -150,7 +194,7 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
   const done = flow.statusOptions.find(item => item.category === 'done')
   const switchSection = (next: PostTab, focus = false): void => {
     setSection(next)
-    if (focus) requestAnimationFrame(() => tabBar.current?.querySelector<HTMLButtonElement>(`[data-post-tab="${next}"]`)?.focus())
+    if (focus) requestAnimationFrame(() => tabBar.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus())
   }
   const showComment = (id: string): void => {
     setSection('activity')
@@ -186,7 +230,7 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
         <span className="min-w-0 truncate text-my-xs text-my-tertiary">{space.name}</span><span className="shrink-0 text-my-sm text-my-secondary">{task.id}</span>
         <span className="collab-task-source-chip">{context.state === 'local' ? '本机任务' : '团队任务'}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Tooltip label={starred ? '从侧边栏取消收藏' : '收藏到侧边栏'}><Button size="sm" variant="ghost" aria-label={starred ? '取消收藏任务' : '收藏任务'} aria-pressed={starred} onClick={() => toggleFavorite('task', task.id, task.spaceId)}><Star size={15} className={starred ? 'fill-current text-my-warning-text' : ''} /></Button></Tooltip>
+          <Tooltip label={starred ? '从侧边栏取消收藏' : '收藏到侧边栏'}><Button size="sm" variant="ghost" aria-label={starred ? '取消收藏任务' : '收藏任务'} aria-pressed={starred} onClick={() => { setStarPopKey((v) => v + 1); toggleFavorite('task', task.id, task.spaceId) }}><Star key={starPopKey} size={15} className={starred ? 'my-star-pop fill-current text-my-warning-text' : ''} /></Button></Tooltip>
           <Tooltip label={following ? '取消关注动态' : '关注任务动态'}><Button size="sm" variant="ghost" disabled={disabled || !actorId} aria-label={following ? '取消关注任务' : '关注任务'} aria-pressed={following} onClick={() => { if (actorId) void mutate('更新任务关注', () => api.crux.updateTask({ id: task.id, patch: { followerToggle: actorId } })) }}><Bell size={15} className={following ? 'fill-current' : ''} /></Button></Tooltip>
           <Dropdown align="right" width={170} trigger={({ toggle, open }) => <Tooltip label="更多任务操作"><Button size="sm" variant="ghost" aria-label="更多任务操作" aria-expanded={open} aria-haspopup="true" onClick={toggle}><MoreHorizontal size={16} /></Button></Tooltip>}>
             {(dismiss) => <>
@@ -226,11 +270,12 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                     <Button
                       key={target.id}
                       size="sm"
-                      variant={target.category === 'done' ? 'primary' : 'outline'}
+                      variant={target.category === 'done' ? 'soft' : 'outline'}
                       disabled={disabled}
                       onClick={() => void mutate(`流转至 ${statusDisplayName(target)}`, () => api.crux.updateTask({ id: task.id, patch: { statusId: target.id } }))}
                     >
-                      <ArrowRight size={12} />{statusDisplayName(target)}
+                      <StateGroupIcon stateGroup={CRUX_STATE_GROUPS[target.category]} size={13} color={cruxStatusColor(target.category)} />
+                      {statusDisplayName(target)}
                     </Button>
                   ))}
                   <Button size="sm" variant="ghost" className="ml-auto" onClick={() => switchSection('runs', true)}>
@@ -273,38 +318,58 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
               </div>
               {Boolean(task.acceptanceCriteria?.length) && <section><h3 className="mb-2 text-my-sm font-medium text-my-primary">验收标准</h3><ol className="list-decimal space-y-2 pl-5 text-my-sm text-my-secondary">{task.acceptanceCriteria?.map((criterion, index) => <li key={index} className="whitespace-pre-wrap break-words">{criterion}</li>)}</ol></section>}
               {confirmed.length > 0 && <section><h3 className="my-item-title">已确认补充</h3>{confirmed.map(note => <div key={note.commentId} className="mt-2"><p className="whitespace-pre-wrap break-words">{note.body}</p><Button size="sm" variant="ghost" onClick={() => showComment(`task-comment-${note.commentId}`)}>{memberOf(snapshot, note.confirmedBy)?.name ?? note.confirmedBy} · {formatCollaborationTime(note.confirmedAt)} · 查看原评论</Button></div>)}</section>}
-              {Boolean(task.descriptionHistory?.length) && <details><summary>描述历史</summary>{task.descriptionHistory?.map((revision, index) => <section key={index} className="mt-2"><h3 className="my-item-title">{revision.title}</h3><p className="whitespace-pre-wrap break-words">{revision.description}</p><time className="my-item-description">{formatCollaborationTime(revision.at)}</time></section>)}</details>}
-              {Boolean(task.lightweightRestore?.workflow.history.length) && <details><summary>此前的交接记录</summary>
-                {task.lightweightRestore?.workflow.history.map(event => <div key={event.id} className="mt-2">
-                  <p className="my-item-title">{getCruxTaskStageMetadata(event.toStage).label} · {memberOf(snapshot, event.actorId)?.name ?? event.actorId}</p>
-                  <time className="my-item-description">{formatCollaborationTime(event.at)}</time>
-                  {event.body && <p className="whitespace-pre-wrap break-words text-my-sm">{event.body}</p>}
-                </div>)}
-              </details>}
+              {Boolean(task.descriptionHistory?.length) && (
+                <DetailDisclosure title="描述历史">
+                  {task.descriptionHistory?.map((revision, index) => (
+                    <section key={index}>
+                      <h3 className="my-item-title">{revision.title}</h3>
+                      <p className="whitespace-pre-wrap break-words text-my-sm text-my-secondary">{revision.description}</p>
+                      <time className="my-item-description">{formatCollaborationTime(revision.at)}</time>
+                    </section>
+                  ))}
+                </DetailDisclosure>
+              )}
+              {Boolean(task.lightweightRestore?.workflow.history.length) && (
+                <DetailDisclosure title="此前的交接记录">
+                  {task.lightweightRestore?.workflow.history.map((event) => (
+                    <div key={event.id}>
+                      <p className="my-item-title">{getCruxTaskStageMetadata(event.toStage).label} · {memberOf(snapshot, event.actorId)?.name ?? event.actorId}</p>
+                      <time className="my-item-description">{formatCollaborationTime(event.at)}</time>
+                      {event.body && <p className="whitespace-pre-wrap break-words text-my-sm">{event.body}</p>}
+                    </div>
+                  ))}
+                </DetailDisclosure>
+              )}
               {task.handoff?.files?.length ? <TaskPostFiles scope={{ workspaceKey: context.key, taskId: task.id, spaceId: task.spaceId, taskCreatedAt: task.createdAt }} sourceId={task.handoff.id} files={task.handoff.files} current={source.owns} /> : null}
               {(task.handoff || Boolean(task.sharedMaterials?.length)) && <TaskHandoffProvenance key={JSON.stringify([taskSourceKey(snapshot, context), task.id, task.createdAt, task.handoff, task.sharedMaterials])} task={task} source={source} />}
-              {!simple && basis && <details><summary>{changedBasis ? '本轮规划依据（与当前任务有差异）' : '本轮规划依据'}</summary>
-                {task.workflow?.history.filter(event => event.postInput).slice().reverse().map(event => event.postInput && <section key={event.id} className="mt-3">
-                  <h3 className="my-item-title">{event.postInput.title} · {formatCollaborationTime(event.at)}</h3>
-                  <p className="whitespace-pre-wrap break-words">{event.postInput.description}</p>
-                  <ul>{event.postInput.acceptanceCriteria.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul>
-                  {event.postInput.sources.map(group => <TaskPostFiles key={group.id} scope={{ workspaceKey: context.key, taskId: task.id, spaceId: task.spaceId, taskCreatedAt: task.createdAt }} sourceId={group.id} files={group.files} current={source.owns} />)}
-                </section>)}
-                {changedBasis && task.workflow?.stage === 'planning' && actorId === (task.workflow.handlerId ?? task.assigneeIds[0]) && <Button disabled={disabled} onClick={() => void mutate('按当前内容重新规划', () => api.crux.transitionTask({
-                  taskId: task.id, action: 'begin_development', expectedStage: 'planning', expectedUpdatedAt: task.updatedAt,
-                  ...(task.workflow?.deliveryState ? { expectedDeliveryRevision: task.workflow.deliveryState.revision } : {})
-                }))}>按当前内容重新规划</Button>}
-              </details>}
+              {!simple && basis && (
+                <DetailDisclosure title={changedBasis ? '本轮规划依据（与当前任务有差异）' : '本轮规划依据'}>
+                  {task.workflow?.history.filter((event) => event.postInput).slice().reverse().map((event) => event.postInput && (
+                    <section key={event.id}>
+                      <h3 className="my-item-title">{event.postInput.title} · {formatCollaborationTime(event.at)}</h3>
+                      <p className="whitespace-pre-wrap break-words text-my-sm text-my-secondary">{event.postInput.description}</p>
+                      <ul>{event.postInput.acceptanceCriteria.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul>
+                      {event.postInput.sources.map((group) => <TaskPostFiles key={group.id} scope={{ workspaceKey: context.key, taskId: task.id, spaceId: task.spaceId, taskCreatedAt: task.createdAt }} sourceId={group.id} files={group.files} current={source.owns} />)}
+                    </section>
+                  ))}
+                  {changedBasis && task.workflow?.stage === 'planning' && actorId === (task.workflow.handlerId ?? task.assigneeIds[0]) && (
+                    <Button disabled={disabled} onClick={() => void mutate('按当前内容重新规划', () => api.crux.transitionTask({
+                      taskId: task.id, action: 'begin_development', expectedStage: 'planning', expectedUpdatedAt: task.updatedAt,
+                      ...(task.workflow?.deliveryState ? { expectedDeliveryRevision: task.workflow.deliveryState.revision } : {})
+                    }))}>按当前内容重新规划</Button>
+                  )}
+                </DetailDisclosure>
+              )}
               <section className="task-post-updates">
-                <div ref={tabBar} className="task-post-tabs" role="tablist" aria-label="任务记录">
-                  {availableTabs.map((tab, index) => <button key={tab} type="button" role="tab" data-post-tab={tab}
-                    id={`${sectionId}-${tab}`} aria-controls={`${sectionId}-panel`} aria-selected={section === tab} tabIndex={section === tab ? 0 : -1}
-                    onClick={() => switchSection(tab)} onKeyDown={event => {
-                      const next = event.key === 'ArrowRight' ? (index + 1) % availableTabs.length : event.key === 'ArrowLeft' ? (index + availableTabs.length - 1) % availableTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? availableTabs.length - 1 : -1
-                      if (next >= 0) { event.preventDefault(); switchSection(availableTabs[next], true) }
-                    }}>{postTabs[tab]}</button>)}
+                <div ref={tabBar} className="shrink-0">
+                  <Tabs
+                    tabs={availableTabs.map((t) => ({ id: t, label: postTabs[t] }))}
+                    active={section}
+                    onChange={(next) => switchSection(next)}
+                    ariaLabel="任务记录"
+                  />
                 </div>
-                <div id={`${sectionId}-panel`} role="tabpanel" aria-labelledby={`${sectionId}-${section}`} className="task-post-tab-content">
+                <div key={section} id={`${sectionId}-panel`} role="tabpanel" aria-labelledby={`${sectionId}-${section}`} className="task-post-tab-content my-subview-stage">
                   {section === 'activity' && <TaskDiscussion taskDraft={draft} snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} source={source} />}
                   {section === 'runs' && <TaskExecutionRunPanel snapshot={snapshot} task={task} actorId={actorId} disabled={disabled} mutate={mutate} />}
                   {section === 'conversations' && <div className="task-post-conversations">
@@ -317,15 +382,24 @@ function TaskDetails({ snapshot, task, embedded = false, onClose, onContinue, on
                   </div>}
                   {section === 'workflow' && <div className="flex flex-col gap-4">
               <TaskWorkflow snapshot={snapshot} task={task} source={source} resourceRefresh={resourceRefresh} workflowInputs={context.state === 'local' ? undefined : workflowInputs} onMaterialCommitted={() => { if (source.owns()) { setMaterialRefresh((value) => value + 1); setResourceRefresh((value) => value + 1) } }} onOpenInputs={sharedInputs ? () => {
-                if (source.owns() && inputsRef.current) {
-                  inputsRef.current.open = true
-                  inputsRef.current.querySelector('summary')?.focus()
+                if (source.owns()) {
+                  setInputsOpen(true)
+                  requestAnimationFrame(() => inputsToggleRef.current?.focus())
                 }
               } : undefined} />
-              <details className="space-y-3"><summary>代码资源与进度</summary>
+              <DetailDisclosure title="代码资源与进度">
                 <TaskCodeResources task={task} onSelected={() => setResourceRefresh((value) => value + 1)} /><TaskProgressPanel snapshot={snapshot} task={task} />
-              </details>
-              {sharedInputs && <details ref={inputsRef} className="space-y-3"><summary>采用的材料与规则</summary><TaskInputPanel key={`${taskSourceKey(snapshot, context)}:${space.id}:${task.id}:${task.createdAt}`} api={governanceApi} workspaceKey={context.key} spaceId={space.id} taskId={task.id} taskCreatedAt={task.createdAt} actorId={actorId} materialsApi={materialsApi} refreshRevision={materialRefresh} workspaceRevision={context.revision} canAdopt={canAdoptInputs} onRead={setWorkflowInputs} onAdopted={() => { if (source.owns()) setResourceRefresh((value) => value + 1) }} /></details>}
+              </DetailDisclosure>
+              {sharedInputs && (
+                <DetailDisclosure
+                  title="采用的材料与规则"
+                  open={inputsOpen}
+                  onToggle={setInputsOpen}
+                  buttonRef={inputsToggleRef}
+                >
+                  <TaskInputPanel key={`${taskSourceKey(snapshot, context)}:${space.id}:${task.id}:${task.createdAt}`} api={governanceApi} workspaceKey={context.key} spaceId={space.id} taskId={task.id} taskCreatedAt={task.createdAt} actorId={actorId} materialsApi={materialsApi} refreshRevision={materialRefresh} workspaceRevision={context.revision} canAdopt={canAdoptInputs} onRead={setWorkflowInputs} onAdopted={() => { if (source.owns()) setResourceRefresh((value) => value + 1) }} />
+                </DetailDisclosure>
+              )}
                   </div>}
                 </div>
               </section>
