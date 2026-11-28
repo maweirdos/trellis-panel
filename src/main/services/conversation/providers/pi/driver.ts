@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { ProviderDriverKind, ProviderInstanceId } from '../../../../../shared/conversation/providerInstance'
 import { cleanModelDisplayName } from '../../../../../shared/model-selection'
 import type { AcpSessionRecord } from '../../../../../shared/types'
+import type { OpenArtifactMcpGrant } from '../../../../../shared/open-artifact'
 import type { WorkcopyLease, WorkcopyOwner } from '../../../../../shared/workcopy-use'
 import { DaemonError } from '../../../../daemon/errors'
 import { readBounded, writeExclusiveAtomic } from '../../../../daemon/files'
@@ -46,6 +47,7 @@ type Slot = {
   owner: WorkcopyOwner
   runtime: PiConversationRuntime
   knowledge?: KnowledgeMcpConnection
+  artifactMcp?: OpenArtifactMcpGrant
   nativeThreadId?: string
   lease?: WorkcopyLease
   active?: ActiveTurn
@@ -162,8 +164,19 @@ class PiConversationDriver implements ConversationDriverSession {
         const unsupported = (detail: string) => ({ state: 'unsupported' as const, source: 'host-policy' as const, detail })
         return {
           version: PI_VERSION, configurationKey: catalog.revision, observedAt: new Date().toISOString(), source: 'native-catalog',
-          models: catalog.models.map(model => ({ id: model.selectionId, displayName: cleanModelDisplayName(model.label) || model.modelId,
-            isDefault: model.selectionId === catalog.defaultModelId })),
+          models: catalog.models.map(model => {
+            const colonIndex = model.selectionId.indexOf(':')
+            const providerId = colonIndex > 0 ? model.selectionId.slice(0, colonIndex) : undefined
+            const separatorIndex = model.label.indexOf(' · ')
+            const group = separatorIndex > 0 ? model.label.slice(0, separatorIndex).trim() : undefined
+            return {
+              id: model.selectionId,
+              displayName: cleanModelDisplayName(model.label) || model.modelId,
+              isDefault: model.selectionId === catalog.defaultModelId,
+              ...(providerId ? { providerId } : {}),
+              ...(group ? { group } : {}),
+            }
+          }),
           options: [],
           actions: { chat: unknown('已配置模型，实际连接和回复在本轮核验'), planning: unsupported('工程规划的受限工具与任务授权尚未接入'),
             execution: unsupported('托管任务授权尚未接入'), cancel: verified('SDK abort 精确作用于原操作'), resume: verified('按原目录和 SDK 会话文件恢复'),
@@ -177,7 +190,7 @@ class PiConversationDriver implements ConversationDriverSession {
     })
   }
 
-  private async makeThread(model: string, cwd: string, binding?: Binding): Promise<string> {
+  private async makeThread(model: string, cwd: string, binding?: Binding, artifactMcp?: OpenArtifactMcpGrant): Promise<string> {
     this.assertRoot(cwd)
     this.options.assertCanSpawn()
     if (!piConfiguredModels().models.some(option => option.selectionId === model)) throw new DaemonError('E_UNAVAILABLE', '所选 Pi 模型未启用')
@@ -198,9 +211,14 @@ class PiConversationDriver implements ConversationDriverSession {
     try {
       runtime = new PiConversationRuntime({
         meta, argv: [this.node, this.entry], dataDirectory: checkedDirectory(this.directory), nativeJobs: jobs,
-        mcpServers: () => knowledge?.servers().map(server => ({ name: 'trellis_knowledge', config: {
-          type: 'http', url: server.url, headers: Object.fromEntries(server.headers.map(header => [header.name, header.value])), exposure: 'direct',
-        } })) ?? [],
+        mcpServers: () => [
+          ...(knowledge?.servers().map(server => ({ name: 'trellis_knowledge', config: {
+            type: 'http', url: server.url, headers: Object.fromEntries(server.headers.map(header => [header.name, header.value])), exposure: 'direct',
+          } })) ?? []),
+          ...(artifactMcp ? [{ name: 'open-artifact', config: {
+            type: 'http', url: artifactMcp.url, headers: Object.fromEntries(artifactMcp.headers.map(header => [header.name, header.value])), exposure: 'direct',
+          } }] : []),
+        ],
         onBeforeSpawn: () => { this.assertRoot(cwd); if (this.closing) throw new DaemonError('E_UNAVAILABLE', 'Pi SDK 正在关闭'); this.options.assertCanSpawn() },
         onSpawned: () => {},
         onState: state => projectPiState(meta, state),
@@ -211,7 +229,7 @@ class PiConversationDriver implements ConversationDriverSession {
       await jobs?.cleanupAll()
       throw error
     }
-    const slot: Slot = { owner, runtime, knowledge }
+    const slot: Slot = { owner, runtime, knowledge, ...(artifactMcp ? { artifactMcp } : {}) }
     this.slots.add(slot)
     try {
       const handle = await runtime.ensureSession({ sessionKey, agent: 'pi', cwd: this.root, mode: 'persistent' })
@@ -235,16 +253,16 @@ class PiConversationDriver implements ConversationDriverSession {
     }
   }
 
-  startThread(model: string, cwd: string): Effect.Effect<string, Error> {
+  startThread(model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant): Effect.Effect<string, Error> {
     return effect(async () => {
       const key = randomUUID()
-      const operation = this.makeThread(model, cwd)
+      const operation = this.makeThread(model, cwd, undefined, artifactMcp)
       this.opening.set(key, operation)
       try { return await operation } finally { this.opening.delete(key) }
     })
   }
 
-  resumeThread({ nativeThreadId, cwd, model }: ConversationResumeThreadInput): Effect.Effect<string, Error> {
+  resumeThread({ nativeThreadId, cwd, model, artifactMcp }: ConversationResumeThreadInput): Effect.Effect<string, Error> {
     return effect(async () => {
       this.assertRoot(cwd)
       const binding = this.loadBinding(nativeThreadId)
@@ -252,10 +270,10 @@ class PiConversationDriver implements ConversationDriverSession {
       const pending = this.opening.get(nativeThreadId)
       if (pending) return pending
       const existing = this.sessions.get(nativeThreadId)
-      if (existing?.runtime.available) return nativeThreadId
+      if (existing?.runtime.available && (!artifactMcp || existing.artifactMcp?.url === artifactMcp.url)) return nativeThreadId
       const operation = (async () => {
         if (existing) await this.closeSlot(existing)
-        return this.makeThread(model, cwd, binding)
+        return this.makeThread(model, cwd, binding, artifactMcp)
       })()
       this.opening.set(nativeThreadId, operation)
       try { return await operation } finally { this.opening.delete(nativeThreadId) }
@@ -297,21 +315,33 @@ class PiConversationDriver implements ConversationDriverSession {
         this.currentTurn(nativeThreadId, turnId)
         const pending = this.permissions.get(nativeRequestId)
         if (!pending || pending.turnId !== turnId || pending.nativeThreadId !== nativeThreadId) throw new DaemonError('E_CONFLICT', 'Pi SDK 原请求已过期')
-        if (response.kind !== 'approval' || !['accept', 'decline', 'cancel'].includes(response.decision)) {
-          throw new DaemonError('E_INVALID_ARG', 'Pi SDK 此请求只接受本次批准、拒绝或取消')
+        if (response.kind !== 'approval' || !['accept', 'acceptForSession', 'acceptAlways', 'decline', 'cancel'].includes(response.decision)) {
+          throw new DaemonError('E_INVALID_ARG', 'Pi SDK 此请求只接受批准、拒绝或取消')
         }
-        pending.resolve(response.decision === 'accept' ? 'allow-once' : 'deny')
+        pending.resolve(response.decision === 'accept' || response.decision === 'acceptForSession' || response.decision === 'acceptAlways' ? 'allow-once' : 'deny')
       }, catch: asError,
     })
   }
 
   private requestPermission(nativeThreadId: string, turnId: string, input: ConversationRuntimePermissionRequest,
-    signal: AbortSignal, onEvent: ConversationDriverEventListener): Promise<PiPermissionDecision> {
+    signal: AbortSignal, onEvent: ConversationDriverEventListener, runtimeMode?: string): Promise<PiPermissionDecision> {
     this.currentTurn(nativeThreadId, turnId)
     if (signal.aborted) return Promise.resolve('deny')
+    if (runtimeMode === 'full-access' && !this.options.ordinaryTask) return Promise.resolve('allow-once')
     const nativeRequestId = randomUUID()
-    const request: ConversationDriverRuntimeRequest = { kind: 'approval', title: input.raw.toolCall.title ?? 'Pi SDK 工具授权',
-      options: [{ decision: 'accept', label: '允许本次' }, { decision: 'decline', label: '拒绝' }] }
+    const rawTitle = input.raw.toolCall.title ?? 'Pi SDK 工具授权'
+    const scopeKey = `pi:${rawTitle.toLowerCase().trim().slice(0, 80)}`
+    const request: ConversationDriverRuntimeRequest = {
+      kind: 'approval',
+      requestKind: 'permission',
+      approvalScopeKey: scopeKey,
+      title: rawTitle,
+      options: [
+        { decision: 'accept', label: '允许本次' },
+        { decision: 'acceptForSession', label: '本会话允许' },
+        { decision: 'decline', label: '拒绝' },
+      ],
+    }
     return new Promise<PiPermissionDecision>((resolve, reject) => {
       const settle = (decision: PiPermissionDecision): void => {
         signal.removeEventListener('abort', abort)
@@ -363,9 +393,16 @@ class PiConversationDriver implements ConversationDriverSession {
     kind: 'prompt' | 'compact', options?: Partial<ConversationStartTurnContext> & { signal?: AbortSignal }): Promise<string> {
     const turnId = piRequestIdSchema.parse(options?.requestId ?? randomUUID())
     this.assertRoot(cwd)
-    const slot = this.sessions.get(nativeThreadId)
+    let slot = this.sessions.get(nativeThreadId)
     if (!slot?.runtime.available || this.loadBinding(nativeThreadId).model !== model || slot.active) {
       throw new ConversationTurnRejectedError('Pi SDK 原会话未就绪、模型已变化或已有执行中的回合')
+    }
+    if (options?.artifactMcp && slot.artifactMcp?.url !== options.artifactMcp.url) {
+      const binding = this.loadBinding(nativeThreadId)
+      await this.closeSlot(slot)
+      await this.makeThread(model, cwd, binding, options.artifactMcp)
+      slot = this.sessions.get(nativeThreadId)
+      if (!slot?.runtime.available) throw new ConversationTurnRejectedError('Pi SDK 挂载 Artifacts 工具失败')
     }
     const registry = workcopyUseRegistry()
     const assertCurrent = (): void => {
@@ -391,12 +428,15 @@ class PiConversationDriver implements ConversationDriverSession {
         const image = nativeImageAttachment(content)
         return { type: 'image' as const, mediaType: image.mimeType, data: image.data }
       })
-      const promptText = [text, ...contents.filter(content => content.attachment.type !== 'image').map(nativeTextAttachment)].join('\n\n')
+      const promptBody = options?.interactionMode === 'plan' && !this.options.ordinaryTask
+        ? `[规划模式] 请仅进行只读分析与方案设计，给出清晰的实施计划与关键步骤，不要修改代码文件或执行写入命令。\n\n${text}`
+        : text
+      const promptText = [promptBody, ...contents.filter(content => content.attachment.type !== 'image').map(nativeTextAttachment)].join('\n\n')
       const input: Parameters<PiConversationRuntime['startTurn']>[0] = {
         handle, requestId: turnId, text: promptText, assertActive: assertCurrent,
         ...(attachments.length ? { attachments } : {}),
         onPermissionRequest: async (request, context) => ({ outcome: { outcome: 'selected',
-          optionId: await this.requestPermission(nativeThreadId, turnId, request, context.signal, onEvent) } }),
+          optionId: await this.requestPermission(nativeThreadId, turnId, request, context.signal, onEvent, options?.runtimeMode) } }),
       }
       work = kind === 'compact' ? slot.runtime.compact(input, text) : slot.runtime.startTurn(input)
       slot.active = { id: turnId, work }
@@ -410,6 +450,22 @@ class PiConversationDriver implements ConversationDriverSession {
       const inserted = await work.promptStarted.then(() => true, () => false)
       if (inserted) onEvent({ type: 'turn-accepted', turnId, turnIdSource: 'host' })
       for await (const event of work.events) {
+        if (event.type === 'tool_call') {
+          const toolId = event.toolCallId || `pi-tool:${turnId}:${event.title || 'call'}`
+          const status = event.status === 'completed' ? 'completed' : event.status === 'failed' ? 'failed' : 'running'
+          const rawTitle = event.title || '执行工具'
+          const lower = rawTitle.toLowerCase()
+          const item: import('../registry').ConversationDriverWorkItem =
+            /\b(?:bash|shell|exec|command|terminal|pwsh|run)\b|运行命令/.test(lower)
+              ? { kind: 'command-execution', nativeItemId: toolId, command: rawTitle, status }
+              : /\b(?:web|fetch|search_web)\b|搜索网页/.test(lower)
+                ? { kind: 'web-search', nativeItemId: toolId, query: rawTitle, status }
+                : /\b(?:grep|glob|find|file_search)\b|搜索文件/.test(lower)
+                  ? { kind: 'file-search', nativeItemId: toolId, pattern: rawTitle, status }
+                  : { kind: 'tool', nativeItemId: toolId, label: rawTitle, status }
+          onEvent({ type: 'work-item', turnId, turnIdSource: 'host', item })
+          continue
+        }
         if (event.type !== 'text_delta' || event.stream === 'thought' || !event.messageId) continue
         const block = piTextMetaSchema.safeParse(event.meta && 'piText' in event.meta ? event.meta.piText : undefined)
         const itemId = block.success ? `${block.data.messageId}:${block.data.blockIndex}` : event.messageId
@@ -445,6 +501,7 @@ export function createPiDriverRegistration(): ConversationDriverRegistration {
     driverKind: ProviderDriverKind.make('pi'),
     promptAttachments: PI_ATTACHMENTS,
     configurationKey: () => { try { return piConfiguredModels().revision } catch { return 'pi-unconfigured' } },
+    bindingKey: () => 'pi-local',
     open: input => effect(async () => {
       input.assertCanSpawn()
       const entry = piEngineEntry()

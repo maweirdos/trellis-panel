@@ -11,7 +11,7 @@ import type {
   ConversationCompaction, ConversationLifecycleEvent, ConversationRuntimeRequest, ConversationThreadCommand, ConversationThreadCommandState,
 } from '../../../../shared/conversation/command-runtime'
 import {
-  OrchestrationV2DomainEventJson, type ModelSelection, type OrchestrationV2DomainEvent, type ProviderDriverKind,
+  OrchestrationV2DomainEventJson, type ModelSelection, type OrchestrationV2DomainEvent, type OrchestrationV2Notification, type ProviderDriverKind,
 } from '../../../../shared/conversation/contracts'
 import { commandPayloadDigest } from '../persistence/event-store'
 import type { ConversationEventSink } from './EventSink'
@@ -229,7 +229,7 @@ export class ThreadCommands {
       return this.commit(input, authority, { ...planThreadDeletion(this.database, input.threadId, current, occurredAt, deletionState), hostEvents })
     }
     if (input.type === 'thread.archive' && input.archived && this.database.prepare(`SELECT 1 FROM conversation_v2_effect_outbox
-      WHERE thread_id = ? AND status IN ('pending', 'running') LIMIT 1`).get(input.threadId)) {
+      WHERE thread_id = ? AND status IN ('pending', 'running') AND effect_type <> 'provider-runtime.continue' LIMIT 1`).get(input.threadId)) {
       throw new DaemonError('E_BUSY', '请先处理运行中、排队或待核对的消息。')
     }
     const change = (() => {
@@ -249,7 +249,48 @@ export class ThreadCommands {
           archived_at = ?, deleted_at = ?, payload_json = ? WHERE thread_id = ?`)
           .run(String(next.title), occurredAt, typeof next.archivedAt === 'string' ? next.archivedAt : null,
             typeof next.deletedAt === 'string' ? next.deletedAt : null, JSON.stringify(next), input.threadId)
+        if (input.type === 'thread.archive' && input.archived) {
+          this.database.prepare(`UPDATE conversation_v2_effect_outbox
+            SET status = 'cancelled', last_error = '会话已归档，取消自动续接。', updated_at = ?, completed_at = ?
+            WHERE thread_id = ? AND effect_type = 'provider-runtime.continue' AND status = 'pending'`)
+            .run(occurredAt, occurredAt, input.threadId)
+        }
         updateRelation?.()
+      },
+    })
+  }
+
+  /**
+   * 持久更新会话的运行权限模式（`runtimeMode`）或交互模式（`interactionMode`），并发布元数据变更事件。
+   */
+  setThreadMode(
+    input: Extract<ConversationThreadCommand, { type: 'thread.runtime-mode.set' | 'thread.interaction-mode.set' }>,
+    authority: ConversationAuthority,
+  ): ConversationThreadCommandState {
+    const row = this.database.prepare(
+      'SELECT payload_json, archived_at FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(input.threadId) as { payload_json: string; archived_at: string | null } | undefined
+    if (!row) throw new DaemonError('E_CONFLICT', '原会话已删除。')
+    if (row.archived_at !== null) throw new DaemonError('E_CONFLICT', '请先恢复已归档的会话。')
+    const occurredAt = now()
+    const current = JSON.parse(row.payload_json) as Record<string, unknown>
+    const patch = input.type === 'thread.runtime-mode.set'
+      ? { runtimeMode: input.runtimeMode }
+      : { interactionMode: input.interactionMode }
+    const next: Record<string, unknown> = { ...current, ...patch, updatedAt: occurredAt }
+    const event = decodeEvent({ type: 'thread.metadata-updated', id: randomUUID(), threadId: input.threadId, occurredAt, payload: next })
+    return this.commit(input, authority, {
+      events: [event],
+      apply: () => {
+        if (input.type === 'thread.runtime-mode.set') {
+          this.database.prepare(
+            'UPDATE conversation_v2_projection_threads SET runtime_mode = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?',
+          ).run(input.runtimeMode, occurredAt, JSON.stringify(next), input.threadId)
+        } else {
+          this.database.prepare(
+            'UPDATE conversation_v2_projection_threads SET interaction_mode = ?, updated_at = ?, payload_json = ? WHERE thread_id = ?',
+          ).run(input.interactionMode, occurredAt, JSON.stringify(next), input.threadId)
+        }
       },
     })
   }
@@ -259,11 +300,12 @@ export class ThreadCommands {
     steer?: { targetRunId: string; targetAttemptId: string }, promptAttachments?: ConversationPromptAttachmentSupport,
     portableHistory?: readonly PortableHistory[], relations?: ThreadRelations,
     completion?: { readonly intent: DelegatedCompletionIntent; readonly runId: string; readonly plan: CommandPlan },
+    manualContinuation?: { readonly sourceRunId: string; readonly promptText: string; readonly notification: OrchestrationV2Notification },
   ): ConversationThreadCommandState {
     const first = this.database.prepare('SELECT default_provider FROM conversation_v2_projection_threads WHERE thread_id = ?')
       .get(input.threadId) as { default_provider: string } | undefined
     if (input.type === 'thread.handoff') {
-      if (first?.default_provider === input.instanceId) throw new DaemonError('E_CONFLICT', '请选择不同的引擎实例。')
+      if (!first) throw new DaemonError('E_CONFLICT', '找不到要接力的原会话。')
     } else if (first?.default_provider !== input.instanceId) throw new DaemonError('E_CONFLICT', '当前会话未连接所选引擎实例。')
     if (this.database.prepare(`SELECT 1 FROM conversation_v2_effect_outbox WHERE thread_id = ?
       AND status IN ('pending','running') AND json_extract(payload_json, '$.handoff') IS 1 LIMIT 1`).get(input.threadId)) {
@@ -275,23 +317,36 @@ export class ThreadCommands {
     const latest = this.database.prepare('SELECT COALESCE(MAX(ordinal), 0) AS ordinal FROM conversation_v2_projection_runs WHERE thread_id = ?')
       .get(input.threadId) as { ordinal: number }
     const { threadId, messageId, text } = input
-    const attachmentClaim = input.type === 'message.dispatch'
+    const attachmentClaim = input.type === 'message.dispatch' && !manualContinuation
       ? prepareConversationAttachmentClaim(this.attachmentStore, authority, input, threadId)
       : undefined
     assertPromptAttachments(attachmentClaim?.attachments, promptAttachments)
     const runId = completion?.runId ?? `run_${randomUUID()}`
     const requestedAt = now()
     const ordinal = latest.ordinal + 1
+    const shiftedQueued = manualContinuation
+      ? this.queuedRuns(threadId).map((queued, index) => ({
+        runId: queued.run_id,
+        payload: { ...JSON.parse(queued.payload_json), queuePosition: index + 2 },
+      }))
+      : []
     const run = {
       id: runId, threadId, ordinal, providerInstanceId: input.instanceId, modelSelection: selection.modelSelection,
       providerThreadId: null, userMessageId: messageId, rootNodeId: null, activeAttemptId: null, status: 'queued',
       requestedAt, startedAt: null, completedAt: null, checkpointId: null, contextHandoffId: null,
+      ...(manualContinuation && {
+        manualContinuationOfRunId: manualContinuation.sourceRunId,
+        ...(shiftedQueued.length ? { queuePosition: 1 } : {}),
+      }),
     }
     const message = {
       createdBy: completion ? 'agent' : 'user', creationSource: completion ? 'server' : 'web', id: messageId, threadId, runId, nodeId: null,
-      role: completion ? 'system' : 'user', text, attachments: attachmentClaim?.attachments ?? [], streaming: false, createdAt: requestedAt, updatedAt: requestedAt,
+      role: completion || manualContinuation ? 'system' : 'user',
+      text: manualContinuation ? manualContinuation.promptText : text,
+      attachments: attachmentClaim?.attachments ?? [], streaming: false, createdAt: requestedAt, updatedAt: requestedAt,
       ...(completion && { delegatedCompletion: { parentRunId: completion.intent.parentRunId,
         generation: completion.intent.generation, taskIds: completion.intent.nodeIds } }),
+      ...(manualContinuation && { notification: manualContinuation.notification }),
     }
     const base = { threadId, runId, occurredAt: requestedAt }
     const relation = !steer && relations?.childUpdate(threadId, 'queued', runId, requestedAt,
@@ -302,6 +357,7 @@ export class ThreadCommands {
       events: [
         decodeEvent({ ...base, id: randomUUID(), type: 'run.created', payload: run }),
         decodeEvent({ ...base, id: randomUUID(), type: 'message.updated', payload: message }),
+        ...shiftedQueued.map(item => decodeEvent({ id: randomUUID(), threadId, runId: item.runId, occurredAt: requestedAt, type: 'run.updated', payload: item.payload })),
         ...(completion?.plan.events ?? []),
       ],
       hostEvents: [
@@ -316,15 +372,24 @@ export class ThreadCommands {
           (run_id, thread_id, ordinal, provider, provider_instance_id, status, requested_at, payload_json)
           VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`)
           .run(runId, threadId, ordinal, selection.driverKind, input.instanceId, requestedAt, JSON.stringify(run))
+        if (shiftedQueued.length) {
+          const updateQueued = this.database.prepare('UPDATE conversation_v2_projection_runs SET payload_json = ? WHERE run_id = ?')
+          for (const item of shiftedQueued) updateQueued.run(JSON.stringify(item.payload), item.runId)
+        }
         this.database.prepare(`INSERT INTO conversation_v2_projection_messages
           (message_id, thread_id, run_id, role, streaming, created_at, updated_at, payload_json) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`)
           .run(messageId, threadId, runId, message.role, requestedAt, requestedAt, JSON.stringify(message))
         this.database.prepare('UPDATE conversation_v2_projection_threads SET updated_at = ? WHERE thread_id = ?').run(requestedAt, threadId)
+        this.database.prepare(`UPDATE conversation_v2_effect_outbox
+          SET status = 'cancelled', last_error = '用户已发送新消息，跳过重启自动续接。', updated_at = ?, completed_at = ?
+          WHERE thread_id = ? AND effect_type = 'provider-runtime.continue' AND status = 'pending'`)
+          .run(requestedAt, requestedAt, threadId)
         this.insertEffect(input, steer ? 'provider-turn.steer' : 'provider-turn.start', {
           runId, configurationFingerprint: selection.configurationFingerprint, ...steer,
           ...(portableHistory?.length && { portableHistory }),
           ...(input.type === 'thread.handoff' && { handoff: true }),
           ...(completion && { delegatedCompletion: completion.intent }),
+          ...(manualContinuation && { manualContinuationOfRunId: manualContinuation.sourceRunId }),
         }, requestedAt)
         if (completion) completion.plan.apply()
         else if (!steer) this.setPaused(threadId, false)
@@ -395,16 +460,25 @@ export class ThreadCommands {
     }
     if (type === 'queued-run.cancel') {
       const payload = { ...JSON.parse(run.payload_json), status: 'cancelled', completedAt: occurredAt }
+      const remainingQueued = this.queuedRuns(threadId).some(queued => queued.run_id !== runId)
+      const hasUnknownAttempt = this.database.prepare(`SELECT 1 FROM conversation_v2_effect_outbox effect
+        JOIN conversation_v2_dispatch_attempts attempt ON attempt.effect_id = effect.effect_id
+        WHERE effect.thread_id = ? AND effect.status = 'running' AND attempt.phase = 'unknown' LIMIT 1`).get(threadId) !== undefined
+      const clearPause = !remainingQueued && !hasUnknownAttempt && this.isPaused(threadId)
       return this.commit(input, authority, {
         target: { run_id: runId },
         events: [decodeEvent({ id: randomUUID(), threadId, runId, occurredAt, type: 'run.updated', payload })],
-        hostEvents: relation?.hostEvents,
+        hostEvents: [
+          ...(relation?.hostEvents ?? []),
+          ...(clearPause ? [lifecycleEvent(threadId, { kind: 'queue', paused: false }, runId, occurredAt)] : []),
+        ],
         apply: () => {
           this.database.prepare("UPDATE conversation_v2_projection_runs SET status = 'cancelled', completed_at = ?, payload_json = ? WHERE run_id = ?")
             .run(occurredAt, JSON.stringify(payload), runId)
           this.database.prepare(`UPDATE conversation_v2_effect_outbox SET status = 'cancelled', updated_at = ?, completed_at = ?
             WHERE thread_id = ? AND effect_type = 'provider-turn.start' AND json_extract(payload_json, '$.runId') = ? AND status = 'pending'`)
             .run(occurredAt, occurredAt, threadId, runId)
+          if (clearPause) this.setPaused(threadId, false)
           relation?.apply()
         },
       })
@@ -438,9 +512,103 @@ export class ThreadCommands {
     return run
   }
 
+  appendRestartContinuation(input: {
+    readonly commandId: string
+    readonly threadId: string
+    readonly messageId: string
+    readonly sourceRunId: string
+    readonly text: string
+    readonly notification: OrchestrationV2Notification
+    readonly selection: DriverSelection
+  }, authority: ConversationAuthority): { readonly runId: string; readonly commandId: string } {
+    if (!this.hasThread(input.threadId, authority)) throw new DaemonError('E_DENIED', '此会话不在当前授权范围。')
+    const latest = this.database.prepare('SELECT COALESCE(MAX(ordinal), 0) AS ordinal FROM conversation_v2_projection_runs WHERE thread_id = ?')
+      .get(input.threadId) as { ordinal: number }
+    const requestedAt = now()
+    const runId = `run_${randomUUID()}`
+    const ordinal = latest.ordinal + 1
+    const run = {
+      id: runId,
+      threadId: input.threadId,
+      ordinal,
+      providerInstanceId: input.selection.modelSelection.instanceId,
+      modelSelection: input.selection.modelSelection,
+      providerThreadId: null,
+      userMessageId: input.messageId,
+      rootNodeId: null,
+      activeAttemptId: null,
+      status: 'queued',
+      requestedAt,
+      startedAt: null,
+      completedAt: null,
+      checkpointId: null,
+      contextHandoffId: null,
+      restartContinuationOfRunId: input.sourceRunId,
+    }
+    const message = {
+      createdBy: 'agent',
+      creationSource: 'server',
+      id: input.messageId,
+      threadId: input.threadId,
+      runId,
+      nodeId: null,
+      role: 'system',
+      text: input.text,
+      attachments: [],
+      streaming: false,
+      createdAt: requestedAt,
+      updatedAt: requestedAt,
+      notification: input.notification,
+    }
+    const base = { threadId: input.threadId, runId, occurredAt: requestedAt }
+    const payloadDigest = commandPayloadDigest({
+      type: 'restart.continue',
+      threadId: input.threadId,
+      sourceRunId: input.sourceRunId,
+      messageId: input.messageId,
+    })
+    this.sink.commitCommand({
+      commandId: input.commandId,
+      threadId: input.threadId,
+      commandType: 'message.dispatch',
+      acceptedAt: requestedAt,
+      payloadDigest,
+      events: [
+        decodeEvent({ ...base, id: randomUUID(), type: 'run.created', payload: run }),
+        decodeEvent({ ...base, id: randomUUID(), type: 'message.updated', payload: message }),
+      ],
+      hostEvents: this.isPaused(input.threadId) ? [lifecycleEvent(input.threadId, { kind: 'queue', paused: false })] : [],
+    }, () => {
+      this.ensureControl(input.threadId, authority)
+      this.database.prepare(`INSERT INTO conversation_v2_command_targets (command_id, run_id, message_id, request_id, follows_run, detail)
+        VALUES (?, ?, ?, NULL, 1, NULL)`).run(input.commandId, runId, input.messageId)
+      this.database.prepare(`INSERT INTO conversation_v2_projection_runs
+        (run_id, thread_id, ordinal, provider, provider_instance_id, status, requested_at, payload_json)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`)
+        .run(runId, input.threadId, ordinal, input.selection.driverKind, input.selection.modelSelection.instanceId, requestedAt, JSON.stringify(run))
+      this.database.prepare(`INSERT INTO conversation_v2_projection_messages
+        (message_id, thread_id, run_id, role, streaming, created_at, updated_at, payload_json)
+        VALUES (?, ?, ?, 'system', 0, ?, ?, ?)`)
+        .run(input.messageId, input.threadId, runId, requestedAt, requestedAt, JSON.stringify(message))
+      this.database.prepare('UPDATE conversation_v2_projection_threads SET updated_at = ? WHERE thread_id = ?')
+        .run(requestedAt, input.threadId)
+      this.insertEffect(
+        { threadId: input.threadId, commandId: input.commandId },
+        'provider-turn.start',
+        { runId, configurationFingerprint: input.selection.configurationFingerprint, restartContinuationOfRunId: input.sourceRunId },
+        requestedAt,
+      )
+      this.setPaused(input.threadId, false)
+    }, () => {})
+    return { runId, commandId: input.commandId }
+  }
+
   readUserMessage(runId: string): { id: string; text: string; attachments?: readonly ChatAttachment[] } {
     const row = this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_messages WHERE run_id = ? AND
-      (role = 'user' OR (role = 'system' AND json_extract(payload_json, '$.delegatedCompletion') IS NOT NULL)) LIMIT 1`)
+      (role = 'user' OR (role = 'system' AND (
+        json_extract(payload_json, '$.delegatedCompletion') IS NOT NULL
+        OR json_extract(payload_json, '$.notification') IS NOT NULL
+      ))) LIMIT 1`)
       .get(runId) as { payload_json: string } | undefined
     if (!row) throw new Error('The accepted run has no user message.')
     return JSON.parse(row.payload_json) as { id: string; text: string; attachments?: readonly ChatAttachment[] }

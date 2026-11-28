@@ -11,6 +11,7 @@ import type { ComposerCodeTaskSelection } from '../../../shared/conversation/cod
 import type { OrchestrationV2AppThread } from '../../../shared/conversation/contracts'
 import { conversationProjectRoleSchema, type ConversationProjectRole } from '../../../shared/conversation/project-role'
 import type { ConversationTaskScope } from '../../../shared/conversation/task-scope'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import { ConversationListRow } from '../acp/ConversationListRow'
 import { ConversationSidebar } from '../acp/ConversationSidebar'
 import { ConversationWorkspaceHeader } from '../acp/ConversationWorkspaceHeader'
@@ -417,6 +418,12 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     : projection?.runs.at(-1)
   const selectedThread = projection?.thread ?? threads?.find((item) => item.id === target?.threadId)
   const archivedThread = Boolean(selectedThread?.archivedAt)
+  const [draftRuntimeMode, setDraftRuntimeMode] = useState<RuntimeMode>('approval-required')
+  const [draftInteractionMode, setDraftInteractionMode] = useState<ProviderInteractionMode>('default')
+  const isDelegatedThread = projection?.relations.parent?.kind === 'delegated'
+  const supportsPersonalModes = !taskScope && !isDelegatedThread && !archivedThread
+  const effectiveRuntimeMode: RuntimeMode = projection ? (projection.thread.runtimeMode ?? 'approval-required') : draftRuntimeMode
+  const effectiveInteractionMode: ProviderInteractionMode = projection ? (projection.thread.interactionMode ?? 'default') : draftInteractionMode
   const activeRun = projection?.runs.slice().reverse().find(item => item.status !== 'queued' && isActiveRun(item))
   const catalog = useConversationModelCatalog(root, writable, rootKey, task)
   const instanceId = selectedThread?.modelSelection.instanceId
@@ -764,6 +771,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const composer = useComposerSend({
     root, threadId: target?.threadId ?? null, scopeKey: rootKey, interactive: writable, task,
     role: draftRole,
+    runtimeMode: supportsPersonalModes && !target ? draftRuntimeMode : undefined,
+    interactionMode: supportsPersonalModes && !target ? draftInteractionMode : undefined,
     agentContext: activeAgentContext,
     running: Boolean(activeRun), canSteer, onAccepted,
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
@@ -1833,6 +1842,17 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           artifactBanner={artifactBanner}
           mentionableThreads={(threads ?? []).filter(thread => thread.id !== visibleThreadId)
             .map(({ id, title }) => ({ id, title }))}
+          runtimeMode={supportsPersonalModes ? effectiveRuntimeMode : undefined}
+          interactionMode={supportsPersonalModes ? effectiveInteractionMode : undefined}
+          onRuntimeModeChange={supportsPersonalModes ? (next) => {
+            if (projection) applyControl(controller.setRuntimeMode(next))
+            else setDraftRuntimeMode(next)
+          } : undefined}
+          onInteractionModeChange={supportsPersonalModes ? (next) => {
+            if (projection) applyControl(controller.setInteractionMode(next))
+            else setDraftInteractionMode(next)
+          } : undefined}
+          modesDisabled={!writable || Boolean(read?.error)}
         />}
     </ChatView>
     {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId &&

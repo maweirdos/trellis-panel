@@ -1,19 +1,22 @@
 import * as Effect from 'effect/Effect'
 import { ProviderDriverKind, ProviderInstanceId } from '../../../../shared/conversation/providerInstance'
-import type { ProviderApprovalDecision, ProviderUserInputAnswers } from '../../../../shared/conversation/providerPolicy'
+import type {
+  ProviderApprovalDecision, ProviderInteractionMode, ProviderRequestKind, ProviderUserInputAnswers, RuntimeMode,
+} from '../../../../shared/conversation/providerPolicy'
 import type { ProviderOptionSelections } from '../../../../shared/conversation/model'
 import type { ConversationAttachmentContent } from '../../../../shared/conversation/attachments'
 import type { ChatAttachment } from '../../../../shared/conversation/chatAttachment'
 import type { ConversationRuntimeQuestion } from '../../../../shared/conversation/command-runtime'
 import type { ConversationDelegationCall, ConversationDelegationReply, ConversationNativeSubagentEvent } from '../../../../shared/conversation/thread-relations'
+import type { OpenArtifactMcpGrant } from '../../../../shared/open-artifact'
 import { DaemonError } from '../../../daemon/errors'
 import type { ConversationDriverDescriptor, ConversationDriverModel } from '../../../../shared/conversation/driverCatalog'
 import type { ProviderAdapterV2, ProviderAdapterV2Event } from './core/ProviderAdapter'
 import { RASTER_ATTACHMENTS, type ConversationPromptAttachmentSupport } from './core/attachment-input'
-import { codexConfigurationKey } from './codex/driver'
+import { codexBindingKey, codexConfigurationKey } from './codex/driver'
 import { reconcileCodexProcessClosed } from './codex/process-owner'
-import { claudeConfigurationKey } from './claude/ClaudeAdapterV2'
-import { openCodeConfigurationKey } from './opencode/OpenCode2Server'
+import { claudeBindingKey, claudeConfigurationKey } from './claude/ClaudeAdapterV2'
+import { openCodeBindingKey, openCodeConfigurationKey } from './opencode/OpenCode2Server'
 import { listRegisteredAcpDrivers } from './acp/driver'
 
 export type { ConversationDriverDescriptor, ConversationDriverModel } from '../../../../shared/conversation/driverCatalog'
@@ -25,6 +28,7 @@ export interface ConversationResumeThreadInput {
   readonly nativeThreadId: string
   readonly cwd: string
   readonly model: string
+  readonly artifactMcp?: OpenArtifactMcpGrant
 }
 
 export interface ConversationInterruptTurnInput {
@@ -48,14 +52,48 @@ export interface ConversationRespondToRuntimeRequestInput extends ConversationIn
 }
 
 export type ConversationDriverRuntimeRequest =
-  | { readonly kind: 'approval'; readonly title: string; readonly details?: string; readonly options: readonly { readonly decision: ProviderApprovalDecision; readonly label: string; readonly optionId?: string }[] }
-  | { readonly kind: 'user-input'; readonly title: string; readonly questions: readonly ConversationRuntimeQuestion[] }
+  | {
+      readonly kind: 'approval'
+      readonly requestKind?: ProviderRequestKind
+      readonly approvalScopeKey?: string
+      readonly title: string
+      readonly details?: string
+      readonly options: readonly { readonly decision: ProviderApprovalDecision; readonly label: string; readonly optionId?: string }[]
+    }
+  | {
+      readonly kind: 'user-input'
+      readonly title: string
+      readonly questions: readonly ConversationRuntimeQuestion[]
+      readonly responseMode?: 'live' | 'message'
+    }
 
 export type ConversationDriverWorkItem =
+  | {
+      readonly kind: 'command-execution'
+      readonly nativeItemId: string
+      readonly command: string
+      readonly output?: string
+      readonly exitCode?: number
+      readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
+    }
+  | {
+      readonly kind: 'file-search'
+      readonly nativeItemId: string
+      readonly pattern?: string
+      readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
+    }
+  | {
+      readonly kind: 'web-search'
+      readonly nativeItemId: string
+      readonly query?: string
+      readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
+    }
   | {
       readonly kind: 'tool'
       readonly nativeItemId: string
       readonly label: string
+      readonly detail?: string
+      readonly mono?: boolean
       readonly status: 'running' | 'completed' | 'failed' | 'cancelled'
       readonly fileChanges?: readonly {
         readonly path: string
@@ -72,6 +110,12 @@ export type ConversationDriverWorkItem =
       readonly kind: 'plan-steps'
       readonly steps: ReadonlyArray<{ readonly text: string; readonly status: 'pending' | 'running' | 'completed' }>
       readonly explanation?: string
+    }
+  | {
+      readonly kind: 'reasoning'
+      readonly nativeItemId: string
+      readonly text: string
+      readonly streaming: boolean
     }
 
 /** The callback is scoped to its native thread. Its first nonempty text event is the first response evidence. */
@@ -100,8 +144,11 @@ export type ConversationDriverEventListener = (event: ConversationDriverTurnEven
 
 export interface ConversationStartTurnContext {
   readonly requestId: string
+  readonly runtimeMode?: RuntimeMode
+  readonly interactionMode?: ProviderInteractionMode
   readonly modelOptions?: ProviderOptionSelections
   readonly attachments?: readonly ConversationAttachmentContent[]
+  readonly artifactMcp?: OpenArtifactMcpGrant
   readonly delegation?: (call: ConversationDelegationCall) => Promise<ConversationDelegationReply>
   assertAuthorized?(): Promise<void>
   assertCurrent(): void
@@ -124,7 +171,7 @@ export interface ConversationDriverSession {
   listModels(): Effect.Effect<readonly ConversationDriverModel[], Error>
   describe?(): Effect.Effect<ConversationDriverDescriptor, Error>
   validatePromptAttachments?(attachments: readonly ChatAttachment[]): void
-  startThread(model: string, cwd: string): Effect.Effect<string, Error>
+  startThread(model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode): Effect.Effect<string, Error>
   resumeThread?(input: ConversationResumeThreadInput): Effect.Effect<string, Error>
   detachThread?(input: { readonly nativeThreadId: string; assertCurrent(): void }): Effect.Effect<ConversationThreadDetachConfirmation, Error>
   canConfirmWindowsJobClose?(nativeThreadId: string): boolean
@@ -153,6 +200,7 @@ export interface ConversationDriverRegistration {
   readonly instanceId: AdapterIdentity['instanceId']
   readonly driverKind: AdapterIdentity['driver']
   readonly configurationKey?: (env?: NodeJS.ProcessEnv, fingerprintKey?: Buffer) => string
+  readonly bindingKey?: (env?: NodeJS.ProcessEnv, fingerprintKey?: Buffer) => string
   readonly turnModelOptions?: true
   readonly ordinaryTaskAccess?: 'native-read-only' | 'tools-disabled'
   readonly planningAccess?: 'native-read-only'
@@ -190,6 +238,7 @@ const codex: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('codex'),
   driverKind: ProviderDriverKind.make('codex'),
   configurationKey: codexConfigurationKey,
+  bindingKey: codexBindingKey,
   turnModelOptions: true,
   ordinaryTaskAccess: 'native-read-only',
   planningAccess: 'native-read-only',
@@ -207,6 +256,7 @@ const claude: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('claude'),
   driverKind: ProviderDriverKind.make('claudeCode'),
   configurationKey: claudeConfigurationKey,
+  bindingKey: claudeBindingKey,
   promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
     try: () => import('./claude/ClaudeAdapterV2'),
@@ -218,6 +268,7 @@ const opencode: ConversationDriverRegistration = {
   instanceId: ProviderInstanceId.make('opencode'),
   driverKind: ProviderDriverKind.make('opencode'),
   configurationKey: openCodeConfigurationKey,
+  bindingKey: openCodeBindingKey,
   ordinaryTaskAccess: 'tools-disabled',
   promptAttachments: RASTER_ATTACHMENTS,
   open: input => Effect.tryPromise({
@@ -234,9 +285,11 @@ export function createConversationDriverRegistry(
   const bind = (registration: ConversationDriverRegistration): ConversationDriverRegistration => {
     if (!fingerprintKey) return registration
     const configuration = registration.configurationKey
+    const binding = registration.bindingKey
     return {
       ...registration,
       ...(configuration && { configurationKey: env => configuration(env, fingerprintKey) }),
+      ...(binding && { bindingKey: env => binding(env, fingerprintKey) }),
       open: input => registration.open({ ...input, fingerprintKey }),
     }
   }

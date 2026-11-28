@@ -8,6 +8,7 @@ import { conversationAttachmentDraftScope, prepareConversationAttachmentClaim } 
 import { prepareConversationKnowledge } from '../../services/conversation/attachments/knowledge'
 import type { ConversationKnowledgeAttachment } from '../../../shared/conversation/knowledge-reference'
 import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import type { OpenArtifactMcpGrant } from '../../../shared/open-artifact'
 import { expandAssistantCitationsForProvider } from '../../../shared/conversation/assistantCitationText'
 import { classifyConversationFailure } from '../../../shared/conversation/failure-taxonomy'
@@ -35,6 +36,7 @@ import { RuntimeRequestService } from '../../services/conversation/orchestration
 import {
   ProviderEventIngestor, buildDelegatedCompletionDeliveryUpdates,
 } from '../../services/conversation/orchestration/ProviderEventIngestor'
+import { RunFinalizationService } from '../../services/conversation/orchestration/RunFinalizationService'
 import { UsageLimitRecoveryWorker } from '../../services/conversation/orchestration/UsageLimitRecoveryWorker'
 import {
   RESTART_CONTINUATION_EFFECT_TYPE,
@@ -153,6 +155,7 @@ export class ConversationRuntime {
   private readonly ingestor: ProviderEventIngestor<ActiveTurn>
   private readonly turnControl: ProviderTurnControlService<ActiveTurn, CommandAuthority>
   private readonly usageLimitRecovery: UsageLimitRecoveryWorker<CommandAuthority>
+  private readonly finalization: RunFinalizationService<ActiveTurn, CommandAuthority>
   private readonly storageId: string
   private readonly deadlines
   private readonly dispatches = new Map<string, { root: string; work: Promise<void> }>()
@@ -254,6 +257,17 @@ export class ConversationRuntime {
       ),
       dispatchAutoRetry: ({ threadId, failedRunId, commandId, authority }) => this.dispatchUsageLimitAutoRetry(threadId, failedRunId, commandId, authority),
     })
+    this.finalization = new RunFinalizationService<ActiveTurn, CommandAuthority>(
+      this.relations,
+      this.usageLimitRecovery,
+      {
+        hasDelegatedCompletionSource: turn => Boolean(this.delegatedCompletionSource(turn)),
+        registerDelegatedCompletionParent: (threadId, turn) => {
+          this.delegationContinuationParents.set(threadId, turn)
+        },
+        offerDelegatedCompletionDelivery: (threadId, parentRunId) => this.offerDelegatedCompletionDelivery(threadId, parentRunId),
+      },
+    )
     this.worker.reconcile('startup', { continueAfterRestart: this.shouldContinueAfterRestart() })
     this.relations.reconcileAfterRecovery(this.eventSink)
     this.usageLimitRecovery.reconcileOnStartup()
@@ -402,6 +416,8 @@ export class ConversationRuntime {
     readonly text: string
     readonly model: string
     readonly instanceId: string
+    readonly runtimeMode?: RuntimeMode
+    readonly interactionMode?: ProviderInteractionMode
     readonly commandId: string
     readonly messageId?: string
     readonly options?: ProviderOptionSelections
@@ -437,10 +453,13 @@ export class ConversationRuntime {
       throw new DaemonError('E_UNAVAILABLE', '此引擎暂不接受回合模型参数。')
     }
     const driverKind = registration?.driverKind ?? Schema.decodeUnknownSync(ProviderDriverKind)(original?.provider)
+    const allowPersonalModes = input.binding.kind === 'personal'
     const accepted = this.intake.launchThread({
       projectId: input.projectId, ownerId: input.ownerId, spaceId: input.spaceId, title: input.title ?? '',
       text: input.text, driverKind, modelSelection: decodeModelSelection({ instanceId: input.instanceId, model: input.model, options: input.options }),
       commandId: input.commandId, messageId: input.messageId,
+      ...(allowPersonalModes && input.runtimeMode ? { runtimeMode: input.runtimeMode } : {}),
+      ...(allowPersonalModes && input.interactionMode ? { interactionMode: input.interactionMode } : {}),
       ...(input.role && { role: input.role.selection }),
       ...(input.tags?.length ? { tags: input.tags } : {}),
       ...(input.attachmentIds !== undefined ? { attachmentIds: input.attachmentIds, draftId: input.draftId } : {}),
@@ -612,6 +631,16 @@ export class ConversationRuntime {
           apply: () => {},
         })
       }
+      case 'thread.runtime-mode.set':
+      case 'thread.interaction-mode.set': {
+        if (restrictedRelation || authority.binding.kind !== 'personal') {
+          throw new DaemonError('E_DENIED', '任务或受限子会话不支持切换运行与交互模式。')
+        }
+        if (command.type === 'thread.runtime-mode.set' && command.runtimeMode === 'approval-required') {
+          this.runtimeRequests.clearSessionApprovals(command.threadId)
+        }
+        return this.commands.setThreadMode(command, authority)
+      }
       case 'queued-message.promote-to-steer': {
         const turn = this.requireControlTurn(active, 'steerTurn', command.targetRunId)
         const run = this.commands.requireQueued(command.threadId, command.queuedRunId)
@@ -677,6 +706,7 @@ export class ConversationRuntime {
             })
           },
         })
+        this.runtimeRequests.rememberDecisionIfSessionScoped(command.threadId, request, command.decision)
         this.scheduleControl(command, authority, turn)
         return receipt
       }
@@ -778,6 +808,7 @@ export class ConversationRuntime {
     const hasLiveTurn = this.activeTurns.has(threadId)
     if (original && hasLiveTurn) return original
     this.usageLimitRecovery.cancel(threadId, '会话已删除，取消自动重试。')
+    this.runtimeRequests.clearSessionApprovals(threadId)
     const accepted = original ?? this.commands.changeThread(command, authority, {
       hasLiveTurn, hasLoadedThread: this.sessions.loadedThreads.has(threadId),
     }, this.relations.deletionEvents(threadId, authority, command.onlyIfUnused === true))
@@ -1211,6 +1242,7 @@ export class ConversationRuntime {
   private async openNativeThread(
     threadId: string, instanceId: string, model: string, cwd: string, driver: ConversationDriverSession,
     fresh = false, artifactMcp?: OpenArtifactMcpGrant, allowResumeFallback = false, expectedBindingFingerprint?: string,
+    runtimeMode?: RuntimeMode,
   ): Promise<{
     readonly nativeThreadId: string
     readonly recoveredFrom?: {
@@ -1264,7 +1296,7 @@ export class ConversationRuntime {
       )
       this.sessions.loadedThreads.delete(threadId)
       const replacementId = await runBounded(
-        driver.startThread(model, cwd, artifactMcp),
+        driver.startThread(model, cwd, artifactMcp, runtimeMode),
         this.deadlines.thread,
         '建立接力原生会话',
         this.shutdownController.signal,
@@ -1299,7 +1331,7 @@ export class ConversationRuntime {
           '恢复原生会话',
           this.shutdownController.signal,
         )
-        : await runBounded(driver.startThread(model, cwd, artifactMcp), this.deadlines.thread, '建立原生会话', this.shutdownController.signal)
+        : await runBounded(driver.startThread(model, cwd, artifactMcp, runtimeMode), this.deadlines.thread, '建立原生会话', this.shutdownController.signal)
       if (!nativeThreadId || (decision.type === 'resume_existing' && nativeThreadId !== decision.nativeThreadId)) {
         this.sessions.uncertainDrivers.add(driver)
         throw new DaemonError('E_CONFLICT', '引擎没有确认原生会话身份。')
@@ -1457,9 +1489,12 @@ export class ConversationRuntime {
       for (const history of histories) this.contextHandoff.assertSource(history.sourceThreadId, authority)
       const handoffSource = intent.handoff ? await this.prepareHandoffSource(threadId, authority, fence, driver) : undefined
       const artifactMcp = this.threadArtifactMcps.get(threadId)
+      const threadModes = restricted || managedExecution
+        ? { runtimeMode: 'approval-required' as const, interactionMode: 'default' as const }
+        : this.projections.readThreadModes(threadId)
       const allowResumeFallback = !handoffSource && !compaction && !completion
       const opened = await this.sessions.driverFence.run(fence, () =>
-        this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource), artifactMcp, allowResumeFallback, expectedFingerprint))
+        this.openNativeThread(threadId, selection.instanceId, selection.model, cwd, driver, Boolean(handoffSource), artifactMcp, allowResumeFallback, expectedFingerprint, threadModes.runtimeMode))
       const nativeThreadId = opened.nativeThreadId
       if (!nativeThreadId) throw new ConversationTurnRejectedError('引擎未返回接力会话身份。')
       if (completion && nativeThreadId !== completion.nativeThreadId) throw new ConversationTurnRejectedError('引擎没有接回原委派的父会话。')
@@ -1540,7 +1575,11 @@ export class ConversationRuntime {
         if (!active.controlTurnId) assertKnowledgeCurrent()
       } : fence
       const context = {
-          requestId: row.command_id, modelOptions: selection.options, assertCurrent: sendFence,
+          requestId: row.command_id,
+          runtimeMode: threadModes.runtimeMode,
+          interactionMode: threadModes.interactionMode,
+          modelOptions: selection.options,
+          assertCurrent: sendFence,
           ...(artifactMcp ? { artifactMcp } : {}),
           ...((restricted || managedExecution) && { assertAuthorized: () => this.assertCurrent(threadId, authority) }),
           ...(attachments.length ? { attachments } : {}),
@@ -1950,6 +1989,20 @@ export class ConversationRuntime {
         )
         : [],
       onForegroundReadyToFinish: current => this.finishForeground(current),
+      onAutoApproveRequest: (current, nativeRequestId) => {
+        if (!current.driver.respondToRuntimeRequest || !current.controlTurnId || current.terminal) return
+        void runBounded(
+          current.driver.respondToRuntimeRequest({
+            nativeThreadId: current.nativeThreadId,
+            turnId: current.controlTurnId,
+            nativeRequestId,
+            response: { kind: 'approval', decision: 'accept' },
+          }),
+          this.deadlines.control,
+          '自动批准同会话已允许的权限请求',
+          this.shutdownController.signal,
+        ).catch(() => undefined)
+      },
     })
   }
 
@@ -2101,23 +2154,18 @@ export class ConversationRuntime {
       disposedCompletion?.apply()
       if (turn) this.settleStopFromTerminal(turn, settled)
     })
-    if (status === 'failed' && failureMeta?.failureClass === 'usage_limit' && failureMeta.retryAfterMs !== undefined) {
-      this.usageLimitRecovery.scheduleOnFailure({
-        threadId,
-        runId,
-        failureClass: failureMeta.failureClass,
-        retryAfterMs: failureMeta.retryAfterMs,
-        reason: detail,
-        authority: authorityForRetry,
-        isPersonal: authorityForRetry?.binding.kind === 'personal' && !this.relations.restrictedParent(threadId),
-      })
-    }
-    if (turn && !turn.completion && status === 'completed' && this.delegatedCompletionSource(turn) &&
-      this.relations.read(threadId).children.some(child => child.parentRunId === runId && child.completionWake)) {
-      this.delegationContinuationParents.set(threadId, turn)
-      this.offerDelegatedCompletionDelivery(threadId, runId)
-    }
-    if (delegated?.childRunId === runId) this.offerDelegatedCompletionDelivery(delegated.parentThreadId, delegated.parentRunId)
+    this.finalization.onTurnSettled({
+      turn,
+      threadId,
+      runId,
+      status,
+      detail,
+      failureClass: failureMeta?.failureClass,
+      retryAfterMs: failureMeta?.retryAfterMs,
+      authority: authorityForRetry,
+      isPersonal: authorityForRetry?.binding.kind === 'personal',
+      delegated,
+    })
   }
 
   private dispatchUsageLimitAutoRetry(
@@ -2620,7 +2668,7 @@ export class ConversationRuntime {
     const earliest = result.runs[0]?.ordinal
     const runIds = result.runs.map(run => run.id)
     const rows = runIds.length ? this.database.prepare(`SELECT payload_json FROM conversation_v2_projection_turn_items
-      WHERE thread_id = ? AND run_id IN (${runIds.map(() => '?').join(',')}) AND type IN ('dynamic_tool', 'proposed_plan', 'todo_list', 'file_change', 'reasoning', 'system_notice')
+      WHERE thread_id = ? AND run_id IN (${runIds.map(() => '?').join(',')}) AND type IN ('dynamic_tool', 'command_execution', 'file_search', 'web_search', 'proposed_plan', 'todo_list', 'file_change', 'reasoning', 'system_notice')
       ORDER BY ordinal, turn_item_id`).all(threadId, ...runIds) : []
     return {
       runs: result.runs, messages: result.messages,

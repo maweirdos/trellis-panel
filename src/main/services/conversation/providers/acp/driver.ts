@@ -58,6 +58,9 @@ function toNativeResponse(
   if (method === ACP_V2_METHODS.clientRequestPermission) {
     if (response.kind !== 'approval' || response.decision === 'cancel') return { outcome: { outcome: 'cancelled' } }
     const option = options?.find(candidate => candidate.decision === response.decision)
+      ?? (response.decision === 'acceptForSession'
+        ? options?.find(candidate => candidate.decision === 'acceptAlways' || candidate.decision === 'accept')
+        : undefined)
     return { outcome: option ? { outcome: 'selected', optionId: option.optionId } : { outcome: 'cancelled' } }
   }
   return { outcome: { outcome: 'cancelled' } }
@@ -222,7 +225,10 @@ class RegisteredAcpDriver implements ConversationDriverSession {
       runtimeRequests: new Map(),
     }
     const identity = { turnId: turn.turnId, turnIdSource: 'host' as const }
-    const prompt: ContentBlock[] = [{ type: 'text', text }]
+    const effectiveText = context?.interactionMode === 'plan'
+      ? `[规划模式] 请只读分析现状并提出分步实施方案，不要执行文件改动或危险操作。\n\n${text}`
+      : text
+    const prompt: ContentBlock[] = [{ type: 'text', text: effectiveText }]
     try {
       this.validatePromptAttachments((context?.attachments ?? []).map(content => content.attachment))
       for (const content of context?.attachments ?? []) {
@@ -305,7 +311,11 @@ class RegisteredAcpDriver implements ConversationDriverSession {
     if (request.method === ACP_V2_METHODS.clientRequestPermission) {
       if (!options.length) return cancelled
       payload = {
-        kind: 'approval', title: request.params.title, details: request.params.description ?? undefined,
+        kind: 'approval',
+        requestKind: 'permission',
+        approvalScopeKey: `acp:${request.params.title.replace(/\s+/g, ' ').trim().slice(0, 80).toLowerCase()}`,
+        title: request.params.title,
+        details: request.params.description ?? undefined,
         options: [...options, { decision: 'cancel', label: '取消' }],
       }
     } else {
@@ -344,11 +354,35 @@ class RegisteredAcpDriver implements ConversationDriverSession {
     const turn = this.turns.get(sessionId)
     if (!turn) return
     const identity = { turnId: turn.turnId, turnIdSource: 'host' as const }
-    const event: ConversationDriverTurnEvent | undefined = update.sessionUpdate === 'agent_message_chunk'
-      ? { type: 'text-delta', ...identity, itemId: update.messageId ?? turn.fallbackItemId, text: acpContentBlockDisplayText(update.content) ?? '' }
-      : update.sessionUpdate === 'agent_message' && update.content
-        ? { type: 'text-final', ...identity, itemId: update.messageId, text: update.content.map(acpContentBlockDisplayText).filter(Boolean).join('\n') }
-        : undefined
+    let event: ConversationDriverTurnEvent | undefined
+    if (update.sessionUpdate === 'agent_message_chunk') {
+      event = { type: 'text-delta', ...identity, itemId: update.messageId ?? turn.fallbackItemId, text: acpContentBlockDisplayText(update.content) ?? '' }
+    } else if (update.sessionUpdate === 'agent_message' && update.content) {
+      event = { type: 'text-final', ...identity, itemId: update.messageId, text: update.content.map(acpContentBlockDisplayText).filter(Boolean).join('\n') }
+    } else if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+      const toolId = update.toolCallId
+      if (toolId) {
+        const title = ('title' in update && typeof update.title === 'string' ? update.title : undefined)
+          ?? ('name' in update && typeof update.name === 'string' ? update.name : undefined)
+          ?? '执行工具'
+        const status = update.status === 'completed'
+          ? 'completed'
+          : update.status === 'failed'
+            ? 'failed'
+            : update.status === 'cancelled'
+              ? 'cancelled'
+              : 'running'
+        const kind = 'kind' in update ? update.kind : undefined
+        const workItem: import('../registry').ConversationDriverWorkItem = kind === 'execute'
+          ? { kind: 'command-execution', nativeItemId: toolId, command: title, status }
+          : kind === 'search'
+            ? { kind: 'file-search', nativeItemId: toolId, pattern: title, status }
+            : kind === 'fetch'
+              ? { kind: 'web-search', nativeItemId: toolId, query: title, status }
+              : { kind: 'tool', nativeItemId: toolId, label: title, status }
+        event = { type: 'work-item', ...identity, item: workItem }
+      }
+    }
     if (!event) return
     if (turn.acknowledged) turn.publish(event)
     else if (turn.buffered.length < 256) turn.buffered.push(event)

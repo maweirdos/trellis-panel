@@ -107,6 +107,26 @@ export class ConversationProjectionStore {
     ).get(threadId) as { payload_json: string } | undefined
   }
 
+  readThreadModes(threadId: string): {
+    readonly runtimeMode: 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access'
+    readonly interactionMode: 'default' | 'plan'
+  } {
+    const row = this.database.prepare(
+      'SELECT runtime_mode, interaction_mode FROM conversation_v2_projection_threads WHERE thread_id = ? AND deleted_at IS NULL',
+    ).get(threadId) as {
+      runtime_mode?: string
+      interaction_mode?: string
+    } | undefined
+    const runtimeMode = row?.runtime_mode === 'full-access'
+      || row?.runtime_mode === 'auto-accept-edits'
+      || row?.runtime_mode === 'auto'
+      || row?.runtime_mode === 'approval-required'
+      ? row.runtime_mode
+      : 'approval-required'
+    const interactionMode = row?.interaction_mode === 'plan' ? 'plan' : 'default'
+    return { runtimeMode, interactionMode }
+  }
+
   updateThreadProvider(threadId: string, instanceId: string, updatedAt: string, payloadJson: string): void {
     this.database.prepare(`UPDATE conversation_v2_projection_threads SET default_provider = ?, updated_at = ?,
       payload_json = ? WHERE thread_id = ?`).run(instanceId, updatedAt, payloadJson, threadId)

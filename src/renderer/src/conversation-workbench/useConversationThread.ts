@@ -8,6 +8,7 @@ import type {
   ConversationThreadSnapshot,
 } from '../../../shared/conversation/command-runtime'
 import { CONVERSATION_READ_PAGE_LIMIT } from '../../../shared/conversation/desktop'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import { IpcErrorCode } from '../../../shared/ipc-errors'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { api } from '../api'
@@ -164,6 +165,8 @@ export interface ConversationThreadController {
   readonly stopSubagent: (childThreadId: string, force?: boolean) => Promise<ConversationApplyResult>
   readonly cancelUsageLimitRecovery: () => Promise<ConversationApplyResult>
   readonly retryUsageLimitRecoveryNow: () => Promise<ConversationApplyResult>
+  readonly setRuntimeMode: (runtimeMode: RuntimeMode) => Promise<ConversationApplyResult>
+  readonly setInteractionMode: (interactionMode: ProviderInteractionMode) => Promise<ConversationApplyResult>
   readonly resume: (input?: {
     readonly sourceRunId: string
     readonly instanceId: string
@@ -220,6 +223,8 @@ function commandAction(command: ConversationThreadCommand): string {
     case 'subagent.stop': return `subagent-stop:${command.childThreadId}`
     case 'usage-limit-recovery.cancel': return 'usage-limit-recovery.cancel'
     case 'usage-limit-recovery.retry-now': return 'usage-limit-recovery.retry-now'
+    case 'thread.runtime-mode.set': return 'runtime-mode'
+    case 'thread.interaction-mode.set': return 'interaction-mode'
     case 'runtime-request.respond': return `respond:${command.requestId}:${command.generation}`
     default: return `command:${command.commandId}`
   }
@@ -608,6 +613,32 @@ export function useConversationThread(
     [applyRemembered, threadId],
   )
 
+  const setRuntimeMode = useCallback(
+    (runtimeMode: RuntimeMode) =>
+      threadId
+        ? applyRemembered('runtime-mode', () => ({
+          type: 'thread.runtime-mode.set',
+          threadId,
+          runtimeMode,
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
+  const setInteractionMode = useCallback(
+    (interactionMode: ProviderInteractionMode) =>
+      threadId
+        ? applyRemembered('interaction-mode', () => ({
+          type: 'thread.interaction-mode.set',
+          threadId,
+          interactionMode,
+          commandId: crypto.randomUUID(),
+        }))
+        : Promise.resolve(NO_THREAD_RESULT),
+    [applyRemembered, threadId],
+  )
+
   const resume = useCallback(
     (input?: {
       readonly sourceRunId: string
@@ -721,11 +752,13 @@ export function useConversationThread(
   return useMemo<ConversationThreadController>(
     () => ({
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
-      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
+      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
+      resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     }),
     [
       scope, active, reload, loadEarlier, loadingEarlier, apply, queue, stop, forceStop, stopSubagent,
-      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
+      cancelUsageLimitRecovery, retryUsageLimitRecoveryNow, setRuntimeMode, setInteractionMode,
+      resume, respond, reconcile, checkCommand, pendingCommands, commandFailure,
     ],
   )
 }

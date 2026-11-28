@@ -3,6 +3,8 @@ import * as Effect from 'effect/Effect'
 import * as Stream from 'effect/Stream'
 import type { OpenCodeClient } from '@opencode/client/effect'
 import type { ConversationDriverDescriptor } from '../../../../../shared/conversation/driverCatalog'
+import type { RuntimeMode } from '../../../../../shared/conversation/providerPolicy'
+import type { OpenArtifactMcpGrant } from '../../../../../shared/open-artifact'
 import { DaemonError } from '../../../../daemon/errors'
 import type { CodexOwnedProcess } from '../codex/process-owner'
 import { driverActionEvidence, hostUnsupported } from '../core/catalog'
@@ -10,6 +12,7 @@ import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
   type ConversationDriverOpenInput, type ConversationDriverSession, type ConversationDriverEventListener,
+  type ConversationDriverWorkItem,
   type ConversationResumeThreadInput, type ConversationInterruptTurnInput, type ConversationSteerTurnInput, type ConversationStartTurnContext,
 } from '../registry'
 import { subscribeOpenCode, type OpenCodeNativeEvent } from './OpenCode2Client'
@@ -24,11 +27,38 @@ const samePath = (left: string, right: string): boolean => process.platform === 
   : realpathSync.native(left) === realpathSync.native(right)
 const clearPromptRejections = new Set(['InvalidRequestError', 'ConflictError', 'UnauthorizedError', 'CommandNotFoundError', 'SkillNotFoundError'])
 const denyAll = [{ action: '*', resource: '*', effect: 'deny' as const }]
+const artifactAllowRule = { action: 'mcp__open-artifact__*', resource: '*', effect: 'allow' as const }
+
+function buildOpenCodeWorkItem(
+  id: string,
+  rawName: string,
+  status: 'running' | 'completed' | 'failed',
+  output?: string,
+): ConversationDriverWorkItem {
+  const lower = rawName.toLowerCase()
+  if (lower.includes('bash') || lower.includes('shell') || lower.includes('exec') || lower.includes('command')) {
+    return {
+      kind: 'command-execution',
+      nativeItemId: id,
+      command: rawName.slice(0, 200),
+      status,
+      ...(output ? { output } : {}),
+    }
+  }
+  if (lower.includes('grep') || lower.includes('glob') || lower.includes('find') || lower === 'search') {
+    return { kind: 'file-search', nativeItemId: id, status }
+  }
+  if (lower.includes('websearch') || lower.includes('webfetch') || lower.includes('web_search')) {
+    return { kind: 'web-search', nativeItemId: id, status }
+  }
+  return { kind: 'tool', nativeItemId: id, label: rawName, status }
+}
 
 type ActiveTurn = {
   readonly id: string
   readonly publish: ConversationDriverEventListener
   readonly finish: (error?: unknown) => void
+  readonly toolNames: Map<string, string>
   delivered: boolean
   started: boolean
   interrupted: boolean
@@ -118,7 +148,10 @@ export class OpenCodeDriver implements ConversationDriverSession {
   ): string {
     const selected = session.model && `${session.model.providerID}/${session.model.id}`
     const lastPermission = session.permissions?.at(-1)
+    const leadingRules = session.permissions?.slice(0, -1) ?? []
+    const onlyAllowlistedArtifacts = leadingRules.every(rule => rule.action === artifactAllowRule.action && rule.resource === '*' && rule.effect === 'allow')
     if (selected !== model || !samePath(session.location.directory, cwd)
+      || !onlyAllowlistedArtifacts
       || lastPermission?.action !== '*' || lastPermission.resource !== '*' || lastPermission.effect !== 'deny') {
       throw new DaemonError('E_CONFLICT', 'OpenCode 未确认所选模型、工程根或工具禁止规则。')
     }
@@ -126,7 +159,7 @@ export class OpenCodeDriver implements ConversationDriverSession {
     return session.id
   }
 
-  readonly startThread = (model: string, cwd: string) => run(async () => {
+  readonly startThread = (model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, _runtimeMode?: RuntimeMode) => run(async () => {
     this.assertCurrent(cwd)
     if (!(await Effect.runPromise(this.listModels())).some(candidate => candidate.id === model)) {
       throw unavailable(`OpenCode 未报告所选模型 ${model}。`)
@@ -134,7 +167,7 @@ export class OpenCodeDriver implements ConversationDriverSession {
     const created = await Effect.runPromise(this.requireClient().session.create({
       location: this.sdk.Location.PublicRef.make({ directory: this.sdk.AbsolutePath.make(cwd) }),
       model: this.sdk.Model.Ref.parse(model),
-      permissions: denyAll,
+      permissions: artifactMcp ? [artifactAllowRule, ...denyAll] : denyAll,
     }))
     return this.verifyThread(created, model, cwd)
   })
@@ -170,7 +203,10 @@ export class OpenCodeDriver implements ConversationDriverSession {
     if (Object.hasOwn(occupied, id) || this.turns.has(id) || this.controls.has(id) || this.unsettled.has(id)) {
       throw new ConversationTurnRejectedError('OpenCode 原会话仍有活动回合。')
     }
-    const parts = [text]
+    const effectiveText = context?.interactionMode === 'plan' && !this.input.ordinaryTask
+      ? `[规划模式] 请只读分析现状并提出分步实施方案，不要改动代码或执行高风险工具。\n\n${text}`
+      : text
+    const parts = [effectiveText]
     const files = []
     try {
       await context?.assertAuthorized?.()
@@ -186,7 +222,7 @@ export class OpenCodeDriver implements ConversationDriverSession {
     let finish: ActiveTurn['finish'] = () => undefined
     const completion = new Promise<void>((resolve, reject) => { finish = error => error === undefined ? resolve() : reject(error) })
     void completion.catch(() => undefined)
-    const turn: ActiveTurn = { id: requestId, publish, finish, delivered: false, started: false, interrupted: false, submittedControls: new Set() }
+    const turn: ActiveTurn = { id: requestId, publish, finish, toolNames: new Map(), delivered: false, started: false, interrupted: false, submittedControls: new Set() }
     this.turns.set(id, turn)
     const timeout = setTimeout(() => finish(new ConversationTurnOutcomeUnknownError('')), 30 * 60_000)
     try {
@@ -238,6 +274,54 @@ export class OpenCodeDriver implements ConversationDriverSession {
           const itemId = `${event.data.assistantMessageID}:${event.data.ordinal}`
           if (event.type === 'session.text.delta') turn.publish({ type: 'text-delta', ...identity, itemId, text: event.data.delta })
           else turn.publish({ type: 'text-final', ...identity, itemId, text: event.data.text })
+        }
+        return
+      case 'session.tool.input.started':
+        if (turn.delivered && turn.started) {
+          turn.toolNames.set(event.data.id, event.data.name)
+          turn.publish({
+            type: 'work-item',
+            ...identity,
+            item: buildOpenCodeWorkItem(event.data.id, event.data.name, 'running'),
+          })
+        }
+        return
+      case 'session.tool.called':
+        if (turn.delivered && turn.started) {
+          const rawName = ('name' in event.data && typeof event.data.name === 'string' ? event.data.name : undefined)
+            ?? turn.toolNames.get(event.data.id)
+            ?? '工具调用'
+          turn.toolNames.set(event.data.id, rawName)
+          turn.publish({
+            type: 'work-item',
+            ...identity,
+            item: buildOpenCodeWorkItem(event.data.id, rawName, 'running'),
+          })
+        }
+        return
+      case 'session.tool.success':
+        if (turn.delivered && turn.started) {
+          const rawName = turn.toolNames.get(event.data.id) ?? '工具调用'
+          const textOutput = event.data.content
+            .flatMap(part => part.type === 'text' ? [part.text] : [])
+            .join('\n')
+            .slice(-6000)
+          turn.publish({
+            type: 'work-item',
+            ...identity,
+            item: buildOpenCodeWorkItem(event.data.id, rawName, 'completed', textOutput || undefined),
+          })
+        }
+        return
+      case 'session.tool.failed':
+        if (turn.delivered && turn.started) {
+          const rawName = turn.toolNames.get(event.data.id) ?? '工具调用'
+          const errorOutput = event.data.error.message.slice(-6000)
+          turn.publish({
+            type: 'work-item',
+            ...identity,
+            item: buildOpenCodeWorkItem(event.data.id, rawName, 'failed', errorOutput || undefined),
+          })
         }
         return
       case 'session.execution.succeeded':

@@ -3,6 +3,7 @@ import type { ConversationThreadCommandState } from '../../../shared/conversatio
 import { isComposerCodeTaskSelection, type ComposerCodeTaskSelection } from '../../../shared/conversation/code-task-action'
 import type { ConversationCommandState } from '../../../shared/conversation/desktop'
 import type { ProviderOptionSelections } from '../../../shared/conversation/model'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import type { ConversationProjectRoleSelection } from '../../../shared/conversation/project-role'
 import type { ConversationTaskLocator } from '../../../shared/conversation/task-scope'
 import { conversationHistoryReferenceSchema } from '../../../shared/conversation/thread-relations'
@@ -11,6 +12,8 @@ import { api } from '../api'
 import { normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import { useInteractionGuard } from '../utils/interaction-scope'
 import { formatAgentWirePrefix, type ConversationAgentContext } from '../crux/agent-chat-bridge'
+import { encodeConversationAgentTags } from '../../../shared/conversation/agent-binding'
+import { parseLeadingSlashCommand } from '../../../shared/conversation/slashCommands'
 import type { OptimisticUserMessage } from './optimisticUserMessages'
 import type { SideChatInput } from './useSideChat'
 import { useComposerAttachments } from './useComposerAttachments'
@@ -46,7 +49,9 @@ interface Submission {
   readonly threadId: string | null
   readonly task?: ConversationTaskLocator
   readonly role?: ConversationProjectRoleSelection
-  readonly agentTitlePrefix?: string
+  readonly runtimeMode?: RuntimeMode
+  readonly interactionMode?: ProviderInteractionMode
+  readonly agentTags?: readonly string[]
   readonly model: ComposerModel
   readonly message: OptimisticUserMessage
   readonly sourceText: string
@@ -79,6 +84,8 @@ export interface ComposerSendInput {
   readonly scopeKey?: string
   readonly task?: ConversationTaskLocator
   readonly role?: ConversationProjectRoleSelection
+  readonly runtimeMode?: RuntimeMode
+  readonly interactionMode?: ProviderInteractionMode
   readonly agentContext?: ConversationAgentContext | null
   readonly interactive: boolean
   readonly running: boolean
@@ -111,12 +118,19 @@ async function startThreadTurn(submission: Submission, deliveryIntent: 'auto' | 
   const options = model.options?.length ? [...model.options] : undefined
   const text = submission.wireText ?? message.text
   if (!threadId) {
-    const rawSeed = submission.sourceText.trim() || submittedContent(submission).attachments[0]?.name || message.text
-    const titleSeed = submission.agentTitlePrefix ? `[${submission.agentTitlePrefix}] ${rawSeed}` : rawSeed
-    const title = Array.from(titleSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
+    const trimmedSource = submission.sourceText.trim()
+    const leadingSlash = trimmedSource ? parseLeadingSlashCommand(trimmedSource, { allowSideChat: true }) : null
+    const cleanSource = leadingSlash
+      ? (leadingSlash.body.trim() || leadingSlash.description || leadingSlash.badgeLabel || trimmedSource)
+      : trimmedSource
+    const rawSeed = cleanSource || submittedContent(submission).attachments[0]?.name || message.text
+    const title = Array.from(rawSeed.slice(0, 160)).slice(0, 80).join('').trimEnd()
     return api.conversationCreate({ cwd: root, commandId, messageId: message.id, text,
       title, instanceId: model.instanceId, model: model.id, ...(options ? { options } : {}),
       ...(submission.role ? { role: submission.role } : {}),
+      ...(submission.runtimeMode ? { runtimeMode: submission.runtimeMode } : {}),
+      ...(submission.interactionMode ? { interactionMode: submission.interactionMode } : {}),
+      ...(submission.agentTags?.length ? { tags: [...submission.agentTags] } : {}),
       ...(task ? { task } : {}), ...attachments })
   }
   const result = await api.conversationApply({ cwd: root, ...(task ? { task } : {}), command: {
@@ -162,7 +176,7 @@ export function parseSideChatCommand(text: string): { readonly prompt: string } 
 }
 
 export function useComposerSend({
-  root, threadId, scopeKey, task, role, agentContext, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
+  root, threadId, scopeKey, task, role, runtimeMode, interactionMode, agentContext, interactive, running, canSteer, onAccepted, onSideChat, onSideChatError,
 }: ComposerSendInput) {
   const key = composerDraftKey(root, threadId, !threadId && role ? JSON.stringify([scopeKey, 'project-role', role.id]) : scopeKey)
   const currentKey = useRef(key)
@@ -260,7 +274,9 @@ export function useComposerSend({
       commandId: crypto.randomUUID(),
       root, threadId, ...(task ? { task: { ...task } } : {}),
       ...(!threadId && role ? { role: { id: role.id, revision: role.revision } } : {}),
-      ...(!threadId && agentContext ? { agentTitlePrefix: agentContext.name } : {}),
+      ...(!threadId && !task && runtimeMode ? { runtimeMode } : {}),
+      ...(!threadId && !task && interactionMode ? { interactionMode } : {}),
+      ...(!threadId && agentContext ? { agentTags: encodeConversationAgentTags({ id: agentContext.id, name: agentContext.name, spaceName: agentContext.spaceName }) } : {}),
       model: selection, sourceText: current.text, source: draftContent(current),
       draftId: current.draftId ?? undefined,
       ...(!threadId && current.workTask ? { workTask: current.workTask } : {}),

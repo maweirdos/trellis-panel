@@ -5,17 +5,21 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { delimiter, dirname, extname, isAbsolute, join } from 'node:path'
 import { PassThrough } from 'node:stream'
-import type { ModelInfo, Options, Query, SDKMessage, SDKUserMessage, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelInfo, Options, PermissionMode, PermissionResult, Query, SDKMessage, SDKUserMessage, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import * as Effect from 'effect/Effect'
 import type { ConversationDriverDescriptor } from '../../../../../shared/conversation/driverCatalog'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../../../shared/conversation/providerPolicy'
+import type { OpenArtifactMcpGrant } from '../../../../../shared/open-artifact'
 import { DaemonError } from '../../../../daemon/errors'
 import { spawnCodexOwnedProcess, type CodexOwnedProcess } from '../codex/process-owner'
 import { driverActionEvidence, driverConfigurationKey, hostUnsupported } from '../core/catalog'
+import { claudeProvenanceStatPaths, createClaudeProvenanceResolver, readClaudeBindingMetadata } from '../core/model-provenance'
 import { nativeImageAttachment, nativeTextAttachment } from '../core/attachment-input'
 import {
   ConversationTurnOutcomeUnknownError, ConversationTurnRejectedError,
-  type ConversationDriverSession, type ConversationDriverOpenInput, type ConversationResumeThreadInput,
-  type ConversationInterruptTurnInput, type ConversationDriverEventListener, type ConversationStartTurnContext,
+  type ConversationDriverRuntimeRequest, type ConversationDriverSession, type ConversationDriverOpenInput,
+  type ConversationResumeThreadInput, type ConversationInterruptTurnInput,
+  type ConversationRespondToRuntimeRequestInput, type ConversationDriverEventListener, type ConversationStartTurnContext,
 } from '../registry'
 
 const asError = (error: unknown): Error => error instanceof Error ? error : new Error(String(error))
@@ -34,8 +38,11 @@ function physicalExecutable(file: string): string {
 
 export function claudeConfigurationKey(env: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
   const home = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
-  const files = ['settings.json', '.credentials.json'].map(file => {
-    try { const info = statSync(join(home, file)); return [info.ino, info.size, info.mtimeMs] } catch { return null }
+  const files = [
+    ...['settings.json', '.credentials.json'].map(file => join(home, file)),
+    ...claudeProvenanceStatPaths(env),
+  ].map(file => {
+    try { const info = statSync(file); return [info.ino, info.size, info.mtimeMs] } catch { return null }
   })
   let resolvedBinary: unknown = null
   try {
@@ -46,6 +53,14 @@ export function claudeConfigurationKey(env: NodeJS.ProcessEnv = process.env, fin
   // 使用实际解析出的 Claude 可执行文件元数据替代整串易变 PATH，防止 IDE/npm 环境变量微调击穿缓存。
   return driverConfigurationKey([home, files, env.CLAUDE_EXECUTABLE ?? null, resolvedBinary, env.ANTHROPIC_BASE_URL,
     env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN, env.ANTHROPIC_AUTH_TOKEN, env.CLAUDE_CODE_USE_BEDROCK, env.CLAUDE_CODE_USE_VERTEX], fingerprintKey)
+}
+
+/**
+ * 稳定的 Claude 会话账号/端点绑定指纹：不绑定易变文件 mtime/size、OAuth access_token 刷新或二进制版本。
+ */
+export function claudeBindingKey(env: NodeJS.ProcessEnv = process.env, fingerprintKey?: Buffer): string {
+  const meta = readClaudeBindingMetadata(env)
+  return driverConfigurationKey([meta.configHome, meta.baseUrl, meta.useBedrock, meta.useVertex, meta.accountIdentity], fingerprintKey)
 }
 
 export function resolveClaudeSdkExecutablePath(env: NodeJS.ProcessEnv): string {
@@ -183,6 +198,7 @@ class ClaudeThread {
     private readonly confirm?: (message: SdkInit) => void,
     readonly model?: string,
     private readonly sessionId?: string,
+    readonly artifactMcpUrl?: string,
   ) {
     this.query = query({ prompt: this.input, options })
     void this.consume()
@@ -226,6 +242,41 @@ class ClaudeThread {
     if (message.type === 'assistant' && !message.parent_tool_use_id) {
       for (const [index, content] of message.message.content.entries()) {
         if (content.type === 'text') turn.publish({ type: 'text-final', ...identity, itemId: `${message.message.id}:${index}`, text: content.text })
+        if (content.type === 'tool_use') {
+          const itemId = content.id || `${message.message.id}:tool:${index}`
+          const inputObj = content.input && typeof content.input === 'object' && !Array.isArray(content.input)
+            ? content.input as Record<string, unknown>
+            : {}
+          const lowerName = content.name.toLowerCase()
+          const item: import('../registry').ConversationDriverWorkItem = lowerName === 'bash'
+            ? {
+                kind: 'command-execution',
+                nativeItemId: itemId,
+                command: typeof inputObj.command === 'string' && inputObj.command.trim() ? inputObj.command.trim().slice(0, 200) : 'Bash',
+                status: 'completed',
+              }
+            : lowerName === 'glob' || lowerName === 'grep'
+              ? {
+                  kind: 'file-search',
+                  nativeItemId: itemId,
+                  ...(typeof inputObj.pattern === 'string' && inputObj.pattern.trim() ? { pattern: inputObj.pattern.trim().slice(0, 200) } : {}),
+                  status: 'completed',
+                }
+              : lowerName === 'websearch' || lowerName === 'webfetch'
+                ? {
+                    kind: 'web-search',
+                    nativeItemId: itemId,
+                    ...(typeof (inputObj.query ?? inputObj.url) === 'string' ? { query: String(inputObj.query ?? inputObj.url).trim().slice(0, 200) } : {}),
+                    status: 'completed',
+                  }
+                : {
+                    kind: 'tool',
+                    nativeItemId: itemId,
+                    label: content.name,
+                    status: 'completed',
+                  }
+          turn.publish({ type: 'work-item', ...identity, item })
+        }
       }
     }
     if (message.type === 'system' && message.subtype === 'background_tasks_changed') {
@@ -257,16 +308,31 @@ class ClaudeThread {
 export class ClaudeDriver implements ConversationDriverSession {
   private readonly threads = new Map<string, ClaudeThread>()
   private readonly allThreads = new Set<ClaudeThread>()
+  private readonly pendingPermissions = new Map<string, {
+    readonly threadId: string
+    readonly turnId: string
+    readonly resolve: (result: PermissionResult) => void
+  }>()
   private catalog?: Promise<{ models: readonly ModelInfo[]; version?: string }>
   private stopped = false
   private resumeVerified = false
   private interruptVerified = false
+
+  private resolvePermissionMode(runtimeMode?: RuntimeMode, interactionMode?: ProviderInteractionMode): PermissionMode {
+    if (this.opts.ordinaryTask || this.opts.managedExecution) return 'dontAsk'
+    if (interactionMode === 'plan') return 'plan'
+    if (runtimeMode === 'full-access') return 'bypassPermissions'
+    if (runtimeMode === 'auto') return 'auto'
+    if (runtimeMode === 'auto-accept-edits') return 'acceptEdits'
+    return 'default'
+  }
 
   private constructor(
     private readonly opts: ConversationDriverOpenInput,
     private readonly env: NodeJS.ProcessEnv,
     private readonly executable: string,
     private readonly configurationKey: string,
+    private readonly bindingKey: string,
     private readonly query: SdkQuery,
     private readonly sessionInfo: SdkSessionInfo,
   ) {}
@@ -275,7 +341,15 @@ export class ClaudeDriver implements ConversationDriverSession {
     input.assertCanSpawn()
     const env = { ...(input.env ?? process.env) }
     const { query, getSessionInfo } = await import('@anthropic-ai/claude-agent-sdk')
-    const driver = new ClaudeDriver(input, env, resolveClaudeSdkExecutablePath(env), claudeConfigurationKey(env, input.fingerprintKey), query, getSessionInfo)
+    const driver = new ClaudeDriver(
+      input,
+      env,
+      resolveClaudeSdkExecutablePath(env),
+      claudeConfigurationKey(env, input.fingerprintKey),
+      claudeBindingKey(env, input.fingerprintKey),
+      query,
+      getSessionInfo,
+    )
     input.assertCanSpawn()
     input.onSpawn(driver)
     return driver
@@ -288,23 +362,95 @@ export class ClaudeDriver implements ConversationDriverSession {
     const actual = realpathSync.native(cwd)
     const original = realpathSync.native(this.opts.cwd)
     if (this.stopped || (process.platform === 'win32' ? actual.toLowerCase() !== original.toLowerCase() : actual !== original)
-      || claudeConfigurationKey(this.env, this.opts.fingerprintKey) !== this.configurationKey || resolveClaudeSdkExecutablePath(this.env) !== this.executable) {
+      || claudeBindingKey(this.env, this.opts.fingerprintKey) !== this.bindingKey || resolveClaudeSdkExecutablePath(this.env) !== this.executable) {
       throw new DaemonError('E_CONFLICT', 'Claude SDK 实例、配置或工程目录已变化。')
     }
   }
 
-  private create(id?: string, selected?: ModelInfo, resume = false): ClaudeThread {
+  private create(
+    id?: string,
+    selected?: ModelInfo,
+    resume = false,
+    artifactMcp?: OpenArtifactMcpGrant,
+    permissionMode: PermissionMode = this.resolvePermissionMode(),
+  ): ClaudeThread {
     this.assertCurrent()
     let transport: ClaudeOwnedTransport | undefined
     const generation = id ?? 'catalog'
-    const thread = new ClaudeThread(this.query, {
+    const interactivePermissions = !this.opts.ordinaryTask && !this.opts.managedExecution
+    const mcpServers: Options['mcpServers'] = artifactMcp
+      ? {
+          'open-artifact': {
+            type: 'http',
+            url: artifactMcp.url,
+            headers: Object.fromEntries(artifactMcp.headers.map(header => [header.name, header.value])),
+            alwaysLoad: true
+          }
+        }
+      : {}
+    let thread!: ClaudeThread
+    const canUseTool: Options['canUseTool'] | undefined = interactivePermissions
+      ? (toolName, input, options) => {
+          const turn = thread?.active
+          if (!turn || !id || options.signal.aborted) {
+            return Promise.resolve({ behavior: 'deny', message: '当前会话无活动回合。', interrupt: false })
+          }
+          const nativeRequestId = options.toolUseID || randomUUID()
+          const commandPreview = typeof input.command === 'string' && input.command.trim()
+            ? input.command.trim().slice(0, 160)
+            : undefined
+          const pathPreview = typeof input.file_path === 'string' && input.file_path.trim()
+            ? input.file_path.trim().slice(0, 160)
+            : typeof input.path === 'string' && input.path.trim()
+              ? input.path.trim().slice(0, 160)
+              : undefined
+          const requestKind = toolName.toLowerCase() === 'bash'
+            ? 'command'
+            : ['edit', 'write', 'multiedit', 'notebookedit'].includes(toolName.toLowerCase())
+              ? 'file-change'
+              : 'permission'
+          const detail = commandPreview ?? pathPreview
+          const scopeKey = `claude:${toolName.toLowerCase()}:${(detail ?? 'any').toLowerCase().slice(0, 80)}`
+          const request: ConversationDriverRuntimeRequest = {
+            kind: 'approval',
+            requestKind,
+            approvalScopeKey: scopeKey,
+            title: commandPreview ? `Claude 请求执行：${commandPreview}` : `Claude 请求使用工具：${toolName}`,
+            ...(detail ? { details: detail } : {}),
+            options: [
+              { decision: 'accept', label: '允许本次' },
+              { decision: 'acceptForSession', label: '本会话允许' },
+              { decision: 'decline', label: '拒绝' },
+              { decision: 'cancel', label: '取消回合' },
+            ],
+          }
+          return new Promise<PermissionResult>((resolve) => {
+            const settle = (result: PermissionResult): void => {
+              options.signal.removeEventListener('abort', abort)
+              this.pendingPermissions.delete(nativeRequestId)
+              resolve(result)
+            }
+            const abort = (): void => settle({ behavior: 'deny', message: '操作已取消。', interrupt: true })
+            this.pendingPermissions.set(nativeRequestId, { threadId: id, turnId: turn.id, resolve: settle })
+            options.signal.addEventListener('abort', abort, { once: true })
+            try {
+              turn.publish({ type: 'runtime-request', turnId: turn.id, turnIdSource: 'host', nativeRequestId, request })
+            } catch {
+              settle({ behavior: 'deny', message: '无法发送审批请求。', interrupt: false })
+            }
+          })
+        }
+      : undefined
+    thread = new ClaudeThread(this.query, {
       cwd: this.opts.cwd,
       env: this.env,
       pathToClaudeCodeExecutable: this.executable,
-      permissionMode: 'dontAsk',
+      permissionMode,
+      ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+      ...(interactivePermissions ? { canUseTool } : { tools: [] }),
       settingSources: ['user'],
-      tools: [],
-      mcpServers: {},
+      mcpServers,
+      ...(artifactMcp ? { allowedTools: ['mcp__open-artifact__*'] } : {}),
       strictMcpConfig: true,
       persistSession: id !== undefined,
       includePartialMessages: true,
@@ -322,13 +468,14 @@ export class ClaudeDriver implements ConversationDriverSession {
         return transport
       },
     }, () => transport, id && selected ? message => {
+      const modeMatches = interactivePermissions ? true : message.permissionMode === 'dontAsk'
       if (message.session_id !== id
         || comparePath(realpathSync.native(message.cwd)) !== comparePath(realpathSync.native(this.opts.cwd))
-        || ![selected.value, selected.resolvedModel].includes(message.model) || message.permissionMode !== 'dontAsk') {
+        || ![selected.value, selected.resolvedModel].includes(message.model) || !modeMatches) {
         throw new DaemonError('E_CONFLICT', 'Claude 未确认所选模型、工程范围或原生会话身份。')
       }
       if (resume) this.resumeVerified = true
-    } : undefined, selected?.value, id)
+    } : undefined, selected?.value, id, artifactMcp?.url)
     this.allThreads.add(thread)
     return thread
   }
@@ -352,9 +499,19 @@ export class ClaudeDriver implements ConversationDriverSession {
   readonly describe = () => run(async (): Promise<ConversationDriverDescriptor> => {
     this.assertCurrent()
     const { models, version } = await this.readCatalog()
+    const resolveProvenance = createClaudeProvenanceResolver(this.env)
     return {
       observedAt: new Date().toISOString(), configurationKey: this.configurationKey, source: 'native-catalog', version,
-      models: models.map(model => ({ id: model.value, displayName: model.displayName, isDefault: model.value === 'default' })),
+      models: models.map(model => {
+        const provenance = resolveProvenance(model.value)
+        return {
+          id: model.value,
+          displayName: model.displayName,
+          isDefault: model.value === 'default',
+          ...(provenance.providerId ? { providerId: provenance.providerId } : {}),
+          group: provenance.group,
+        }
+      }),
       options: models.flatMap(model => model.supportedEffortLevels?.length ? [{
         id: `${model.value}:effort`, label: '推理强度', category: 'reasoning',
         choices: model.supportedEffortLevels.map(value => ({ value, label: value })),
@@ -364,7 +521,9 @@ export class ClaudeDriver implements ConversationDriverSession {
         planning: hostUnsupported('该入口还未接入团队规划授权。'),
         execution: hostUnsupported('该入口未启用执行工具。'),
         goalPause: hostUnsupported('Claude SDK 的回合中断不提供独立目标暂停或恢复。'),
-        toolApproval: hostUnsupported('当前 Claude 入口没有启用会请求审批的工具。'),
+        toolApproval: (!this.opts.ordinaryTask && !this.opts.managedExecution)
+          ? { state: 'verified', source: 'host-policy', detail: '已接入 Claude 工具交互式审批桥接。' }
+          : hostUnsupported('当前 Claude 入口没有启用会请求审批的工具。'),
         ...(this.resumeVerified && { resume: { state: 'verified', source: 'native-session', detail: '原生 SDK 已恢复原会话。' } as const }),
         ...(this.interruptVerified && { cancel: { state: 'verified', source: 'native-session', detail: '观察到原轮中断及最终回执。' } as const }),
       }),
@@ -373,16 +532,19 @@ export class ClaudeDriver implements ConversationDriverSession {
 
   readonly listModels = () => this.describe().pipe(Effect.map(catalog => catalog.models))
 
-  private async ensure(id: string, model: string, cwd: string, resume: boolean): Promise<string> {
+  private async ensure(id: string, model: string, cwd: string, resume: boolean, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode): Promise<string> {
     this.assertCurrent(cwd)
     const available = (await this.readCatalog()).models.find(item => item.value === model)
     if (!available) throw new DaemonError('E_UNAVAILABLE', `Claude SDK 未报告模型 ${model}。`)
     const previous = this.threads.get(id)
     if (previous && !previous.ended) {
       if (previous.model !== model) throw new DaemonError('E_CONFLICT', 'Claude 原生线程仍绑定另一模型。')
-      return id
+      if (!artifactMcp || previous.artifactMcpUrl === artifactMcp.url) return id
+      await this.remove(previous)
+      resume = true
+    } else if (previous) {
+      await this.remove(previous)
     }
-    if (previous) await this.remove(previous)
     if (resume) {
       const saved = await deadline(this.sessionInfo(id, { dir: cwd }), 5_000, 'Claude 原生会话检查超时。')
       if (saved?.sessionId !== id || !saved.cwd
@@ -390,7 +552,7 @@ export class ClaudeDriver implements ConversationDriverSession {
         throw new DaemonError('E_CONFLICT', 'Claude 未在原工程找到要恢复的原生会话。')
       }
     }
-    const thread = this.create(id, available, resume)
+    const thread = this.create(id, available, resume, artifactMcp, this.resolvePermissionMode(runtimeMode))
     try {
       await deadline(thread.query.initializationResult(), 30_000, 'Claude SDK 未确认初始化。')
       this.threads.set(id, thread)
@@ -398,15 +560,24 @@ export class ClaudeDriver implements ConversationDriverSession {
     } catch (error) { await this.remove(thread); throw error }
   }
 
-  readonly startThread = (model: string, cwd: string) => run(() => this.ensure(randomUUID(), model, cwd, false))
-  readonly resumeThread = ({ nativeThreadId, cwd, model }: ConversationResumeThreadInput) =>
-    run(() => this.ensure(nativeThreadId, model, cwd, true))
+  readonly startThread = (model: string, cwd: string, artifactMcp?: OpenArtifactMcpGrant, runtimeMode?: RuntimeMode) =>
+    run(() => this.ensure(randomUUID(), model, cwd, false, artifactMcp, runtimeMode))
+  readonly resumeThread = ({ nativeThreadId, cwd, model, artifactMcp }: ConversationResumeThreadInput) =>
+    run(() => this.ensure(nativeThreadId, model, cwd, true, artifactMcp))
 
   readonly startTurn = (id: string, cwd: string, text: string, model: string, publish: ConversationDriverEventListener, context?: ConversationStartTurnContext) => run(async () => {
     this.assertCurrent(cwd)
-    const thread = this.threads.get(id)
+    let thread = this.threads.get(id)
+    if (thread && !thread.ended && !thread.active && !thread.control && context?.artifactMcp && thread.artifactMcpUrl !== context.artifactMcp.url) {
+      await this.ensure(id, model, cwd, true, context.artifactMcp, context.runtimeMode)
+      thread = this.threads.get(id)
+    }
     if (!thread || thread.ended || thread.active || thread.control) throw new ConversationTurnRejectedError('Claude 原会话没有可用回合。')
     if (thread.model !== model) throw new ConversationTurnRejectedError('Claude 当前原生会话未绑定所选模型。')
+    if (!this.opts.ordinaryTask && !this.opts.managedExecution) {
+      const desiredMode = this.resolvePermissionMode(context?.runtimeMode, context?.interactionMode)
+      await thread.query.setPermissionMode(desiredMode).catch(() => undefined)
+    }
     let content: SDKUserMessage['message']['content'] = text
     if (context?.attachments?.length) {
       try {
@@ -429,9 +600,36 @@ export class ClaudeDriver implements ConversationDriverSession {
       if (cause instanceof ConversationTurnRejectedError) throw cause
       await this.remove(thread).catch(() => undefined)
       throw new ConversationTurnOutcomeUnknownError('', { cause })
-    } finally { if (thread.active === active) thread.active = undefined }
+    } finally {
+      if (thread.active === active) thread.active = undefined
+      for (const [requestId, pending] of [...this.pendingPermissions.entries()]) {
+        if (pending.threadId === id && pending.turnId === uuid) {
+          this.pendingPermissions.delete(requestId)
+          pending.resolve({ behavior: 'deny', message: '回合已结束。', interrupt: false })
+        }
+      }
+    }
     if (active?.interruptionObserved) this.interruptVerified = true
     return ''
+  })
+
+  readonly respondToRuntimeRequest = ({ nativeThreadId, turnId, nativeRequestId, response }: ConversationRespondToRuntimeRequestInput) => run(async () => {
+    const entry = this.pendingPermissions.get(nativeRequestId)
+    if (!entry || entry.threadId !== nativeThreadId || entry.turnId !== turnId) {
+      throw new DaemonError('E_CONFLICT', 'Claude 审批请求与当前活动回合不匹配。')
+    }
+    if (response.kind !== 'approval') {
+      throw new DaemonError('E_CONFLICT', 'Claude 暂仅支持工具审批应答。')
+    }
+    if (response.decision === 'accept' || response.decision === 'acceptForSession' || response.decision === 'acceptAlways') {
+      entry.resolve({ behavior: 'allow' })
+      return
+    }
+    if (response.decision === 'cancel') {
+      entry.resolve({ behavior: 'deny', message: '用户取消了当前回合。', interrupt: true })
+      return
+    }
+    entry.resolve({ behavior: 'deny', message: '用户拒绝了该工具操作。', interrupt: false })
   })
 
   readonly interruptTurn = ({ nativeThreadId, turnId }: ConversationInterruptTurnInput) => run(async () => {
@@ -454,6 +652,10 @@ export class ClaudeDriver implements ConversationDriverSession {
 
   readonly close = () => run(async () => {
     this.stopped = true
+    for (const [requestId, pending] of [...this.pendingPermissions.entries()]) {
+      this.pendingPermissions.delete(requestId)
+      pending.resolve({ behavior: 'deny', message: 'Claude 会话已关闭。', interrupt: true })
+    }
     const closed = await Promise.allSettled([...this.allThreads].map(thread => this.remove(thread)))
     if (closed.some(result => result.status === 'rejected')) throw new DaemonError('E_UNKNOWN', '部分 Claude SDK Job 尚未确认退出。', 'unknown')
   })

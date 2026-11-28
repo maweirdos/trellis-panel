@@ -1,8 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
-import { ArrowUp, Archive, ArchiveRestore, File as FileIcon, Image, LoaderCircle, Mic, MicOff, Play, Quote, Square, X } from 'lucide-react'
+import { ArrowUp, Archive, ArchiveRestore, Check, ChevronDown, Compass, File as FileIcon, Image, LoaderCircle, Mic, MicOff, Play, Quote, Shield, Square, X } from 'lucide-react'
 import { Button, Dropdown, DropdownItem } from '../my/ui'
 import { FeedbackNotice, normalizeFeedbackDiagnostic } from '../my/FeedbackNotice'
 import type { ConversationDriverSkill } from '../../../shared/conversation/driverCatalog'
+import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
 import { ComposerPromptEditorTiptap, type ComposerPromptEditorHandle, type ComposerPromptSnapshot } from './ComposerPromptEditorTiptap'
@@ -64,6 +65,11 @@ export interface ConversationComposerProps {
   readonly mentionableThreads?: readonly ComposerMentionableThread[]
   readonly onOpenCitation?: OpenAssistantCitation
   readonly projectPaths?: ComposerProjectPathTarget
+  readonly runtimeMode?: RuntimeMode
+  readonly interactionMode?: ProviderInteractionMode
+  readonly onRuntimeModeChange?: (mode: RuntimeMode) => void
+  readonly onInteractionModeChange?: (mode: ProviderInteractionMode) => void
+  readonly modesDisabled?: boolean
 }
 
 const STOP_PENDING_MAX_MS = 10_000
@@ -138,6 +144,7 @@ export function ConversationComposer({
   canResume = false, resuming = false, resumeLabel = '继续对话', onResume, queuePaused,
   canSteer, disabledReason, placeholder, editorRef, leadingControls, contextControl, draftReferences, artifactBanner, onPaste, onDrop, onDragOver, previousPrompt,
   taskSection, mentionableThreads = noThreads, onOpenCitation, projectPaths,
+  runtimeMode = 'approval-required', interactionMode = 'default', onRuntimeModeChange, onInteractionModeChange, modesDisabled = false,
 }: ConversationComposerProps): JSX.Element {
   const toolbar = useRef<HTMLDivElement>(null)
   const localEditor = useRef<ComposerPromptEditorHandle>(null)
@@ -236,6 +243,12 @@ export function ConversationComposer({
   const missingModel = model && lockedInstanceId && model.instanceId !== lockedInstanceId
     ? '请选择此会话所用实例中的模型。'
     : model ? unavailableModelReason(catalog, model) : undefined
+  const runtimeModeLabel = runtimeMode === 'full-access'
+    ? '完全访问'
+    : runtimeMode === 'auto-accept-edits' || runtimeMode === 'auto'
+      ? '自动修改'
+      : '审批执行'
+  const interactionModeLabel = interactionMode === 'plan' ? '规划模式' : '默认'
   const overLimit = send.outgoingLength > CONVERSATION_TEXT_LIMIT
   const allowSend = Boolean(interactive && !disabledReason && !missingModel && !overLimit && !attachmentPending && !findingReference && !staleAttachment &&
     model && send.hasSendableContent &&
@@ -470,6 +483,45 @@ export function ConversationComposer({
           }}
           taskSection={taskSection} />
         {leadingControls}
+        {onRuntimeModeChange && <Dropdown disabled={!interactive || modesDisabled} placement="top"
+          trigger={({ open, toggle }) => <button type="button"
+            className="my-composer-control inline-flex items-center gap-1 px-2 py-1 text-my-xs font-normal"
+            aria-label={`执行权限：${runtimeModeLabel}`} aria-expanded={open}
+            disabled={!interactive || modesDisabled} onClick={toggle}>
+            <Shield size={13} aria-hidden="true" />
+            <span>{runtimeModeLabel}</span>
+            <ChevronDown size={12} aria-hidden="true" />
+          </button>}>
+          {close => <>
+            <DropdownItem icon={runtimeMode === 'approval-required' ? <Check size={14} /> : undefined}
+              description="每次执行命令或修改文件前询问授权"
+              onClick={() => { onRuntimeModeChange('approval-required'); close() }}>审批执行</DropdownItem>
+            <DropdownItem icon={(runtimeMode === 'auto-accept-edits' || runtimeMode === 'auto') ? <Check size={14} /> : undefined}
+              description="自动允许编辑文件，命令执行仍需授权"
+              onClick={() => { onRuntimeModeChange('auto-accept-edits'); close() }}>自动修改</DropdownItem>
+            <DropdownItem icon={runtimeMode === 'full-access' ? <Check size={14} /> : undefined}
+              description="跳过授权确认直接执行操作，请仅在可信目录使用"
+              onClick={() => { onRuntimeModeChange('full-access'); close() }}>完全访问</DropdownItem>
+          </>}
+        </Dropdown>}
+        {onInteractionModeChange && <Dropdown disabled={!interactive || modesDisabled} placement="top"
+          trigger={({ open, toggle }) => <button type="button"
+            className="my-composer-control inline-flex items-center gap-1 px-2 py-1 text-my-xs font-normal"
+            aria-label={`交互模式：${interactionModeLabel}`} aria-expanded={open}
+            disabled={!interactive || modesDisabled} onClick={toggle}>
+            <Compass size={13} aria-hidden="true" />
+            <span>{interactionModeLabel}</span>
+            <ChevronDown size={12} aria-hidden="true" />
+          </button>}>
+          {close => <>
+            <DropdownItem icon={interactionMode === 'default' ? <Check size={14} /> : undefined}
+              description="直接响应与执行操作"
+              onClick={() => { onInteractionModeChange('default'); close() }}>默认</DropdownItem>
+            <DropdownItem icon={interactionMode === 'plan' ? <Check size={14} /> : undefined}
+              description="只读分析并形成方案，不直接改代码"
+              onClick={() => { onInteractionModeChange('plan'); close() }}>规划模式</DropdownItem>
+          </>}
+        </Dropdown>}
         {(send.hasContent || send.stash) && <Dropdown disabled={!interactive} placement="top"
           trigger={({ open, toggle }) => <button type="button" className="my-icon-control" aria-label="草稿暂存"
             aria-expanded={open} onClick={toggle} disabled={!interactive}>

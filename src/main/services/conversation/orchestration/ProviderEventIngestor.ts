@@ -22,7 +22,17 @@ import type { RuntimeRequestService } from './RuntimeRequestService'
 const decodeEvent = Schema.decodeUnknownSync(OrchestrationV2DomainEventJson)
 const decodeModelSelection = Schema.decodeUnknownSync(ModelSelection)
 const MAX_WORK_ITEMS_PER_RUN = 48
-const MAX_WORK_ITEM_BYTES_PER_RUN = 24 * 1024
+const MAX_WORK_ITEM_BYTES_PER_RUN = 48 * 1024
+const MAX_COMMAND_OUTPUT_CHARS = 6_000
+
+const clipCommandOutputTail = (output: string | undefined): string | undefined => {
+  if (!output) return undefined
+  const cleaned = output.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+  if (!cleaned) return undefined
+  return cleaned.length > MAX_COMMAND_OUTPUT_CHARS
+    ? `…${cleaned.slice(-(MAX_COMMAND_OUTPUT_CHARS - 1))}`
+    : cleaned
+}
 
 export interface IngestibleTurn {
   readonly row: ThreadEffectRow
@@ -47,6 +57,7 @@ export interface TurnObservationCallbacks<TTurn extends IngestibleTurn> {
   isCurrentActiveTurn(turn: TTurn): boolean
   resolveCompletionDelivery(turn: TTurn, nativeTurnId: string): readonly { readonly apply: () => void; readonly hostEvents: readonly ConversationLifecycleEvent[] }[]
   onForegroundReadyToFinish(turn: TTurn): void
+  onAutoApproveRequest?(turn: TTurn, nativeRequestId: string): void
 }
 
 /**
@@ -161,7 +172,9 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
 
     if (event.type === 'work-item') {
       const nativeMatch = event.turnIdSource !== 'host' && state.native_turn_id === event.turnId
-      const hostToolMatch = event.turnIdSource === 'host' && event.item.kind === 'tool' && turn.controlTurnId === event.turnId
+      const hostToolMatch = event.turnIdSource === 'host'
+        && (event.item.kind === 'tool' || event.item.kind === 'command-execution' || event.item.kind === 'file-search' || event.item.kind === 'web-search')
+        && turn.controlTurnId === event.turnId
       if ((nativeMatch || hostToolMatch) && !state.foreground_ended && state.provider_thread_id === turn.nativeThreadId) {
         this.applyWorkItem(turn, event.turnId, event.item)
       }
@@ -180,7 +193,11 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
       this.writeAssistantText(callbacks.assertOwner, row.thread_id, runId, event.itemId, event.text, event.type === 'text-final')
     }
     if (event.type === 'runtime-request' && !state.foreground_ended && !state.stop_requested) {
-      this.runtimeRequests.recordIncomingRequest(turn, event.nativeRequestId, event.request, nativeTurnId)
+      if (this.runtimeRequests.shouldAutoApprove(row.thread_id, event.request) && callbacks.onAutoApproveRequest) {
+        callbacks.onAutoApproveRequest(turn, event.nativeRequestId)
+      } else {
+        this.runtimeRequests.recordIncomingRequest(turn, event.nativeRequestId, event.request, nativeTurnId)
+      }
     }
     if (event.type === 'background-work') {
       this.handleBackgroundWorkEvent(turn, event, state.foreground_ended, callbacks)
@@ -291,12 +308,12 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
     const existing = this.projections.readTurnItem(id, threadId, runId)
     const previous: ConversationProjectedWorkItem | undefined = existing && JSON.parse(existing.payload_json)
     const occurredAt = new Date().toISOString()
-    const status = item.kind === 'tool'
+    const status = item.kind === 'tool' || item.kind === 'command-execution' || item.kind === 'file-search' || item.kind === 'web-search'
       ? item.status
       : item.kind === 'reasoning'
         ? (item.streaming ? 'running' : 'completed')
         : 'completed'
-    if ((previous?.type === 'dynamic_tool' || previous?.type === 'file_change')
+    if ((previous?.type === 'dynamic_tool' || previous?.type === 'file_change' || previous?.type === 'command_execution' || previous?.type === 'file_search' || previous?.type === 'web_search')
       && previous.status !== 'running' && previous.status !== status) return
     const payload = this.buildWorkItemPayload({
       id, threadId, runId, binding, nativeItemId, status, occurredAt, previous, executionRoot: turn.executionRoot, item,
@@ -343,6 +360,39 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
       ordinal: preceding, status: input.status, startedAt: input.previous?.startedAt ?? input.occurredAt,
       completedAt: input.status === 'running' ? null : input.previous?.completedAt ?? input.occurredAt,
       updatedAt: input.occurredAt,
+    }
+    if (input.item.kind === 'command-execution') {
+      const commandInput = clip(input.item.command, 240) || '运行命令'
+      const previousOutput = input.previous?.type === 'command_execution' ? input.previous.output : undefined
+      const output = clipCommandOutputTail(input.item.output ?? previousOutput)
+      return {
+        ...base,
+        type: 'command_execution',
+        title: '运行命令',
+        input: commandInput,
+        ...(output ? { output } : {}),
+        ...(input.item.exitCode !== undefined && Number.isSafeInteger(input.item.exitCode)
+          ? { exitCode: input.item.exitCode }
+          : {}),
+      }
+    }
+    if (input.item.kind === 'file-search') {
+      const pattern = input.item.pattern ? clip(input.item.pattern, 200) : undefined
+      return {
+        ...base,
+        type: 'file_search',
+        title: '搜索文件',
+        ...(pattern ? { pattern } : {}),
+      }
+    }
+    if (input.item.kind === 'web-search') {
+      const query = input.item.query ? clip(input.item.query, 200) : undefined
+      return {
+        ...base,
+        type: 'web_search',
+        title: '搜索网页',
+        ...(query ? { patterns: [query] } : {}),
+      }
     }
     if (input.item.kind === 'tool') {
       const label = clip(input.item.label, 80)

@@ -29,7 +29,7 @@ import type { ConversationThreadRelations } from '../../../shared/conversation/t
 import { ModelSelection } from '../../../shared/conversation/modelSelection'
 
 export type ConversationThread = Pick<OrchestrationV2AppThread, 'id' | 'title' | 'modelSelection'> &
-  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath'>>
+  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath' | 'runtimeMode' | 'interactionMode'>>
 
 export type ConversationMessage = Pick<
   OrchestrationV2ConversationMessage,
@@ -73,6 +73,8 @@ export type ConversationTimelineWorkEntry = {
   readonly mono?: boolean
   readonly toolName?: string | null
   readonly state: 'running' | 'done' | 'failed' | 'cancelled'
+  readonly output?: string
+  readonly exitCode?: number
   readonly at?: string
 }
 
@@ -502,6 +504,46 @@ export function deriveTimelineRows(
             : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
           ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
         }, item.startedAt)
+      } else if (item.type === 'command_execution') {
+        const status = item.status
+        append({
+          kind: 'work',
+          id: item.id,
+          text: '运行命令',
+          detail: item.input,
+          mono: true,
+          toolName: 'command_execution',
+          state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
+            : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
+          ...(item.output ? { output: item.output } : {}),
+          ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}),
+          ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
+        }, item.startedAt)
+      } else if (item.type === 'file_search') {
+        const status = item.status
+        append({
+          kind: 'work',
+          id: item.id,
+          text: '搜索文件',
+          ...(item.pattern ? { detail: item.pattern } : {}),
+          mono: true,
+          toolName: 'file_search',
+          state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
+            : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
+          ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
+        }, item.startedAt)
+      } else if (item.type === 'web_search') {
+        const status = item.status
+        append({
+          kind: 'work',
+          id: item.id,
+          text: '搜索网页',
+          ...(item.patterns?.[0] ? { detail: item.patterns[0] } : {}),
+          toolName: 'web_search',
+          state: status === 'failed' ? 'failed' : status === 'completed' ? 'done'
+            : status === 'cancelled' || status === 'interrupted' ? 'cancelled' : 'running',
+          ...(typeof item.completedAt === 'string' ? { at: item.completedAt } : {}),
+        }, item.startedAt)
       } else if (item.type === 'reasoning' && item.text.trim()) {
         append({
           kind: 'reasoning',
@@ -707,13 +749,29 @@ export function applyEventPage(
     }
     const wireEvent = entry.event
     if (wireEvent.type === 'thread.metadata-updated' && wireEvent.threadId === thread.id) {
-      const { title, modelSelection } = wireEvent.payload
-      thread = { ...thread, title, modelSelection: Option.getOrElse(decodeModelSelection(modelSelection), () => thread.modelSelection) }
+      const { title, modelSelection, runtimeMode, interactionMode } = wireEvent.payload
+      thread = {
+        ...thread,
+        title,
+        modelSelection: Option.getOrElse(decodeModelSelection(modelSelection), () => thread.modelSelection),
+        ...(runtimeMode !== undefined ? { runtimeMode } : {}),
+        ...(interactionMode !== undefined ? { interactionMode } : {}),
+      }
       continue
     }
     if (wireEvent.type === 'turn-item.updated') {
       const item = wireEvent.payload
-      if (item.type === 'dynamic_tool' || item.type === 'proposed_plan' || item.type === 'todo_list' || item.type === 'file_change' || item.type === 'reasoning' || item.type === 'system_notice') {
+      if (
+        item.type === 'dynamic_tool' ||
+        item.type === 'command_execution' ||
+        item.type === 'file_search' ||
+        item.type === 'web_search' ||
+        item.type === 'proposed_plan' ||
+        item.type === 'todo_list' ||
+        item.type === 'file_change' ||
+        item.type === 'reasoning' ||
+        item.type === 'system_notice'
+      ) {
         items.set(item.id, item)
       }
       continue

@@ -9,6 +9,7 @@ import type {
   ConversationThreadCommand,
   ConversationThreadCommandState,
 } from '../../../../shared/conversation/command-runtime'
+import type { ProviderApprovalDecision } from '../../../../shared/conversation/providerPolicy'
 import type {
   ConversationDriverRegistration,
   ConversationDriverRuntimeRequest,
@@ -40,6 +41,7 @@ export interface AsyncUserInputDispatchHost<TAuthority extends ConversationAutho
  */
 export class RuntimeRequestService<TTurn extends RuntimeRequestTurnRef = RuntimeRequestTurnRef> {
   private readonly nativeRequests = new Map<string, { readonly turn: TTurn; readonly nativeRequestId: string }>()
+  private readonly sessionApprovals = new Map<string, Set<string>>()
 
   constructor(
     private readonly projections: ConversationProjectionStore,
@@ -47,6 +49,37 @@ export class RuntimeRequestService<TTurn extends RuntimeRequestTurnRef = Runtime
     private readonly commands: ThreadCommands,
     private readonly relations: ThreadRelations,
   ) {}
+
+  rememberSessionApproval(threadId: string, scopeKey?: string): void {
+    const clean = scopeKey?.trim()
+    if (!clean) return
+    const rules = this.sessionApprovals.get(threadId) ?? new Set<string>()
+    rules.add(clean)
+    this.sessionApprovals.set(threadId, rules)
+  }
+
+  isSessionApproved(threadId: string, scopeKey?: string): boolean {
+    const clean = scopeKey?.trim()
+    return Boolean(clean && this.sessionApprovals.get(threadId)?.has(clean))
+  }
+
+  clearSessionApprovals(threadId: string): void {
+    this.sessionApprovals.delete(threadId)
+  }
+
+  shouldAutoApprove(threadId: string, payload: ConversationDriverRuntimeRequest): boolean {
+    return payload.kind === 'approval' && Boolean(payload.approvalScopeKey) && this.isSessionApproved(threadId, payload.approvalScopeKey)
+  }
+
+  rememberDecisionIfSessionScoped(
+    threadId: string,
+    request: ConversationRuntimeRequest,
+    selectedDecision?: ProviderApprovalDecision,
+  ): void {
+    if (request.payload.kind !== 'approval') return
+    if (selectedDecision !== 'acceptForSession' && selectedDecision !== 'acceptAlways') return
+    this.rememberSessionApproval(threadId, request.payload.approvalScopeKey)
+  }
 
   getNativeRequest(requestId: string): { readonly turn: TTurn; readonly nativeRequestId: string } | undefined {
     return this.nativeRequests.get(requestId)

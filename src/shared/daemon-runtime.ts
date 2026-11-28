@@ -22,6 +22,7 @@ import { CONVERSATION_READ_PAGE_LIMIT } from './conversation/desktop'
 import { conversationTaskLocatorSchema } from './conversation/task-scope'
 import { nativeConversationTaskSchema } from './conversation/task-native'
 import { taskPlanningRuntimeBodies } from './conversation/task-planning-runtime'
+import { openArtifactMcpGrantSchema } from './open-artifact'
 import {
   ConversationAttachmentDraftTargetSchema, ConversationAttachmentIdSchema, ConversationAttachmentReadSchema,
   ConversationAttachmentWireBytesSchema, ConversationAttachmentWireKnowledgeSchema, conversationAttachmentReferenceFields,
@@ -94,18 +95,20 @@ export const runtimeBodies = {
     commandId: z.string().uuid(), messageId: z.string().uuid().optional(),
     options: conversationModelOptionsSchema.optional(),
     role: conversationProjectRoleSelectionSchema.optional(),
+    tags: z.array(z.string().trim().min(1).max(64).refine(value => !/[\p{Cc}]/u.test(value), 'Invalid thread tag.')).max(16).optional(),
     knowledgePageId: z.uuid().optional(),
+    artifactMcp: openArtifactMcpGrantSchema.optional(),
     ...conversationAttachmentReferenceFields,
   }),
   'runtime.conversationList': taskConversation.extend({ archived: z.boolean().optional(), query: z.string().trim().max(160).optional() }),
-  'runtime.conversationRead': taskConversation.extend({ threadId: z.string().min(1).max(200) }),
+  'runtime.conversationRead': taskConversation.extend({ threadId: z.string().min(1).max(200), artifactMcp: openArtifactMcpGrantSchema.optional() }),
   'runtime.conversationCommand': taskConversation.extend({ commandId: z.string().uuid() }),
   'runtime.conversationEvents': taskConversation.extend({
     threadId: z.string().min(1).max(200),
     afterSequence: conversationSequence,
     limit: conversationPageLimit,
   }),
-  'runtime.conversationApply': taskConversation.extend({ command: conversationThreadCommandSchema, knowledgePageId: z.uuid().optional() }),
+  'runtime.conversationApply': taskConversation.extend({ command: conversationThreadCommandSchema, knowledgePageId: z.uuid().optional(), artifactMcp: openArtifactMcpGrantSchema.optional() }),
   'runtime.conversationThreadCommand': taskConversation.extend({ threadId: id, commandId: z.string().uuid() }),
   'runtime.conversationEventDelta': taskConversation.extend({
     threadId: id,

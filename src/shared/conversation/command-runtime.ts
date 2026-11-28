@@ -3,6 +3,7 @@ import type { ConversationEventPage, ConversationRunEvidence, ConversationWireEv
 import type { OrchestrationV2AppThread, OrchestrationV2ConversationMessage, OrchestrationV2Run } from './contracts'
 import { conversationAttachmentReferenceFields } from './attachments'
 import type { ChatAttachment } from './chatAttachment'
+import type { ProviderRequestKind, RuntimeMode, ProviderInteractionMode } from './providerPolicy'
 import { modelSelectionIdSchema } from '../model-selection'
 import {
   conversationForkSourceSchema, conversationHistoryReferencesSchema,
@@ -57,6 +58,8 @@ export const conversationThreadCommandSchema = z.discriminatedUnion('type', [
   z.object({ ...base, childThreadId: id, force: z.boolean().optional(), type: z.literal('subagent.stop') }).strict(),
   z.object({ ...base, type: z.literal('usage-limit-recovery.cancel') }).strict(),
   z.object({ ...base, type: z.literal('usage-limit-recovery.retry-now') }).strict(),
+  z.strictObject({ ...base, type: z.literal('thread.runtime-mode.set'), runtimeMode: z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access']) }),
+  z.strictObject({ ...base, type: z.literal('thread.interaction-mode.set'), interactionMode: z.enum(['default', 'plan']) }),
   z.object({ ...base, type: z.literal('queued-message.promote-to-steer'), queuedRunId: id, targetRunId: id }).strict(),
   z.object({
     ...base, ...conversationAttachmentReferenceFields, type: z.literal('runtime-request.respond'), requestId: id, generation: z.number().int().positive().safe(),
@@ -108,7 +111,14 @@ export interface ConversationRuntimeRequest {
   readonly responseAttachments?: readonly ChatAttachment[]
   readonly responseAttachmentQuestionId?: string
   readonly payload:
-    | { readonly kind: 'approval'; readonly title: string; readonly details?: string; readonly options: readonly { readonly decision: z.infer<typeof decision>; readonly label: string }[] }
+    | {
+        readonly kind: 'approval'
+        readonly requestKind?: ProviderRequestKind
+        readonly approvalScopeKey?: string
+        readonly title: string
+        readonly details?: string
+        readonly options: readonly { readonly decision: z.infer<typeof decision>; readonly label: string }[]
+      }
     | {
         readonly kind: 'user-input'
         readonly title: string
@@ -156,8 +166,13 @@ export interface ConversationNativeTerminalEvidence {
 
 export type ConversationProjectedWorkItem = Extract<
   Extract<ConversationWireEvent, { readonly type: 'turn-item.updated' }>['payload'],
-  { readonly type: 'dynamic_tool' | 'proposed_plan' | 'todo_list' | 'file_change' | 'reasoning' | 'system_notice' }
+  { readonly type: 'dynamic_tool' | 'command_execution' | 'file_search' | 'web_search' | 'proposed_plan' | 'todo_list' | 'file_change' | 'reasoning' | 'system_notice' }
 >
+
+export type ConversationThreadModes = {
+  readonly runtimeMode: RuntimeMode
+  readonly interactionMode: ProviderInteractionMode
+}
 
 export interface ConversationGoal {
   readonly source: 'application'
