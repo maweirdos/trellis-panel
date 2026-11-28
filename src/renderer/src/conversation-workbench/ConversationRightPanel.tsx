@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useSyncExternalStore, type JSX, type KeyboardEvent, type ReactNode } from 'react'
-import { FileCode, FolderOpen, GitCompare, ListTree, Maximize2, MessageSquare, Minimize2, PanelRightClose, Play, Plus, Terminal, X } from 'lucide-react'
+import { FileCode, FolderOpen, GitCompare, History, ListTree, Maximize2, MessageSquare, Minimize2, PanelRightClose, Play, Plus, Terminal, X } from 'lucide-react'
 import { Dropdown, DropdownItem, Modal } from '../my/ui'
 import type { ConversationRightPanelSurface, useConversationRightPanel } from './conversationRightPanelStore'
 import './conversation-right-panel.css'
@@ -21,6 +21,7 @@ const surfaceTypes = {
   scripts: { label: '脚本', icon: Play },
   terminal: { label: '终端', icon: Terminal },
   thread: { label: '子会话', icon: MessageSquare },
+  checkpoints: { label: '检查点', icon: History },
 }
 
 type Panel = ReturnType<typeof useConversationRightPanel>
@@ -145,11 +146,11 @@ export function ConversationRightPanel({ panel, narrow, projectAvailable, expand
       </div>
       {projectAvailable && <Dropdown trigger={({ open, toggle }) => <button type="button" className="my-icon-control"
         aria-label="打开工作台标签" aria-expanded={open} onClick={toggle}><Plus size={16} aria-hidden="true" /></button>}>
-        {dismiss => (['project', 'files', 'changes', 'diff', 'scripts', 'terminal'] as const).map(kind =>
+        {dismiss => (['project', 'files', 'changes', 'diff', 'checkpoints', 'scripts', 'terminal'] as const).map(kind =>
           <DropdownItem key={kind} onClick={() => {
             dismiss()
             if (active.id === kind) activate(kind)
-            else { focusTabs.current = true; panel.open({ id: kind, kind }) }
+            else { focusTabs.current = true; panel.open(kind === 'checkpoints' ? { id: 'checkpoints', kind: 'checkpoints' } : { id: kind, kind }) }
           }}>{surfaceTypes[kind].label}</DropdownItem>)}
       </Dropdown>}
       <button type="button" className="my-icon-control" title="收起工作台" aria-label="收起工作台" onClick={onHide}>

@@ -33,7 +33,7 @@ export type ConversationThread = Pick<
   OrchestrationV2AppThread,
   'id' | 'title' | 'modelSelection' | 'tags' | 'titleRenamed'
 > &
-  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath' | 'runtimeMode' | 'interactionMode'>> & {
+  Partial<Pick<OrchestrationV2AppThread, 'archivedAt' | 'worktreePath' | 'runtimeMode' | 'interactionMode' | 'rollbackUnrestored'>> & {
     readonly updatedAt?: OrchestrationV2AppThread['updatedAt'] | string
     readonly lastVisitedAt?: OrchestrationV2AppThread['lastVisitedAt'] | string | null
     readonly snoozedUntil?: OrchestrationV2AppThread['snoozedUntil'] | string | null

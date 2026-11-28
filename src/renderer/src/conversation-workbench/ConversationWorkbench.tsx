@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ArrowLeft, Check, ChevronDown, Cpu, FolderOpen, History, ListFilter, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Search, Settings2, Sparkles, SquarePen, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Clock, Cpu, FolderOpen, History, ListFilter, Lock, MessageSquarePlus, MoreHorizontal, PanelLeft, PanelRight, Pencil, Plus, RotateCcw, Search, Settings2, Sparkles, SquarePen, Tag, Trash2, X } from 'lucide-react'
 import {
   displayConversationThreadTitle,
   resolveConversationThreadAgent,
@@ -48,7 +48,9 @@ import { useConversationOpenArtifact } from './useConversationOpenArtifact'
 import { insertAssistantCitationIntoDraft, type CitationDraftHandle } from './assistantCitationDraft'
 import { ChatView } from './ChatView'
 import { ChatProjectFileLinks, type ChatProjectFile } from './chatProjectFileLinks'
+import { ChildThreadApprovals } from './ChildThreadApprovals'
 import { ConversationActivityControls } from './ConversationActivityControls'
+import { ConversationCheckpointsPanel } from './ConversationCheckpointsPanel'
 import { ConversationProjectSurfaces } from './ConversationProjectSurfaces'
 import { ConversationQueue } from './ConversationQueue'
 import { ConversationQuickSearchModal } from './ConversationQuickSearchModal'
@@ -59,8 +61,9 @@ import { ConversationSidebarList, isThreadUnread, visibleThreadTags, type Conver
 import { ConversationSideThreadComposer, sideThreadDraftScope } from './ConversationSideThreadComposer'
 import { ConversationTimeline, type ConversationCitationNavigation } from './ConversationTimeline'
 import { ThreadFindBar } from './ThreadFindBar'
+import { ThreadTagsSnoozeModal, formatSnoozeLabel } from './ThreadTagsSnoozeModal'
 import { useConversationNavigation } from './conversation-navigation-store'
-import { conversationArtifactSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
+import { conversationArtifactSurface, conversationCheckpointsSurface, conversationFileSurface, conversationPanelKey, conversationPanelScope, conversationThreadSurface, useConversationRightPanel, type ConversationArtifactSurface, type ConversationRightPanelSurface, type ConversationThreadSurface } from './conversationRightPanelStore'
 import { SideThreadPane } from './SideThreadPane'
 import { CONVERSATION_TEXT_LIMIT, composerDraftKey, readComposerDraft, hasComposerDraftContent, updateComposerDraft } from './useComposerDraft'
 import { conversationError, useComposerSend, type ComposerReceipt, type ComposerWorkTaskSelection } from './useComposerSend'
@@ -317,6 +320,9 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
   const [cleanupPending, setCleanupPending] = useState(false)
   const [controlFailure, setControlFailure] = useState<Extract<ConversationApplyResult, { ok: false }>>()
   const [queueEdit, setQueueEdit] = useState<{ threadId: string; runId: string; text: string }>()
+  const [tagsSnoozeOpen, setTagsSnoozeOpen] = useState(false)
+  const [dismissedRollbackUnrestoredId, setDismissedRollbackUnrestoredId] = useState<string | null>(null)
+  const [implementingPlan, setImplementingPlan] = useState(false)
   const [rollbackDialog, setRollbackDialog] = useState<{
     readonly threadId: string
     readonly targetRunId: string
@@ -601,6 +607,8 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     setQueueEdit(undefined)
     setRollbackDialog(undefined)
     setEditRerunDialog(undefined)
+    setTagsSnoozeOpen(false)
+    setDismissedRollbackUnrestoredId(null)
     const pendingFind = pendingJumpFindRef.current
     if (pendingFind && next?.threadId === pendingFind.threadId) {
       pendingJumpFindRef.current = null
@@ -1118,6 +1126,43 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
       if (result.ok && result.source === 'reconcile') setQueueEdit(undefined)
     })
   }
+
+  const handleImplementPlan = useCallback((_planMarkdown: string): void => {
+    const threadId = targetRef.current?.threadId
+    if (!threadId || !writable || !canInteract() || implementingPlan || !projection || activeRun) return
+    const dispatchPrompt = '请按上述方案开始实施。'
+    if (!selectedModel) {
+      composer.setDraft(dispatchPrompt)
+      focusComposerStable()
+      return
+    }
+    setImplementingPlan(true)
+    void (async () => {
+      try {
+        if (supportsPersonalModes && effectiveInteractionMode === 'plan') {
+          await controller.setInteractionMode('default')
+        }
+        const result = await controller.apply({
+          type: 'message.dispatch',
+          commandId: crypto.randomUUID(),
+          threadId,
+          messageId: `msg_${crypto.randomUUID()}`,
+          text: dispatchPrompt,
+          instanceId: selectedModel.instanceId,
+          model: selectedModel.id,
+          ...(selectedModel.options?.length ? { options: selectedModel.options.map(option => ({ id: option.id, value: option.value })) } : {}),
+        })
+        if (!mounted.current || targetRef.current?.threadId !== threadId) return
+        setControlFailure(result.ok ? undefined : result)
+        if (result.ok) {
+          reload()
+          setListRevision(value => value + 1)
+        }
+      } finally {
+        if (mounted.current) setImplementingPlan(false)
+      }
+    })()
+  }, [activeRun, canInteract, composer, controller, effectiveInteractionMode, focusComposerStable, implementingPlan, projection, reload, selectedModel, supportsPersonalModes, writable])
 
   const {
     resumableRunId,
@@ -1694,6 +1739,28 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
         </div>
       </form>}
     </Modal>
+    {projection && writable && !archivedThread && (
+      <ThreadTagsSnoozeModal
+        open={tagsSnoozeOpen}
+        onClose={() => setTagsSnoozeOpen(false)}
+        currentTags={projection.thread.tags ?? []}
+        snoozedUntil={typeof projection.thread.snoozedUntil === 'string'
+          ? projection.thread.snoozedUntil
+          : projection.thread.snoozedUntil
+            ? new Date(projection.thread.snoozedUntil.epochMilliseconds).toISOString()
+            : null}
+        onSaveTags={async (nextTags) => {
+          const result = await controller.setTags(nextTags)
+          if (result.ok) setListRevision((value) => value + 1)
+          return result.ok ? { ok: true } : { ok: false, reason: result.reason }
+        }}
+        onSaveSnooze={async (nextSnooze) => {
+          const result = await controller.snoozeThread(nextSnooze)
+          if (result.ok) setListRevision((value) => value + 1)
+          return result.ok ? { ok: true } : { ok: false, reason: result.reason }
+        }}
+      />
+    )}
     {!embeddedCrux && <ContextRegion collapsed={collapsed && !sidebarOpen}><div className="acp-navigation-host flex min-h-0 shrink-0">
     <ConversationSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} ariaLabel={`${workspaceLabel}历史`} resizable={!compact}
       title={taskScope ? <strong className="my-item-title truncate" title={taskScope.title}>{taskScope.title}</strong>
@@ -1958,16 +2025,51 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
               <strong className="truncate">{selectedThreadTitle ?? taskScope?.title ?? (target ? '会话' : draftRole?.name ?? '新建对话')}</strong>
             )
           )}
+          {projection && (
+            (() => {
+              const snoozeIso = typeof projection.thread.snoozedUntil === 'string'
+                ? projection.thread.snoozedUntil
+                : projection.thread.snoozedUntil
+                  ? new Date(projection.thread.snoozedUntil.epochMilliseconds).toISOString()
+                  : null
+              const snoozeLabel = formatSnoozeLabel(snoozeIso)
+              return snoozeLabel ? (
+                <button
+                  type="button"
+                  className="conversation-snooze-chip"
+                  title="调整或清除置后提醒"
+                  onClick={() => setTagsSnoozeOpen(true)}
+                >
+                  <Clock size={11} aria-hidden="true" />
+                  <span>{snoozeLabel}</span>
+                </button>
+              ) : null
+            })()
+          )}
           {workdirControl}
         </div>}
         actions={<>
           {interactive && code && !compact && !taskScope && <><GitBranchControl /><ApplicationPanel /></>}
           {interactive && code && !compact && <ManagedWorkflowRecovery key={rootKey} root={root} />}
           {selectedThread && <span className="my-item-description conversation-model-name" title={selectedThread.modelSelection.model}>{modelLabel(selectedThread.modelSelection.model)}</span>}
+          {projection && writable && !archivedThread && <button type="button" className="my-icon-control"
+            title="标签与置后提醒" aria-label="标签与置后提醒"
+            onClick={() => setTagsSnoozeOpen(true)}><Tag size={15} aria-hidden="true" /></button>}
+          {projection && projection.checkpoints.length > 0 && <button type="button" className="my-icon-control"
+            title="查看检查点与文件差异" aria-label="查看检查点与文件差异"
+            aria-pressed={panel.active?.kind === 'checkpoints'}
+            onClick={() => {
+              if (!canInteract()) return
+              if (panel.active?.kind === 'checkpoints') hidePanel()
+              else {
+                if (!panel.active && document.activeElement instanceof HTMLElement) panelReturnFocus.current = document.activeElement
+                panel.open(conversationCheckpointsSurface())
+              }
+            }}><History size={15} aria-hidden="true" /></button>}
           {projection && <button type="button" className="my-icon-control"
             title="在当前对话中查找 (Ctrl+F)" aria-label="在当前对话中查找" aria-pressed={threadFindOpen}
             onClick={() => setThreadFindOpen(value => !value)}><Search size={15} aria-hidden="true" /></button>}
-          {projection && (projectAvailable || projection.relations.children.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
+          {projection && (projectAvailable || projection.relations.children.length > 0 || projection.checkpoints.length > 0 || panel.state.surfaces.length > 0) && <button type="button" ref={panelTrigger} className="my-icon-control"
             title="会话工作台" aria-label="会话工作台" aria-expanded={Boolean(panel.active)}
             onClick={() => {
               if (!canInteract()) return
@@ -2002,9 +2104,12 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           />
         )}
         <ConversationTimeline key={`timeline:${visibleThreadId}`} threadId={`${rootKey}:${visibleThreadId}`} rows={rows}
+          findQuery={threadFindOpen ? threadFindQuery : ''}
           highlightedRowId={highlightedFindRowId}
           matchedRowIds={matchedFindRowSet}
           scrollToRowRequest={scrollToRowRequest}
+          onImplementPlan={writable && projection && !archivedThread && !activeRun && !read?.error ? handleImplementPlan : undefined}
+          implementingPlan={implementingPlan}
           sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
           onOpenCitation={openAssistantCitation}
           onOpenRelatedThread={openRelatedThread}
@@ -2077,15 +2182,43 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           ) : undefined} />
         <div className="my-conversation-column conversation-controls">
           {projection && <>
+            {projection.thread.rollbackUnrestored
+              && projection.thread.rollbackUnrestored.repositories.length > 0
+              && dismissedRollbackUnrestoredId !== projection.thread.rollbackUnrestored.requestId && (
+                <FeedbackNotice
+                  variant="bar-compact"
+                  tone="warning"
+                  title="部分工作区文件未能还原"
+                  description={`以下目录在目标回合缺少可用快照，仅回退了对话记录：${projection.thread.rollbackUnrestored.repositories.join('、')}`}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDismissedRollbackUnrestoredId(projection.thread.rollbackUnrestored?.requestId ?? null)}
+                    >
+                      知道了
+                    </Button>
+                  }
+                />
+              )}
             <ConversationSubagentBar
               relations={projection.relations}
               onOpenRelatedThread={openRelatedThread}
               onStopSubagent={writable ? handleStopSubagent : undefined}
               stoppingChildThreadId={stoppingSubagentId}
             />
+            <ChildThreadApprovals
+              cwd={root}
+              relations={projection.relations}
+              task={task}
+              disabled={!writable}
+              onOpenRelatedThread={openRelatedThread}
+              onResponded={reload}
+            />
             <ConversationRuntimeRequests controller={controller} requests={projection.runtimeRequests} disabled={!writable}
               cwd={root} threadId={projection.thread.id} task={task} />
-            <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused} disabled={!writable}
+            <ConversationQueue controller={controller} queued={queued} queuePaused={projection.queuePaused}
+              activeRunId={activeRun?.id ?? null} canSteer={canSteer} disabled={!writable}
               onEditRequested={controlFailure?.uncertain ? undefined : (queuedRun, text) => {
                 setControlFailure(undefined)
                 setQueueEdit({ threadId: visibleThreadId, runId: queuedRun.id, text })
@@ -2204,7 +2337,23 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId &&
       <ConversationRightPanel key={panelKey} panel={panel} narrow={narrowPanel} projectAvailable={projectAvailable} expanded={panelExpanded} onToggleExpand={() => setPanelExpanded((value) => !value)} onHide={hidePanel} onCloseTab={closePanelTab}
         threadTitle={threadId => projection.relations.children.find(item => item.childThreadId === threadId)?.title}>
-        {(surface, selected) => surface.kind === 'artifact' ? <OpenArtifactFrame
+        {(surface, selected) => surface.kind === 'checkpoints' ? (
+          <ConversationCheckpointsPanel
+            cwd={root}
+            threadId={hostThreadId}
+            task={task}
+            runs={projection.runs}
+            messages={projection.messages}
+            checkpoints={projection.checkpoints}
+            initialRunId={surface.focusRunId}
+            projectAvailable={projectAvailable}
+            canRollback={supportsPersonalModes && !activeRun && writable && !read?.error}
+            onOpenSurface={panel.open}
+            onRollbackRun={(runId, boundary) => {
+              setRollbackDialog({ threadId: projection.thread.id, targetRunId: runId, boundary, restoreFiles: false, pending: false })
+            }}
+          />
+        ) : surface.kind === 'artifact' ? <OpenArtifactFrame
           artifactId={surface.artifactId}
           title={surface.title}
           artifactType={surface.artifactType}

@@ -1,0 +1,278 @@
+/* 阶段 6C 与阶段 7 对话增强组件样式：全部复用 Crux 语义令牌，遵循浅色/深色与三档密度。 */
+
+::highlight(crux-thread-find) {
+  background-color: var(--my-bg-warning-subtle);
+  color: var(--my-txt-primary);
+}
+
+::highlight(crux-thread-find-active) {
+  background-color: var(--my-txt-warning-primary);
+  color: var(--my-txt-on-color);
+}
+
+/* 方案建议交互卡（ProposedPlanCard） */
+.conversation-plan-card {
+  display: flex;
+  flex-direction: column;
+  margin-block: var(--my-space-8);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  box-shadow: var(--my-surface-rim), var(--my-shadow-raised-100);
+  overflow: hidden;
+}
+
+.conversation-plan-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-8);
+  padding: var(--my-space-8) var(--my-space-12);
+  border-block-end: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-panel-header);
+}
+
+.conversation-plan-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  min-width: 0;
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-sm);
+  font-weight: var(--my-weight-medium);
+}
+
+.conversation-plan-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+  flex-shrink: 0;
+}
+
+.conversation-plan-card-body {
+  padding: var(--my-space-12);
+  min-width: 0;
+}
+
+.conversation-plan-card-body[data-collapsed='true'] {
+  position: relative;
+  max-height: 15rem;
+  overflow: hidden;
+}
+
+.conversation-plan-card-body[data-collapsed='true']::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: 3.5rem;
+  background: linear-gradient(to bottom, transparent, var(--my-bg-panel));
+  pointer-events: none;
+}
+
+.conversation-plan-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-8);
+  padding: var(--my-space-8) var(--my-space-12);
+  border-block-start: 1px solid var(--my-border-subtle);
+  background: var(--my-bg-layer-1);
+}
+
+/* 子会话审批冒泡条（ChildThreadApprovals） */
+.conversation-child-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-8);
+}
+
+.conversation-child-approval-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  min-width: 0;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
+}
+
+.conversation-child-approval-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--my-space-1) var(--my-space-6);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-warning-subtle);
+  color: var(--my-txt-warning-primary);
+  font-size: var(--my-text-2xs);
+  font-weight: var(--my-weight-medium);
+}
+
+/* 检查点与 Diff 面板（ConversationCheckpointsPanel） */
+.conversation-checkpoints-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-10);
+  padding: var(--my-space-12);
+  min-width: 0;
+}
+
+.conversation-checkpoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-checkpoint-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-6);
+  padding: var(--my-space-10);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-layer-1);
+  transition: border-color var(--my-motion-fast) var(--my-ease-out),
+    background-color var(--my-motion-fast) var(--my-ease-out);
+}
+
+.conversation-checkpoint-item[data-selected='true'] {
+  border-color: var(--my-border-strong);
+  background: var(--my-bg-panel);
+  box-shadow: var(--my-shadow-raised-100);
+}
+
+.conversation-checkpoint-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-8);
+  min-width: 0;
+}
+
+.conversation-checkpoint-ordinal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--my-space-1) var(--my-space-6);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-layer-3);
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-2xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--my-weight-medium);
+  flex-shrink: 0;
+}
+
+.conversation-checkpoint-status {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--my-space-1) var(--my-space-6);
+  border-radius: var(--my-radius-full);
+  font-size: var(--my-text-2xs);
+  font-weight: var(--my-weight-medium);
+  flex-shrink: 0;
+}
+
+.conversation-checkpoint-status[data-status='captured'] {
+  background: var(--my-bg-success-subtle);
+  color: var(--my-txt-success-primary);
+}
+
+.conversation-checkpoint-status[data-status='skipped'] {
+  background: var(--my-bg-layer-3);
+  color: var(--my-txt-tertiary);
+}
+
+.conversation-checkpoint-status[data-status='failed'] {
+  background: var(--my-bg-danger-subtle);
+  color: var(--my-txt-danger-primary);
+}
+
+.conversation-checkpoint-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-checkpoint-file-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  width: 100%;
+  padding: var(--my-space-4) var(--my-space-6);
+  border-radius: var(--my-radius-base);
+  text-align: start;
+  color: var(--my-txt-secondary);
+  font-size: var(--my-text-xs);
+}
+
+.conversation-checkpoint-file-btn:hover:not(:disabled) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+
+.conversation-checkpoint-file-status {
+  width: 1rem;
+  flex-shrink: 0;
+  text-align: center;
+  font-family: var(--my-font-mono);
+  font-size: var(--my-text-2xs);
+  font-weight: var(--my-weight-medium);
+}
+
+.conversation-checkpoint-file-status[data-kind='added'] {
+  color: var(--my-txt-success-primary);
+}
+
+.conversation-checkpoint-file-status[data-kind='deleted'] {
+  color: var(--my-txt-danger-primary);
+}
+
+.conversation-checkpoint-file-status[data-kind='modified'],
+.conversation-checkpoint-file-status[data-kind='renamed'] {
+  color: var(--my-txt-warning-primary);
+}
+
+/* 标签与置后提醒（ThreadTagsSnoozeModal & Header Chip） */
+.conversation-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--my-space-6);
+}
+
+.conversation-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+  padding: var(--my-space-2) var(--my-space-8);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-layer-1);
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-xs);
+}
+
+.conversation-snooze-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+  padding: var(--my-space-2) var(--my-space-8);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-full);
+  background: var(--my-bg-warning-subtle);
+  color: var(--my-txt-warning-primary);
+  font-size: var(--my-text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.conversation-snooze-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--my-space-6);
+}

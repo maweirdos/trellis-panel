@@ -157,6 +157,7 @@ export interface ConversationThreadController {
     readonly edit: (runId: string, text: string) => Promise<ConversationApplyResult>
     readonly cancel: (runId: string) => Promise<ConversationApplyResult>
     readonly start: (runId: string) => Promise<ConversationApplyResult>
+    readonly promoteToSteer: (queuedRunId: string, targetRunId: string) => Promise<ConversationApplyResult>
     readonly reorder: (runId: string, beforeRunId: string | null) => Promise<ConversationApplyResult>
     readonly resume: () => Promise<ConversationApplyResult>
   }
@@ -579,6 +580,16 @@ export function useConversationThread(
       start: (runId: string) =>
         threadId
           ? applyRemembered(`start:${runId}`, () => ({ type: 'queued-run.start', threadId, runId, commandId: crypto.randomUUID() }))
+          : Promise.resolve(NO_THREAD_RESULT),
+      promoteToSteer: (queuedRunId: string, targetRunId: string) =>
+        threadId
+          ? applyRemembered(`promote:${queuedRunId}`, () => ({
+            type: 'queued-message.promote-to-steer',
+            threadId,
+            queuedRunId,
+            targetRunId,
+            commandId: crypto.randomUUID(),
+          }))
           : Promise.resolve(NO_THREAD_RESULT),
       reorder: (runId: string, beforeRunId: string | null) =>
         threadId

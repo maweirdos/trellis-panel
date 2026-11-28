@@ -10,6 +10,8 @@ import { resolveAssistantCitationRange } from './AssistantCitationSource'
 import { AssistantSelectionToolbar } from './AssistantSelectionToolbar'
 import { ChatMarkdown } from './ChatMarkdown'
 import { ConversationTimelineRelationRow, type ConversationThreadTab } from './ConversationRelations'
+import { ProposedPlanCard } from './ProposedPlanCard'
+import { applyThreadFindHighlights, clearThreadFindHighlights, unfoldRowDetails } from './threadFindHighlights'
 import { AssistantTimelineRow, formatDuration, UserMessageRow, WorkingTimelineRow, type TimelineMessageActions } from './TimelineMessageRows'
 import { TimelineMinimap } from './TimelineMinimap'
 import {
@@ -65,9 +67,12 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly emptyTitle?: string
   readonly hideEmptyState?: boolean
   readonly citationRef?: RefObject<ConversationCitationNavigation | null>
+  readonly findQuery?: string
   readonly highlightedRowId?: string | null
   readonly matchedRowIds?: ReadonlySet<string>
   readonly scrollToRowRequest?: { readonly rowId: string; readonly nonce: number } | null
+  readonly onImplementPlan?: (markdown: string) => void
+  readonly implementingPlan?: boolean
 }
 
 export interface ConversationCitationNavigation {
@@ -197,9 +202,12 @@ export function ConversationTimeline({
   onCite,
   onOpenCitation,
   citationRef,
+  findQuery,
   highlightedRowId,
   matchedRowIds,
   scrollToRowRequest,
+  onImplementPlan,
+  implementingPlan,
   footer,
   emptyTitle,
   hideEmptyState = false,
@@ -212,8 +220,8 @@ export function ConversationTimeline({
   ) : null, [working, workingStartedAt, workingLabel, showWorkingStatus])
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const [openWorkLogs, setOpenWorkLogs] = useState<ReadonlySet<string>>(() => new Set())
-  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds }),
-    [openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds])
+  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan }),
+    [openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan])
   const interactionActive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
@@ -517,13 +525,39 @@ export function ConversationTimeline({
     if (!scrollToRowRequest?.rowId) return
     const index = rows.findIndex(row => row.id === scrollToRowRequest.rowId)
     if (index === -1) return
+    const targetRow = rows[index]
+    if ((targetRow.kind === 'work-fold' || targetRow.kind === 'work-group') && !openWorkLogs.has(targetRow.id)) {
+      setWorkLogOpen(targetRow.id, true)
+    }
     releaseFollow()
     void listRef.current?.scrollToIndex({
       index,
       animated: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       viewOffset: TIMELINE_MINIMAP_TARGET_OFFSET,
-    }).then(scheduleMinimapRefresh).catch(() => undefined)
-  }, [releaseFollow, rows, scheduleMinimapRefresh, scrollToRowRequest])
+    }).then(() => {
+      scheduleMinimapRefresh()
+      requestAnimationFrame(() => {
+        unfoldRowDetails(scrollElement, scrollToRowRequest.rowId)
+        if (findQuery) applyThreadFindHighlights(scrollElement, findQuery, scrollToRowRequest.rowId)
+      })
+    }).catch(() => undefined)
+  }, [findQuery, openWorkLogs, releaseFollow, rows, scheduleMinimapRefresh, scrollElement, scrollToRowRequest])
+
+  useEffect(() => {
+    if (!scrollElement || !findQuery?.trim()) {
+      clearThreadFindHighlights()
+      return
+    }
+    const frame = requestAnimationFrame(() => {
+      if (highlightedRowId) unfoldRowDetails(scrollElement, highlightedRowId)
+      applyThreadFindHighlights(scrollElement, findQuery, highlightedRowId ?? null)
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [findQuery, highlightedRowId, openWorkLogs, rows, scrollElement])
+
+  useEffect(() => () => clearThreadFindHighlights(), [threadId])
 
   return (
     <div className="conversation-timeline-viewport">
@@ -590,7 +624,9 @@ export function ConversationTimeline({
                 onEditAndRerun={onEditAndRerun} onRollbackRun={onRollbackRun}
                 onOpenRelatedThread={onOpenRelatedThread} onStopSubagent={onStopSubagent}
                 stoppingChildThreadId={stoppingChildThreadId} onForkFromRun={onForkFromRun}
-                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined} />}
+                onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined}
+                forceExpandPlan={Boolean(highlightedRowId === item.id || matchedRowIds?.has(item.id))}
+                onImplementPlan={onImplementPlan} implementingPlan={implementingPlan} />}
               {item.id === workingAnchor && workingRow}
             </div>}
           />}
@@ -671,6 +707,9 @@ function ConversationRow({
   onCite,
   onOpenCitation,
   sourceThreadId,
+  forceExpandPlan,
+  onImplementPlan,
+  implementingPlan,
 }: {
   readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' }>
   readonly onQuote?: ConversationTimelineProps['onQuote']
@@ -684,6 +723,9 @@ function ConversationRow({
   readonly onCite?: ConversationTimelineProps['onCite']
   readonly onOpenCitation?: ConversationTimelineProps['onOpenCitation']
   readonly sourceThreadId?: string
+  readonly forceExpandPlan?: boolean
+  readonly onImplementPlan?: ConversationTimelineProps['onImplementPlan']
+  readonly implementingPlan?: boolean
 }): JSX.Element {
   if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread}
     onStopSubagent={onStopSubagent} stoppingChildThreadId={stoppingChildThreadId} />
@@ -720,12 +762,19 @@ function ConversationRow({
   }
   if (row.kind === 'plan') {
     const item = row.item
-    const completedSteps = item.type === 'todo_list' ? item.steps.filter(step => step.status === 'completed').length : 0
-    const planLabel = item.type === 'proposed_plan'
-      ? '计划建议'
-      : item.steps.length > 0
-        ? `任务 ${completedSteps}/${item.steps.length}`
-        : '计划'
+    if (item.type === 'proposed_plan') {
+      return (
+        <ProposedPlanCard
+          id={item.id}
+          markdown={item.markdown}
+          forceExpanded={forceExpandPlan}
+          implementing={implementingPlan}
+          onImplementPlan={onImplementPlan}
+        />
+      )
+    }
+    const completedSteps = item.steps.filter(step => step.status === 'completed').length
+    const planLabel = item.steps.length > 0 ? `任务 ${completedSteps}/${item.steps.length}` : '计划'
     return (
       <details className="conversation-timeline-plan">
         <summary className="my-item-title">
@@ -734,22 +783,16 @@ function ConversationRow({
           <ChevronRight className="conversation-timeline-plan-arrow" size={13} aria-hidden="true" />
         </summary>
         <div className="conversation-timeline-plan-content">
-          {item.type === 'proposed_plan' ? (
-            <div className="conversation-message-body"><ChatMarkdown text={item.markdown} /></div>
-          ) : (
-            <>
-              {item.explanation && <p className="my-item-description">{item.explanation}</p>}
-              <ol className="conversation-timeline-plan-steps">
-                {item.steps.map((step) => {
-                  const { label, icon: Icon } = PLAN_STATUS[step.status]
-                  return <li key={step.id}>
-                    <Icon size={14} aria-hidden="true" className={step.status === 'running' ? 'animate-spin' : undefined} />
-                    <span className="sr-only">{label}，</span>{step.text}
-                  </li>
-                })}
-              </ol>
-            </>
-          )}
+          {item.explanation && <p className="my-item-description">{item.explanation}</p>}
+          <ol className="conversation-timeline-plan-steps">
+            {item.steps.map((step) => {
+              const { label, icon: Icon } = PLAN_STATUS[step.status]
+              return <li key={step.id}>
+                <Icon size={14} aria-hidden="true" className={step.status === 'running' ? 'animate-spin' : undefined} />
+                <span className="sr-only">{label}，</span>{step.text}
+              </li>
+            })}
+          </ol>
         </div>
       </details>
     )

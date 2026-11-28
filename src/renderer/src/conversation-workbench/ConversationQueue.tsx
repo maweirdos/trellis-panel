@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import { ArrowUp, ChevronDown, ChevronUp, Pencil, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, ChevronUp, CornerDownRight, Pencil, X } from 'lucide-react'
 import { Button } from '../my/ui'
 import type {
   ConversationApplyResult,
@@ -11,6 +11,8 @@ export interface ConversationQueueProps {
   readonly controller: ConversationThreadController
   readonly queued: ReadonlyArray<{ readonly run: ConversationRun; readonly text: string }>
   readonly queuePaused: boolean
+  readonly activeRunId?: string | null
+  readonly canSteer?: boolean
   readonly disabled: boolean
   readonly onEditRequested?: (run: ConversationRun, text: string) => void
   /** Reported for an uncertain result so the caller can reconcile the original command. */
@@ -29,6 +31,8 @@ function ScopedConversationQueue({
   controller,
   queued,
   queuePaused,
+  activeRunId = null,
+  canSteer = false,
   disabled,
   onEditRequested,
   onCommandResult,
@@ -86,6 +90,18 @@ function ScopedConversationQueue({
                 <span className="conversation-queue-text">{text}</span>
               </div>
               <div className="conversation-queue-actions">
+                {activeRunId && canSteer && (
+                  <button
+                    type="button"
+                    className="my-icon-control"
+                    title="转插话（注入当前执行回合）"
+                    aria-label="转为插话发送"
+                    disabled={actionsDisabled}
+                    onClick={() => void execute(() => controller.queue.promoteToSteer(queuedRun.id, activeRunId))}
+                  >
+                    <CornerDownRight size={13} aria-hidden="true" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="my-icon-control"

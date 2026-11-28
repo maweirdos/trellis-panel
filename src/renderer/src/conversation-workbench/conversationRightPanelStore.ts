@@ -2,8 +2,14 @@ import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { projectRootKey } from '../my/navigation'
 
 export type ConversationThreadSurface = { readonly id: `thread:${string}`; readonly kind: 'thread'; readonly threadId: string }
+export type ConversationCheckpointsSurface = {
+  readonly id: 'checkpoints'
+  readonly kind: 'checkpoints'
+  readonly focusRunId?: string
+}
 export type ConversationRightPanelSurface =
   | ConversationThreadSurface
+  | ConversationCheckpointsSurface
   | { readonly id: 'project' | 'files' | 'diff' | 'scripts' | 'terminal' | 'changes'; readonly kind: 'project' | 'files' | 'diff' | 'scripts' | 'terminal' | 'changes' }
   | { readonly id: `file:${string}`; readonly kind: 'file'; readonly path: string; readonly line?: number }
 
@@ -40,11 +46,21 @@ export function conversationFileSurface(path: string, line?: number): Extract<Co
   return { id: `file:${path}`, kind: 'file', path, ...(line !== undefined && { line }) }
 }
 
+export function conversationCheckpointsSurface(focusRunId?: string): ConversationCheckpointsSurface {
+  return { id: 'checkpoints', kind: 'checkpoints', ...(focusRunId ? { focusRunId } : {}) }
+}
+
 function decodeSurface(value: unknown): ConversationRightPanelSurface | undefined {
   if (!value || typeof value !== 'object' || !('kind' in value)) return undefined
   switch (value.kind) {
     case 'project': case 'files': case 'diff': case 'scripts': case 'terminal': case 'changes':
       return { id: value.kind, kind: value.kind }
+    case 'checkpoints':
+      return conversationCheckpointsSurface(
+        'focusRunId' in value && typeof value.focusRunId === 'string' && /^[\w.-]{1,200}$/u.test(value.focusRunId)
+          ? value.focusRunId
+          : undefined,
+      )
     case 'thread':
       return 'threadId' in value && typeof value.threadId === 'string' && /^[\w.-]{1,200}$/u.test(value.threadId)
         ? conversationThreadSurface(value.threadId) : undefined
@@ -87,7 +103,7 @@ function write(ownerKey: string, update: (state: ConversationRightPanelState) =>
 export function openConversationSurface(state: ConversationRightPanelState, surface: ConversationRightPanelSurface): ConversationRightPanelState {
   const existing = state.surfaces.find(item => item.id === surface.id)
   const surfaces = !existing ? [...state.surfaces.slice(-(MAX_SURFACES - 1)), surface]
-    : surface.kind === 'file' && existing.kind === 'file' && existing.line !== surface.line
+    : (surface.kind === 'file' && existing.kind === 'file' && existing.line !== surface.line) || (surface.kind === 'checkpoints' && existing.kind === 'checkpoints' && existing.focusRunId !== surface.focusRunId)
       ? state.surfaces.map(item => item.id === surface.id ? surface : item)
       : state.surfaces
   return { surfaces, activeSurfaceId: surface.id, isOpen: true }
