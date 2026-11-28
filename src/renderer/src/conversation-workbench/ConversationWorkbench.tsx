@@ -63,6 +63,9 @@ import { ConversationTimeline, type ConversationCitationNavigation } from './Con
 import { ThreadFindBar } from './ThreadFindBar'
 import { ThreadTagsSnoozeModal, formatSnoozeLabel } from './ThreadTagsSnoozeModal'
 import { deriveNextPromptSuggestion } from './promptSuggestion'
+import { useMultipleModelSend } from './useMultipleModelSend'
+import { formatAgentWirePrefix } from '../crux/agent-chat-bridge'
+import { encodeConversationAgentTags } from '../../../shared/conversation/agent-binding'
 import {
   playAttentionChime,
   playCompletionChime,
@@ -833,6 +836,18 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
     running: Boolean(activeRun), canSteer, onAccepted,
     onSideChat: projection && !archivedThread ? input => { setSideInputFailure(undefined); return sideChat.open(input) } : undefined,
     onSideChatError: reason => { if (panelKey) setSideInputFailure({ owner: panelKey, reason }) },
+  })
+  const multiModel = useMultipleModelSend({
+    cwd: root,
+    runtimeMode: supportsPersonalModes && !target ? draftRuntimeMode : undefined,
+    interactionMode: supportsPersonalModes && !target ? draftInteractionMode : undefined,
+    role: draftRole ? { id: draftRole.id, revision: draftRole.revision } : undefined,
+    tags: activeAgentContext ? encodeConversationAgentTags({ id: activeAgentContext.id, name: activeAgentContext.name, spaceName: activeAgentContext.spaceName }) : undefined,
+    task,
+    wirePrefix: !target && activeAgentContext ? formatAgentWirePrefix(activeAgentContext) : undefined,
+    onClearDraft: () => updateComposerDraft(composer.draftKey, (current) => ({ ...current, text: '', references: [] })),
+    onOpenThread: (threadId) => select({ threadId }),
+    onRefreshList: () => setListRevision((value) => value + 1),
   })
   const [draftArtifact, setDraftArtifact] = useState<ConversationArtifactSurface | null>(null)
   useEffect(() => {
@@ -2161,7 +2176,19 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
           scrollToRowRequest={scrollToRowRequest}
           onImplementPlan={writable && projection && !archivedThread && !activeRun && !read?.error ? handleImplementPlan : undefined}
           implementingPlan={implementingPlan}
+          turnItems={projection?.turnItems}
+          onOpenTurnDiff={projection ? (runId) => {
+            if (!canInteract()) return
+            if (!panel.active && document.activeElement instanceof HTMLElement) panelReturnFocus.current = document.activeElement
+            openPanel(conversationCheckpointsSurface(runId))
+          } : undefined}
+          onOpenChangedFile={projectAvailable && projection ? (path) => openProjectFile({ path }) : undefined}
           sourceThreadId={projection?.thread.id} citationRef={citationRef} onCite={writable && projection ? insertAssistantCitation : undefined}
+          onSideChatQuote={writable && projection && !archivedThread ? (citation) => {
+            setSideInputFailure(undefined)
+            const quoted = citation.text.split(/\r?\n/u).map((line) => `> ${line}`).join('\n')
+            void sideChat.open({ text: `${quoted}\n\n请进一步说明或分析上述内容。` })
+          } : undefined}
           onOpenCitation={openAssistantCitation}
           onOpenRelatedThread={openRelatedThread}
           onStopSubagent={writable ? handleStopSubagent : undefined}
@@ -2391,6 +2418,15 @@ export function ConversationWorkbench({ root, source = 'native', taskScope, onBa
             else setDraftInteractionMode(next)
           } : undefined}
           modesDisabled={!writable || Boolean(read?.error)}
+          multiModel={!target && !taskScope && writable ? {
+            selectedModels: multiModel.selectedModels,
+            sending: multiModel.sending,
+            issue: multiModel.issue,
+            onToggleModel: multiModel.toggleModel,
+            onClear: multiModel.clearSelection,
+            onDismissIssue: multiModel.dismissIssue,
+            onSend: multiModel.sendToSelected,
+          } : undefined}
         />}
     </ChatView>
     {interactive && !read?.error && hostThreadId && projection?.thread.id === hostThreadId &&

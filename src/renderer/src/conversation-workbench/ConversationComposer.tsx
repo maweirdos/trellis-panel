@@ -6,6 +6,7 @@ import type { ConversationDriverSkill } from '../../../shared/conversation/drive
 import type { ProviderInteractionMode, RuntimeMode } from '../../../shared/conversation/providerPolicy'
 import type { OpenAssistantCitation } from './AssistantCitationChip'
 import { ComposerAddMenu, type ComposerTaskSection } from './ComposerAddMenu'
+import { ComposerMultiModelPicker } from './ComposerMultiModelPicker'
 import { ComposerPromptEditorTiptap, type ComposerPromptEditorHandle, type ComposerPromptSnapshot } from './ComposerPromptEditorTiptap'
 import { ComposerStashMenu } from './ComposerStashMenu'
 import { ComposerSurface } from './ComposerSurface'
@@ -82,6 +83,15 @@ export interface ConversationComposerProps {
   readonly onRuntimeModeChange?: (mode: RuntimeMode) => void
   readonly onInteractionModeChange?: (mode: ProviderInteractionMode) => void
   readonly modesDisabled?: boolean
+  readonly multiModel?: {
+    readonly selectedModels: readonly ComposerModel[]
+    readonly sending: boolean
+    readonly issue: string | null
+    readonly onToggleModel: (model: ComposerModel) => void
+    readonly onClear: () => void
+    readonly onDismissIssue: () => void
+    readonly onSend: (prompt: string) => Promise<boolean>
+  }
 }
 
 const STOP_PENDING_MAX_MS = 10_000
@@ -158,6 +168,7 @@ export function ConversationComposer({
   promptHistoryMessages, promptSuggestion,
   taskSection, mentionableThreads = noThreads, onOpenCitation, projectPaths,
   runtimeMode = 'approval-required', interactionMode = 'default', onRuntimeModeChange, onInteractionModeChange, modesDisabled = false,
+  multiModel,
 }: ConversationComposerProps): JSX.Element {
   const toolbar = useRef<HTMLDivElement>(null)
   const localEditor = useRef<ComposerPromptEditorHandle>(null)
@@ -289,10 +300,13 @@ export function ConversationComposer({
       ? '自动修改'
       : '审批执行'
   const interactionModeLabel = interactionMode === 'plan' ? '规划模式' : '默认'
+  const fanoutActive = Boolean(!lockedInstanceId && multiModel && multiModel.selectedModels.length >= 2)
   const overLimit = send.outgoingLength > CONVERSATION_TEXT_LIMIT
-  const allowSend = Boolean(interactive && !disabledReason && !missingModel && !overLimit && !attachmentPending && !findingReference && !staleAttachment &&
-    model && send.hasSendableContent &&
-    (state.phase === 'idle' || (state.phase === 'rejected' && state.restored)))
+  const allowSend = fanoutActive
+    ? Boolean(interactive && !disabledReason && !overLimit && !attachmentPending && !findingReference && !multiModel?.sending && Boolean(send.draft.trim()))
+    : Boolean(interactive && !disabledReason && !missingModel && !overLimit && !attachmentPending && !findingReference && !staleAttachment &&
+      model && send.hasSendableContent &&
+      (state.phase === 'idle' || (state.phase === 'rejected' && state.restored)))
   const canInterrupt = running && canStop
   const [stopPhase, markStopPending] = useStopPhase({
     scopeKey: send.draftKey,
@@ -307,7 +321,9 @@ export function ConversationComposer({
   const showResume = !showPrimaryStop && !showForceStop && !running && canResume && Boolean(onResume) && !send.hasSendableContent
   const allowResume = Boolean(showResume && interactive && !disabledReason && !missingModel && !attachmentPending && !findingReference && !resuming &&
     (state.phase === 'idle' || (state.phase === 'rejected' && state.restored)))
-  const sendLabel = running ? '发送并加入队列' : '发送'
+  const sendLabel = fanoutActive
+    ? (multiModel?.sending ? '正在并行发送…' : `并行发给 ${multiModel?.selectedModels.length ?? 2} 个模型`)
+    : running ? '发送并加入队列' : '发送'
   const stopLabel = stopPending ? '正在停止…' : '停止当前回合'
   const primaryResumeLabel = resuming ? '正在继续…' : resumeLabel
   const triggerStop = (): void => {
@@ -320,7 +336,12 @@ export function ConversationComposer({
     onResume?.()
   }
   const submit = (alternate = false): void => {
-    if (stopPhase === 'landed' || !allowSend || !model) return
+    if (stopPhase === 'landed' || !allowSend) return
+    if (fanoutActive && multiModel) {
+      void multiModel.onSend(send.draft)
+      return
+    }
+    if (!model) return
     void send.send(model, { deliveryIntent: resolveComposerDispatchMode(running, canSteerDraft, alternate) })
   }
   const reason = disabledReason || (overLimit ? `消息最多 ${CONVERSATION_TEXT_LIMIT.toLocaleString('zh-CN')} 字符。` : missingModel)
@@ -398,6 +419,8 @@ export function ConversationComposer({
       actions={<Button type="button" variant="outline" size="sm" onClick={openVoiceSettings}>
         语音设置
       </Button>} />}
+    {multiModel?.issue && <FeedbackNotice variant="bar-compact" tone="warning" title="多模型对比发送结果" description={multiModel.issue}
+      actions={<Button type="button" variant="ghost" size="sm" onClick={multiModel.onDismissIssue}>知道了</Button>} />}
     <VoiceInputSetupModal setup={speech.setup} />
     <ComposerSurface.Host onSubmit={event => { event.preventDefault(); submit() }}
       onDragOver={event => {
@@ -658,6 +681,15 @@ export function ConversationComposer({
         <div className="spacer" />
         <ConversationModelPicker anchor={toolbar} triggerRef={modelTrigger} catalog={catalog} value={model} lockedInstanceId={lockedInstanceId} root={root}
           onChange={onModelChange} disabled={!interactive} />
+        {!lockedInstanceId && multiModel && (
+          <ComposerMultiModelPicker
+            models={catalog.models}
+            selectedModels={multiModel.selectedModels}
+            disabled={!interactive || multiModel.sending}
+            onToggleModel={multiModel.onToggleModel}
+            onClear={multiModel.onClear}
+          />
+        )}
         <ComposerUsageLimits activeProvider={selectedInstance?.driverKind} />
         {contextControl}
         {speech.available && <button type="button" className="my-icon-control shrink-0"

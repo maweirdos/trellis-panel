@@ -5,9 +5,11 @@ import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, Info, List
 import { Button } from '../my/ui'
 import { useInteractionActive, useInteractionGuard } from '../utils/interaction-scope'
 import type { AssistantCitation } from '../../../shared/conversation/assistantCitations'
+import type { ConversationProjectedWorkItem } from '../../../shared/conversation/command-runtime'
 import { LOCAL_ASSISTANT_CITATION_ENVIRONMENT } from '../../../shared/conversation/assistantCitationText'
 import { resolveAssistantCitationRange } from './AssistantCitationSource'
 import { AssistantSelectionToolbar } from './AssistantSelectionToolbar'
+import { ChangedFilesTree, extractRunChangedFiles, type TurnChangedFileEntry } from './ChangedFilesTree'
 import { ChatMarkdown } from './ChatMarkdown'
 import { ConversationTimelineRelationRow, type ConversationThreadTab } from './ConversationRelations'
 import { ProposedPlanCard } from './ProposedPlanCard'
@@ -73,6 +75,10 @@ export interface ConversationTimelineProps extends TimelineMessageActions {
   readonly scrollToRowRequest?: { readonly rowId: string; readonly nonce: number } | null
   readonly onImplementPlan?: (markdown: string) => void
   readonly implementingPlan?: boolean
+  readonly turnItems?: readonly ConversationProjectedWorkItem[]
+  readonly onOpenTurnDiff?: (runId: string) => void
+  readonly onOpenChangedFile?: (path: string) => void
+  readonly onSideChatQuote?: (citation: AssistantCitation) => void
 }
 
 export interface ConversationCitationNavigation {
@@ -208,6 +214,10 @@ export function ConversationTimeline({
   scrollToRowRequest,
   onImplementPlan,
   implementingPlan,
+  turnItems,
+  onOpenTurnDiff,
+  onOpenChangedFile,
+  onSideChatQuote,
   footer,
   emptyTitle,
   hideEmptyState = false,
@@ -220,8 +230,21 @@ export function ConversationTimeline({
   ) : null, [working, workingStartedAt, workingLabel, showWorkingStatus])
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const [openWorkLogs, setOpenWorkLogs] = useState<ReadonlySet<string>>(() => new Set())
-  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan }),
-    [openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan])
+  const changedFilesByRun = useMemo(() => {
+    const map = new Map<string, readonly TurnChangedFileEntry[]>()
+    if (!turnItems?.length) return map
+    const runIds = new Set<string>()
+    for (const item of turnItems) {
+      if (item.type === 'file_change' && item.runId) runIds.add(item.runId)
+    }
+    for (const runId of runIds) {
+      const files = extractRunChangedFiles(turnItems, runId)
+      if (files.length > 0) map.set(runId, files)
+    }
+    return map
+  }, [turnItems])
+  const rowRenderState = useMemo(() => ({ openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan, changedFilesByRun }),
+    [openWorkLogs, workingAnchor, workingRow, highlightedRowId, matchedRowIds, implementingPlan, changedFilesByRun])
   const interactionActive = useInteractionActive()
   const canInteract = useInteractionGuard()
   const stopCitationHighlight = useRef<() => void>()
@@ -626,7 +649,8 @@ export function ConversationTimeline({
                 stoppingChildThreadId={stoppingChildThreadId} onForkFromRun={onForkFromRun}
                 onCite={onCite} sourceThreadId={sourceThreadId} onOpenCitation={sourceThreadId ? openCitationLink : undefined}
                 forceExpandPlan={Boolean(highlightedRowId === item.id || matchedRowIds?.has(item.id))}
-                onImplementPlan={onImplementPlan} implementingPlan={implementingPlan} />}
+                onImplementPlan={onImplementPlan} implementingPlan={implementingPlan}
+                changedFilesByRun={changedFilesByRun} onOpenTurnDiff={onOpenTurnDiff} onOpenChangedFile={onOpenChangedFile} />}
               {item.id === workingAnchor && workingRow}
             </div>}
           />}
@@ -634,7 +658,7 @@ export function ConversationTimeline({
           {footer}
         </div>
       </div>
-      {sourceThreadId && onCite && <AssistantSelectionToolbar viewport={scrollElement} threadId={sourceThreadId} onCite={onCite} />}
+      {sourceThreadId && onCite && <AssistantSelectionToolbar viewport={scrollElement} threadId={sourceThreadId} onCite={onCite} onSideChatQuote={onSideChatQuote} />}
       <TimelineMinimap
         items={minimapItems}
         hasPersistentGutter={minimapGutter}
@@ -710,6 +734,9 @@ function ConversationRow({
   forceExpandPlan,
   onImplementPlan,
   implementingPlan,
+  changedFilesByRun,
+  onOpenTurnDiff,
+  onOpenChangedFile,
 }: {
   readonly row: Exclude<ConversationTimelineRow, { readonly kind: 'work-fold' | 'work-group' }>
   readonly onQuote?: ConversationTimelineProps['onQuote']
@@ -726,6 +753,9 @@ function ConversationRow({
   readonly forceExpandPlan?: boolean
   readonly onImplementPlan?: ConversationTimelineProps['onImplementPlan']
   readonly implementingPlan?: boolean
+  readonly changedFilesByRun?: ReadonlyMap<string, readonly TurnChangedFileEntry[]>
+  readonly onOpenTurnDiff?: ConversationTimelineProps['onOpenTurnDiff']
+  readonly onOpenChangedFile?: ConversationTimelineProps['onOpenChangedFile']
 }): JSX.Element {
   if (row.kind === 'relation') return <ConversationTimelineRelationRow item={row.item} onOpenRelatedThread={onOpenRelatedThread}
     onStopSubagent={onStopSubagent} stoppingChildThreadId={stoppingChildThreadId} />
@@ -797,9 +827,21 @@ function ConversationRow({
       </details>
     )
   }
-  return row.message.role === 'user'
-    ? <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onEditAndRerun={onEditAndRerun}
+  if (row.message.role === 'user') {
+    return <UserMessageRow row={row} onQuote={onQuote} onEdit={onEdit} onEditAndRerun={onEditAndRerun}
       onRollbackRun={onRollbackRun} onOpenCitation={onOpenCitation} />
-    : <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId}
+  }
+  const runFiles = row.showAssistantMeta && row.forkRunId ? changedFilesByRun?.get(row.forkRunId) : undefined
+  return <>
+    <AssistantTimelineRow row={row} onQuote={onQuote} onCite={onCite} sourceThreadId={sourceThreadId}
       onForkFromRun={onForkFromRun} onRollbackRun={onRollbackRun} />
+    {runFiles && runFiles.length > 0 && row.forkRunId && (
+      <ChangedFilesTree
+        runId={row.forkRunId}
+        files={runFiles}
+        onOpenTurnDiff={onOpenTurnDiff}
+        onOpenFile={onOpenChangedFile}
+      />
+    )}
+  </>
 }

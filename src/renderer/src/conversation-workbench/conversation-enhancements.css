@@ -438,4 +438,129 @@
   background: var(--my-bg-danger-primary);
 }
 
+/* 阶段 7C：本轮改动文件树、划词批注浮条与多模型并行选择 */
+.conversation-changed-tree {
+  display: flex;
+  flex-direction: column;
+  margin-block: var(--my-space-6) var(--my-space-10);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-panel);
+  overflow: hidden;
+}
+
+.conversation-changed-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-space-8);
+  padding: var(--my-space-6) var(--my-space-10);
+  background: var(--my-bg-panel-header);
+}
+
+.conversation-changed-tree-body {
+  border-block-start: 1px solid var(--my-border-subtle);
+  padding: var(--my-space-4);
+}
+
+.conversation-changed-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-changed-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-6);
+  width: 100%;
+  min-height: 26px;
+  padding-inline-end: var(--my-space-8);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-secondary);
+  text-align: start;
+}
+
+.conversation-changed-tree-row:hover:not(:disabled) {
+  background: var(--my-bg-layer-transparent-hover);
+  color: var(--my-txt-primary);
+}
+
+.my-root .conversation-selection-toolbar {
+  position: fixed;
+  z-index: var(--my-z-menu);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-2);
+  max-width: calc(100vw - 1rem);
+  padding: var(--my-space-2);
+  border: 1px solid var(--my-border-subtle);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-elevated);
+  box-shadow: var(--my-shadow-overlay-200);
+  -webkit-app-region: no-drag;
+}
+
+.conversation-selection-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--my-space-4);
+  height: 26px;
+  padding-inline: var(--my-space-8);
+  border-radius: var(--my-radius-base);
+  color: var(--my-txt-primary);
+  font-size: var(--my-text-xs);
+  white-space: nowrap;
+}
+
+.conversation-selection-toolbar-btn:hover {
+  background: var(--my-bg-layer-transparent-hover);
+}
+
+.conversation-fanout-trigger[data-active='true'] {
+  background: var(--my-bg-navigation-selected);
+  color: var(--my-txt-primary);
+}
+
+.conversation-fanout-option {
+  display: flex;
+  align-items: center;
+  gap: var(--my-space-8);
+  width: 100%;
+  padding: var(--my-space-6) var(--my-space-8);
+  border-radius: var(--my-radius-base);
+  text-align: start;
+}
+
+.conversation-fanout-option:hover:not(:disabled) {
+  background: var(--my-bg-layer-transparent-hover);
+}
+
+.conversation-fanout-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.conversation-fanout-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1px solid var(--my-border-strong);
+  border-radius: var(--my-radius-base);
+  background: var(--my-bg-input);
+  color: var(--my-txt-on-accent);
+}
+
+.conversation-fanout-check[data-checked='true'] {
+  border-color: var(--my-bg-accent-primary);
+  background: var(--my-bg-accent-primary);
+}
+
+
 
