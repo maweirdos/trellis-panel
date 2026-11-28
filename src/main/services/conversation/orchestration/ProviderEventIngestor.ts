@@ -14,6 +14,7 @@ import type { ConversationDriverTurnEvent, ConversationDriverWorkItem } from '..
 import type { ConversationProjectionStore } from '../persistence/ProjectionStore'
 import type { ConversationEffectWorker } from './EffectWorker'
 import type { ConversationEventSink } from './EventSink'
+import { AssistantDeltaCoalescer, CommandOutputHub } from './LiveStreamCoalescer'
 import { lifecycleEvent, type ThreadCommands, type ThreadEffectRow } from './ThreadCommands'
 import type { ThreadContinuation } from './ThreadContinuation'
 import type { ThreadRelations } from './ThreadRelations'
@@ -65,6 +66,9 @@ export interface TurnObservationCallbacks<TTurn extends IngestibleTurn> {
  * 助手正文增量写入、工作项规范化投影（含字节预算控制）、用量统计、原生子活动映射及运行时请求转交。
  */
 export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn> {
+  private readonly deltaCoalescer = new AssistantDeltaCoalescer()
+  readonly commandOutputs = new CommandOutputHub()
+
   constructor(
     private readonly projections: ConversationProjectionStore,
     private readonly eventSink: ConversationEventSink,
@@ -74,6 +78,16 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
     private readonly worker: ConversationEffectWorker,
     private readonly runtimeRequests: RuntimeRequestService<TTurn>,
   ) {}
+
+  flushThread(threadId: string): void {
+    this.deltaCoalescer.flushThread(threadId)
+    this.commandOutputs.flushThread(threadId)
+  }
+
+  flushAll(): void {
+    this.deltaCoalescer.flushAll()
+    this.commandOutputs.flushAll()
+  }
 
   runEvidenceEvent(threadId: string, runId: string, evidence: ConversationRunEvidence, occurredAt: string): ConversationHostEvent {
     return { id: randomUUID(), threadId, runId, occurredAt, type: 'crux.run-evidence', payload: evidence }
@@ -176,7 +190,21 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
         && (event.item.kind === 'tool' || event.item.kind === 'command-execution' || event.item.kind === 'file-search' || event.item.kind === 'web-search')
         && turn.controlTurnId === event.turnId
       if ((nativeMatch || hostToolMatch) && !state.foreground_ended && state.provider_thread_id === turn.nativeThreadId) {
-        this.applyWorkItem(turn, event.turnId, event.item)
+        if (event.item.kind === 'command-execution' && event.item.output !== undefined) {
+          const cmdItem = event.item
+          const cmdOutput = event.item.output
+          this.commandOutputs.recordOutput(row.thread_id, cmdItem.nativeItemId, cmdOutput, cmdItem.status, tail => {
+            if (callbacks.isClosing() || !callbacks.isCurrentActiveTurn(turn)) return
+            try {
+              callbacks.assertOwner()
+              this.applyWorkItem(turn, event.turnId, { ...cmdItem, output: tail })
+            } catch {
+              // 忽略刷盘时会话已关闭或所有权变更的边界竞争
+            }
+          })
+        } else {
+          this.applyWorkItem(turn, event.turnId, event.item)
+        }
       }
       return
     }
@@ -190,9 +218,22 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
       this.handleTurnReceiptOrAccepted(turn, event, nativeTurnId, callbacks)
     }
     if ((event.type === 'text-delta' || event.type === 'text-final') && event.text && event.itemId && !state.foreground_ended) {
-      this.writeAssistantText(callbacks.assertOwner, row.thread_id, runId, event.itemId, event.text, event.type === 'text-final')
+      if (event.type === 'text-delta') {
+        this.deltaCoalescer.enqueue(row.thread_id, runId, event.itemId, event.text, (tId, rId, iId, combined) => {
+          if (callbacks.isClosing() || !callbacks.isCurrentActiveTurn(turn)) return
+          try {
+            this.writeAssistantText(callbacks.assertOwner, tId, rId, iId, combined, false)
+          } catch {
+            // 忽略窗口刷盘时会话关闭/权限变更边界
+          }
+        })
+      } else {
+        this.deltaCoalescer.flushItem(row.thread_id, runId, event.itemId)
+        this.writeAssistantText(callbacks.assertOwner, row.thread_id, runId, event.itemId, event.text, true)
+      }
     }
     if (event.type === 'runtime-request' && !state.foreground_ended && !state.stop_requested) {
+      this.flushThread(row.thread_id)
       if (this.runtimeRequests.shouldAutoApprove(row.thread_id, event.request) && callbacks.onAutoApproveRequest) {
         callbacks.onAutoApproveRequest(turn, event.nativeRequestId)
       } else {
@@ -203,6 +244,7 @@ export class ProviderEventIngestor<TTurn extends IngestibleTurn = IngestibleTurn
       this.handleBackgroundWorkEvent(turn, event, state.foreground_ended, callbacks)
     }
     if (event.type === 'turn-completed' && event.status !== 'running') {
+      this.flushThread(row.thread_id)
       turn.terminal ??= event
       turn.terminalObservedAt ??= new Date().toISOString()
       if (state.phase === 'unknown' || state.foreground_ended) callbacks.onForegroundReadyToFinish(turn)
